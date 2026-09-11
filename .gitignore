@@ -1,0 +1,5 @@
+﻿vendor/
+uploads/
+out/
+api/config.php
+api/google_config.php
