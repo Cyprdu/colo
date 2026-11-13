@@ -1,398 +1,470 @@
-<?php
-/**
- * Fichier : index5.php  (destiné à remplacer index.php)
- * ---------------------------------------------------------------
- * Réplique fidèle de la maquette fournie par le client :
- *   - Hero plein écran (photo de montagne), sélecteur "Rechercher
- *     pour : {enfant}", recherche à 3 champs (Catégorie / Mot-clé /
- *     Localisation) avec bouton icône sombre.
- *   - Sections horizontales groupées par période de vacances
- *     scolaires ("Vacances de la Toussaint", "de Noël", "au Ski"),
- *     chacune alimentée par le moteur de recommandations
- *     PERSONNALISÉES (api/get_recommendations.php) restreint à la
- *     fenêtre de dates correspondante : on obtient donc à la fois
- *     le regroupement demandé par la maquette ET une vraie
- *     pertinence par utilisateur (âge de l'enfant, favoris...).
- *   - Bannière centrale crème + icônes "sapin" en SVG.
- *   - Toutes les icônes sont du SVG inline : plus aucune dépendance
- *     à une police d'icônes externe (source des bugs d'affichage
- *     constatés précédemment si le CDN ne charge pas).
- */
+<?php 
+require_once 'partials/header.php'; 
 
-require_once 'partials/header3.php';
-
-$is_logged_in   = isset($_SESSION['user']);
-$is_animateur   = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
-$prenom         = $is_logged_in ? ($_SESSION['user']['prenom'] ?? '') : '';
+$is_logged_in = isset($_SESSION['user']);
+$is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
 $user_favorites = $_SESSION['user']['favorites'] ?? [];
 
-// ------------------------------------------------------------------
-// Fenêtres de vacances scolaires françaises (zones A/B/C confondues,
-// pour couvrir un maximum de séjours). À ajuster chaque année scolaire
-// — volontairement isolé ici en tête de fichier pour rester facile à
-// maintenir sans toucher au reste de la page.
-// ------------------------------------------------------------------
-$holiday_periods = [
-    ['label' => 'Vacances de la Toussaint', 'start' => '2026-10-17', 'end' => '2026-11-02'],
-    ['label' => 'Vacances de Noël',         'start' => '2026-12-19', 'end' => '2027-01-04'],
-    ['label' => "Vacances d'Hiver (Ski)",   'start' => '2027-02-06', 'end' => '2027-03-09'],
+// Liste des départements (inchangé)
+$departments = [
+    '01' => 'Ain', '02' => 'Aisne', '03' => 'Allier', '04' => 'Alpes-de-Haute-Provence', '05' => 'Hautes-Alpes',
+    '06' => 'Alpes-Maritimes', '07' => 'Ardèche', '08' => 'Ardennes', '09' => 'Ariège', '10' => 'Aube',
+    '11' => 'Aude', '12' => 'Aveyron', '13' => 'Bouches-du-Rhône', '14' => 'Calvados', '15' => 'Cantal',
+    '16' => 'Charente', '17' => 'Charente-Maritime', '18' => 'Cher', '19' => 'Corrèze', '2A' => 'Corse-du-Sud',
+    '2B' => 'Haute-Corse', '21' => 'Côte-d\'Or', '22' => 'Côtes-d\'Armor', '23' => 'Creuse', '24' => 'Dordogne',
+    '25' => 'Doubs', '26' => 'Drôme', '27' => 'Eure', '28' => 'Eure-et-Loir', '29' => 'Finistère', '30' => 'Gard',
+    '31' => 'Haute-Garonne', '32' => 'Gers', '33' => 'Gironde', '34' => 'Hérault', '35' => 'Ille-et-Vilaine',
+    '36' => 'Indre', '37' => 'Indre-et-Loire', '38' => 'Isère', '39' => 'Jura', '40' => 'Landes',
+    '41' => 'Loir-et-Cher', '42' => 'Loire', '43' => 'Haute-Loire', '44' => 'Loire-Atlantique', '45' => 'Loiret',
+    '46' => 'Lot', '47' => 'Lot-et-Garonne', '48' => 'Lozère', '49' => 'Maine-et-Loire', '50' => 'Manche',
+    '51' => 'Marne', '52' => 'Haute-Marne', '53' => 'Mayenne', '54' => 'Meurthe-et-Moselle', '55' => 'Meuse',
+    '56' => 'Morbihan', '57' => 'Moselle', '58' => 'Nièvre', '59' => 'Nord', '60' => 'Oise', '61' => 'Orne',
+    '62' => 'Pas-de-Calais', '63' => 'Puy-de-Dôme', '64' => 'Pyrénées-Atlantiques', '65' => 'Hautes-Pyrénées',
+    '66' => 'Pyrénées-Orientales', '67' => 'Bas-Rhin', '68' => 'Haut-Rhin', '69' => 'Rhône', '70' => 'Haute-Saône',
+    '71' => 'Saône-et-Loire', '72' => 'Sarthe', '73' => 'Savoie', '74' => 'Haute-Savoie', '75' => 'Paris',
+    '76' => 'Seine-Maritime', '77' => 'Seine-et-Marne', '78' => 'Yvelines', '79' => 'Deux-Sèvres', '80' => 'Somme',
+    '81' => 'Tarn', '82' => 'Tarn-et-Garonne', '83' => 'Var', '84' => 'Vaucluse', '85' => 'Vendée', '86' => 'Vienne',
+    '87' => 'Haute-Vienne', '88' => 'Vosges', '89' => 'Yonne', '90' => 'Territoire de Belfort', '91' => 'Essonne',
+    '92' => 'Hauts-de-Seine', '93' => 'Seine-Saint-Denis', '94' => 'Val-de-Marne', '95' => 'Val-d\'Oise',
+    '971' => 'Guadeloupe', '972' => 'Martinique', '973' => 'Guyane', '974' => 'La Réunion', '976' => 'Mayotte'
 ];
-$today = date('Y-m-d');
-// On ne garde que les périodes pas encore terminées pour que la page
-// reste pertinente automatiquement au fil du temps, sans intervention.
-$holiday_periods = array_values(array_filter($holiday_periods, function ($p) use ($today) {
-    return $p['end'] >= $today;
-}));
-// Filet de sécurité si toutes les périodes ci-dessus sont dépassées un jour :
-if (empty($holiday_periods)) {
-    $holiday_periods = [
-        ['label' => 'Séjours à venir', 'start' => $today, 'end' => date('Y-m-d', strtotime('+6 months'))],
-    ];
-}
 ?>
 
-<!-- ================================================================ -->
-<!-- HERO PLEIN LARGEUR                                                -->
-<!-- ================================================================ -->
-<section class="relative -mx-4 sm:-mx-6 lg:-mx-8 -mt-6 mb-12 overflow-hidden">
-    <div class="absolute inset-0">
-        <img src="https://img3.wallspic.com/crops/1/6/1/1/8/181161/181161-weisshorn-les_reliefs_montagneux-gamme_de_montagne-colline-hiver-3840x2160.jpg"
-             alt="" class="w-full h-full object-cover" loading="eager">
-        <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/25 to-black/10"></div>
-    </div>
+<?php if (!$is_animateur): ?>
+<button id="fab-filter-btn" class="fixed bottom-6 left-6 z-50 bg-blue-600 text-white p-4 rounded-full shadow-xl hover:bg-blue-700 hover:scale-105 transition-all duration-300 flex items-center justify-center group">
+    <i class="fa-solid fa-sliders text-xl"></i>
+    <span class="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs group-hover:ml-2 transition-all duration-300 ease-in-out font-bold">Filtres</span>
+</button>
 
-    <div class="relative z-10 px-4 sm:px-8 lg:px-10 pt-6 pb-20 min-h-[440px] flex flex-col">
-
-        <?php if ($is_logged_in && !$is_animateur): ?>
-        <!-- Sélecteur "Rechercher pour : {enfant}" -->
-        <div class="flex justify-end mb-8">
-            <div class="bg-white/95 backdrop-blur rounded-full shadow-md pl-4 pr-1.5 py-1.5 flex items-center gap-2 text-sm">
-                <span class="text-gray-500 whitespace-nowrap">Rechercher pour&nbsp;:</span>
-                <select id="child-context-select" class="bg-transparent font-bold text-gray-800 outline-none cursor-pointer pr-1 max-w-[120px] truncate">
-                    <option value="">Toute la famille</option>
-                </select>
-                <span id="child-context-avatar" class="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
-                </span>
-            </div>
+<div id="filter-drawer-overlay" class="fixed inset-0 bg-black/50 z-50 hidden transition-opacity opacity-0"></div>
+<aside id="filter-drawer" class="fixed top-0 left-0 bottom-0 w-80 bg-white z-50 shadow-2xl transform -translate-x-full transition-transform duration-300 ease-in-out overflow-y-auto">
+    <div class="p-6">
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-xl font-bold text-gray-800">Filtrer les camps</h2>
+            <button id="close-drawer-btn" class="text-gray-400 hover:text-gray-600">
+                <i class="fa-solid fa-xmark text-2xl"></i>
+            </button>
         </div>
-        <?php endif; ?>
 
-        <div class="mt-auto">
-            <h1 class="text-4xl md:text-5xl font-extrabold text-white drop-shadow mb-8">
-                <?php echo $is_logged_in ? 'Bonjour ' . htmlspecialchars($prenom) . ',' : 'Trouvez la colonie idéale'; ?>
-            </h1>
-
-            <!-- Barre de recherche flottante -->
-            <form id="hero-search-form" action="recherche.php" method="GET"
-                  class="max-w-4xl bg-white rounded-2xl shadow-2xl p-1.5 flex flex-col md:flex-row items-stretch divide-y md:divide-y-0 md:divide-x divide-gray-100">
-
-                <input type="hidden" name="age" id="hero-age-hidden" value="">
-
-                <div class="flex-1 min-w-0 px-5 py-3">
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Catégorie</label>
-                    <select name="themes[]" id="hero-category" class="w-full border-0 p-0 text-sm text-gray-800 focus:ring-0 outline-none bg-transparent cursor-pointer">
-                        <option value="">Toutes catégories</option>
+        <form id="drawer-filter-form" class="space-y-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Département</label>
+                <div class="relative">
+                    <select id="drawer-department" name="department" class="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none text-gray-700">
+                        <option value="">Partout en France</option>
+                        <?php foreach ($departments as $code => $name): ?>
+                            <option value="<?php echo $code; ?>"><?php echo $code; ?> - <?php echo $name; ?></option>
+                        <?php endforeach; ?>
                     </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                        <i class="fa-solid fa-chevron-down text-gray-400"></i>
+                    </div>
                 </div>
-
-                <div class="flex-[1.4] min-w-0 px-5 py-3">
-                    <label class="flex items-center gap-1.5 text-xs font-bold text-gray-700 mb-1">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-gray-400" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                        Que recherchez-vous ?
-                    </label>
-                    <input type="text" name="name" placeholder="Ex : Weekend-Ski"
-                           class="w-full border-0 p-0 text-sm text-gray-800 placeholder-gray-400 focus:ring-0 outline-none bg-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Pour qui ?</label>
+                <div class="relative">
+                    <?php if ($is_logged_in): ?>
+                        <select id="drawer-child" name="age" class="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none text-gray-700">
+                            <option value="">Sélectionner un enfant</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <i class="fa-solid fa-chevron-down text-gray-400"></i>
+                        </div>
+                    <?php else: ?>
+                        <input type="number" id="drawer-age" name="age" placeholder="Âge de l'enfant" class="w-full pl-3 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <?php endif; ?>
                 </div>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-md mt-4">
+                Appliquer les filtres
+            </button>
+            <button type="button" id="reset-filters-btn" class="w-full bg-white text-gray-600 font-medium py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors text-sm">
+                Réinitialiser
+            </button>
+        </form>
+    </div>
+</aside>
+<?php endif; ?>
 
-                <div class="flex-1 min-w-0 px-5 py-3">
-                    <label class="flex items-center gap-1.5 text-xs font-bold text-gray-700 mb-1">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-gray-400" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.3" stroke="currentColor" stroke-width="2"/></svg>
-                        Localisation
-                    </label>
-                    <input type="text" name="city" placeholder="Partout"
-                           class="w-full border-0 p-0 text-sm text-gray-800 placeholder-gray-400 focus:ring-0 outline-none bg-transparent">
-                </div>
+<main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl pt-6">
+    <section class="text-center my-8">
+        <?php if ($is_logged_in): ?>
+            <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-2">
+                Bonjour <span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent"><?php echo htmlspecialchars($_SESSION['user']['prenom']); ?></span>
+            </h1>
+            <p class="text-lg text-gray-500">
+                <?php echo $is_animateur ? "Prêt à trouver votre prochaine mission d'animation ?" : "Prêt à trouver une nouvelle aventure pour vos enfants ?"; ?>
+            </p>
+        <?php else: ?>
+            <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-2">
+                Bienvenue sur <span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">ColoMap</span>
+            </h1>
+            <p class="text-lg text-gray-500 max-w-2xl mx-auto">
+                Explorez des centaines de camps partout en France. L'aventure inoubliable de votre enfant commence ici.
+            </p>
+        <?php endif; ?>
+    </section>
 
-                <div class="p-1.5 flex items-stretch">
-                    <button type="submit" aria-label="Rechercher"
-                            class="w-12 md:w-14 flex items-center justify-center bg-gray-900 hover:bg-black rounded-xl transition-colors">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="#fff" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
-                    </button>
-                </div>
-            </form>
+    <section class="mt-8 mb-24">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                <?php if($is_animateur): ?>
+                    <i class="fa-solid fa-briefcase text-blue-600"></i>
+                    Offres d'emploi
+                <?php else: ?>
+                    <i class="fa-solid fa-campground text-green-600"></i>
+                    Camps disponibles
+                <?php endif; ?>
+            </h2>
+        </div>
+        
+        <div id="camps-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr"></div>
+        <div id="loader" class="col-span-full flex justify-center items-center py-12 hidden"><div class="loader"></div></div>
+        <div id="end-message" class="text-center py-8 text-gray-500 hidden"><p>Vous avez tout vu ! 🎉</p></div>
+    </section>
 
-            <p class="mt-4 text-sm text-white/90">
-                Vous êtes directeur de camp&nbsp;? <a href="create_camp.php" class="underline font-semibold hover:text-white transition-colors">Publier une annonce</a>
+    <?php if (!$is_logged_in): ?>
+    <article class="max-w-4xl mx-auto mt-32 mb-24 px-4 text-gray-800 leading-relaxed">
+        
+        <h2 class="text-4xl md:text-5xl font-extrabold text-gray-900 mb-10 text-center tracking-tight">
+            ColoMap : <span class="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Le Guide Ultime des Colonies de Vacances</span>
+        </h2>
+
+        <div class="text-xl md:text-2xl font-bold text-gray-700 mb-8 space-y-6">
+            <p>
+                Vous recherchez bien plus qu’une simple colonie de vacances pour votre enfant ? Vous êtes au bon endroit. ColoMap n’est pas un simple annuaire : c’est une véritable porte d’entrée vers des aventures uniques et mémorables. Chaque séjour est pensé pour éveiller la curiosité, développer la confiance en soi et forger le caractère des enfants, tout en favorisant des rencontres sincères. Jour après jour, ils vivent des expériences intenses, riches en découvertes et en émotions, et tissent des amitiés fortes qui, bien souvent, perdurent bien au-delà des vacances.
+            </p>
+            <p>
+                Dans un monde toujours plus connecté et rythmé par les écrans, offrir à votre enfant une véritable parenthèse faite de nature, de sport et de découvertes est sans doute l’un des plus beaux cadeaux que vous puissiez lui faire. Les colonies de vacances offrent aux jeunes l’opportunité de s’éloigner du quotidien, de sortir de leur zone de confort et de vivre des expériences nouvelles et enrichissantes. Loin du cocon familial, ils apprennent progressivement l’autonomie, la prise d’initiative et la confiance en eux, tout en développant des compétences sociales essentielles. Encadrés par des équipes attentives, dans un environnement sécurisé et bienveillant, les enfants grandissent, s’épanouissent et repartent avec des souvenirs et des apprentissages qui les accompagneront durablement.
             </p>
         </div>
-    </div>
-</section>
 
-<main class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl pb-20">
+        <div class="my-12">
+            <div class="text-[10px] text-gray-400 uppercase tracking-widest mb-2 text-center">Publicité</div>
+            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
+            <ins class="adsbygoogle"
+                 style="display:block; text-align:center;"
+                 data-ad-layout="in-article"
+                 data-ad-format="fluid"
+                 data-ad-client="ca-pub-3659884670016121"
+                 data-ad-slot="6405652824"></ins>
+            <script>
+                 (adsbygoogle = window.adsbygoogle || []).push({});
+            </script>
+        </div>
 
-    <?php if (!$is_animateur): ?>
-        <?php foreach ($holiday_periods as $i => $period): ?>
-        <!-- ======================= SECTION VACANCES ======================= -->
-        <section class="mb-14 relative">
-            <h2 class="text-xl md:text-2xl font-bold text-gray-900 mb-5"><?php echo htmlspecialchars($period['label']); ?> :</h2>
+        <div class="text-xl md:text-2xl font-bold text-gray-700 mb-8 space-y-6">
+            <p>
+                Que votre enfant rêve de galoper au grand air, de monter sur scène sous les projecteurs, de percer les mystères de la science ou de repousser ses limites à travers des sports riches en sensations, notre plateforme met à votre disposition des milliers d’offres soigneusement sélectionnées à travers toute la France. Des paysages verdoyants de la Bretagne aux sommets majestueux des Alpes, sans oublier le soleil et les plages de la Méditerranée, chaque région regorge d’expériences uniques. Autant d’occasions pour votre enfant de découvrir de nouveaux horizons, de s’épanouir, d’apprendre et de créer des souvenirs inoubliables, dans des environnements aussi variés qu’enrichissants.
 
-            <div class="relative">
-                <div id="track-<?php echo $i; ?>" class="camp-track flex gap-5 overflow-x-auto scroll-smooth pb-2"
-                     data-start="<?php echo $period['start']; ?>" data-end="<?php echo $period['end']; ?>"></div>
+            </p>
+            <p>
+                La sécurité de votre enfant est au cœur de nos engagements et constitue notre priorité absolue. C’est pourquoi tous les organismes référencés sur ColoMap font l’objet de vérifications rigoureuses afin de garantir le respect des normes d’encadrement, de sécurité et de qualité les plus exigeantes. Pour vous accompagner dans votre choix, vous avez également accès aux avis détaillés d’autres parents, à une présentation claire des programmes pédagogiques et aux informations essentielles sur chaque séjour. Vous pouvez ainsi comparer, choisir et réserver en toute confiance, avec la certitude d’offrir à votre enfant une expérience encadrée, fiable et pleinement sécurisée.
+            </p>
+            <p>
+               Ne laissez pas l’été s’écouler sans offrir à vos enfants une expérience véritablement marquante. Partir en colonie, c’est bien plus que de simples vacances loin de la maison : c’est une véritable école de la vie. Au fil des activités et des rencontres, les enfants apprennent à vivre en collectivité, à partager, à faire preuve de solidarité et à gagner en autonomie. Ils développent aussi la confiance en eux, le sens des responsabilités et le goût du dépassement de soi, tout en créant des souvenirs forts qui les accompagneront longtemps après la fin de l’été.
+            </p>
+        </div>
 
-                <button type="button" data-target="track-<?php echo $i; ?>"
-                        class="carousel-next hidden md:flex absolute top-1/2 -right-4 -translate-y-1/2 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-100 items-center justify-center hover:bg-gray-50 transition-colors z-10"
-                        aria-label="Voir plus">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5l7 7-7 7" stroke="#111827" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-            </div>
-        </section>
+        <div class="my-12">
+            <div class="text-[10px] text-gray-400 uppercase tracking-widest mb-2 text-center">Publicité</div>
+            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
+            <ins class="adsbygoogle"
+                 style="display:block; text-align:center;"
+                 data-ad-layout="in-article"
+                 data-ad-format="fluid"
+                 data-ad-client="ca-pub-3659884670016121"
+                 data-ad-slot="6405652824"></ins>
+            <script>
+                 (adsbygoogle = window.adsbygoogle || []).push({});
+            </script>
+        </div>
 
-        <?php if ($i === 0): ?>
-        <!-- ======================= BANNIÈRE CENTRALE ======================= -->
-        <section class="mb-14">
-            <div class="relative bg-[#F6F1E6] rounded-2xl px-6 py-12 text-center overflow-hidden">
-                <svg class="absolute left-6 bottom-4 opacity-90 -rotate-6" width="34" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 2.5L7.3 9.3H9.6L6.4 13.8H9.2L5.8 18.7H18.2L14.8 13.8H17.6L14.4 9.3H16.7L12 2.5Z" fill="#3E6B4C"/>
-                    <rect x="11.1" y="18.7" width="1.8" height="2.8" fill="#6B4423"/>
-                </svg>
-                <svg class="absolute right-8 bottom-2 opacity-90 rotate-6" width="52" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 2.5L7.3 9.3H9.6L6.4 13.8H9.2L5.8 18.7H18.2L14.8 13.8H17.6L14.4 9.3H16.7L12 2.5Z" fill="#3E6B4C"/>
-                    <rect x="11.1" y="18.7" width="1.8" height="2.8" fill="#6B4423"/>
-                </svg>
+        <div class="mt-16 text-center">
+            <a href="login" class="inline-block bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-extrabold text-2xl py-5 px-10 rounded-full shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
+                Partir à l'aventure
+            </a>
+            <p class="mt-4 text-gray-500 font-medium">Rejoignez gratuitement la communauté ColoMap dès aujourd'hui.</p>
+        </div>
 
-                <h3 class="text-3xl font-extrabold text-gray-900 mb-2">ColoMap</h3>
-                <p class="text-gray-500 mb-6 max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
-                <a href="recherche.php" class="inline-block bg-gray-900 hover:bg-black text-white font-semibold px-8 py-3 rounded-full transition-colors">Rechercher</a>
-            </div>
-        </section>
-        <?php endif; ?>
-        <?php endforeach; ?>
-    <?php else: ?>
-        <!-- Variante Animateur : missions d'animation éligibles -->
-        <section class="mb-14 relative">
-            <h2 class="text-xl md:text-2xl font-bold text-gray-900 mb-5">Missions ouvertes pour vous :</h2>
-            <div id="anim-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
-            <div id="anim-empty" class="hidden text-center py-10 text-gray-400">Aucune mission éligible pour le moment. Essayez d'affiner votre recherche ci-dessus.</div>
-        </section>
+    </article>
     <?php endif; ?>
 
 </main>
 
-<style>
-.camp-track::-webkit-scrollbar { height: 0; }
-.camp-track { scrollbar-width: none; }
-.camp-track .camp-card { flex: 0 0 230px; }
-#anim-list .camp-card { width: 100%; }
-.skeleton { background: linear-gradient(90deg,#f1f5f9 25%,#f8fafc 37%,#f1f5f9 63%); background-size: 400% 100%; animation: skeleton-loading 1.4s ease infinite; }
-@keyframes skeleton-loading { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
-.fade-in-anim { animation: fadeIn .4s ease-in-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-</style>
-
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const isLoggedIn  = <?php echo json_encode($is_logged_in); ?>;
-    const isAnimateur = <?php echo json_encode($is_animateur); ?>;
+document.addEventListener('DOMContentLoaded', function() {
+    const isAnimator = <?php echo json_encode($is_animateur); ?>;
+    const isLoggedIn = <?php echo json_encode($is_logged_in); ?>;
+    const campsListContainer = document.getElementById('camps-list');
+    const loader = document.getElementById('loader');
+    const endMessage = document.getElementById('end-message');
     let userFavorites = <?php echo json_encode($user_favorites); ?>;
 
-    // ------------------------------------------------------------
-    // Icônes SVG réutilisées côté client (aucune police d'icônes externe)
-    // ------------------------------------------------------------
-    const ICON_PIN = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="#9CA3AF" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.1" stroke="#9CA3AF" stroke-width="2"/></svg>';
-    const ICON_HEART_OUTLINE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.5l1.318-1.182a4.5 4.5 0 116.364 6.364L12 21l-7.682-7.682a4.5 4.5 0 010-6.364z" stroke="#6B7280" stroke-width="1.8"/></svg>';
-    const ICON_HEART_FILLED  = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#EF4444" xmlns="http://www.w3.org/2000/svg"><path d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.5l1.318-1.182a4.5 4.5 0 116.364 6.364L12 21l-7.682-7.682a4.5 4.5 0 010-6.364z"/></svg>';
-    const ICON_ORG_PLACEHOLDER = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#fff"/></svg>';
+    // Elements du Drawer et FAB
+    const fabBtn = document.getElementById('fab-filter-btn');
+    const drawer = document.getElementById('filter-drawer');
+    const overlay = document.getElementById('filter-drawer-overlay');
+    const closeDrawerBtn = document.getElementById('close-drawer-btn');
+    const drawerForm = document.getElementById('drawer-filter-form');
+    const childSelect = document.getElementById('drawer-child');
+    const resetBtn = document.getElementById('reset-filters-btn');
 
-    function safeImg(url) {
-        if (!url) return 'https://placehold.co/500x500/f1f5f9/94a3b8?text=ColoMap';
-        return url.replace(/\\/g, '/');
+    let currentPage = 1;
+    const limit = 40;
+    let isLoading = false;
+    let hasMoreCamps = true;
+    let currentFilters = {};
+
+    // --- LOGIQUE DRAWER ---
+    if (!isAnimator && fabBtn) {
+        fabBtn.addEventListener('click', () => {
+            drawer.classList.remove('-translate-x-full');
+            overlay.classList.remove('hidden');
+            setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+            document.body.style.overflow = 'hidden';
+        });
+
+        function closeDrawer() {
+            drawer.classList.add('-translate-x-full');
+            overlay.classList.add('opacity-0');
+            setTimeout(() => overlay.classList.add('hidden'), 300);
+            document.body.style.overflow = '';
+        }
+
+        closeDrawerBtn.addEventListener('click', closeDrawer);
+        overlay.addEventListener('click', closeDrawer);
+
+        async function loadChildren() {
+            if (!childSelect) return;
+            try {
+                const response = await fetch('api/get_children.php');
+                if (!response.ok) return;
+                const children = await response.json();
+                if (children.length > 0) {
+                    children.forEach(child => {
+                        const option = document.createElement('option');
+                        option.value = child.age;
+                        option.textContent = `${child.prenom} (${child.age} ans)`;
+                        childSelect.appendChild(option);
+                    });
+                } else {
+                    childSelect.innerHTML = '<option value="">Aucun enfant enregistré</option>';
+                    childSelect.disabled = true;
+                }
+            } catch (error) { console.error("Erreur chargement enfants:", error); }
+        }
+        loadChildren();
+
+        if(drawerForm) {
+            drawerForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const params = Object.fromEntries(formData.entries());
+                resetAndFetch(params);
+                closeDrawer();
+            });
+        }
+
+        if(resetBtn) {
+            resetBtn.addEventListener('click', function() {
+                drawerForm.reset();
+                resetAndFetch({});
+                closeDrawer();
+            });
+        }
     }
-    function formatDateRange(start, end) {
-        const opts = { day: 'numeric', month: 'long', year: 'numeric' };
+
+    // --- VARIABLES PUBS ---
+    let itemsSinceLastAd = 0; 
+    let firstAdShown = false;
+    let firstAdThreshold = getRandomInt(1, 3);
+    function getRandomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+    let nextAdThreshold = getRandomInt(9, 13); 
+
+    async function fetchAndDisplayCamps(params = {}, isAppend = false) {
+        if (isLoading || (!hasMoreCamps && isAppend)) return;
+        isLoading = true;
+        loader.classList.remove('hidden');
+        if (!isAppend) endMessage.classList.add('hidden');
+
+        const apiUrl = isAnimator ? 'api/get_eligible_camps_for_animator.php' : 'api/get_camps.php';
+        params.page = currentPage;
+        params.limit = limit;
+        const query = new URLSearchParams(params).toString();
+        
         try {
-            const s = start ? new Date(start) : null;
-            const e = end ? new Date(end) : null;
-            if (s && e) return `Du ${s.toLocaleDateString('fr-FR', {day:'numeric', month:'long'})} au ${e.toLocaleDateString('fr-FR', opts)}`;
-            if (s) return `Dès le ${s.toLocaleDateString('fr-FR', opts)}`;
-            return '';
-        } catch (e) { return ''; }
+            const response = await fetch(`${apiUrl}?${query}`);
+            if (!response.ok) throw new Error('Erreur de chargement');
+            const camps = await response.json();
+            loader.classList.add('hidden');
+            
+            if (!isAppend) {
+                campsListContainer.innerHTML = '';
+                itemsSinceLastAd = 0;
+                firstAdShown = false; 
+                firstAdThreshold = getRandomInt(1, 3);
+                nextAdThreshold = getRandomInt(9, 13);
+                window.scrollTo(0, 0);
+            }
+
+            if (camps.length < limit) {
+                hasMoreCamps = false;
+                if (camps.length > 0 || isAppend) endMessage.classList.remove('hidden');
+            }
+
+            if (camps.length === 0 && !isAppend) {
+                campsListContainer.innerHTML = `<div class="col-span-full text-center py-12 text-gray-500">Aucun camp trouvé pour ces critères.</div>`;
+            } else {
+                renderCamps(camps);
+            }
+        } catch (error) {
+            loader.classList.add('hidden');
+            console.error(error);
+        } finally {
+            isLoading = false;
+        }
     }
 
-    // ------------------------------------------------------------
-    // Carte camp (style maquette : organisateur au-dessus de l'image)
-    // ------------------------------------------------------------
-    function campCard(camp) {
-        const detailPage = isAnimateur ? 'info-camp-animateur' : 'camp_details';
-        const linkParam   = isAnimateur ? `id=${camp.id}` : `t=${camp.token}`;
-        const isFavorited = !isAnimateur && isLoggedIn && userFavorites.includes(camp.id);
-        const orgLogo = camp.organisateur_logo
-            ? `<img src="${safeImg(camp.organisateur_logo)}" class="w-full h-full object-cover rounded-full">`
-            : ICON_ORG_PLACEHOLDER;
+    function resetAndFetch(params) {
+        currentPage = 1;
+        hasMoreCamps = true;
+        currentFilters = params;
+        fetchAndDisplayCamps(currentFilters, false);
+    }
+    
+    window.addEventListener('scroll', () => {
+        const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+        if (scrollTop + clientHeight >= scrollHeight - 800 && hasMoreCamps && !isLoading) {
+            currentPage++;
+            fetchAndDisplayCamps(currentFilters, true);
+        }
+    });
 
+    function getAdHtml() {
         return `
-        <div class="camp-card fade-in-anim">
-            <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 overflow-hidden">${orgLogo}</span>
-                    <span class="text-xs font-semibold text-gray-600 truncate">${camp.organisateur_nom || 'ColoMap'}</span>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full justify-center items-center p-4 fade-in-anim">
+                <span class="text-[10px] text-gray-400 uppercase tracking-widest mb-2">Publicité</span>
+                <div class="w-full h-full flex items-center justify-center">
+                    <ins class="adsbygoogle" style="display:block; width:100%;" data-ad-format="rectangle" data-ad-layout="in-article" data-ad-client="ca-pub-3659884670016121" data-ad-slot="7108236695"></ins>
                 </div>
-                ${(!isAnimateur && isLoggedIn) ? `
-                <button class="favorite-button w-7 h-7 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center flex-shrink-0 hover:scale-105 active:scale-95 transition-transform" data-camp-id="${camp.id}">
-                    ${isFavorited ? ICON_HEART_FILLED : ICON_HEART_OUTLINE}
-                </button>` : ''}
-            </div>
-
-            <a href="${detailPage}?${linkParam}" class="block rounded-xl overflow-hidden bg-gray-100 aspect-square mb-2.5 group">
-                <img src="${safeImg(camp.image_url)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                     onerror="this.src='https://placehold.co/500x500/f1f5f9/94a3b8?text=ColoMap';">
-            </a>
-
-            <a href="${detailPage}?${linkParam}" class="block">
-                <h3 class="font-bold text-gray-900 text-sm mb-1 truncate">${camp.nom}</h3>
-                ${!isAnimateur ? `<p class="text-sm text-gray-800 mb-1">Dès <span class="font-bold">${Math.round(camp.prix)}</span>€</p>` : ''}
-                <p class="flex items-center gap-1 text-xs text-gray-500 mb-0.5">${ICON_PIN} ${camp.ville || ''}</p>
-                <p class="text-xs text-gray-400">${formatDateRange(camp.date_debut, camp.date_fin)}</p>
-            </a>
-        </div>`;
+            </div>`;
     }
 
-    function skeletonCard() {
-        return `<div class="camp-card">
-            <div class="flex items-center gap-1.5 mb-2"><div class="skeleton w-6 h-6 rounded-full"></div><div class="skeleton h-3 w-20 rounded"></div></div>
-            <div class="skeleton aspect-square rounded-xl mb-2.5"></div>
-            <div class="skeleton h-3 w-4/5 rounded mb-1.5"></div>
-            <div class="skeleton h-3 w-1/2 rounded"></div>
-        </div>`;
+    function renderCamps(camps) {
+        let newContent = '';
+        
+        camps.forEach((camp, index) => {
+            const isFavorited = !isAnimator && userFavorites.includes(camp.id);
+            const detailPage = isAnimator ? 'info-camp-animateur' : 'camp_details';
+            const linkParam = isAnimator ? `id=${camp.id}` : `t=${camp.token}`;
+            const priceDisplay = !isAnimator ? `<div class="bg-blue-50 px-3 py-1 rounded-full"><span class="text-blue-700 font-bold">${camp.prix}€</span></div>` : '';
+            const dateStr = new Date(camp.date_debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+            let imageUrl = (camp.image_url && camp.image_url.trim() !== '') ? camp.image_url.replace(/\\/g, '/') : 'https://placehold.co/600x400/f1f5f9/94a3b8?text=Image+non+disponible';
+
+            newContent += `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300 group flex flex-col h-full fade-in-anim">
+                    <div class="relative cursor-pointer h-48 overflow-hidden" onclick="window.location.href='${detailPage}?${linkParam}'">
+                        <img src="${imageUrl}" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500" onerror="this.src='https://placehold.co/600x400/f1f5f9/94a3b8?text=Erreur+image';">
+                        ${!isAnimator && isLoggedIn ? `
+                        <button class="favorite-button absolute top-3 right-3 bg-white/90 p-2 rounded-full shadow-sm hover:bg-white z-10 transition-transform active:scale-90" data-camp-id="${camp.id}">
+                            <svg class="w-5 h-5 ${isFavorited ? 'text-red-500 fill-current' : 'text-gray-400'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.5l1.318-1.182a4.5 4.5 0 116.364 6.364L12 21l-7.682-7.682a4.5 4.5 0 010-6.364z" />
+                            </svg>
+                        </button>` : ''}
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow cursor-pointer" onclick="window.location.href='${detailPage}?${linkParam}'">
+                        <h3 class="font-bold text-gray-900 text-lg mb-2 line-clamp-1">${camp.nom}</h3>
+                        <div class="space-y-2 mb-4 flex-grow text-sm text-gray-600">
+                            <div class="flex items-center"><i class="fa-solid fa-location-dot w-4 mr-2 text-gray-400"></i>${camp.ville}</div>
+                            <div class="flex items-center"><i class="fa-solid fa-child w-4 mr-2 text-gray-400"></i>${camp.age_min}-${camp.age_max} ans</div>
+                            <div class="flex items-center"><i class="fa-regular fa-calendar w-4 mr-2 text-gray-400"></i>Dès le ${dateStr}</div>
+                        </div>
+                        <div class="pt-4 border-t border-gray-100 flex justify-between items-center">${priceDisplay}<span class="text-blue-600 text-sm font-medium">Détails →</span></div>
+                    </div>
+                </div>`;
+
+            // LOGIQUE PUB LISTE
+            itemsSinceLastAd++;
+            if (!firstAdShown && itemsSinceLastAd === firstAdThreshold) {
+                newContent += getAdHtml();
+                itemsSinceLastAd = 0;
+                firstAdShown = true;
+            } else if (firstAdShown && itemsSinceLastAd >= nextAdThreshold) {
+                newContent += getAdHtml();
+                itemsSinceLastAd = 0;
+                nextAdThreshold = getRandomInt(9, 13);
+            }
+        });
+
+        campsListContainer.insertAdjacentHTML('beforeend', newContent);
+        try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {}
     }
 
-    // ------------------------------------------------------------
-    // Favoris (toggle optimiste avec rollback si échec réseau)
-    // ------------------------------------------------------------
+    campsListContainer.addEventListener('click', function(e) {
+        const button = e.target.closest('.favorite-button');
+        if (button) {
+            e.preventDefault(); e.stopPropagation();
+            toggleFavorite(button);
+        }
+    });
+
     async function toggleFavorite(button) {
-        const campId = parseInt(button.dataset.campId, 10);
-        const wasFavorited = button.innerHTML.indexOf('#EF4444') !== -1;
-        button.innerHTML = wasFavorited ? ICON_HEART_OUTLINE : ICON_HEART_FILLED;
-        userFavorites = wasFavorited ? userFavorites.filter(id => id !== campId) : [...userFavorites, campId];
+        const campId = parseInt(button.dataset.campId);
+        const svg = button.querySelector('svg');
+        const isCurrentlyFavorited = svg.classList.contains('text-red-500');
+
+        if (isCurrentlyFavorited) {
+            svg.classList.remove('text-red-500', 'fill-current');
+            svg.classList.add('text-gray-400');
+            userFavorites = userFavorites.filter(id => id !== campId);
+        } else {
+            svg.classList.add('text-red-500', 'fill-current');
+            svg.classList.remove('text-gray-400');
+            userFavorites.push(campId);
+        }
+
+        button.classList.add('scale-90');
+        setTimeout(() => button.classList.remove('scale-90'), 150);
 
         try {
-            const res = await fetch('api/toggle_favorite.php', {
+            const response = await fetch('api/toggle_favorite.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ campId })
             });
-            const result = await res.json();
-            if (!result.success) throw new Error('revert');
-        } catch (e) {
-            button.innerHTML = wasFavorited ? ICON_HEART_FILLED : ICON_HEART_OUTLINE;
-            userFavorites = wasFavorited ? [...userFavorites, campId] : userFavorites.filter(id => id !== campId);
+            const result = await response.json();
+            if (!result.success) {
+                // Revert si échec
+                if (isCurrentlyFavorited) {
+                    svg.classList.add('text-red-500', 'fill-current');
+                    svg.classList.remove('text-gray-400');
+                } else {
+                    svg.classList.remove('text-red-500', 'fill-current');
+                    svg.classList.add('text-gray-400');
+                }
+            }
+        } catch (error) { 
+            // Revert si échec réseau
+            if (isCurrentlyFavorited) {
+                svg.classList.add('text-red-500', 'fill-current');
+                svg.classList.remove('text-gray-400');
+            } else {
+                svg.classList.remove('text-red-500', 'fill-current');
+                svg.classList.add('text-gray-400');
+            }
         }
     }
-    document.body.addEventListener('click', function (e) {
-        const btn = e.target.closest('.favorite-button');
-        if (btn) { e.preventDefault(); e.stopPropagation(); toggleFavorite(btn); }
-    });
-
-    // ------------------------------------------------------------
-    // Défilement des carrousels via le bouton flèche
-    // ------------------------------------------------------------
-    document.querySelectorAll('.carousel-next').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const track = document.getElementById(btn.dataset.target);
-            if (track) track.scrollBy({ left: 720, behavior: 'smooth' });
-        });
-    });
-
-    // ------------------------------------------------------------
-    // Catégories (hero) — depuis la BDD
-    // ------------------------------------------------------------
-    fetch('api/get_themes.php').then(r => r.json()).then(themes => {
-        const sel = document.getElementById('hero-category');
-        if (!sel || !Array.isArray(themes)) return;
-        [...themes].sort((a, b) => a.name.localeCompare(b.name)).forEach(t => {
-            const opt = document.createElement('option');
-            opt.value = t.name; // comparaison texte côté serveur (colonnes libres theme/type)
-            opt.textContent = t.name;
-            sel.appendChild(opt);
-        });
-    }).catch(() => {});
-
-    // ------------------------------------------------------------
-    // Sélecteur "Rechercher pour : {enfant}"
-    // ------------------------------------------------------------
-    let currentChildAge = '';
-    if (isLoggedIn && !isAnimateur) {
-        fetch('api/get_children.php').then(r => r.json()).then(children => {
-            const sel = document.getElementById('child-context-select');
-            if (!sel || !Array.isArray(children) || children.length === 0) return;
-            children.forEach(c => {
-                if (c.age === null || c.age === undefined) return;
-                const opt = document.createElement('option');
-                opt.value = c.age;
-                opt.dataset.prenom = c.prenom;
-                opt.textContent = `${c.prenom} (${c.age} ans)`;
-                sel.appendChild(opt);
-            });
-            sel.addEventListener('change', () => {
-                currentChildAge = sel.value;
-                document.getElementById('hero-age-hidden').value = currentChildAge;
-                loadAllSections();
-            });
-        }).catch(() => {});
-    }
-
-    // ------------------------------------------------------------
-    // Chargement des sections "Vacances de ..." (personnalisées + datées)
-    // ------------------------------------------------------------
-    function loadSection(track) {
-        track.innerHTML = Array(6).fill(skeletonCard()).join('');
-        const params = new URLSearchParams({
-            limit: 12,
-            date_start: track.dataset.start,
-            date_end: track.dataset.end,
-        });
-        if (currentChildAge !== '') params.set('child_age', currentChildAge);
-
-        fetch(`api/get_recommendations.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                const camps = (data && data.camps) || [];
-                if (camps.length === 0) {
-                    track.parentElement.parentElement.classList.add('hidden');
-                    return;
-                }
-                track.innerHTML = camps.map(c => campCard(c)).join('');
-            })
-            .catch(() => { track.parentElement.parentElement.classList.add('hidden'); });
-    }
-
-    function loadAllSections() {
-        document.querySelectorAll('.camp-track').forEach(loadSection);
-    }
-
-    if (!isAnimateur) {
-        loadAllSections();
-    } else {
-        // ------------------------------------------------------------
-        // Variante animateur : missions éligibles (liste courte)
-        // ------------------------------------------------------------
-        const animList = document.getElementById('anim-list');
-        const animEmpty = document.getElementById('anim-empty');
-        animList.innerHTML = Array(8).fill(skeletonCard()).join('');
-        fetch('api/get_eligible_camps_for_animator.php')
-            .then(r => r.json())
-            .then(camps => {
-                if (!Array.isArray(camps) || camps.length === 0) {
-                    animList.innerHTML = '';
-                    animEmpty.classList.remove('hidden');
-                    return;
-                }
-                animList.innerHTML = camps.slice(0, 8).map(c => campCard(c)).join('');
-            })
-            .catch(() => { animList.innerHTML = ''; animEmpty.classList.remove('hidden'); });
-    }
+    
+    resetAndFetch({});
 });
 </script>
+
+<style>
+.fade-in-anim { animation: fadeIn 0.5s ease-in-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+#filter-drawer { box-shadow: 4px 0 24px rgba(0,0,0,0.15); }
+</style>
 
 <?php require_once 'partials/footer.php'; ?>
