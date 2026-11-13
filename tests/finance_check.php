@@ -41,4 +41,20 @@ $full = mk_score(['nb_places_restantes' => 0, 'quota_global' => 20] + $base, $no
 ok($full['organique'] < $s0['organique'] * 0.5, 'séjour complet fortement rétrogradé');
 $urgLoin = mk_score(['date_debut' => '2027-03-01'] + $base + ['boost_urgence_fin' => '2026-11-20 00:00:00'], $now);
 ok($urgLoin['boost_factor'] === 1.0, 'dernière minute sans effet si le départ est à plus de 45 jours');
+
+// Garantie annulation : supplément en % du total HORS garantie (arrondi au centime), jamais sur un total nul
+ok(fin_garantie_cents(10000, 2.0) === 200, 'garantie 2 % sur 100 EUR = 2,00 EUR');
+ok(fin_garantie_cents(2575, 2.0) === 52, 'garantie arrondie au centime (51,5 -> 52)');
+ok(fin_garantie_cents(0, 2.0) === 0 && fin_garantie_cents(10000, 0.0) === 0, 'pas de garantie sur 0 EUR ni à 0 %');
+// Conditions d'annulation (défaut 30 j / 14 j) : 100 % / 50 % / rien
+ok(fin_remboursable_pct(45, 30, 14) === 100 && fin_remboursable_pct(30, 30, 14) === 100, 'plus de 30 jours : 100 %');
+ok(fin_remboursable_pct(29, 30, 14) === 50 && fin_remboursable_pct(14, 30, 14) === 50, 'entre 14 et 29 jours : 50 %');
+ok(fin_remboursable_pct(13, 30, 14) === 0 && fin_remboursable_pct(0, 30, 14) === 0, 'moins de 14 jours : rien');
+// Remboursable : [organisme, prise en charge garantie, total famille]
+ok(fin_annul_montants(10000, 20, 30, 14, false, 'maladie') === [5000, 0, 5000], 'sans garantie : seulement la part de l\'organisme (50 %)');
+ok(fin_annul_montants(10000, 20, 30, 14, true, 'maladie') === [5000, 5000, 10000], 'garantie + maladie : la famille récupère tout, ColoMap complète');
+ok(fin_annul_montants(10000, 20, 30, 14, true, 'autre') === [5000, 0, 5000], 'garantie mais motif non couvert : part organisme seule');
+ok(fin_annul_montants(10000, 5, 30, 14, true, 'deces') === [0, 10000, 10000], 'moins de 14 jours + décès + garantie : 100 % pris en charge par ColoMap');
+ok(fin_annul_montants(3333, 20, 30, 14, true, 'maladie')[2] === 3333, 'somme exacte au centime près');
+ok(fin_annul_montants(-5, 40, 30, 14, true, 'maladie') === [0, 0, 0], 'jamais de montant négatif');
 echo "Tout est bon.\n";
