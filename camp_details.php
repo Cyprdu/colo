@@ -3,6 +3,7 @@
 // Le séjour est identifié UNIQUEMENT par son jeton (?t=). L'ancien ?id=N (numérique, devinable) redirige vers
 // l'adresse à jeton quand le séjour est public, et n'est servi à personne d'autre.
 require_once 'api/config.php';
+require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $is_logged_in = isset($_SESSION['user']);
@@ -161,6 +162,7 @@ require_once 'partials/header3.php';
                             <p id="info-place" class="mt-1 text-[16px] font-semibold text-[#26343b]"></p>
                         </div>
                     </div>
+                    <div id="info-extra" class="mt-4 space-y-4 hidden"></div>
                     <div class="mt-4 rounded-3xl overflow-hidden border border-[#e5e7eb]">
                         <iframe id="map-frame" title="Carte" class="w-full block" style="height:300px;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
                     </div>
@@ -229,6 +231,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     const loader = document.getElementById('loader');
     const content = document.getElementById('camp-content');
     const $ = id => document.getElementById(id);
+    const PAY = <?= json_encode(array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
+    const HEB = <?= json_encode(HEBERGEMENTS, JSON_UNESCAPED_UNICODE) ?>;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
     const fmtDay = d => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
@@ -321,6 +325,18 @@ document.addEventListener('DOMContentLoaded', async function () {
         $('info-duration').textContent = r ? `${r.nights + 1} jour${r.nights + 1 > 1 ? 's' : ''} / ${nightsLabel(r.nights)}` : 'À confirmer';
         $('info-age').textContent = `${camp.age_min} à ${camp.age_max} ans`;
         $('info-place').textContent = [camp.adresse, [camp.code_postal, camp.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') || (camp.ville || '');
+        // Options du directeur : public, hébergement, inclus, moyens de paiement acceptés
+        (function () {
+            const box = [], cell = (t, v) => v ? `<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]">${esc(t)}</p><p class="mt-1 text-[15px] font-semibold text-[#26343b] whitespace-pre-line">${esc(v)}</p></div>` : '';
+            const grid = [
+                cell('Public', camp.reserve_sexe ? 'Séjour réservé aux ' + (camp.reserve_sexe === 'Femme' ? 'filles' : 'garçons') : ''),
+                cell('Hébergement', camp.hebergement ? HEB[camp.hebergement] : ''), cell('Encadrement', camp.encadrement), cell('Transport', camp.transport),
+                cell('Ce qui est inclus', camp.inclus), cell('À prévoir', camp.a_prevoir)].join('');
+            if (grid) box.push(`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${grid}</div>`);
+            const pays = String(camp.moyens_paiement || '').split(',').filter(c => PAY[c]);
+            if (pays.length) box.push(`<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-3">Moyens de paiement acceptés</p><div class="flex flex-wrap gap-3">${pays.map(c => `<span class="inline-flex items-center gap-2 bg-white rounded-xl border border-[#e5e7eb] pr-3"><span class="w-12 block">${PAY[c].logo}</span><span class="text-[13px] font-semibold text-[#26343b]">${esc(PAY[c].label)}</span></span>`).join('')}</div>${camp.instructions_paiement ? `<p class="mt-3 text-[14px] text-[#3b4a54] whitespace-pre-line">${esc(camp.instructions_paiement)}</p>` : ''}</div>`);
+            $('info-extra').innerHTML = box.join(''); $('info-extra').classList.toggle('hidden', !box.length);
+        })();
         if (camp.video_url) {
             let embedUrl = camp.video_url;
             if (embedUrl.includes('youtube.com/watch')) embedUrl = embedUrl.replace('watch?v=', 'embed/');

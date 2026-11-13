@@ -1,187 +1,40 @@
 <?php
-// Fichier: /api/update_camp.php
+// api/update_camp.php : modification d'un séjour (JSON). Le séjour doit appartenir à un organisme du directeur connecté.
 require_once 'config.php';
+require_once 'camp_save.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+header('Content-Type: application/json; charset=utf-8');
 
-// 1. Sécurité : Directeur uniquement
-if (!isset($_SESSION['user']['id']) || !$_SESSION['user']['is_directeur']) {
-    // Redirection ou erreur si accès direct
-    die("Accès interdit.");
-}
+function fin(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d); exit; }
+if (empty($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) fin(['success' => false, 'message' => 'Accès interdit.'], 403);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') fin(['success' => false, 'message' => 'Méthode non autorisée.'], 405);
 
-// On vérifie que des données sont envoyées
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    die("Méthode non autorisée.");
-}
-
-$campId = $_POST['camp_id'] ?? 0;
-
-if (!$campId) {
-    die("Identifiant du camp manquant.");
-}
-
+$uid = (int)$_SESSION['user']['id'];
 try {
-    // 2. VÉRIFICATION PROPRIÉTAIRE (CRUCIAL)
-    // On vérifie que ce camp appartient bien à un organisateur géré par l'utilisateur connecté
-    $stmtCheck = $pdo->prepare("
-        SELECT c.id, c.image_url 
-        FROM camps c 
-        JOIN organisateurs o ON c.organisateur_id = o.id 
-        WHERE c.id = ? AND o.user_id = ?
-    ");
-    $stmtCheck->execute([$campId, $_SESSION['user']['id']]);
-    $currentCamp = $stmtCheck->fetch();
+    options_ensure($pdo); attente_ensure($pdo);
+    // Le séjour est désigné par son jeton secret (jamais par un identifiant numérique)
+    $st = $pdo->prepare("SELECT c.id, c.image_url FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE c.token = ? AND o.user_id = ?");
+    $st->execute([(string)($_POST['token'] ?? ''), $uid]);
+    $cur = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$cur) fin(['success' => false, 'message' => "Ce séjour n'existe pas ou ne vous appartient pas."], 404);
+    $campId = (int)$cur['id'];
 
-    if (!$currentCamp) {
-        die("Erreur : Ce camp n'existe pas ou ne vous appartient pas.");
-    }
+    [$data, $tarifIds, $err] = camp_lire_formulaire($pdo, $uid, $_POST);
+    if ($err) fin(['success' => false, 'message' => $err], 422);
 
-    // 3. GESTION IMAGE (On garde l'ancienne si pas de nouvelle)
-    $imagePath = $currentCamp['image_url']; 
-    
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === 0) {
-        $uploadDir = '../uploads/camps/';
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-        
-        $ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
-        $fileName = uniqid('camp_') . '.' . $ext;
-        
-        if (move_uploaded_file($_FILES['image']['tmp_name'], $uploadDir . $fileName)) {
-            $imagePath = 'uploads/camps/' . $fileName;
-            // Optionnel : supprimer l'ancienne image ici pour nettoyer le serveur
-        }
-    }
+    $data['image_url'] = camp_enregistrer_image() ?: $cur['image_url'];
+    // Le contenu a changé : le séjour repasse en validation (comportement existant)
+    $sets = implode(', ', array_map(fn($c) => "$c = ?", array_keys($data)));
+    $pdo->beginTransaction();
+    $pdo->prepare("UPDATE camps SET $sets, valide = 0, en_attente = 1, refuse = 0 WHERE id = ?")->execute([...array_values($data), $campId]);
+    camp_enregistrer_tarifs($pdo, $campId, $tarifIds);
+    camp_enregistrer_attente($pdo, $campId, $_POST);
+    options_enregistrer($pdo, $campId, $_POST);
+    $pdo->commit();
 
-    // 4. PRÉPARATION DES DONNÉES
-    // Checkbox HTML : si pas cochée, elle n'est pas envoyée dans le POST, donc on met 0
-    $prive = isset($_POST['prive']) ? 1 : 0;
-    $inscription_en_ligne = isset($_POST['inscription_en_ligne']) ? 1 : 0;
-    $inscription_hors_ligne = $inscription_en_ligne ? 0 : 1;
-
-    // Calcul du prix d'appel (le plus bas des tarifs ou le prix simple)
-    $prix_affiche = 0;
-    $tarifs = [];
-    
-    if ($inscription_en_ligne) {
-        $tarifs = json_decode($_POST['tarifs'] ?? '[]', true);
-        if (!empty($tarifs)) {
-            // On prend le prix le plus bas pour l'affichage "A partir de..."
-            $minPrice = null;
-            foreach($tarifs as $t) {
-                // On ignore les montants libres (0) pour le "à partir de", sauf s'il n'y a que ça
-                if($t['price'] > 0) {
-                    if($minPrice === null || $t['price'] < $minPrice) $minPrice = $t['price'];
-                }
-            }
-            $prix_affiche = $minPrice ?? 0;
-        }
-    } else {
-        $prix_affiche = $_POST['prix_simple'] ?? 0;
-    }
-
-    // 5. UPDATE SQL (C'est ici que la magie opère : on MODIFIE la ligne existante)
-    // Note : On ne touche PAS à la colonne 'vues' ni 'date_creation'
-    $sql = "UPDATE camps SET 
-        nom = ?, 
-        description = ?, 
-        ville = ?, 
-        adresse = ?, 
-        code_postal = ?, 
-        prix = ?, 
-        image_url = ?,
-        age_min = ?, 
-        age_max = ?, 
-        date_debut = ?, 
-        date_fin = ?,
-        inscription_en_ligne = ?, 
-        inscription_hors_ligne = ?,
-        organisateur_id = ?, 
-        date_limite_inscription = ?, 
-        remise_fratrie = ?,
-        quota_global = ?, 
-        quota_fille = ?, 
-        quota_garcon = ?,
-        lien_externe = ?, 
-        adresse_retour_dossier = ?,
-        gestion_animateur = ?, 
-        quota_max_anim = ?, 
-        quota_anim_fille = ?, 
-        quota_anim_garcon = ?,
-        anim_plus_18 = ?, 
-        bafa_obligatoire = ?, 
-        remuneration_anim = ?, 
-        anim_doit_payer = ?, 
-        prix_anim = ?,
-        prive = ?,
-        
-        -- IMPORTANT : On remet le statut en 'Attente de validation' car le contenu a changé
-        valide = 0, 
-        en_attente = 1,
-        refuse = 0
-        
-        WHERE id = ?"; // On cible l'ID existant
-
-    $stmt = $pdo->prepare($sql);
-    
-    $params = [
-        $_POST['nom'], 
-        $_POST['description'], // Si vous avez renommé le champ 'activites' en 'description' dans le HTML
-        $_POST['ville'], 
-        $_POST['adresse'], 
-        $_POST['cp'], 
-        $prix_affiche, 
-        $imagePath,
-        $_POST['age_min'], 
-        $_POST['age_max'], 
-        $_POST['date_debut'], 
-        $_POST['date_fin'],
-        $inscription_en_ligne, 
-        $inscription_hors_ligne,
-        $_POST['organisateur_id'], 
-        !empty($_POST['date_limite_inscription']) ? $_POST['date_limite_inscription'] : null, 
-        $_POST['remise_fratrie'],
-        $_POST['quota_global'], 
-        $_POST['quota_fille'], 
-        $_POST['quota_garcon'],
-        $_POST['lien_externe'], 
-        $_POST['adresse_retour_dossier'],
-        (isset($_POST['gestion_animateur']) ? 1 : 0), 
-        $_POST['quota_max_anim'], 
-        $_POST['quota_anim_fille'], 
-        $_POST['quota_anim_garcon'],
-        (isset($_POST['anim_plus_18']) ? 1 : 0), 
-        (isset($_POST['bafa_obligatoire']) ? 1 : 0), 
-        (isset($_POST['remuneration_anim']) ? 1 : 0), 
-        (isset($_POST['anim_doit_payer']) ? 1 : 0), 
-        $_POST['prix_anim'],
-        $prive,
-        $campId // L'ID pour le WHERE
-    ];
-
-    $stmt->execute($params);
-
-    // Réservations « en attente de paiement » : autorisation et délai maximum (1 à 60 jours)
-    require_once 'attente.php';
-    attente_ensure($pdo);
-    $pdo->prepare("UPDATE camps SET attente_paiement = ?, attente_jours = ? WHERE id = ?")
-        ->execute([isset($_POST['attente_paiement']) ? 1 : 0, max(1, min(ATTENTE_MAX_JOURS, (int)($_POST['attente_jours'] ?? ATTENTE_DEFAUT_JOURS))), $campId]);
-
-    // 6. MISE À JOUR DES TARIFS (Suppression anciens -> Ajout nouveaux)
-    // On supprime les liens tarifs existants pour ce camp
-    $pdo->prepare("DELETE FROM camps_tarifs WHERE camp_id = ?")->execute([$campId]);
-    
-    // On remet les nouveaux
-    if ($inscription_en_ligne && !empty($tarifs)) {
-        $stmtTarif = $pdo->prepare("INSERT INTO camps_tarifs (camp_id, tarif_id) VALUES (?, ?)");
-        foreach ($tarifs as $t) {
-            $stmtTarif->execute([$campId, $t['id']]);
-        }
-    }
-
-    // 7. REDIRECTION
-    header("Location: ../mes_camps.php?success=updated");
-    exit;
-
-} catch (Exception $e) {
-    die("Erreur lors de la mise à jour : " . $e->getMessage());
+    fin(['success' => true]);
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('update_camp: ' . $e->getMessage());
+    fin(['success' => false, 'message' => 'Mise à jour impossible, veuillez réessayer.'], 500);
 }
-?>

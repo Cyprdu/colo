@@ -6,7 +6,8 @@ if (!isset($_SESSION['user']['id']) || !$_SESSION['user']['is_directeur']) {
     sendJson(['error' => 'Accès interdit'], 403);
 }
 
-$inscriptionId = $_GET['id'] ?? 0;
+$resToken = (string)($_GET['r'] ?? '');
+$inscriptionId = (int)($_GET['id'] ?? 0);
 
 try {
     // On récupère TOUT via l'ID de l'inscription pour vérifier le lien avec le camp du directeur
@@ -14,6 +15,7 @@ try {
         SELECT 
             e.*, 
             c.nom as camp_nom,
+            i.id AS inscription_id,
             i.date_inscription,
             i.montant_paye,
             i.statut_paiement
@@ -21,10 +23,10 @@ try {
         JOIN enfants e ON i.enfant_id = e.id
         JOIN camps c ON i.camp_id = c.id
         JOIN organisateurs o ON c.organisateur_id = o.id
-        WHERE i.id = ? AND o.user_id = ?
+        WHERE " . ($resToken !== '' ? 'i.reservation_token = ?' : 'i.id = ?') . " AND o.user_id = ?
     ");
     
-    $stmt->execute([$inscriptionId, $_SESSION['user']['id']]);
+    $stmt->execute([$resToken !== '' ? $resToken : $inscriptionId, $_SESSION['user']['id']]);
     $data = $stmt->fetch();
 
     if (!$data) {
@@ -32,7 +34,7 @@ try {
     }
 
     require_once __DIR__ . '/champs.php';
-    $data['reponses'] = champs_reponses($pdo, (int)$inscriptionId);   // réponses aux questions du directeur
+    $data['reponses'] = champs_reponses($pdo, (int)$data['inscription_id']);   // réponses aux questions du directeur
 
     sendJson($data);
 

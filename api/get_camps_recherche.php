@@ -1,9 +1,11 @@
 <?php
 // api/get_camps_recherche.php : moteur de la page de recherche.
-// Filtres : name, city, age, themes[], max_price, date_from, date_to, online, sort, page/limit.
+// Filtres : name, city, age, sexe (Homme|Femme), themes[], max_price, date_from, date_to, online, sort, page/limit.
 // Ne renvoie que les champs utiles à l'affichage d'une carte (aucune donnée interne du séjour).
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'options.php';
+require_once 'attente.php';
 
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
@@ -65,6 +67,10 @@ try {
     if ($from) { $sql .= " AND COALESCE(c.date_fin, c.date_debut) >= :dfrom"; $params[':dfrom'] = $from; }
     if ($to)   { $sql .= " AND c.date_debut <= :dto"; $params[':dto'] = $to; }
     if (!empty($_GET['online'])) $sql .= " AND c.inscription_en_ligne = 1";
+    // Sexe de l'enfant (Homme / Femme) : ni séjour réservé à l'autre sexe, ni quota de son sexe plein
+    $sexe = options_sexe_param($_GET['sexe'] ?? '');
+    $sexeSql = '';
+    if ($sexe) { options_ensure($pdo); attente_ensure($pdo); $sexeSql = ' AND ' . options_sexe_sql('s'); $sql .= $sexeSql; $params[':sx_s'] = $sexe; }
     if (!empty($_GET['themes']) && is_array($_GET['themes'])) {
         $parts = [];
         foreach (array_slice(array_values($_GET['themes']), 0, 30) as $k => $v) {
@@ -89,8 +95,8 @@ try {
     // Aucun résultat : on propose les séjours mis en avant (les filtres ne sont pas appliqués)
     if (empty($camps)) {
         $isFallback = true;
-        $stmtFb = $pdo->prepare(str_replace('{REL}', '0 AS relevance_score', $select) . " AND c.boost_vedette_fin > NOW() ORDER BY c.date_bump DESC LIMIT 12");
-        $stmtFb->execute([':today' => $today]);
+        $stmtFb = $pdo->prepare(str_replace('{REL}', '0 AS relevance_score', $select) . $sexeSql . " AND c.boost_vedette_fin > NOW() ORDER BY c.date_bump DESC LIMIT 12");
+        $stmtFb->execute($sexe ? [':today' => $today, ':sx_s' => $sexe] : [':today' => $today]);
         $camps = $stmtFb->fetchAll(PDO::FETCH_ASSOC);
     }
 

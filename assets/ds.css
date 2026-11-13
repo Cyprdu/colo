@@ -76,3 +76,55 @@ body.ds-legacy [class~="to-purple-500"], body.ds-legacy [class~="to-purple-600"]
 body.ds-legacy [class~="hover:from-blue-700"]:hover { --tw-gradient-from: #1f2a30 !important; }
 body.ds-legacy [class~="hover:to-purple-700"]:hover { --tw-gradient-to: #26343b !important; }
 body.ds-legacy [class~="shadow-blue-500/30"], body.ds-legacy [class~="shadow-blue-200"] { --tw-shadow-color: rgba(38,52,59,.25) !important; }
+
+/* ---------- formulaire de séjour, fenêtres (modals), options à cocher ---------- */
+.ds-sec { scroll-margin-top: 96px; padding: 28px; }
+.ds-sec-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 22px; }
+.ds-sec-ico { width: 44px; height: 44px; flex: none; border-radius: 14px; background: var(--ds-soft); color: var(--ds-btn); display: flex; align-items: center; justify-content: center; }
+.ds-sec-ico svg { width: 22px; height: 22px; }
+.ds-sec-title { font-size: 19px; font-weight: 800; color: var(--ds-ink); line-height: 1.2; }
+.ds-sec-desc { font-size: 14px; color: var(--ds-muted); margin-top: 3px; }
+.ds-hint { font-size: 12.5px; color: var(--ds-muted); margin-top: 6px; }
+.ds-opt { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1.5px solid var(--ds-line); border-radius: 14px; background: #fff; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
+.ds-opt:hover { border-color: #a9b8c6; }
+.ds-opt:has(input:checked) { border-color: var(--ds-btn); background: #f4f6f8; box-shadow: 0 0 0 3px rgba(47, 61, 69, .08); }
+.ds-opt:has(input:focus-visible) { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.ds-opt .ds-tick { width: 20px; height: 20px; flex: none; margin-top: 1px; border-radius: 7px; border: 1.5px solid #b8c2ca; display: flex; align-items: center; justify-content: center; color: transparent; transition: all .15s; }
+.ds-opt input[type=radio] ~ .ds-tick { border-radius: 50%; }
+.ds-opt:has(input:checked) .ds-tick { background: var(--ds-btn); border-color: var(--ds-btn); color: #fff; }
+.ds-opt-title { font-size: 14.5px; font-weight: 700; color: var(--ds-ink); }
+.ds-opt-sub { font-size: 12.5px; color: var(--ds-muted); margin-top: 2px; }
+.ds-pay-logo { width: 54px; flex: none; }
+.ds-pay-logo svg { width: 100%; height: auto; display: block; }
+.ds-switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: none; }
+.ds-switch input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
+.ds-switch span { position: absolute; inset: 0; background: #cdd5db; border-radius: 9999px; transition: background .2s; }
+.ds-switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+.ds-switch input:checked + span { background: var(--ds-btn); }
+.ds-switch input:checked + span::after { transform: translateX(20px); }
+.ds-switch input:focus-visible + span { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1.5px solid var(--ds-line); border-radius: 14px; background: #fff; }
+.ds-sub { border-left: 3px solid var(--ds-line); padding-left: 18px; }
+.ds-tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 12px; border-radius: 9999px; background: var(--ds-soft); color: #3b4a54; font-size: 13px; font-weight: 700; }
+.ds-tag button { width: 20px; height: 20px; border-radius: 50%; line-height: 1; color: #6b7780; }
+.ds-tag button:hover { background: #dfe5ea; color: var(--ds-ink); }
+.ds-iconbtn { width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; color: var(--ds-muted); transition: background .15s, color .15s; }
+.ds-iconbtn:hover { background: var(--ds-soft); color: var(--ds-ink); }
+.ds-iconbtn.danger:hover { background: #fbeceb; color: #a4372f; }
+.ds-iconbtn svg { width: 18px; height: 18px; }
+.ds-btn-sm { padding: 8px 14px; font-size: 13.5px; border-radius: 10px; }
+.ds-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.ds-modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(31, 42, 48, .55); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+.ds-modal.open { opacity: 1; pointer-events: auto; }
+.ds-modal-box { width: 100%; max-width: 520px; max-height: calc(100vh - 32px); overflow-y: auto; background: #fff; border-radius: 24px; padding: 26px; box-shadow: 0 24px 60px rgba(31, 42, 48, .3); transform: translateY(14px) scale(.98); transition: transform .22s cubic-bezier(.2, .8, .2, 1); }
+.ds-modal.open .ds-modal-box { transform: none; }
+.ds-modal-box.wide { max-width: 640px; }
+.ds-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 80; width: min(480px, 100%); background: #fff; box-shadow: -20px 0 50px rgba(31, 42, 48, .2); transform: translateX(105%); transition: transform .28s cubic-bezier(.2, .8, .2, 1); display: flex; flex-direction: column; }
+.ds-drawer.open { transform: none; }
+.ds-scrim { position: fixed; inset: 0; z-index: 79; background: rgba(31, 42, 48, .45); opacity: 0; pointer-events: none; transition: opacity .2s; }
+.ds-scrim.open { opacity: 1; pointer-events: auto; }
+.ds-toast { position: fixed; left: 50%; bottom: 24px; z-index: 90; transform: translate(-50%, 20px); opacity: 0; background: var(--ds-btn); color: #fff; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: all .25s; pointer-events: none; max-width: calc(100% - 32px); }
+.ds-toast.show { opacity: 1; transform: translate(-50%, 0); }
+.ds-bar { position: sticky; bottom: 0; z-index: 30; background: rgba(255, 255, 255, .92); backdrop-filter: blur(8px); border-top: 1px solid var(--ds-line); }
+@media (prefers-reduced-motion: reduce) { .ds-modal, .ds-modal-box, .ds-drawer, .ds-scrim, .ds-toast, .ds-switch span::after { transition: none; } }

@@ -2,7 +2,7 @@
 // api/get_recommendations.php
 // Fil d'accueil personnalisé : UNE requête SQL, puis toutes les sections sont calculées en PHP.
 //
-// GET : child_age (optionnel : enfant choisi), periods (JSON optionnel : [{id,label,start,end}])
+// GET : child_age + child_sexe (Homme|Femme) (optionnels : enfant choisi), periods (JSON optionnel : [{id,label,start,end}])
 // Retour : { sections: [{id,title,subtitle,more,camps:[...]}], favorites:[ids], personalized:bool }
 //
 // Personnalisation (utilisateur connecté, uniquement ses propres données) :
@@ -10,6 +10,8 @@
 
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'options.php';
+require_once 'attente.php';
 
 function normalizeMedia($path, $defaultDir = '') {
     $path = trim((string)$path);
@@ -35,15 +37,16 @@ try {
     // ------------------------------------------------------------------
     // 1. Profil de l'utilisateur
     // ------------------------------------------------------------------
-    $ages = []; $depts = []; $favIds = []; $registered = []; $prefOrgs = []; $prefThemes = [];
+    $ages = []; $sexes = []; $depts = []; $favIds = []; $registered = []; $prefOrgs = []; $prefThemes = [];
 
     if ($userId) {
-        $stmt = $pdo->prepare("SELECT id, date_naissance, code_postal FROM enfants WHERE parent_id = ?");
+        $stmt = $pdo->prepare("SELECT id, date_naissance, code_postal, sexe FROM enfants WHERE parent_id = ?");
         $stmt->execute([$userId]);
         $childIds = [];
         $now = new DateTime();
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $ch) {
             $childIds[] = (int)$ch['id'];
+            if (in_array($ch['sexe'] ?? '', [SEXE_GARCON, SEXE_FILLE], true)) $sexes[$ch['sexe']] = true;
             if (!empty($ch['date_naissance'])) $ages[] = (new DateTime($ch['date_naissance']))->diff($now)->y;
             if (!empty($ch['code_postal'])) $depts[substr($ch['code_postal'], 0, 2)] = true;
         }
@@ -71,6 +74,13 @@ try {
         }
     }
     if ($explicitAge !== null) $ages = [$explicitAge];
+    $explicitSexe = options_sexe_param($_GET['child_sexe'] ?? '');
+    if ($explicitSexe) $sexes = [$explicitSexe => true];
+    $sexes = array_keys($sexes);
+    options_ensure($pdo); attente_ensure($pdo);
+    $actifSql = options_actif_sql();
+    $nbSexe = fn($s) => "(SELECT COUNT(*) FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.camp_id = c.id AND e.sexe = '$s' AND $actifSql)";
+    $nbF = $nbSexe(SEXE_FILLE); $nbG = $nbSexe(SEXE_GARCON);
     $hasAges = !empty($ages);
 
     // ------------------------------------------------------------------
@@ -81,6 +91,8 @@ try {
                    c.date_debut, c.date_fin, c.age_min, c.age_max, c.organisateur_id,
                    c.theme, c.type, c.date_creation,
                    c.boost_points, c.boost_vedette_fin, c.boost_urgence_fin,
+                   c.reserve_sexe, c.quota_fille, c.quota_garcon,
+                   $nbF AS inscrits_f, $nbG AS inscrits_g,
                    o.nom AS organisateur_nom, o.logo_url AS organisateur_logo
             FROM camps c
             LEFT JOIN organisateurs o ON o.id = c.organisateur_id
@@ -103,6 +115,17 @@ try {
     foreach ($rows as $c) {
         $id = (int)$c['id'];
         if (in_array($id, $registered, true)) continue; // déjà inscrit
+
+        // Sexe des enfants : jamais de séjour réservé à l'autre sexe ni dont le quota de leur sexe est plein
+        if ($sexes) {
+            $ouvert = false;
+            foreach ($sexes as $sx) {
+                $q = (int)($sx === SEXE_FILLE ? $c['quota_fille'] : $c['quota_garcon']);
+                $pris = (int)($sx === SEXE_FILLE ? $c['inscrits_f'] : $c['inscrits_g']);
+                if (options_sexe_admis($c, $sx) && ($q <= 0 || $pris < $q)) { $ouvert = true; break; }
+            }
+            if (!$ouvert) continue;
+        }
 
         $fits = false;
         foreach ($ages as $a) {
