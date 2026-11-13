@@ -1,417 +1,502 @@
 <?php
-// Fichier: /recherche.php
+// recherche.php : la page de recherche de séjours (rendu des résultats côté navigateur, filtres synchronisés avec l'adresse).
 $ads_enabled = true;
+$body_class = 'bg-white';
 require_once 'partials/header.php';
+require_once 'partials/holidays.php';
 
-$search_term = isset($_GET['name']) ? htmlspecialchars($_GET['name']) : '';
 $is_logged_in = isset($_SESSION['user']);
+$is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
+$user_favorites = $_SESSION['user']['favorites'] ?? [];
+$q = trim((string)($_GET['name'] ?? ''));
 ?>
-
-<div class="bg-gray-50 min-h-screen">
-    
-    <div class="lg:hidden bg-white border-b px-4 py-3 sticky top-16 z-30 shadow-sm">
-        <button id="mobile-filter-btn" class="w-full flex items-center justify-center px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold shadow hover:bg-blue-700 transition-colors">
-            <i class="fa-solid fa-sliders mr-2"></i> Filtrer la recherche
-        </button>
-    </div>
-
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="flex flex-col lg:flex-row gap-8">
-
-            <aside class="w-full lg:w-1/4 hidden lg:block h-fit sticky top-24" id="filters-sidebar">
-                <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-                    <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-                        <h2 class="text-xl font-bold text-gray-900">Filtres</h2>
-                        <button id="reset-filters" type="button" class="text-sm text-blue-600 hover:text-blue-800 font-medium">Réinitialiser</button>
-                    </div>
-
-                    <form id="search-form" class="space-y-6">
-                        <input type="hidden" name="name" value="<?php echo $search_term; ?>">
-                        <input type="hidden" name="lat" id="user-lat">
-                        <input type="hidden" name="lng" id="user-lng">
-
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Localisation</label>
-                            <div class="space-y-3">
-                                <div class="relative">
-                                    <i class="fa-solid fa-map-pin absolute left-3 top-3 text-gray-400"></i>
-                                    <input type="text" id="filter-city" name="city" placeholder="Ville ou code postal" class="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                                </div>
-                                <button type="button" id="btn-geo" class="w-full py-2 px-3 bg-blue-50 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 border border-blue-100">
-                                    <i class="fa-solid fa-location-crosshairs"></i> Autour de moi
-                                </button>
-                                <div id="radius-container" class="hidden pt-2">
-                                    <div class="flex justify-between text-xs font-semibold text-gray-500 mb-1">
-                                        <span>Rayon</span>
-                                        <span id="radius-value" class="text-blue-600">50km</span>
-                                    </div>
-                                    <input type="range" id="radius-range" name="radius" min="10" max="200" step="10" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                                </div>
-                            </div>
-                        </div>
-
-                        <hr class="border-gray-100">
-
-                        <div>
-                            <label class="flex justify-between text-sm font-bold text-gray-700 mb-2">
-                                <span>Budget Max</span>
-                                <span id="price-display" class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold">3000 €</span>
-                            </label>
-                            <input type="range" id="filter-price" name="max_price" min="100" max="3000" step="50" value="3000" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600">
-                        </div>
-
-                        <hr class="border-gray-100">
-
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">Âge de l'enfant</label>
-                            <?php if ($is_logged_in): ?>
-                                <select id="filter-child" name="age" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                                    <option value="">-- Sélectionner un enfant --</option>
-                                </select>
-                            <?php else: ?>
-                                <input type="number" name="age" placeholder="Ex: 12" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                            <?php endif; ?>
-                        </div>
-
-                        <hr class="border-gray-100">
-
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-3">Thématiques</label>
-                            <div id="themes-list" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2 border border-gray-100 rounded-lg p-2 bg-gray-50">
-                                <div class="text-center py-2 text-gray-400 text-xs">Chargement...</div>
-                            </div>
-                        </div>
-
-                        <div class="pt-4 sticky bottom-0 bg-white pb-1">
-                            <button type="button" id="trigger-search-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-center text-base">
-                                <i class="fa-solid fa-magnifying-glass mr-2"></i> Voir les résultats
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </aside>
-
-            <main class="w-full lg:w-3/4">
-                <div class="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-6 gap-4">
-                    <div>
-                        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 leading-tight">
-                            <span id="default-title">Résultats de recherche</span>
-                            <span id="dynamic-title" class="hidden">
-                                Résultat pour : <span id="search-term-span" class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent"></span>
-                            </span>
-                        </h1>
-                        <p class="text-gray-500 text-sm mt-1" id="results-count">Lancer la recherche pour voir les camps</p>
-                    </div>
-                    
-                    <div class="flex items-center gap-3">
-                        <span class="text-sm text-gray-500 hidden sm:inline">Trier :</span>
-                        <select id="sort-order" class="bg-white border border-gray-200 text-gray-700 text-sm rounded-lg p-2.5 focus:ring-blue-500 shadow-sm outline-none">
-                            <option value="relevance">Pertinence</option>
-                            <option value="price_asc">Prix croissant</option>
-                            <option value="price_desc">Prix décroissant</option>
-                            <option value="date">Date de départ</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div id="fallback-msg" class="hidden mb-6 p-4 bg-orange-50 border-l-4 border-orange-500 text-orange-800 rounded-r-lg shadow-sm">
-                    <div class="flex items-start">
-                        <i class="fa-solid fa-triangle-exclamation mt-1 mr-3 text-lg"></i>
-                        <div>
-                            <strong class="block font-bold">Aucun camp ne correspond exactement à vos critères.</strong>
-                            <p class="text-sm mt-1">Cependant, voici notre sélection de séjours recommandés qui pourraient vous plaire :</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="results-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"></div>
-                
-                <div id="loader" class="hidden py-20 flex flex-col items-center justify-center">
-                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600 mb-4"></div>
-                    <p class="text-gray-400 font-medium">Recherche en cours...</p>
-                </div>
-            <?php ad_slot('recherche-1', ADS_SLOTS['recherche'], ['minh' => 280]); ?>
-            </main>
-        </div>
-    </div>
-
-    <div id="mobile-filter-overlay" class="fixed inset-0 bg-black/50 z-50 hidden transition-opacity opacity-0 backdrop-blur-sm"></div>
-    <div id="mobile-filter-drawer" class="fixed inset-y-0 left-0 w-full sm:w-[400px] bg-white z-50 transform -translate-x-full transition-transform duration-300 shadow-2xl flex flex-col">
-        <div class="p-4 border-b flex justify-between items-center bg-gray-50">
-            <h2 class="font-bold text-lg text-gray-800">Filtrer</h2>
-            <button id="close-mobile-filters" class="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
-        </div>
-        <div class="flex-grow overflow-y-auto p-5" id="mobile-filters-content"></div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    
-    // --- VARIABLES ---
-    const form = document.getElementById('search-form');
-    const container = document.getElementById('results-container');
-    const loader = document.getElementById('loader');
-    const fallbackMsg = document.getElementById('fallback-msg');
-    const resultsCount = document.getElementById('results-count');
-    const searchBtn = document.getElementById('trigger-search-btn');
-    const sortSelect = document.getElementById('sort-order');
-    const isLoggedIn = <?php echo json_encode($is_logged_in); ?>;
-
-    // --- INTERFACE (Sliders, Geo...) ---
-    const priceRange = document.getElementById('filter-price');
-    if(priceRange) priceRange.addEventListener('input', function() { document.getElementById('price-display').textContent = this.value + ' €'; });
-    
-    const radiusRange = document.getElementById('radius-range');
-    if(radiusRange) radiusRange.addEventListener('input', function() { document.getElementById('radius-value').textContent = this.value + 'km'; });
-
-    const btnGeo = document.getElementById('btn-geo');
-    if(btnGeo) {
-        btnGeo.addEventListener('click', () => {
-            if (!navigator.geolocation) return alert("Non supporté");
-            btnGeo.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>...';
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    document.getElementById('user-lat').value = pos.coords.latitude;
-                    document.getElementById('user-lng').value = pos.coords.longitude;
-                    document.getElementById('radius-container').classList.remove('hidden');
-                    btnGeo.innerHTML = '<i class="fa-solid fa-check"></i> Position OK';
-                    btnGeo.classList.replace('bg-blue-50', 'bg-green-50');
-                    document.getElementById('filter-city').value = "Ma position actuelle";
-                },
-                (err) => { btnGeo.innerHTML = 'Erreur'; }
-            );
-        });
-    }
-
-    // --- CHARGEMENT DONNÉES (Thèmes, Enfants) ---
-    // Filtres reçus dans l'URL (depuis l'accueil) : ville, âge, catégories (par nom)
-    const urlParams = new URLSearchParams(window.location.search);
-    const wantedThemes = urlParams.getAll('themes[]').concat(urlParams.getAll('themes'));
-
-    const themesReady = fetch('api/get_themes.php').then(r=>r.json()).then(d=>{
-        const l=document.getElementById('themes-list'); l.innerHTML='';
-        d.forEach(t=>{
-            // La valeur est le NOM : c'est ce que compare api/get_camps_recherche.php
-            const checked = wantedThemes.includes(t.name) ? 'checked' : '';
-            l.innerHTML+=`<div class="flex items-center gap-2 p-1 hover:bg-white rounded"><input type="checkbox" name="themes[]" value="${t.name}" id="t-${t.id}" ${checked} class="w-4 h-4 cursor-pointer"><label for="t-${t.id}" class="text-sm flex-1 cursor-pointer select-none">${t.name}</label></div>`;
-        });
-    }).catch(e=>console.error(e));
-
-    let childrenReady = Promise.resolve();
-    if(isLoggedIn){
-        childrenReady = fetch('api/get_children.php').then(r=>r.json()).then(d=>{
-            const s=document.getElementById('filter-child');
-            d.forEach(c=>{ s.innerHTML+=`<option value="${c.age}">${c.prenom} (${c.age} ans)</option>`; });
-        }).catch(()=>{});
-    }
-
-    // Applique ville / âge de l'URL une fois les listes chargées, puis lance la recherche
-    Promise.all([themesReady, childrenReady]).then(() => {
-        const city = urlParams.get('city');
-        const cityInput = document.getElementById('filter-city');
-        if (city && cityInput) cityInput.value = city;
-        const age = urlParams.get('age');
-        const ageField = form.elements['age'];
-        if (age && ageField) {
-            if (ageField.tagName === 'SELECT' && ![...ageField.options].some(o => o.value === age)) {
-                ageField.add(new Option(age + ' ans', age));
-            }
-            ageField.value = age;
-        }
-        performSearch();
-    });
-
-    // --- GESTION HISTORIQUE ---
-    function updateHistoryWithCount(term, count) {
-        if(!term || term.trim() === '') return;
-        const key = 'colomap_search_history';
-        let history = [];
-        try { history = JSON.parse(localStorage.getItem(key)) || []; } catch(e){}
-
-        if (count > 0) {
-            // Mise à jour du nombre de résultats pour ce terme
-            const idx = history.findIndex(i => i.term.toLowerCase() === term.toLowerCase());
-            if(idx !== -1) {
-                history[idx].count = count;
-            } else {
-                // Si pas trouvé (accès direct sans header submit), on ajoute
-                history.unshift({ term: term, count: count, date: Date.now() });
-                if(history.length > 6) history = history.slice(0, 6);
-            }
-            localStorage.setItem(key, JSON.stringify(history));
-        } else {
-            // Si 0 résultat, on retire l'entrée de l'historique (comme demandé)
-            // Le header l'a peut-être ajouté au submit, donc on le nettoie ici
-            history = history.filter(i => i.term.toLowerCase() !== term.toLowerCase());
-            localStorage.setItem(key, JSON.stringify(history));
-        }
-    }
-
-    // --- FONCTION DE RECHERCHE ---
-    async function performSearch() {
-        loader.classList.remove('hidden');
-        container.innerHTML = '';
-        fallbackMsg.classList.add('hidden');
-        resultsCount.textContent = "Recherche en cours...";
-
-        const formData = new FormData(form);
-        const params = new URLSearchParams(formData);
-        params.append('sort', sortSelect.value);
-        
-        // Titre dynamique
-        const term = formData.get('name');
-        if(term && term.trim()) {
-            document.getElementById('default-title').classList.add('hidden');
-            document.getElementById('dynamic-title').classList.remove('hidden');
-            document.getElementById('search-term-span').textContent = term;
-        } else {
-            document.getElementById('default-title').classList.remove('hidden');
-            document.getElementById('dynamic-title').classList.add('hidden');
-        }
-
-        try {
-            const res = await fetch(`api/get_camps_recherche.php?${params.toString()}`);
-            
-            let responseData;
-            try { responseData = await res.json(); } catch(e) { throw new Error("Réponse serveur invalide."); }
-
-            if (!res.ok || responseData.status === 'error') {
-                throw new Error(responseData.message || `Erreur HTTP ${res.status}`);
-            }
-
-            const camps = responseData.camps || [];
-            const isFallback = responseData.is_fallback || false;
-
-            loader.classList.add('hidden');
-            
-            // --- MISE A JOUR HISTORIQUE ---
-            if(term && term.trim()) {
-                // Si fallback activé = 0 résultat exact trouvé
-                const exactCount = isFallback ? 0 : camps.length;
-                updateHistoryWithCount(term.trim(), exactCount);
-            }
-
-            if (isFallback) {
-                fallbackMsg.classList.remove('hidden');
-                resultsCount.textContent = "0 résultat exact - Suggestions affichées";
-            } else {
-                resultsCount.textContent = `${camps.length} résultat(s) trouvé(s)`;
-            }
-
-            if (camps.length === 0 && !isFallback) {
-                container.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10 text-lg">Aucun séjour disponible pour le moment.<br><small>Essayez de modifier vos filtres.</small></div>';
-            } else {
-                camps.forEach(camp => {
-                    container.insertAdjacentHTML('beforeend', buildCard(camp));
-                });
-            }
-
-        } catch (error) {
-            console.error(error);
-            loader.classList.add('hidden');
-            resultsCount.textContent = "Erreur.";
-            container.innerHTML = `<div class="col-span-full p-6 bg-red-50 text-red-700 rounded-xl border border-red-200 text-center">
-                <i class="fa-solid fa-bug text-2xl mb-2"></i><br>
-                <strong>Oups ! Une erreur est survenue.</strong><br>
-                ${error.message}
-            </div>`;
-        }
-    }
-
-    function buildCard(camp) {
-        const img = camp.image_url || 'assets/img/default-camp.jpg';
-        const prix = parseFloat(camp.prix).toFixed(0);
-        
-        let dateStr = "Dates à confirmer";
-        if(camp.date_debut) {
-            const d = new Date(camp.date_debut);
-            dateStr = d.toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'});
-        }
-        const nSessions = parseInt(camp.sessions_count || 1, 10);
-        if (nSessions > 1) dateStr = nSessions + ' sessions · dès le ' + dateStr;
-
-        // Badges
-        let badgesHtml = '';
-        if (camp.is_vedette) badgesHtml += `<span class="bg-yellow-400 text-white text-xs px-2 py-1 rounded shadow-sm font-bold flex items-center mr-1"><i class="fa-solid fa-star mr-1"></i> TOP</span>`;
-        if (camp.is_urgence) badgesHtml += `<span class="bg-red-500 text-white text-xs px-2 py-1 rounded shadow-sm font-bold animate-pulse mr-1">Dernières places</span>`;
-        
-        return `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all group flex flex-col h-full fade-in-anim relative">
-            <a href="camp_details.php?t=${camp.token}" class="block relative h-48 overflow-hidden bg-gray-100">
-                <img src="${img}" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500" loading="lazy">
-                <div class="absolute top-3 left-3 flex flex-wrap gap-1">
-                    ${badgesHtml}
-                    <span class="bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold text-gray-700 shadow">${camp.age_min}-${camp.age_max} ans</span>
-                </div>
-            </a>
-            <div class="p-5 flex flex-col flex-grow">
-                <h3 class="font-bold text-gray-900 text-lg mb-1 line-clamp-1">
-                    <a href="camp_details.php?t=${camp.token}" class="hover:text-blue-600 transition">${camp.nom}</a>
-                </h3>
-                <p class="text-sm text-gray-500 mb-3 flex items-center"><i class="fa-solid fa-location-dot mr-2"></i> ${camp.ville}</p>
-                
-                <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-50">
-                    <div>
-                        <span class="text-xl font-bold text-blue-600">${prix}€</span>
-                        <span class="text-xs text-gray-400 block">${dateStr}</span>
-                    </div>
-                    <a href="camp_details.php?t=${camp.token}" class="text-sm font-medium bg-gray-100 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg transition-colors">Voir</a>
-                </div>
-            </div>
-        </div>`;
-    }
-
-    searchBtn.addEventListener('click', performSearch);
-    sortSelect.addEventListener('change', performSearch);
-    
-    document.getElementById('reset-filters').addEventListener('click', () => {
-        form.reset();
-        document.getElementById('price-display').textContent = '3000 €';
-        if(document.getElementById('radius-container')) document.getElementById('radius-container').classList.add('hidden');
-        if(document.getElementById('filter-city')) document.getElementById('filter-city').value = '';
-        performSearch();
-    });
-
-    // Mobile Drawer Logic
-    const mobileBtn = document.getElementById('mobile-filter-btn');
-    const drawer = document.getElementById('mobile-filter-drawer');
-    const overlay = document.getElementById('mobile-filter-overlay');
-    const closeBtn = document.getElementById('close-mobile-filters');
-    const sbContent = document.querySelector('#filters-sidebar .bg-white');
-
-    function toggleDrawer(show) {
-        if(show) {
-            document.getElementById('mobile-filters-content').appendChild(form);
-            drawer.classList.remove('-translate-x-full');
-            overlay.classList.remove('hidden');
-            setTimeout(()=>overlay.classList.remove('opacity-0'), 10);
-            document.body.style.overflow = 'hidden';
-        } else {
-            drawer.classList.add('-translate-x-full');
-            overlay.classList.add('opacity-0');
-            setTimeout(() => {
-                overlay.classList.add('hidden');
-                document.body.style.overflow = '';
-                sbContent.appendChild(form);
-            }, 300);
-        }
-    }
-
-    if(mobileBtn) mobileBtn.addEventListener('click', () => toggleDrawer(true));
-    if(closeBtn) closeBtn.addEventListener('click', () => toggleDrawer(false));
-    if(overlay) overlay.addEventListener('click', () => toggleDrawer(false));
-
-    // La recherche initiale est lancée une fois les filtres de l'URL appliqués (voir plus haut)
-});
-</script>
+<title>Rechercher une colonie de vacances - ColoMap</title>
+<meta name="description" content="Comparez les colonies de vacances, camps et stages pour enfants et adolescents : filtrez par ville, âge, dates, budget et thématique, puis réservez en ligne.">
 
 <style>
-.custom-scrollbar::-webkit-scrollbar { width: 5px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-.fade-in-anim { animation: fadeIn 0.5s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    :root { --ink:#26343b; --accent:#3d6a8e; --accent-dark:#2d5170; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
+    .rs-hero { background: linear-gradient(135deg, #2f4a57 0%, #6f8f93 55%, #c9d6d3 100%); }
+    /* barre de recherche */
+    .sbar { background:#fff; border-radius:9999px; box-shadow:0 12px 40px rgba(18,55,42,.22); display:flex; align-items:stretch; }
+    .sbar-field { flex:1 1 0; min-width:0; padding:10px 22px; display:flex; flex-direction:column; justify-content:center; border-radius:9999px; transition:background .15s ease; }
+    .sbar-field:hover, .sbar-field:focus-within { background:#f1f3f5; }
+    .sbar-field + .sbar-field { position:relative; }
+    .sbar-field + .sbar-field::before { content:""; position:absolute; left:0; top:22%; bottom:22%; width:1px; background:var(--line); }
+    .sbar-field:hover::before, .sbar-field:focus-within::before, .sbar-field:hover + .sbar-field::before, .sbar-field:focus-within + .sbar-field::before { opacity:0; }
+    .sbar-label { font-size:12px; font-weight:700; color:var(--ink); letter-spacing:.01em; }
+    .sbar-input { width:100%; border:0; outline:0; background:transparent; font-size:15px; color:#4b5964; padding:2px 0 0; }
+    .sbar-input::placeholder { color:#9aa3ab; }
+    .sbar-go { margin:6px; padding:0 26px; border-radius:9999px; background:var(--ink); color:#fff; font-weight:700; font-size:15px; display:flex; align-items:center; gap:8px; transition:background .2s ease; }
+    .sbar-go:hover { background:#1f2a30; }
+    @media (max-width: 767px) {
+        .sbar { flex-direction:column; border-radius:24px; padding:6px; }
+        .sbar-field { padding:10px 16px; border-radius:16px; }
+        .sbar-field + .sbar-field::before { left:16px; right:16px; top:0; bottom:auto; width:auto; height:1px; }
+        .sbar-go { margin:6px 0 0; padding:14px; justify-content:center; }
+    }
+    /* catégories */
+    .catrow { display:flex; gap:10px; overflow-x:auto; scrollbar-width:none; padding:2px 2px 6px; }
+    .catrow::-webkit-scrollbar { display:none; }
+    .cat { flex:none; padding:9px 16px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:#3b4a54; font-size:14px; font-weight:600; white-space:nowrap; transition:all .15s ease; }
+    .cat:hover { border-color:#a9b8c6; background:#f6f8fa; }
+    .cat.is-on { background:var(--ink); border-color:var(--ink); color:#fff; }
+    /* filtres */
+    .fsec { padding:20px 0; border-top:1px solid var(--line); }
+    .fsec:first-of-type { border-top:0; padding-top:0; }
+    .ftitle { font-size:14px; font-weight:800; color:var(--ink); margin-bottom:12px; }
+    .finput { width:100%; border:1.5px solid var(--line); border-radius:12px; padding:10px 12px; font-size:14px; background:#fff; color:var(--ink); transition:border-color .15s ease, box-shadow .15s ease; }
+    .finput:focus { outline:0; border-color:var(--accent); box-shadow:0 0 0 3px rgba(61,106,142,.15); }
+    .pill { padding:8px 14px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; font-size:13px; font-weight:600; color:#3b4a54; transition:all .15s ease; text-align:left; }
+    .pill:hover { border-color:#a9b8c6; }
+    .pill.is-on { border-color:var(--ink); background:#eef2f4; color:var(--ink); }
+    .rng { -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:9999px; background:#e5e7eb; outline:0; }
+    .rng::-webkit-slider-thumb { -webkit-appearance:none; width:22px; height:22px; border-radius:9999px; background:var(--ink); border:3px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.3); cursor:pointer; }
+    .rng::-moz-range-thumb { width:18px; height:18px; border-radius:9999px; background:var(--ink); border:3px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.3); cursor:pointer; }
+    .chk { display:flex; align-items:center; gap:10px; padding:6px 4px; border-radius:8px; font-size:14px; color:#3b4a54; cursor:pointer; }
+    .chk:hover { background:#f6f8fa; }
+    .chk input { width:17px; height:17px; accent-color:var(--ink); flex:none; }
+    .tlist { max-height:220px; overflow-y:auto; scrollbar-width:thin; }
+    /* résultats */
+    .rgrid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:22px 16px; }
+    @media (min-width:768px) { .rgrid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:28px 20px; } }
+    @media (min-width:1280px) { .rgrid { grid-template-columns:repeat(4, minmax(0,1fr)); } }
+    .camp-card { display:flex; flex-direction:column; min-width:0; }
+    .camp-org { height:28px; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .camp-avatar { width:24px; height:24px; border-radius:9999px; flex:none; overflow:hidden; background:#e5e7eb; display:flex; align-items:center; justify-content:center; }
+    .camp-avatar img { width:100%; height:100%; object-fit:cover; }
+    .camp-org-name { font-size:13px; color:#3b4a54; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .camp-mediawrap { position:relative; width:100%; aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#e5e7eb; }
+    .camp-media { position:absolute; inset:0; display:block; }
+    .camp-media img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .5s ease; }
+    .camp-card:hover .camp-media img { transform:scale(1.04); }
+    .camp-badge { position:absolute; top:10px; left:10px; z-index:2; background:#fff; color:var(--ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:9999px; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+    .camp-age { position:absolute; bottom:10px; left:10px; z-index:2; background:rgba(38,52,59,.82); color:#fff; font-size:12px; font-weight:600; padding:5px 10px; border-radius:9999px; line-height:1; backdrop-filter:blur(4px); }
+    .fav-btn { position:absolute; top:10px; right:10px; z-index:2; width:34px; height:34px; border-radius:9999px; background:#fff; color:var(--ink); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.15); transition:transform .15s ease; }
+    .fav-btn:hover { transform:scale(1.08); } .fav-btn:active { transform:scale(.92); }
+    .fav-btn svg path { fill:none; stroke:currentColor; stroke-width:1.8; transition:fill .15s ease, stroke .15s ease; }
+    .fav-btn.is-fav { color:#e5484d; } .fav-btn.is-fav svg path { fill:#e5484d; }
+    .camp-title { margin-top:12px; font-size:15.5px; font-weight:600; line-height:1.3; color:var(--ink); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.6em; }
+    .camp-price { margin-top:4px; font-size:16px; color:var(--ink); }
+    .camp-price b { font-weight:800; }
+    .camp-meta { font-size:13px; color:var(--muted); line-height:19px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .skeleton { background:linear-gradient(90deg,#eceef1 25%,#f8f5ea 37%,#eceef1 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
+    @keyframes sk { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
+    .fade-in-anim { animation:fadeIn .35s ease-out both; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+    @media (prefers-reduced-motion: reduce) { .fade-in-anim, .skeleton { animation:none; } .camp-media img { transition:none; } }
+    .tag { display:inline-flex; align-items:center; gap:6px; padding:6px 8px 6px 12px; border-radius:9999px; background:#eef2f4; color:var(--ink); font-size:13px; font-weight:600; }
+    .tag button { width:20px; height:20px; border-radius:9999px; display:flex; align-items:center; justify-content:center; color:#6b7780; }
+    .tag button:hover { background:#d3dbe0; color:var(--ink); }
+    /* panneau de filtres : colonne à gauche (écran large), volet plein écran sinon */
+    #filters { background:#fff; }
+    @media (max-width:1023px) {
+        #filters { position:fixed; inset:0; z-index:70; transform:translateY(100%); transition:transform .3s ease; display:flex; flex-direction:column; border-radius:24px 24px 0 0; top:8vh; box-shadow:0 -20px 60px rgba(0,0,0,.3); }
+        #filters.is-open { transform:none; }
+        #filters .fbody { flex:1; overflow-y:auto; padding:0 20px; }
+    }
+    @media (min-width:1024px) { #filters .fhead, #filters .ffoot { display:none; } }
 </style>
+
+<!-- ================================ HERO + BARRE ================================ -->
+<section class="rs-hero">
+    <div class="max-w-[1280px] mx-auto px-5 sm:px-8 pt-10 pb-12">
+        <h1 class="text-white font-extrabold text-[30px] md:text-[42px] leading-tight">Trouvez la colonie idéale</h1>
+        <p class="mt-2 text-white/85 text-[16px] md:text-[18px] max-w-2xl">Comparez les séjours, filtrez par âge, dates et budget, puis réservez en ligne en quelques minutes.</p>
+
+        <form id="sbar" class="sbar mt-7" role="search" aria-label="Rechercher un séjour" autocomplete="off">
+            <label class="sbar-field">
+                <span class="sbar-label">Quoi ?</span>
+                <input id="f-name" class="sbar-input" type="search" name="name" placeholder="Mot-clé, activité, nom du séjour" value="<?= htmlspecialchars($q) ?>">
+            </label>
+            <label class="sbar-field">
+                <span class="sbar-label">Où ?</span>
+                <input id="f-city" class="sbar-input" type="text" name="city" placeholder="Ville ou code postal">
+                
+            </label>
+            <label class="sbar-field">
+                <span class="sbar-label">Âge de l'enfant</span>
+                <?php if ($is_logged_in): ?>
+                    <select id="f-age" class="sbar-input" name="age"><option value="">Tous les âges</option></select>
+                <?php else: ?>
+                    <input id="f-age" class="sbar-input" type="number" name="age" min="3" max="25" placeholder="Ex : 12 ans">
+                <?php endif; ?>
+            </label>
+            <button type="submit" class="sbar-go"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>Rechercher</button>
+        </form>
+    </div>
+</section>
+
+<main class="max-w-[1280px] mx-auto px-5 sm:px-8 py-8">
+    <!-- catégories -->
+    <div class="catrow" id="catrow" role="group" aria-label="Catégories"></div>
+
+    <div class="mt-6 flex flex-col lg:flex-row gap-10">
+        <!-- ================================ FILTRES ================================ -->
+        <aside id="filters" class="lg:w-[280px] lg:flex-none lg:sticky lg:top-24 lg:self-start" aria-label="Filtres">
+            <div class="fhead flex items-center justify-between px-5 py-4 border-b border-[#e5e7eb]">
+                <h2 class="text-[18px] font-extrabold text-[#26343b]">Filtres</h2>
+                <button type="button" id="f-close" class="w-10 h-10 rounded-full hover:bg-[#f1f3f5] flex items-center justify-center" aria-label="Fermer les filtres"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg></button>
+            </div>
+            <div class="fbody">
+                <div class="fsec">
+                    <p class="ftitle">Période</p>
+                    <div class="flex flex-col gap-2" id="periods">
+                        <?php foreach ($holiday_periods as $p): ?>
+                            <button type="button" class="pill" data-from="<?= $p['start'] ?>" data-to="<?= $p['end'] ?>"><?= htmlspecialchars($p['label']) ?></button>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                        <label class="block text-[12px] font-semibold text-[#6b7780]">Du<input id="f-from" type="date" class="finput mt-1"></label>
+                        <label class="block text-[12px] font-semibold text-[#6b7780]">Au<input id="f-to" type="date" class="finput mt-1"></label>
+                    </div>
+                </div>
+
+                <div class="fsec">
+                    <div class="flex items-center justify-between"><p class="ftitle !mb-0">Budget maximum</p><span id="price-val" class="text-[13px] font-bold text-[#3d6a8e]">Tous budgets</span></div>
+                    <input id="f-price" type="range" class="rng mt-4" min="100" max="3000" step="50" value="3000" aria-label="Budget maximum">
+                    <div class="mt-1 flex justify-between text-[11.5px] text-[#9aa3ab]"><span>100 €</span><span>3 000 €</span></div>
+                </div>
+
+                <div class="fsec">
+                    <p class="ftitle">Thématiques</p>
+                    <input id="theme-q" type="search" class="finput mb-2" placeholder="Filtrer les thématiques" aria-label="Filtrer les thématiques">
+                    <div id="themes" class="tlist"><p class="text-[13px] text-[#9aa3ab] py-2">Chargement…</p></div>
+                </div>
+
+                <div class="fsec">
+                    <p class="ftitle">Réservation</p>
+                    <label class="chk"><input id="f-online" type="checkbox"> Inscription en ligne uniquement</label>
+                </div>
+            </div>
+            <div class="ffoot flex gap-3 px-5 py-4 border-t border-[#e5e7eb]">
+                <button type="button" id="f-reset-m" class="flex-1 py-3 rounded-xl border-[1.5px] border-[#e5e7eb] font-bold text-[#26343b]">Réinitialiser</button>
+                <button type="button" id="f-apply" class="flex-[2] py-3 rounded-xl bg-[#2f3d45] text-white font-bold">Voir les résultats</button>
+            </div>
+        </aside>
+        <div id="f-overlay" class="fixed inset-0 bg-black/45 z-[65] hidden lg:hidden" aria-hidden="true"></div>
+
+        <!-- ================================ RÉSULTATS ================================ -->
+        <section class="flex-1 min-w-0" aria-label="Résultats">
+            <div class="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <h2 id="r-title" class="text-[22px] md:text-[26px] font-extrabold text-[#26343b] leading-tight">Tous les séjours</h2>
+                    <p id="r-count" class="mt-1 text-[14px] text-[#6b7780]" aria-live="polite">Chargement…</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="f-open" class="lg:hidden inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-[1.5px] border-[#e5e7eb] font-bold text-[14px] text-[#26343b] bg-white">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M7 12h10M10 18h4" stroke-linecap="round"/></svg>Filtres<span id="f-badge" class="hidden min-w-[20px] h-5 px-1.5 rounded-full bg-[#2f3d45] text-white text-[11px] font-bold items-center justify-center"></span>
+                    </button>
+                    <label class="sr-only" for="f-sort">Trier par</label>
+                    <select id="f-sort" class="finput !w-auto !py-2.5 font-semibold">
+                        <option value="relevance">Pertinence</option>
+                        <option value="date">Date de départ</option>
+                        <option value="price_asc">Prix croissant</option>
+                        <option value="price_desc">Prix décroissant</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="tags" class="mt-4 flex flex-wrap gap-2"></div>
+
+            <div id="fallback" class="hidden mt-6 rounded-2xl bg-[#f8f5ea] px-5 py-4">
+                <p class="font-extrabold text-[#26343b]">Aucun séjour ne correspond exactement à votre recherche.</p>
+                <p class="text-[14px] text-[#5b4a1c] mt-1">Voici une sélection de séjours qui pourraient vous plaire. <button type="button" id="fb-reset" class="underline font-bold">Modifier les filtres</button></p>
+            </div>
+
+            <div id="grid" class="rgrid mt-6" aria-busy="true"></div>
+
+            <div id="more-wrap" class="hidden mt-10 text-center">
+                <button type="button" id="more" class="px-8 py-3.5 rounded-xl bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-bold transition">Afficher plus de séjours</button>
+            </div>
+
+            <?php ad_slot('recherche-1', ADS_SLOTS['recherche'], ['minh' => 280]); ?>
+        </section>
+    </div>
+</main>
+
+<script>
+(function () {
+    'use strict';
+    var IS_LOGGED = <?= json_encode($is_logged_in) ?>;
+    var IS_ANIM = <?= json_encode($is_animateur) ?>;
+    var favs = <?= json_encode(array_map('intval', (array)$user_favorites)) ?>;
+    var $ = function (id) { return document.getElementById(id); };
+    var GRID = $('grid');
+    var state = { page: 1, themes: [], category: '' };
+    var allThemes = [];
+    var reqId = 0;
+
+    var MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); };
+    var ICON_HEART = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z"/></svg>';
+    var ICON_ORG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa3ab"/></svg>';
+    var PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#e6ebf0"/><g fill="#9aa8b8"><path d="M84 52L66 80h10L60 104h12L54 130h60L96 104h12L92 80h10L84 52z"/><path d="M116 140l22-50 22 50z"/></g></svg>');
+
+    function normDates(a, b) {
+        var s = a ? new Date(a) : null, e = b ? new Date(b) : null;
+        if (!s || isNaN(s)) return null;
+        if (!e || isNaN(e)) return { s: s, e: null };
+        if (s > e) { var c = new Date(s); c.setFullYear(e.getFullYear()); if (c > e) c.setFullYear(e.getFullYear() - 1); s = c; }
+        return { s: s, e: e };
+    }
+    function sh(m) { return MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m]; }
+    function range(a, b) {
+        var r = normDates(a, b); if (!r) return '';
+        if (!r.e) return 'Dès le ' + r.s.getDate() + ' ' + MONTHS[r.s.getMonth()];
+        if (r.s.getMonth() === r.e.getMonth() && r.s.getFullYear() === r.e.getFullYear()) return 'Du ' + r.s.getDate() + ' au ' + r.e.getDate() + ' ' + MONTHS[r.e.getMonth()] + ' ' + r.e.getFullYear();
+        return 'Du ' + r.s.getDate() + ' ' + sh(r.s.getMonth()) + ' au ' + r.e.getDate() + ' ' + sh(r.e.getMonth()) + ' ' + r.e.getFullYear();
+    }
+    function shortDate(a, b) { var r = normDates(a, b); return r ? r.s.getDate() + ' ' + sh(r.s.getMonth()) : ''; }
+    function price(p) { var n = Number(p); return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ','); }
+    function niceCity(v) { v = String(v || '').trim(); return v === v.toUpperCase() ? v.toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu, function (m, a, b) { return a + b.toUpperCase(); }) : v; }
+    function fmtDay(s) { var d = new Date(s + 'T00:00:00'); return isNaN(d) ? s : d.getDate() + ' ' + sh(d.getMonth()); }
+
+    // ---------------------------------------------------------------- état <-> formulaire <-> adresse
+    function maxPriceActive() { return Number($('f-price').value) < Number($('f-price').max); }
+    function collect() {
+        var p = new URLSearchParams();
+        var v;
+        if ((v = $('f-name').value.trim())) p.set('name', v);
+        if ((v = $('f-city').value.trim())) p.set('city', v);
+        if ((v = $('f-age').value)) p.set('age', v);
+        if (maxPriceActive()) p.set('max_price', $('f-price').value);
+        if ((v = $('f-from').value)) p.set('date_from', v);
+        if ((v = $('f-to').value)) p.set('date_to', v);
+        if ($('f-online').checked) p.set('online', '1');
+        state.themes.forEach(function (t) { p.append('themes[]', t); });
+        if ($('f-sort').value !== 'relevance') p.set('sort', $('f-sort').value);
+        return p;
+    }
+    function applyFromUrl() {
+        var u = new URLSearchParams(location.search);
+        if (u.get('name')) $('f-name').value = u.get('name');
+        if (u.get('city')) $('f-city').value = u.get('city');
+        if (u.get('age')) setAge(u.get('age'));
+        if (u.get('max_price')) { $('f-price').value = u.get('max_price'); }
+        if (u.get('date_from')) $('f-from').value = u.get('date_from');
+        if (u.get('date_to')) $('f-to').value = u.get('date_to');
+        if (u.get('online')) $('f-online').checked = true;
+        if (u.get('sort')) $('f-sort').value = u.get('sort');
+        state.themes = u.getAll('themes[]').concat(u.getAll('themes'));
+        state.page = 1;
+    }
+    function setAge(a) {
+        var el = $('f-age');
+        if (el.tagName === 'SELECT' && ![].some.call(el.options, function (o) { return o.value === String(a); })) el.add(new Option(a + ' ans', a));
+        el.value = a;
+    }
+    function syncUrl() {
+        var q = collect().toString();
+        history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
+    }
+
+    // ---------------------------------------------------------------- affichage des filtres actifs
+    function renderTags() {
+        var tags = [];
+        var add = function (label, clear) { tags.push({ label: label, clear: clear }); };
+        if ($('f-name').value.trim()) add('« ' + $('f-name').value.trim() + ' »', function () { $('f-name').value = ''; });
+        if ($('f-city').value.trim()) add($('f-city').value.trim(), function () { $('f-city').value = ''; });
+        if ($('f-age').value) add($('f-age').value + ' ans', function () { $('f-age').value = ''; });
+        if ($('f-from').value || $('f-to').value) add(($('f-from').value ? 'du ' + fmtDay($('f-from').value) : '') + ($('f-to').value ? ' au ' + fmtDay($('f-to').value) : ''), function () { $('f-from').value = ''; $('f-to').value = ''; syncPeriods(); });
+        if (maxPriceActive()) add('≤ ' + $('f-price').value + ' €', function () { $('f-price').value = $('f-price').max; priceLabel(); });
+        if ($('f-online').checked) add('Inscription en ligne', function () { $('f-online').checked = false; });
+        state.themes.forEach(function (t) { add(t, function () { state.themes = state.themes.filter(function (x) { return x !== t; }); renderThemes(); renderCats(); }); });
+        var box = $('tags'); box.textContent = '';
+        tags.forEach(function (t) {
+            var s = document.createElement('span'); s.className = 'tag'; s.appendChild(document.createTextNode(t.label));
+            var b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', 'Retirer le filtre ' + t.label); b.innerHTML = '&times;';
+            b.addEventListener('click', function () { t.clear(); search(true); });
+            s.appendChild(b); box.appendChild(s);
+        });
+        if (tags.length > 1) {
+            var r = document.createElement('button'); r.type = 'button'; r.className = 'text-[13px] font-bold text-[#3d6a8e] underline px-2'; r.textContent = 'Tout effacer';
+            r.addEventListener('click', resetAll); box.appendChild(r);
+        }
+        var n = tags.length, badge = $('f-badge');
+        badge.textContent = n; badge.classList.toggle('hidden', !n); badge.classList.toggle('inline-flex', !!n);
+    }
+    function priceLabel() {
+        var el = $('f-price'); $('price-val').textContent = maxPriceActive() ? 'Jusqu’à ' + el.value + ' €' : 'Tous budgets';
+        var pc = (el.value - el.min) / (el.max - el.min) * 100;
+        el.style.background = 'linear-gradient(90deg,#2f3d45 ' + pc + '%,#e5e7eb ' + pc + '%)';
+    }
+    function syncPeriods() {
+        var f = $('f-from').value, t = $('f-to').value;
+        [].forEach.call(document.querySelectorAll('#periods .pill'), function (b) { b.classList.toggle('is-on', b.dataset.from === f && b.dataset.to === t); });
+    }
+
+    // ---------------------------------------------------------------- thèmes et catégories
+    var CAT_ORDER = ['Aventure', 'Montagne', 'Mer / Littoral', 'Nature', 'Sport', 'Arts plastiques', 'Musique', 'Sciences', 'Spiritualité / Prière'];
+    function renderThemes() {
+        var q = $('theme-q').value.trim().toLowerCase(), box = $('themes'); box.textContent = '';
+        var list = allThemes.filter(function (n) { return !q || n.toLowerCase().indexOf(q) !== -1; });
+        if (!list.length) { box.innerHTML = '<p class="text-[13px] text-[#9aa3ab] py-2">Aucune thématique.</p>'; return; }
+        list.forEach(function (n, i) {
+            var l = document.createElement('label'); l.className = 'chk';
+            var c = document.createElement('input'); c.type = 'checkbox'; c.checked = state.themes.indexOf(n) !== -1;
+            c.addEventListener('change', function () {
+                state.themes = c.checked ? state.themes.concat(n) : state.themes.filter(function (x) { return x !== n; });
+                renderCats(); search(true);
+            });
+            l.appendChild(c); l.appendChild(document.createTextNode(n)); box.appendChild(l);
+        });
+    }
+    function renderCats() {
+        var row = $('catrow'); row.textContent = '';
+        var mk = function (label, on, fn) {
+            var b = document.createElement('button'); b.type = 'button'; b.className = 'cat' + (on ? ' is-on' : ''); b.textContent = label; b.setAttribute('aria-pressed', on);
+            b.addEventListener('click', fn); row.appendChild(b);
+        };
+        mk('Tous les séjours', !state.themes.length, function () { state.themes = []; renderThemes(); renderCats(); search(true); });
+        CAT_ORDER.filter(function (n) { return allThemes.indexOf(n) !== -1; }).forEach(function (n) {
+            var on = state.themes.length === 1 && state.themes[0] === n;
+            mk(n, on, function () { state.themes = on ? [] : [n]; renderThemes(); renderCats(); search(true); });
+        });
+    }
+
+    // ---------------------------------------------------------------- cartes
+    function card(c, i) {
+        var href = (IS_ANIM ? 'info-camp-animateur?id=' + encodeURIComponent(c.id) : 'camp_details?t=' + encodeURIComponent(c.token));
+        var isFav = IS_LOGGED && !IS_ANIM && favs.indexOf(Number(c.id)) !== -1;
+        var img = c.image_url ? String(c.image_url).replace(/\\/g, '/') : PLACEHOLDER;
+        var logo = c.organisateur_logo ? '<img src="' + esc(c.organisateur_logo) + '" alt="" loading="lazy">' : ICON_ORG;
+        var p = (c.prix != null && Number(c.prix) > 0) ? 'Dès <b>' + price(c.prix) + ' €</b>' : '<span style="color:#6b7780">Prix sur demande</span>';
+        var n = Number(c.sessions_count || 1);
+        var date = n > 1 ? n + ' sessions · dès le ' + shortDate(c.date_debut, c.date_fin) : range(c.date_debut, c.date_fin);
+        var age = (c.age_min != null && c.age_max != null) ? c.age_min + '–' + c.age_max + ' ans' : '';
+        return '<article class="camp-card fade-in-anim" style="animation-delay:' + Math.min(i, 11) * 25 + 'ms">' +
+            '<div class="camp-org"><span class="camp-avatar">' + logo + '</span><span class="camp-org-name">' + esc(c.organisateur_nom || 'ColoMap') + '</span></div>' +
+            '<div class="camp-mediawrap"><a href="' + href + '" class="camp-media" aria-label="' + esc(c.nom) + '"><img src="' + esc(img) + '" alt="' + esc(c.nom) + '" loading="lazy" decoding="async"></a>' +
+            (c.badge ? '<span class="camp-badge">' + esc(c.badge) + '</span>' : '') +
+            (age ? '<span class="camp-age">' + age + '</span>' : '') +
+            ((IS_LOGGED && !IS_ANIM) ? '<button type="button" class="fav-btn favorite-button' + (isFav ? ' is-fav' : '') + '" data-camp-id="' + esc(c.id) + '" aria-label="Ajouter aux favoris" aria-pressed="' + isFav + '">' + ICON_HEART + '</button>' : '') +
+            '</div><a href="' + href + '" class="block"><h3 class="camp-title" title="' + esc(c.nom) + '">' + esc(c.nom) + '</h3>' +
+            '<p class="camp-price">' + p + '</p><p class="camp-meta">' + esc(niceCity(c.ville)) + '</p><p class="camp-meta">' + esc(date) + '</p></a></article>';
+    }
+    function skeletons(n) {
+        var h = ''; for (var i = 0; i < n; i++) h += '<div aria-hidden="true"><div class="skeleton" style="height:24px;width:60%;border-radius:8px"></div><div class="skeleton camp-mediawrap" style="margin-top:8px"></div><div class="skeleton" style="height:14px;width:85%;border-radius:6px;margin-top:14px"></div><div class="skeleton" style="height:14px;width:40%;border-radius:6px;margin-top:10px"></div></div>';
+        return h;
+    }
+    document.addEventListener('error', function (ev) {
+        var im = ev.target; if (!(im instanceof HTMLImageElement)) return;
+        if (im.closest('.camp-media') && im.src !== PLACEHOLDER) im.src = PLACEHOLDER; else if (im.closest('.camp-avatar')) im.remove();
+    }, true);
+
+    // ---------------------------------------------------------------- recherche
+    function title(total) {
+        var nm = $('f-name').value.trim(), city = $('f-city').value.trim();
+        $('r-title').textContent = nm ? 'Résultats pour « ' + nm + ' »' : (state.themes.length === 1 ? state.themes[0] : (city ? 'Séjours autour de ' + city : 'Tous les séjours'));
+        document.title = (nm ? nm + ' – ' : '') + 'Rechercher une colonie de vacances - ColoMap';
+    }
+    async function search(reset) {
+        if (reset) state.page = 1;
+        var id = ++reqId, append = !reset && state.page > 1;
+        renderTags(); syncUrl();
+        $('fallback').classList.add('hidden');
+        if (!append) { GRID.innerHTML = skeletons(8); $('more-wrap').classList.add('hidden'); $('r-count').textContent = 'Recherche en cours…'; }
+        GRID.setAttribute('aria-busy', 'true');
+        var p = collect(); p.set('page', state.page); p.set('limit', 24);
+        try {
+            var res = await fetch('api/get_camps_recherche.php?' + p.toString());
+            var d = await res.json();
+            if (id !== reqId) return;
+            if (!res.ok || d.status === 'error') throw new Error(d.message || 'Erreur');
+            if (!append) GRID.textContent = '';
+            var base = GRID.children.length;
+            GRID.insertAdjacentHTML('beforeend', d.camps.map(function (c, i) { return card(c, base + i); }).join(''));
+            title(d.total);
+            if (d.is_fallback) {
+                $('fallback').classList.remove('hidden');
+                $('r-count').textContent = 'Aucun résultat exact';
+            } else {
+                $('r-count').textContent = d.total + (d.total > 1 ? ' séjours trouvés' : ' séjour trouvé');
+            }
+            if (!d.camps.length && !append) GRID.innerHTML = '<div class="col-span-full text-center py-16"><p class="text-[20px] font-extrabold text-[#26343b]">Aucun séjour disponible</p><p class="mt-2 text-[#6b7780]">Essayez d’élargir vos dates, votre budget ou vos thématiques.</p><button type="button" class="mt-5 px-6 py-3 rounded-xl bg-[#2f3d45] text-white font-bold" id="empty-reset">Réinitialiser la recherche</button></div>';
+            var er = $('empty-reset'); if (er) er.addEventListener('click', resetAll);
+            $('more-wrap').classList.toggle('hidden', !d.has_more);
+            rememberTerm(d.is_fallback ? 0 : d.total);
+        } catch (e) {
+            if (id !== reqId) return;
+            GRID.innerHTML = '<div class="col-span-full rounded-2xl border border-red-200 bg-red-50 px-6 py-8 text-center"><p class="font-extrabold text-red-700">La recherche est momentanément indisponible.</p><button type="button" class="mt-4 px-5 py-2.5 rounded-xl bg-[#2f3d45] text-white font-bold" id="retry">Réessayer</button></div>';
+            $('r-count').textContent = 'Erreur de chargement';
+            $('retry').addEventListener('click', function () { search(true); });
+        } finally { if (id === reqId) GRID.setAttribute('aria-busy', 'false'); }
+    }
+    // historique des recherches (utilisé par le menu de l'en-tête)
+    function rememberTerm(count) {
+        var t = $('f-name').value.trim(); if (!t) return;
+        var key = 'colomap_search_history', h = [];
+        try { h = JSON.parse(localStorage.getItem(key)) || []; } catch (e) {}
+        h = h.filter(function (i) { return i.term.toLowerCase() !== t.toLowerCase(); });
+        if (count > 0) { h.unshift({ term: t, count: count, date: Date.now() }); h = h.slice(0, 6); }
+        try { localStorage.setItem(key, JSON.stringify(h)); } catch (e) {}
+    }
+    function resetAll() {
+        ['f-name', 'f-city', 'f-from', 'f-to'].forEach(function (i) { $(i).value = ''; });
+        $('f-age').value = ''; $('f-price').value = $('f-price').max; $('f-online').checked = false; $('f-sort').value = 'relevance';
+        state.themes = []; $('theme-q').value = '';
+        priceLabel(); syncPeriods(); renderThemes(); renderCats(); search(true);
+    }
+
+    // ---------------------------------------------------------------- évènements
+    var timer;
+    var later = function () { clearTimeout(timer); timer = setTimeout(function () { search(true); }, 350); };
+    $('sbar').addEventListener('submit', function (e) { e.preventDefault(); search(true); document.activeElement && document.activeElement.blur(); });
+    ['f-name', 'f-city'].forEach(function (i) { $(i).addEventListener('input', later); });
+    $('f-age').addEventListener('change', function () { search(true); });
+    $('f-age').addEventListener('input', later);
+    $('f-price').addEventListener('input', function () { priceLabel(); later(); });
+    $('f-online').addEventListener('change', function () { search(true); });
+    $('f-sort').addEventListener('change', function () { search(true); });
+    ['f-from', 'f-to'].forEach(function (i) { $(i).addEventListener('change', function () { syncPeriods(); search(true); }); });
+    [].forEach.call(document.querySelectorAll('#periods .pill'), function (b) {
+        b.addEventListener('click', function () {
+            var on = b.classList.contains('is-on');
+            $('f-from').value = on ? '' : b.dataset.from; $('f-to').value = on ? '' : b.dataset.to;
+            syncPeriods(); search(true);
+        });
+    });
+    $('theme-q').addEventListener('input', renderThemes);
+    $('more').addEventListener('click', function () { state.page++; search(false); });
+    $('fb-reset').addEventListener('click', resetAll);
+    $('f-reset-m').addEventListener('click', resetAll);
+
+    // volet de filtres (mobile)
+    function openF(on) {
+        $('filters').classList.toggle('is-open', on);
+        $('f-overlay').classList.toggle('hidden', !on);
+        document.body.style.overflow = on ? 'hidden' : '';
+    }
+    $('f-open').addEventListener('click', function () { openF(true); });
+    $('f-close').addEventListener('click', function () { openF(false); });
+    $('f-apply').addEventListener('click', function () { openF(false); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    $('f-overlay').addEventListener('click', function () { openF(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') openF(false); });
+
+    // favoris (mise à jour immédiate, retour arrière si le réseau échoue)
+    document.body.addEventListener('click', function (e) {
+        var b = e.target.closest('.favorite-button'); if (!b) return;
+        e.preventDefault(); e.stopPropagation();
+        var id = parseInt(b.dataset.campId, 10), was = b.classList.contains('is-fav');
+        var set = function (on) { b.classList.toggle('is-fav', on); b.setAttribute('aria-pressed', on); favs = on ? favs.concat(id) : favs.filter(function (x) { return x !== id; }); };
+        set(!was);
+        fetch('api/toggle_favorite.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campId: id }) })
+            .then(function (r) { return r.json(); }).then(function (r) { if (!r.success) throw 0; }).catch(function () { set(was); });
+    });
+
+    // ---------------------------------------------------------------- démarrage
+    applyFromUrl(); priceLabel(); syncPeriods();
+    var themesReady = fetch('api/get_themes.php').then(function (r) { return r.json(); }).then(function (t) {
+        if (Array.isArray(t)) allThemes = t.map(function (x) { return x.name; });
+    }).catch(function () {});
+    var childrenReady = Promise.resolve();
+    if (IS_LOGGED) childrenReady = fetch('api/get_children.php').then(function (r) { return r.json(); }).then(function (cs) {
+        if (!Array.isArray(cs)) return; var s = $('f-age');
+        cs.forEach(function (c) { if (c.age != null) s.add(new Option(c.prenom + ' (' + c.age + ' ans)', c.age)); });
+        var u = new URLSearchParams(location.search).get('age'); if (u) setAge(u);
+    }).catch(function () {});
+    Promise.all([themesReady, childrenReady]).then(function () { renderThemes(); renderCats(); search(false); });
+})();
+</script>
 
 <?php require_once 'partials/footer.php'; ?>

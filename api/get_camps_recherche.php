@@ -1,165 +1,131 @@
 <?php
-// Fichier: api/get_camps_recherche.php
+// api/get_camps_recherche.php : moteur de la page de recherche.
+// Filtres : name, city, age, themes[], max_price, date_from, date_to, online, sort, page/limit.
+// Ne renvoie que les champs utiles à l'affichage d'une carte (aucune donnée interne du séjour).
 require_once 'config.php';
 require_once 'sessions.php';
 
-// Désactivation des erreurs PHP brutes pour protéger le JSON
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 header('Content-Type: application/json; charset=utf-8');
 
-// Fonction pour nettoyer les chaînes
-function clean($str) {
-    return htmlspecialchars_decode($str ?? '');
+function clean($str) { return htmlspecialchars_decode($str ?? ''); }
+function media($path, $dir = '') {
+    $path = trim((string)$path);
+    if ($path === '') return null;
+    $path = str_replace('\\', '/', $path);
+    if (preg_match('#^(https?:)?//#', $path) || strpos($path, 'uploads/') === 0) return $path;
+    return $dir . ltrim($path, '/');
+}
+function validDay($s) {
+    $d = DateTime::createFromFormat('Y-m-d', (string)$s);
+    return ($d && $d->format('Y-m-d') === $s) ? $s : null;
 }
 
 try {
     $today = date('Y-m-d');
-    $isFallback = false; 
+    $isFallback = false;
 
-    // -----------------------------------------------------------
-    // 1. FILTRES DE SÉCURITÉ (CLAUSE WHERE COMMUNE)
-    // -----------------------------------------------------------
-    // CORRECTION DATE : Si date_limite est NULL, on vérifie date_debut.
-    // COALESCE(a, b) prend 'a' si existe, sinon 'b'.
-    
-    $baseWhere = " WHERE c.valide = 1 
-                   AND c.en_attente = 0 
-                   AND c.refuse = 0 
-                   AND c.supprime = 0 
-                   AND c.prive = 0 
+    $baseWhere = " WHERE c.valide = 1 AND c.en_attente = 0 AND c.refuse = 0 AND c.supprime = 0 AND c.prive = 0
                    AND COALESCE(c.date_limite_inscription, c.date_debut) >= :today ";
-
     $params = [':today' => $today];
-    
-    // Construction du Scoring (+50, +30, +20, +12, +3)
-    $relevanceField = "0 as relevance_score";
-    
-    if (!empty($_GET['name'])) {
-        $term = trim($_GET['name']);
-        $relevanceField = "(
-            (CASE WHEN c.nom LIKE :term THEN 50 ELSE 0 END) +
-            (CASE WHEN c.type LIKE :term THEN 30 ELSE 0 END) +
-            (CASE WHEN c.theme LIKE :term THEN 20 ELSE 0 END) +
-            (CASE WHEN c.ville LIKE :term THEN 12 ELSE 0 END) +
-            (CASE WHEN c.description LIKE :term THEN 3 ELSE 0 END)
-        ) as relevance_score";
+
+    $priceExpr = "COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix)";
+
+    $relevanceField = "0 AS relevance_score";
+    $term = trim((string)($_GET['name'] ?? ''));
+    if ($term !== '') {
+        $relevanceField = "((CASE WHEN c.nom LIKE :term THEN 50 ELSE 0 END) + (CASE WHEN c.type LIKE :term THEN 30 ELSE 0 END)
+            + (CASE WHEN c.theme LIKE :term THEN 20 ELSE 0 END) + (CASE WHEN c.ville LIKE :term THEN 12 ELSE 0 END)
+            + (CASE WHEN c.description LIKE :term THEN 3 ELSE 0 END)) AS relevance_score";
         $params[':term'] = '%' . $term . '%';
     }
 
-    // -----------------------------------------------------------
-    // 2. REQUÊTE PRINCIPALE (RECHERCHE PRÉCISE)
-    // -----------------------------------------------------------
-    $sql = "SELECT c.*, 
-            o.nom as organisateur_nom,
-            COALESCE((SELECT MIN(prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix) as prix_affiche,
-            (c.boost_vedette_fin > NOW()) as is_vedette,
-            (c.boost_urgence_fin > NOW()) as is_urgence,
-            $relevanceField
-            FROM camps c 
-            JOIN organisateurs o ON c.organisateur_id = o.id 
-            $baseWhere";
+    $select = "SELECT c.id, c.token, c.nom, c.ville, c.code_postal, c.image_url, c.date_debut, c.date_fin, c.age_min, c.age_max,
+            c.type, c.theme, c.groupe_id, c.inscription_en_ligne, c.date_bump,
+            o.nom AS organisateur_nom, o.logo_url AS organisateur_logo,
+            $priceExpr AS prix_affiche,
+            (c.boost_vedette_fin > NOW()) AS is_vedette, (c.boost_urgence_fin > NOW()) AS is_urgence,
+            {REL}
+            FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id $baseWhere";
 
-    // Application des filtres utilisateur
-    if (!empty($_GET['name'])) {
-        $sql .= " AND (c.nom LIKE :term OR c.type LIKE :term OR c.theme LIKE :term OR c.ville LIKE :term OR c.description LIKE :term)";
+    $sql = str_replace('{REL}', $relevanceField, $select);
+    if ($term !== '') $sql .= " AND (c.nom LIKE :term OR c.type LIKE :term OR c.theme LIKE :term OR c.ville LIKE :term OR c.description LIKE :term)";
+    $city = trim((string)($_GET['city'] ?? ''));
+    if ($city !== '') { $sql .= " AND (c.ville LIKE :city OR c.code_postal LIKE :city)"; $params[':city'] = '%' . $city . '%'; }
+    if (isset($_GET['max_price']) && is_numeric($_GET['max_price']) && (float)$_GET['max_price'] > 0) {
+        $sql .= " AND $priceExpr <= :max"; $params[':max'] = (float)$_GET['max_price'];
     }
-    if (!empty($_GET['city']) && $_GET['city'] !== "Ma position actuelle") {
-        $sql .= " AND (c.ville LIKE :city OR c.code_postal LIKE :city)";
-        $params[':city'] = '%' . $_GET['city'] . '%';
+    if (isset($_GET['age']) && $_GET['age'] !== '' && is_numeric($_GET['age'])) {
+        $sql .= " AND c.age_min <= :age AND c.age_max >= :age"; $params[':age'] = (int)$_GET['age'];
     }
-    if (!empty($_GET['max_price'])) {
-        $sql .= " AND c.prix <= :max";
-        $params[':max'] = $_GET['max_price'];
-    }
-    if (!empty($_GET['age'])) {
-        $sql .= " AND c.age_min <= :age AND c.age_max >= :age";
-        $params[':age'] = $_GET['age'];
-    }
+    // Période : le séjour doit chevaucher l'intervalle demandé
+    $from = validDay($_GET['date_from'] ?? '');
+    $to = validDay($_GET['date_to'] ?? '');
+    if ($from) { $sql .= " AND COALESCE(c.date_fin, c.date_debut) >= :dfrom"; $params[':dfrom'] = $from; }
+    if ($to)   { $sql .= " AND c.date_debut <= :dto"; $params[':dto'] = $to; }
+    if (!empty($_GET['online'])) $sql .= " AND c.inscription_en_ligne = 1";
     if (!empty($_GET['themes']) && is_array($_GET['themes'])) {
-        $tParts = [];
-        foreach($_GET['themes'] as $k => $v) {
-            $tParts[] = "(c.theme LIKE :th_$k OR c.type LIKE :th_$k)";
-            $params[":th_$k"] = '%' . $v . '%';
+        $parts = [];
+        foreach (array_slice(array_values($_GET['themes']), 0, 30) as $k => $v) {
+            $parts[] = "(c.theme LIKE :th_$k OR c.type LIKE :th_$k)";
+            $params[":th_$k"] = '%' . trim((string)$v) . '%';
         }
-        if($tParts) $sql .= " AND (" . implode(' OR ', $tParts) . ")";
+        if ($parts) $sql .= " AND (" . implode(' OR ', $parts) . ")";
     }
 
-    // Tri (Vedette > Score > Date)
     $sort = $_GET['sort'] ?? 'relevance';
-    $orderBy = "(c.boost_vedette_fin > NOW()) DESC"; // Vedettes toujours en premier
-
+    $orderBy = "(c.boost_vedette_fin > NOW()) DESC";
     if ($sort === 'price_asc') $orderBy .= ", prix_affiche ASC";
     elseif ($sort === 'price_desc') $orderBy .= ", prix_affiche DESC";
     elseif ($sort === 'date') $orderBy .= ", c.date_debut ASC";
-    else {
-        // Pertinence
-        if (!empty($_GET['name'])) $orderBy .= ", relevance_score DESC, c.date_bump DESC";
-        else $orderBy .= ", c.date_bump DESC";
-    }
-    
+    else $orderBy .= ($term !== '' ? ", relevance_score DESC" : "") . ", c.date_bump DESC";
     $sql .= " ORDER BY $orderBy";
 
-    // Exécution Principale
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $camps = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // -----------------------------------------------------------
-    // 3. LOGIQUE DE FALLBACK (SI AUCUN RÉSULTAT EXACT)
-    // -----------------------------------------------------------
+    // Aucun résultat : on propose les séjours mis en avant (les filtres ne sont pas appliqués)
     if (empty($camps)) {
         $isFallback = true;
-
-        // On cherche SEULEMENT les camps Vedettes valides qui respectent les critères de sécurité
-        // (Date non passée, non supprimé, etc.)
-        $sqlFallback = "SELECT c.*, 
-            o.nom as organisateur_nom,
-            COALESCE((SELECT MIN(prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix) as prix_affiche,
-            1 as is_vedette, 
-            (c.boost_urgence_fin > NOW()) as is_urgence,
-            0 as relevance_score
-            FROM camps c 
-            JOIN organisateurs o ON c.organisateur_id = o.id 
-            $baseWhere 
-            AND c.boost_vedette_fin > NOW() 
-            ORDER BY c.date_bump DESC 
-            LIMIT 6";
-
-        // On réutilise uniquement le paramètre :today
-        $stmtFb = $pdo->prepare($sqlFallback);
+        $stmtFb = $pdo->prepare(str_replace('{REL}', '0 AS relevance_score', $select) . " AND c.boost_vedette_fin > NOW() ORDER BY c.date_bump DESC LIMIT 12");
         $stmtFb->execute([':today' => $today]);
         $camps = $stmtFb->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // Un camp à plusieurs sessions n'apparaît qu'une fois (sa prochaine session), avec le nombre de sessions
+    // Un camp à plusieurs sessions n'apparaît qu'une fois (sa prochaine session)
     $camps = collapseSessions($camps);
+    $total = count($camps);
 
-    // -----------------------------------------------------------
-    // 4. FORMATAGE DE SORTIE
-    // -----------------------------------------------------------
-    foreach ($camps as &$camp) {
-        $camp['image_url'] = !empty($camp['image_url']) ? $camp['image_url'] : 'assets/img/default-camp.jpg';
-        $camp['prix'] = (float)$camp['prix_affiche'];
-        $camp['is_vedette'] = (bool)$camp['is_vedette'];
-        $camp['is_urgence'] = (bool)$camp['is_urgence'];
-        $camp['nom'] = clean($camp['nom']);
-        $camp['ville'] = clean($camp['ville']);
-        $camp['type_name'] = clean($camp['type'] ?? 'Séjour');
+    $limit = max(1, min(48, (int)($_GET['limit'] ?? 24)));
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $camps = array_slice($camps, ($page - 1) * $limit, $limit);
+
+    $out = [];
+    foreach ($camps as $c) {
+        $badge = $c['is_vedette'] ? 'Coup de cœur' : ($c['is_urgence'] ? 'Dernière minute' : null);
+        $out[] = [
+            'id' => (int)$c['id'], 'token' => $c['token'],
+            'nom' => clean($c['nom']), 'ville' => clean($c['ville']),
+            'image_url' => media($c['image_url'], 'uploads/camps/'),
+            'date_debut' => $c['date_debut'], 'date_fin' => $c['date_fin'],
+            'age_min' => $c['age_min'] !== null ? (int)$c['age_min'] : null, 'age_max' => $c['age_max'] !== null ? (int)$c['age_max'] : null,
+            'type_name' => clean($c['type'] ?? ''), 'theme' => clean($c['theme'] ?? ''),
+            'prix' => $c['prix_affiche'] !== null ? (float)$c['prix_affiche'] : null,
+            'organisateur_nom' => clean($c['organisateur_nom']), 'organisateur_logo' => media($c['organisateur_logo']),
+            'badge' => $badge, 'online' => (bool)$c['inscription_en_ligne'],
+            'sessions_count' => (int)($c['sessions_count'] ?? 1),
+        ];
     }
 
     echo json_encode([
-        'status' => 'success',
-        'is_fallback' => $isFallback,
-        'count' => count($camps),
-        'camps' => $camps
+        'status' => 'success', 'is_fallback' => $isFallback,
+        'total' => $total, 'page' => $page, 'limit' => $limit, 'has_more' => $page * $limit < $total,
+        'camps' => $out,
     ]);
-
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    error_log('get_camps_recherche: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode([
-        'status' => 'error',
-        'message' => $e->getMessage()
-    ]);
+    echo json_encode(['status' => 'error', 'message' => 'La recherche est momentanément indisponible.']);
 }
-?>
