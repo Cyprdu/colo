@@ -65,54 +65,51 @@ try {
     }
 } catch (Exception $e) { $error = "Erreur système."; }
 
+$body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
 
-<title>Validation</title>
+<title>Vérification - ColoMap</title>
 
-<div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-    <div class="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <img src="https://veyret.freeboxos.fr:45474/share/PSu2SneCf_lg32kW/favico.png" class="h-20 mx-auto mb-6" alt="Logo">
-        <h2 class="text-3xl font-extrabold text-[#0A112F]">Vérification</h2>
-        <p class="mt-2 text-gray-600">Un code a été envoyé à <strong><?= htmlspecialchars($user['email']) ?></strong></p>
-    </div>
-
-    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div class="bg-white py-8 px-4 shadow-xl rounded-2xl sm:px-10 border border-gray-100">
+<main class="ds-page flex items-center justify-center" style="max-width:480px">
+    <div class="w-full ds-fade">
+        <div class="text-center mb-6">
+            <h1 class="ds-h1">Vérification</h1>
+            <p class="ds-lead">Un code à 6 chiffres a été envoyé à <strong class="text-[#26343b]"><?= htmlspecialchars($user['email']) ?></strong></p>
+        </div>
+        <div class="ds-card p-6 sm:p-8">
             <?php if ($success): ?>
-                <div class="text-center py-4">
-                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4 animate-bounce">
-                        <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                    </div>
-                    <h3 class="text-lg font-medium text-gray-900">Validé !</h3>
-                    <p class="text-gray-500 mt-2">Connexion en cours...</p>
+                <div class="text-center py-4" role="status">
+                    <span class="mx-auto mb-4 flex items-center justify-center h-12 w-12 rounded-full bg-[#2f3d45] text-white"><svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M5 13l4 4L19 7"/></svg></span>
+                    <h2 class="text-lg font-extrabold text-[#26343b]">Compte validé</h2>
+                    <p class="ds-lead">Connexion en cours...</p>
                 </div>
             <?php else: ?>
-                <?php if ($error): ?><div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded text-sm text-center"><?= $error ?></div><?php endif; ?>
+                <?php if ($error): ?><div class="ds-alert-err mb-5 text-sm text-center font-semibold" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
                 <form action="" method="POST" id="otpForm">
                     <input type="hidden" name="full_code" id="full_code">
-                    <div class="mb-6">
+                    <div class="mb-6" role="group" aria-label="Code de vérification à 6 chiffres">
                         <div class="flex justify-between gap-2" id="otp-container">
                             <?php for($i=0; $i<6; $i++): ?>
-                                <input type="text" maxlength="1" class="otp-input w-12 h-14 border-2 border-gray-300 rounded-lg text-center text-2xl font-bold text-[#0A112F] focus:border-blue-600 focus:outline-none transition-colors" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                                <input type="text" maxlength="1" aria-label="Chiffre <?= $i + 1 ?>" class="otp-input ds-input !px-0 !h-14 w-12 text-center text-2xl font-extrabold" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
                             <?php endfor; ?>
                         </div>
                     </div>
-                    <button type="submit" id="submitBtn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-[#0A112F] hover:bg-blue-900 focus:outline-none transition-transform transform hover:-translate-y-0.5">Valider mon compte</button>
+                    <button type="submit" id="submitBtn" class="ds-btn w-full">Valider mon compte</button>
                 </form>
-                
-                <div id="loadingSync" class="hidden mt-6 text-center">
-                    <svg class="animate-spin h-5 w-5 text-blue-600 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+
+                <div id="loadingSync" class="hidden mt-6 text-center" role="status">
+                    <svg class="animate-spin h-5 w-5 text-[#2f3d45] mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <p class="text-sm text-gray-500">Validation détectée sur un autre appareil...</p>
+                    <p class="text-sm text-[#6b7780]">Validation détectée sur un autre appareil...</p>
                 </div>
             <?php endif; ?>
         </div>
     </div>
-</div>
+</main>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {

@@ -119,5 +119,4 @@ $photo = trim((string)($_SESSION['user']['photo_url'] ?? ''));
     } catch (e) {}
 })();
 </script>
-<style>@media (prefers-reduced-motion: reduce) { .ds-fade { animation: none; } }</style>
 <?php require_once 'partials/footer.php'; ?>

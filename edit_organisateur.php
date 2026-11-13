@@ -129,148 +129,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $organisateur && $organisateurId) {
 }
 
 // 5. AFFICHAGE HTML
+$body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
 
-<title>Modifier l'Organisme - <?= htmlspecialchars($organisateur['nom'] ?? 'Chargement...') ?></title>
+<title>Modifier l'organisme - ColoMap</title>
 
-<div class="min-h-screen bg-gray-50 py-10 font-sans">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        <div class="flex items-center gap-4 mb-8">
-            <a href="dashboard_organisme.php?organisateur_id=<?= $organisateurId ?>" class="text-gray-500 hover:text-[#0A112F]">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-            </a>
-            <h1 class="text-3xl font-extrabold text-[#0A112F]">Modification de l'Organisme</h1>
-        </div>
+<main class="ds-page" style="max-width:860px">
+    <a href="dashboard_organisme.php?organisateur_id=<?= (int)$organisateurId ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Tableau de bord
+    </a>
+    <p class="ds-eyebrow mt-6">Mes organismes</p>
+    <h1 class="ds-h1">Modifier l'organisme</h1>
 
-        <?php if ($error): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">
-                <p class="font-bold">Erreur</p>
-                <p><?= $error ?></p>
-            </div>
-        <?php elseif ($organisateur): ?>
+    <?php if ($error): ?>
+        <div class="ds-alert-err mt-6" role="alert"><p class="font-semibold"><?= htmlspecialchars($error) ?></p></div>
+    <?php elseif ($organisateur): ?>
+        <?php if (isset($message['success'])): ?><div class="ds-alert-ok mt-6 font-semibold" role="status"><?= htmlspecialchars($message['success']) ?></div><?php endif; ?>
+        <?php if (isset($message['error'])): ?><div class="ds-alert-err mt-6 font-semibold" role="alert"><?= htmlspecialchars($message['error']) ?></div><?php endif; ?>
 
-            <?php if (isset($message['success'])): ?>
-                <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm">
-                    <p class="font-bold">Succès</p>
-                    <p><?= $message['success'] ?></p>
-                </div>
-            <?php endif; ?>
+        <form action="edit_organisateur.php?id=<?= (int)$organisateurId ?>" method="POST" enctype="multipart/form-data" class="mt-8 space-y-6">
+            <input type="hidden" name="organisateur_id" value="<?= (int)$organisateurId ?>">
 
-            <?php if (isset($message['error'])): ?>
-                <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">
-                    <p class="font-bold">Erreur</p>
-                    <p><?= $message['error'] ?></p>
-                </div>
-            <?php endif; ?>
-
-            <div class="bg-white rounded-xl shadow-lg p-8">
-                <form action="edit_organisateur.php?id=<?= $organisateurId ?>" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="organisateur_id" value="<?= $organisateurId ?>">
-
-                    <fieldset class="border-b border-gray-200 pb-8 mb-8">
-                        <legend class="text-xl font-bold text-gray-900 mb-4">Informations Générales</legend>
-                        
-                        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                            
-                            <div>
-                                <label for="logo_file" class="block text-sm font-medium text-gray-700">Logo de l'organisme</label>
-                                <div class="mt-1 flex items-center">
-                                    <?php if (!empty($organisateur['logo_url'])): ?>
-                                        <img src="<?= htmlspecialchars($organisateur['logo_url']) ?>" alt="Logo actuel" class="w-16 h-16 object-contain mr-4 border rounded-lg">
-                                    <?php endif; ?>
-                                    <input type="file" name="logo_file" id="logo_file" accept="image/*" class="block w-full text-sm text-gray-500
-                                        file:mr-4 file:py-2 file:px-4
-                                        file:rounded-full file:border-0
-                                        file:text-sm file:font-semibold
-                                        file:bg-blue-50 file:text-[#0A112F]
-                                        hover:file:bg-blue-100">
-                                </div>
-                                <p class="mt-2 text-xs text-gray-500">Formats acceptés : PNG, JPG, GIF. Max 2MB.</p>
-                            </div>
-                            
-                            <div>
-                                <label for="statut_legal" class="block text-sm font-medium text-gray-700">Statut Légal (Ex: Association Loi 1901)</label>
-                                <input type="text" name="statut_legal" id="statut_legal" value="<?= htmlspecialchars($organisateur['statut_legal'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div class="sm:col-span-2">
-                                <label for="nom" class="block text-sm font-medium text-gray-700">Nom de l'Organisme</label>
-                                <input type="text" name="nom" id="nom" value="<?= htmlspecialchars($organisateur['nom'] ?? '') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div>
-                                <label for="email" class="block text-sm font-medium text-gray-700">Email de contact</label>
-                                <input type="email" name="email" id="email" value="<?= htmlspecialchars($organisateur['email'] ?? '') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div>
-                                <label for="tel" class="block text-sm font-medium text-gray-700">Téléphone</label>
-                                <input type="tel" name="tel" id="tel" value="<?= htmlspecialchars($organisateur['tel'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div class="sm:col-span-2">
-                                <label for="web" class="block text-sm font-medium text-gray-700">Site Web / URL</label>
-                                <input type="url" name="web" id="web" value="<?= htmlspecialchars($organisateur['web'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
+            <section class="ds-card ds-sec">
+                <div class="ds-sec-head"><span class="ds-sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg></span><div><h2 class="ds-sec-title">Informations générales</h2><p class="ds-sec-desc">Ce que les familles voient sur vos séjours.</p></div></div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="ds-label" for="logo_file">Logo</label>
+                        <div class="flex items-center gap-3">
+                            <?php if (!empty($organisateur['logo_url'])): ?><img src="<?= htmlspecialchars($organisateur['logo_url']) ?>" alt="Logo actuel" class="w-14 h-14 object-contain border border-[#e5e7eb] rounded-xl bg-white"><?php endif; ?>
+                            <input type="file" name="logo_file" id="logo_file" accept="image/*" class="block w-full text-sm text-[#6b7780] file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-[#eef2f4] file:text-[#26343b] hover:file:bg-[#e1e6ea]">
                         </div>
-                    </fieldset>
-
-                    <fieldset class="border-b border-gray-200 pb-8 mb-8">
-                        <legend class="text-xl font-bold text-gray-900 mb-4">Informations Bancaires (RIB/IBAN)</legend>
-
-                        <p class="text-sm text-gray-500 mb-4">Ces informations sont utilisées pour le versement des fonds collectés pour vos séjours.</p>
-
-                        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                            <div>
-                                <label for="iban" class="block text-sm font-medium text-gray-700">IBAN (Pour les virements)</label>
-                                <input type="text" name="iban" id="iban" value="<?= htmlspecialchars($organisateur['iban'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2" maxlength="34">
-                            </div>
-
-                            <div>
-                                <label for="bic_swift" class="block text-sm font-medium text-gray-700">BIC / SWIFT</label>
-                                <input type="text" name="bic_swift" id="bic_swift" value="<?= htmlspecialchars($organisateur['bic_swift'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2" maxlength="11">
-                            </div>
-                        </div>
-                    </fieldset>
-
-                    <fieldset>
-                        <legend class="text-xl font-bold text-gray-900 mb-4">Adresse Postale Administrative</legend>
-
-                        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                            <div class="sm:col-span-2">
-                                <label for="adresse_complete" class="block text-sm font-medium text-gray-700">Adresse (Ligne 1)</label>
-                                <input type="text" name="adresse_complete" id="adresse_complete" value="<?= htmlspecialchars($organisateur['adresse_complete'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div>
-                                <label for="code_postal_orga" class="block text-sm font-medium text-gray-700">Code Postal</label>
-                                <input type="text" name="code_postal_orga" id="code_postal_orga" value="<?= htmlspecialchars($organisateur['code_postal_orga'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div>
-                                <label for="ville_orga" class="block text-sm font-medium text-gray-700">Ville</label>
-                                <input type="text" name="ville_orga" id="ville_orga" value="<?= htmlspecialchars($organisateur['ville_orga'] ?? '') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-
-                            <div class="sm:col-span-2">
-                                <label for="pays_orga" class="block text-sm font-medium text-gray-700">Pays</label>
-                                <input type="text" name="pays_orga" id="pays_orga" value="<?= htmlspecialchars($organisateur['pays_orga'] ?? 'France') ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#0A112F] focus:ring-[#0A112F] p-2">
-                            </div>
-                        </div>
-                    </fieldset>
-
-                    <div class="mt-8 pt-6 border-t border-gray-200 flex justify-end">
-                        <button type="submit" class="inline-flex justify-center rounded-xl border border-transparent bg-[#0A112F] py-3 px-6 text-sm font-medium text-white shadow-sm hover:bg-blue-900 focus:outline-none focus:ring-2 focus:ring-[#0A112F] focus:ring-offset-2 transition">
-                            Sauvegarder les modifications
-                        </button>
+                        <p class="ds-hint">PNG, JPG ou GIF, 2 Mo maximum.</p>
                     </div>
-                </form>
-            </div>
+                <div><label class="ds-label" for="statut_legal">Statut légal (ex. association loi 1901)</label><input class="ds-input" type="text" name="statut_legal" id="statut_legal" value="<?= htmlspecialchars($organisateur['statut_legal'] ?? '') ?>"></div>
+                <div class="sm:col-span-2"><label class="ds-label" for="nom">Nom de l'organisme</label><input class="ds-input" type="text" name="nom" id="nom" value="<?= htmlspecialchars($organisateur['nom'] ?? '') ?>" required></div>
+                <div><label class="ds-label" for="email">Email de contact</label><input class="ds-input" type="email" name="email" id="email" value="<?= htmlspecialchars($organisateur['email'] ?? '') ?>" required></div>
+                <div><label class="ds-label" for="tel">Téléphone</label><input class="ds-input" type="tel" name="tel" id="tel" value="<?= htmlspecialchars($organisateur['tel'] ?? '') ?>"></div>
+                <div class="sm:col-span-2"><label class="ds-label" for="web">Site web</label><input class="ds-input" type="url" name="web" id="web" value="<?= htmlspecialchars($organisateur['web'] ?? '') ?>"></div>
+                </div>
+            </section>
 
-        <?php endif; ?>
-    </div>
-</div>
+            <section class="ds-card ds-sec">
+                <div class="ds-sec-head"><span class="ds-sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M3 10h18"/></svg></span><div><h2 class="ds-sec-title">Coordonnées bancaires</h2><p class="ds-sec-desc">Utilisées pour le versement des fonds collectés pour vos séjours.</p></div></div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                <div><label class="ds-label" for="iban">IBAN</label><input class="ds-input" type="text" name="iban" id="iban" value="<?= htmlspecialchars($organisateur['iban'] ?? '') ?>" maxlength="34" autocomplete="off"></div>
+                <div><label class="ds-label" for="bic_swift">BIC / SWIFT</label><input class="ds-input" type="text" name="bic_swift" id="bic_swift" value="<?= htmlspecialchars($organisateur['bic_swift'] ?? '') ?>" maxlength="11" autocomplete="off"></div>
+                </div>
+            </section>
+
+            <section class="ds-card ds-sec">
+                <div class="ds-sec-head"><span class="ds-sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span><div><h2 class="ds-sec-title">Adresse administrative</h2></div></div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                <div class="sm:col-span-2"><label class="ds-label" for="adresse_complete">Adresse</label><input class="ds-input" type="text" name="adresse_complete" id="adresse_complete" value="<?= htmlspecialchars($organisateur['adresse_complete'] ?? '') ?>"></div>
+                <div><label class="ds-label" for="code_postal_orga">Code postal</label><input class="ds-input" type="text" name="code_postal_orga" id="code_postal_orga" value="<?= htmlspecialchars($organisateur['code_postal_orga'] ?? '') ?>"></div>
+                <div><label class="ds-label" for="ville_orga">Ville</label><input class="ds-input" type="text" name="ville_orga" id="ville_orga" value="<?= htmlspecialchars($organisateur['ville_orga'] ?? '') ?>"></div>
+                <div class="sm:col-span-2"><label class="ds-label" for="pays_orga">Pays</label><input class="ds-input" type="text" name="pays_orga" id="pays_orga" value="<?= htmlspecialchars($organisateur['pays_orga'] ?? 'France') ?>"></div>
+                </div>
+            </section>
+
+            <div class="flex justify-end"><button type="submit" class="ds-btn">Enregistrer les modifications</button></div>
+        </form>
+    <?php endif; ?>
+</main>
 
 <?php require_once 'partials/footer.php'; ?>
