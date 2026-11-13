@@ -76,6 +76,10 @@ try {
             $pdo->prepare("INSERT IGNORE INTO $table (camp_id, $col) SELECT ?, $col FROM $table WHERE camp_id = ?")->execute([$newId, $src['id']]);
         } catch (Throwable $e) { /* table absente : sans importance */ }
     }
+    try {
+        require_once 'etapes.php'; etapes_ensure($pdo);
+        $pdo->prepare("INSERT INTO camp_etapes (camp_id, jour, lieu, description, ordre) SELECT ?, jour, lieu, description, ordre FROM camp_etapes WHERE camp_id = ?")->execute([$newId, $src['id']]);
+    } catch (Throwable $e) { }
     $pdo->commit();
 
     sendJson(['success' => true, 'id' => $newId, 'token' => $newToken]);

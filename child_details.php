@@ -6,7 +6,8 @@ if (!isset($_SESSION['user']) || !$_SESSION['user']['is_directeur']) {
     exit;
 }
 
-$inscriptionId = $_GET['id'] ?? 0;
+$resToken = (string)($_GET['r'] ?? '');
+$inscriptionId = $resToken === '' ? (int)($_GET['id'] ?? 0) : 0; // l'adresse a jeton (r) remplace l'identifiant numerique
 $tokenCamp = $_GET['t'] ?? '';
 ?>
 
@@ -41,7 +42,7 @@ $tokenCamp = $_GET['t'] ?? '';
             <div class="text-right">
                 <div class="bg-gray-100 p-4 rounded-lg border border-gray-300">
                     <p class="text-xs text-gray-500 uppercase font-bold">Dossier N°</p>
-                    <p class="text-2xl font-mono font-bold text-gray-800">#<?= $inscriptionId ?></p>
+                    <p class="text-2xl font-mono font-bold text-gray-800">#<?= htmlspecialchars(strtoupper(substr($resToken !== "" ? $resToken : (string)$inscriptionId, 0, 8))) ?></p>
                 </div>
             </div>
         </div>
@@ -154,10 +155,10 @@ $tokenCamp = $_GET['t'] ?? '';
 window.carnetToken = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
-    const id = <?= $inscriptionId ?>;
+    const refParam = <?= json_encode($resToken !== '' ? 'r=' . rawurlencode($resToken) : 'id=' . (int)$inscriptionId) ?>;
     
     try {
-        const response = await fetch(`api/get_child_full_details.php?id=${id}`);
+        const response = await fetch(`api/get_child_full_details.php?${refParam}`);
         const data = await response.json();
         
         if(data.error) throw new Error(data.error);

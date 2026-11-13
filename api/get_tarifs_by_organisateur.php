@@ -10,9 +10,10 @@ try {
     tarifs_ensure($pdo);
     // Si un ID est fourni, on filtre directement en SQL (plus performant)
     if ($organisateurId) {
-        $sql = "SELECT * FROM tarifs WHERE organisateur_id = ?";
+        // seulement les tarifs d'un organisme de l'utilisateur connecté
+        $sql = "SELECT t.* FROM tarifs t JOIN organisateurs o ON t.organisateur_id = o.id WHERE t.organisateur_id = ? AND o.user_id = ? ORDER BY t.nom";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$organisateurId]);
+        $stmt->execute([$organisateurId, $_SESSION['user']['id']]);
     } else {
         // Sinon (pour compatibilité) on charge les tarifs des orgas de l'user
         $sql = "SELECT t.* FROM tarifs t

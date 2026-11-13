@@ -1,6 +1,9 @@
 <?php
 // Fichier: /api/get_camp_stats.php
 require_once 'config.php';
+require_once 'options.php';
+require_once 'attente.php';
+require_once 'champs.php';
 
 // 1. Vérification session
 if (!isset($_SESSION['user']['id']) || !$_SESSION['user']['is_directeur']) {
@@ -37,6 +40,7 @@ try {
         sendJson(['error' => 'Vous n\'êtes pas le propriétaire de ce camp.'], 403);
     }
 
+    options_ensure($pdo); attente_ensure($pdo);
     // --- À partir d'ici, on a le feu vert, on charge les données sensibles ---
 
     // 4. Récupérer la liste des inscrits
@@ -44,17 +48,20 @@ try {
     $stmtInscrits = $pdo->prepare("
         SELECT 
             i.id as inscription_id,
+            i.reservation_token,
+            i.statut,
+            i.tarif_id,
             i.date_inscription,
             i.montant_paye,
             i.statut_paiement,
-            e.prenom, e.nom, e.date_naissance, e.sexe, e.infos_sante, e.regime_alimentaire,
+            e.prenom, e.nom, e.date_naissance, e.sexe, e.infos_sante, e.allergies, e.regime_alimentaire,
             u.email as parent_email, u.tel as parent_tel, u.nom as parent_nom_famille, u.prenom as parent_prenom,
             t.nom as tarif_nom
         FROM inscriptions i
         JOIN enfants e ON i.enfant_id = e.id
         JOIN users u ON e.parent_id = u.id
         LEFT JOIN tarifs t ON i.tarif_id = t.id
-        WHERE i.camp_id = ?
+        WHERE i.camp_id = ? AND COALESCE(i.statut, '') NOT IN ('Annulé', 'annule', 'Annule')
         ORDER BY i.date_inscription DESC
     ");
     $stmtInscrits->execute([$camp['id']]);
@@ -67,6 +74,14 @@ try {
     $ages = [];
     $inscriptionsParJour = [];
 
+    $occupees = 0; $occF = 0; $occG = 0;
+    foreach ($inscrits as &$inscrit) {
+        $lim = attente_limite($inscrit + ['attente_paiement' => $camp['attente_paiement'] ?? 1, 'attente_jours' => $camp['attente_jours'] ?? 7]);
+        $inscrit['expire'] = $lim && $lim < new DateTime();
+        $inscrit['limite_paiement'] = $lim ? $lim->format('Y-m-d H:i') : null;
+        if (!$inscrit['expire']) { $occupees++; if ($inscrit['sexe'] === SEXE_FILLE) $occF++; else $occG++; }
+    }
+    unset($inscrit);
     foreach ($inscrits as $inscrit) {
         $totalRecettes += $inscrit['montant_paye'];
         
@@ -83,24 +98,29 @@ try {
     }
 
     $ageMoyen = count($ages) > 0 ? round(array_sum($ages) / count($ages), 1) : 0;
-    $nbInscrits = count($inscrits);
+    $nbInscrits = $occupees;
     $tauxRemplissage = $camp['quota_global'] > 0 ? round(($nbInscrits / $camp['quota_global']) * 100, 1) : 0;
 
     ksort($inscriptionsParJour);
 
     sendJson([
         'camp' => [
-            'id' => $camp['id'], // ID interne utile pour l'édit si besoin
             'nom' => $camp['nom'],
             'dates' => date('d/m/Y', strtotime($camp['date_debut'])) . ' au ' . date('d/m/Y', strtotime($camp['date_fin'])),
-            'quota' => $camp['quota_global']
+            'quota' => $camp['quota_global'],
+            'quota_fille' => (int)$camp['quota_fille'], 'quota_garcon' => (int)$camp['quota_garcon'],
+            'reserve_sexe' => $camp['reserve_sexe'] ?? null,
+            'en_ligne' => !empty($camp['inscription_en_ligne']),
+            'token' => $camp['token'],
+            'criteres' => array_map(fn($k) => ENFANT_CRITERES[$k][0], options_criteres_valides($camp['champs_requis'] ?? '[]')),
+            'questions' => count(champs_du_camp($pdo, (int)$camp['id'])),
         ],
         'kpi' => [
             'chiffre_affaires' => $totalRecettes,
             'nombre_inscrits' => $nbInscrits,
             'taux_remplissage' => $tauxRemplissage,
             'age_moyen' => $ageMoyen,
-            'parite' => ['filles' => $totalFilles, 'garcons' => $totalGarcons]
+            'parite' => ['filles' => $occF, 'garcons' => $occG]
         ],
         'liste_inscrits' => $inscrits,
         'chart' => [

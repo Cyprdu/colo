@@ -21,6 +21,8 @@ try {
     // 1. Infos Camp
     require_once 'api/attente.php';
     require_once 'api/tarifs.php';
+    require_once 'api/options.php';
+    options_ensure($pdo);
     attente_ensure($pdo);
     require_once 'api/enfants.php';
     enfants_ensure($pdo);
@@ -35,6 +37,12 @@ try {
     $stmtEnfants = $pdo->prepare("SELECT * FROM enfants WHERE parent_id = ? ORDER BY prenom ASC");
     $stmtEnfants->execute([$_SESSION['user']['id']]);
     $enfants = $stmtEnfants->fetchAll(PDO::FETCH_ASSOC);
+    // Règles du directeur : séjour réservé à un sexe, fiche enfant à compléter
+    $bloques = []; // [id enfant => ['sexe' => bool, 'manque' => [libellés]]]
+    foreach ($enfants as $e) {
+        $b = ['sexe' => !options_sexe_admis($camp, $e['sexe'] ?? null), 'manque' => options_enfant_manquants($camp, $e)];
+        if ($b['sexe'] || $b['manque']) $bloques[(int)$e['id']] = $b;
+    }
 
     // 3. Enfants déjà inscrits
     $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND " . attente_clause($camp));
@@ -120,18 +128,24 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <?php foreach ($enfants as $enfant): 
                             $isInscrit = in_array($enfant['id'], $dejaInscrits);
+                            $blq = $bloques[(int)$enfant['id']] ?? null;
+                            if ($blq && $blq['sexe']) $isInscrit = true;
                         ?>
                             <label class="relative flex items-start p-4 rounded-xl border-2 transition cursor-pointer group <?= $isInscrit ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : 'border-gray-100 hover:border-blue-200 hover:bg-[#f1f5f9]' ?>">
                                 <div class="flex items-center h-5 mt-1">
                                     <input type="checkbox" name="child_ids[]" value="<?= $enfant['id'] ?>" 
                                            class="w-5 h-5 text-[#3d6a8e] border-gray-300 rounded focus:ring-[#2f3d45] child-check"
-                                           <?= $isInscrit ? 'disabled' : '' ?>>
+                                           <?= ($isInscrit || $blq) ? 'disabled' : '' ?>>
                                 </div>
                                 <div class="ml-3">
                                     <span class="block font-bold text-gray-800"><?= htmlspecialchars($enfant['prenom'] . ' ' . $enfant['nom']) ?></span>
                                     <span class="block text-sm text-gray-500">Né(e) le <?= date('d/m/Y', strtotime($enfant['date_naissance'])) ?></span>
-                                    <?php if($isInscrit): ?>
+                                    <?php if ($blq && $blq['sexe']): ?>
+                                        <span class="inline-block mt-1 text-xs font-bold text-[#5b4a1c] bg-[#f8f5ea] px-2 py-0.5 rounded">Séjour réservé aux <?= $camp['reserve_sexe'] === SEXE_FILLE ? 'filles' : 'garçons' ?></span>
+                                    <?php elseif($isInscrit): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit</span>
+                                    <?php elseif ($blq && $blq['manque']): ?>
+                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child.php?id=<?= (int)$enfant['id'] ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
                                     <?php endif; ?>
                                 </div>
                             </label>

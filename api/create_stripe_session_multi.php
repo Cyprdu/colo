@@ -13,6 +13,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/sessions.php';
 require_once __DIR__ . '/attente.php';
 require_once __DIR__ . '/tarifs.php';
+require_once __DIR__ . '/options.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -45,6 +46,7 @@ try {
     // 1. Le séjour : validé, visible, inscriptions en ligne ouvertes
     attente_ensure($pdo);
     tarifs_ensure($pdo);
+    options_ensure($pdo);
     $stmt = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmt->execute([$campToken]);
     $camp = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -57,13 +59,22 @@ try {
 
     // 2. Les enfants : ce sont bien ceux du parent connecté
     $in = implode(',', array_fill(0, count($childIds), '?'));
-    $stmt = $pdo->prepare("SELECT id, prenom, nom, sexe FROM enfants WHERE parent_id = ? AND id IN ($in)");
+    $stmt = $pdo->prepare("SELECT * FROM enfants WHERE parent_id = ? AND id IN ($in)");
     $stmt->execute(array_merge([$userId], $childIds));
     $children = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $c) $children[(int)$c['id']] = $c;
     $ordered = [];
     foreach ($childIds as $cid) if (isset($children[$cid])) $ordered[] = $children[$cid];
     if (!$ordered) backWithError('Aucun enfant valide sélectionné.', $campToken, $site);
+
+    // 2 bis. Règles du directeur (appliquées ici, jamais seulement dans le navigateur) : séjour réservé à un sexe, fiche enfant complète
+    foreach ($ordered as $c) {
+        if (!options_sexe_admis($camp, $c['sexe'] ?? null)) {
+            backWithError('Ce séjour est réservé aux ' . ($camp['reserve_sexe'] === SEXE_FILLE ? 'filles' : 'garçons') . ' : ' . $c['prenom'] . ' ne peut pas y être inscrit(e).', $campToken, $site);
+        }
+        $manque = options_enfant_manquants($camp, $c);
+        if ($manque) backWithError('La fiche de ' . $c['prenom'] . ' est incomplète. Champs exigés par l’organisateur : ' . implode(', ', $manque) . '.', $campToken, $site);
+    }
 
     // 3. Places : une inscription « active » est payée, confirmée, ou en cours de paiement depuis moins de 30 min
     $active = attente_clause($camp);

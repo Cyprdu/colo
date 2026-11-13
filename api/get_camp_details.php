@@ -106,6 +106,8 @@ try {
                 ];
             }
         }
+        require_once 'etapes.php';
+        $camp['etapes'] = !empty($camp['itinerant']) ? etapes_du_camp($pdo, (int)$camp['id']) : [];
         echo json_encode($camp);
     } else {
         http_response_code(404);
