@@ -1,6 +1,7 @@
 <?php
 // admin.php : tableau de bord du back-office
 require_once __DIR__ . '/admin_lib.php';
+require_once __DIR__ . '/api/compta_lib.php';
 adm_guard();
 
 $k = [
@@ -13,7 +14,7 @@ $k = [
     'inscpay'    => adm_one("SELECT COUNT(*) FROM inscriptions WHERE statut_paiement = 'PAYE' AND montant_paye > 0"),
     'ca'         => adm_one("SELECT COALESCE(SUM(montant_paye), 0) FROM inscriptions WHERE statut_paiement = 'PAYE'"),
     'ca30'       => adm_one("SELECT COALESCE(SUM(montant_paye), 0) FROM inscriptions WHERE statut_paiement = 'PAYE' AND id IN (SELECT id FROM inscriptions)"),
-    'commission' => adm_one("SELECT COALESCE(SUM(montant_total - montant_apres_commission), 0) FROM virements"),
+    'commission' => (float)adm_one("SELECT COALESCE(SUM(montant_total - montant_apres_commission), 0) FROM virements") + (float)adm_one("SELECT COALESCE(SUM(commission_cents), 0) / 100 FROM fin_paiements"),
     'wallets'    => adm_one("SELECT COALESCE(SUM(portefeuille), 0) FROM organisateurs"),
 ];
 $b = adm_badges();
@@ -22,6 +23,7 @@ $pending = [
     ['Séjours à valider', $b['camps'], 'admin_list.php?e=camps&f=attente', 'tent'],
     ['Virements à traiter', $b['virements'], 'admin_list.php?e=virements&f=attente', 'bank'],
     ['Messages sans réponse', $b['contacts'], 'admin_list.php?e=contacts&f=attente', 'mail'],
+    ['Paiements à marge négative', compta_negative_count($pdo), 'admin_compta.php#negatives', 'alert'],
 ];
 $months = adm_rows("SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, COUNT(*) AS n FROM users WHERE created_at >= (NOW() - INTERVAL 6 MONTH) GROUP BY m ORDER BY m");
 $maxm = max(1, ...array_map('intval', array_column($months, 'n') ?: [1]));
@@ -38,7 +40,7 @@ adm_head('Tableau de bord', 'admin.php');
   <div class="kpi"><span class="ico"><?= ic('tent') ?></span><div><b><?= $n($k['camps']) ?></b><span>Séjours</span><small><?= $n($k['campsok']) ?> validés</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= $n($k['insc']) ?></b><span>Inscriptions</span><small><?= $n($k['inscpay']) ?> payées</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= adm_money($k['ca']) ?></b><span>Chiffre d'affaires</span><small>Paiements encaissés</small></div></div>
-  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= adm_money($k['commission']) ?></b><span>Commissions</span><small>Sur les virements demandés</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= adm_money($k['commission']) ?></b><span>Commissions</span><small>Anciens virements + nouveaux paiements</small></div></div>
 </section>
 
 <h2 class="sec"><?= ic('clock') ?> À traiter</h2>
