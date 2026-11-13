@@ -308,7 +308,7 @@ function adm_head(string $title, string $active = ''): void {
        . '<title>' . h($title) . ' · Administration ColoMap</title><link rel="icon" type="image/png" href="favico.png">'
        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
        . '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
-       . '<link rel="stylesheet" href="assets/admin.css?v=1"></head><body>' . adm_sprite()
+       . '<link rel="stylesheet" href="assets/admin.css?v=2"></head><body>' . adm_sprite()
        . '<div class="adm" id="adm"><aside class="side" id="side"><a class="brand" href="admin.php">' . ic('shield', 'ic ic-lg') . '<span>ColoMap<small>Administration</small></span></a><nav>';
     foreach (adm_nav() as $grp => $items) {
         echo '<div class="grp">' . h($grp) . '</div>';
@@ -331,14 +331,16 @@ function adm_foot(array $page = []): void {
     echo '</main></div></div>'
        . '<div class="modal" id="m-reauth" hidden><div class="dlg"><h3>' . ic('lock') . ' Confirmez votre identité</h3>'
        . '<p>Cette action est sensible. Saisissez votre mot de passe administrateur (valable 10 minutes).</p>'
-       . '<input class="in" type="password" id="re-pass" autocomplete="current-password" placeholder="Mot de passe"><p class="err" id="re-err"></p>'
-       . '<div class="row"><button class="btn ghost" type="button" data-close>Annuler</button><button class="btn" type="button" id="re-go">Confirmer</button></div></div></div>'
+       . '<form id="re-form" method="post" autocomplete="on">'   // vrai formulaire : Chrome associe identifiant + mot de passe ici et plus à un champ de recherche
+       . '<input class="sr" type="text" name="username" value="' . h((string)($_SESSION['user']['email'] ?? '')) . '" autocomplete="username" readonly tabindex="-1" aria-hidden="true">'
+       . '<input class="in" type="password" id="re-pass" name="password" autocomplete="current-password" placeholder="Mot de passe"><p class="err" id="re-err"></p>'
+       . '<div class="row"><button class="btn ghost" type="button" data-close>Annuler</button><button class="btn" type="submit" id="re-go">Confirmer</button></div></form></div></div>'
        . '<div class="modal" id="m-confirm" hidden><div class="dlg"><h3 id="cf-title">Confirmer</h3><p id="cf-text"></p>'
        . '<div id="cf-typed" hidden><p class="hint">Pour confirmer, tapez <b id="cf-word"></b> :</p><input class="in" id="cf-in" autocomplete="off"></div>'
        . '<div class="row"><button class="btn ghost" type="button" data-close>Annuler</button><button class="btn" type="button" id="cf-go">Confirmer</button></div></div></div>'
        . '<div class="toast" id="toast" role="status"></div>'
        . '<script type="application/json" id="adm-data">' . json_encode($page + ['reauth' => adm_reauth_ok() ? max(0, ADM_REAUTH_TTL - (time() - (int)$_SESSION['adm_reauth'])) : 0], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '</script>'
-       . '<script src="assets/admin.js?v=1"></script></body></html>';
+       . '<script src="assets/admin.js?v=2"></script></body></html>';
 }
 
 /* ----------------------------------------------------------------- entités */

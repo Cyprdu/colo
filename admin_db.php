@@ -7,7 +7,7 @@ adm_head('Base de données', 'admin_db.php');
 ?>
 <div id="db-app" class="db">
   <aside class="db-tables card">
-    <label class="search"><?= ic('search') ?><input class="in" id="db-filter" type="search" placeholder="Filtrer les tables…" autocomplete="off"></label>
+    <label class="search"><?= ic('search') ?><input class="in" id="db-filter" type="search" name="tblflt" placeholder="Filtrer les tables…" autocomplete="off" data-lpignore="true" data-1p-ignore></label>
     <ul id="db-list" class="tlist"><li class="muted">Chargement…</li></ul>
   </aside>
   <section class="db-main">
@@ -19,7 +19,7 @@ adm_head('Base de données', 'admin_db.php');
     <div id="db-view" hidden>
       <div class="bar">
         <h2 id="db-title" class="tname"></h2>
-        <label class="search"><?= ic('search') ?><input class="in" id="db-q" type="search" placeholder="Rechercher dans la table…" autocomplete="off"></label>
+        <label class="search"><?= ic('search') ?><input class="in" id="db-q" type="search" name="rowsrch" placeholder="Rechercher dans la table…" autocomplete="off" data-lpignore="true" data-1p-ignore></label>
         <button class="btn ghost" id="db-new" type="button"><?= ic('plus') ?> Nouvelle ligne</button>
         <span class="count" id="db-count"></span>
       </div>
