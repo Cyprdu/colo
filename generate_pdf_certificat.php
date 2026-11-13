@@ -138,7 +138,7 @@ if (!$isPaid) $pdf->Row('Reste à payer', eur(max(0, $tot['due'] - $tot['paid'])
 $pdf->Row('Moyen de paiement', $mode, false);
 $pdf->Ln(3);
 $pdf->SetFont('Arial', 'B', 12);
-if ($isPaid) $pdf->SetFillColor(220, 245, 232); else $pdf->SetFillColor(253, 240, 214);
+if ($isPaid) $pdf->SetFillColor(229, 233, 236); else $pdf->SetFillColor(248, 245, 234);   // ardoise clair / crème : couleurs du site
 $pdf->Cell(0, 11, enc('  Statut : ' . ($isPaid ? 'PAYÉ' : mb_strtoupper($status[1]))), 0, 1, 'L', true);
 
 // Mention

@@ -204,7 +204,7 @@ require_once 'partials/header.php';
 
             <div class="ii-card p-6 text-center">
                 <div class="w-16 h-16 mx-auto rounded-full bg-[#f1f3f5] overflow-hidden flex items-center justify-center text-[22px] font-bold text-[#26343b]">
-                    <?php if (!empty($m['orga_logo'])): ?><img src="<?= htmlspecialchars($m['orga_logo']) ?>" alt="" class="w-full h-full object-contain" onerror="this.remove()"><?php else: echo htmlspecialchars(mb_strtoupper(mb_substr((string)$m['orga_nom'], 0, 1))); endif; ?>
+                    <?php if (!empty($m['orga_logo'])): ?><img src="<?= htmlspecialchars($m['orga_logo']) ?>" alt="" class="w-full h-full object-contain" onerror="this.parentNode.textContent=<?= htmlspecialchars(json_encode(mb_strtoupper(mb_substr((string)$m['orga_nom'], 0, 1))), ENT_QUOTES) ?>"><?php else: echo htmlspecialchars(mb_strtoupper(mb_substr((string)$m['orga_nom'], 0, 1))); endif; ?>
                 </div>
                 <p class="mt-3 text-[17px] font-bold text-[#26343b]"><?= htmlspecialchars((string)$m['orga_nom']) ?></p>
                 <p class="text-[13px] text-[#6b7780]">Organisateur du séjour</p>
