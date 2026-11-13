@@ -10,7 +10,7 @@ if (empty($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fin(['success' => false, 'message' => 'Méthode non autorisée'], 405);
 
 try {
-    options_ensure($pdo); attente_ensure($pdo);
+    options_ensure($pdo); attente_ensure($pdo); etapes_ensure($pdo);
     [$data, $tarifIds, $err] = camp_lire_formulaire($pdo, (int)$_SESSION['user']['id'], $_POST);
     if ($err) fin(['success' => false, 'message' => $err], 422);
 
@@ -27,6 +27,7 @@ try {
     camp_enregistrer_tarifs($pdo, $campId, $tarifIds);
     camp_enregistrer_attente($pdo, $campId, $_POST);
     options_enregistrer($pdo, $campId, $_POST);
+    etapes_enregistrer($pdo, $campId, !empty($data['itinerant']), $_POST['etapes'] ?? '[]');
     $pdo->commit();
 
     fin(['success' => true, 'token' => $data['token'], 'camp_id' => $campId]);

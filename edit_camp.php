@@ -11,6 +11,7 @@ require_once 'api/options.php';
 require_once 'api/attente.php';
 require_once 'api/tarifs.php';
 require_once 'api/champs.php';
+require_once 'api/etapes.php';
 options_ensure($pdo); attente_ensure($pdo); tarifs_ensure($pdo);
 
 // Le séjour doit appartenir à un organisme du directeur connecté
@@ -26,6 +27,7 @@ $organisateurs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmt = $pdo->prepare("SELECT t.* FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE ct.camp_id = ? ORDER BY t.nom");
 $stmt->execute([$camp['id']]);
 $currentTarifs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$etapesActuelles = etapes_du_camp($pdo, (int)$camp['id']);
 $champsActuels = champs_du_camp($pdo, (int)$camp['id']);
 $att = ['attente_paiement' => $camp['attente_paiement'] ?? 1, 'attente_jours' => $camp['attente_jours'] ?? ATTENTE_DEFAUT_JOURS];
 

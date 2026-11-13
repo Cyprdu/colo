@@ -162,6 +162,7 @@ require_once 'partials/header3.php';
                             <p id="info-place" class="mt-1 text-[16px] font-semibold text-[#26343b]"></p>
                         </div>
                     </div>
+                    <div id="route" class="mt-4 rounded-2xl bg-[#f8f5ea] p-5 hidden"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Parcours itinérant</p><ol id="route-list"></ol></div>
                     <div id="info-extra" class="mt-4 space-y-4 hidden"></div>
                     <div class="mt-4 rounded-3xl overflow-hidden border border-[#e5e7eb]">
                         <iframe id="map-frame" title="Carte" class="w-full block" style="height:300px;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
@@ -325,6 +326,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         $('info-duration').textContent = r ? `${r.nights + 1} jour${r.nights + 1 > 1 ? 's' : ''} / ${nightsLabel(r.nights)}` : 'À confirmer';
         $('info-age').textContent = `${camp.age_min} à ${camp.age_max} ans`;
         $('info-place').textContent = [camp.adresse, [camp.code_postal, camp.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') || (camp.ville || '');
+        // Parcours d'un séjour itinérant
+        if (Array.isArray(camp.etapes) && camp.etapes.length) {
+            $('route-list').innerHTML = camp.etapes.map(e => `<li class="relative pl-10 pb-5 last:pb-0"><span class="absolute left-0 top-0 w-7 h-7 rounded-full bg-[#2f3d45] text-white text-[12px] font-bold flex items-center justify-center">${esc(e.jour)}</span><span class="absolute left-[13px] top-7 bottom-0 w-px bg-[#d3dbe0]"></span><p class="font-bold text-[#26343b]">Jour ${esc(e.jour)} · ${esc(e.lieu)}</p>${e.description ? `<p class="text-[14px] text-[#3b4a54] mt-0.5 whitespace-pre-line">${esc(e.description)}</p>` : ''}</li>`).join('');
+            $('route').classList.remove('hidden');
+        } else { $('route').classList.add('hidden'); }
         // Options du directeur : public, hébergement, inclus, moyens de paiement acceptés
         (function () {
             const box = [], cell = (t, v) => v ? `<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]">${esc(t)}</p><p class="mt-1 text-[15px] font-semibold text-[#26343b] whitespace-pre-line">${esc(v)}</p></div>` : '';

@@ -100,6 +100,14 @@ $tick = $svg('check', 'w-3 h-3');
                     <div><label class="ds-label" for="paysInput">Pays</label>
                         <select id="paysInput" name="pays" class="ds-select"><?php foreach ($paysList as $p): ?><option <?= ($edit ? ($camp['pays'] ?? 'France') : 'France') === $p ? 'selected' : '' ?>><?= htmlspecialchars($p) ?></option><?php endforeach; ?></select></div>
                     <label class="ds-opt self-end"><input type="checkbox" name="itinerant" value="1" <?= $chk('itinerant') ?>><span class="ds-tick"><?= $tick ?></span><span><span class="ds-opt-title block">Séjour itinérant</span><span class="ds-opt-sub block">Le groupe change de lieu : l'adresse est le point de départ.</span></span></label>
+                    <div id="etapesBox" class="md:col-span-2 <?= $chk('itinerant') ? '' : 'hidden' ?>">
+                        <div class="ds-sub">
+                            <p class="ds-label">Étapes du parcours</p>
+                            <p class="ds-hint !mt-0 mb-3">Un lieu par jour : où l'on dort, et une note sur le trajet (ex. étape à vélo de 45 km).</p>
+                            <div id="etapesList" class="space-y-3"></div>
+                            <button type="button" class="ds-btn ds-btn-light ds-btn-sm mt-3" onclick="Etapes.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une étape</button>
+                        </div>
+                    </div>
                     <div><label class="ds-label" for="f-debut">Début *</label><input id="f-debut" type="date" name="date_debut" class="ds-input" required value="<?= $val('date_debut') ?>"></div>
                     <div><label class="ds-label" for="f-fin">Fin *</label><input id="f-fin" type="date" name="date_fin" class="ds-input" required value="<?= $val('date_fin') ?>"></div>
                 </div>
@@ -296,6 +304,7 @@ let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => (int)$o['id'], 'nom' =>
 let SELECTED = <?= json_encode(array_map(fn($t) => (int)$t['id'], $currentTarifs ?? [])) ?>;
 let TARIFS = <?= json_encode(array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'montant_libre' => (int)$t['montant_libre'], 'montant_min' => $t['montant_min'] ?? null, 'organisateur_id' => (int)($t['organisateur_id'] ?? 0)], $currentTarifs ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let CHAMPS = <?= json_encode(array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], $champsActuels ?? []), JSON_UNESCAPED_UNICODE) ?>;
+let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'lieu' => $e['lieu'], 'description' => (string)$e['description']], $etapesActuelles ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let TAGS = <?= json_encode($tagsInit, JSON_UNESCAPED_UNICODE) ?>;
 
 const $ = id => document.getElementById(id);
@@ -522,6 +531,22 @@ const Champs = {
 };
 Champs.render();
 
+// ------------------------------------------------ étapes du parcours (séjour itinérant)
+const Etapes = {
+    add() { const last = ETAPES[ETAPES.length - 1]; ETAPES.push({ jour: last ? last.jour + 1 : 1, lieu: '', description: '' }); this.render(); },
+    render() {
+        $('etapesList').innerHTML = ETAPES.length ? ETAPES.map((e, i) => `
+            <div class="border border-[#e5e7eb] rounded-2xl p-4 bg-[#fafbfb]"><div class="grid grid-cols-12 gap-3 items-end">
+              <div class="col-span-3 sm:col-span-2"><label class="ds-label">Jour</label><input type="number" min="1" class="ds-input" value="${e.jour}" oninput="ETAPES[${i}].jour=+this.value"></div>
+              <div class="col-span-9 sm:col-span-9"><label class="ds-label">Lieu de couchage / ville</label><input class="ds-input" maxlength="160" value="${esc(e.lieu)}" oninput="ETAPES[${i}].lieu=this.value" placeholder="Ex : Gîte de Saint-Flour"></div>
+              <div class="col-span-12 sm:col-span-1 flex justify-end"><button type="button" class="ds-iconbtn danger" aria-label="Supprimer l'étape" onclick="ETAPES.splice(${i},1);Etapes.render()">${ICON.trash}</button></div>
+              <div class="col-span-12"><label class="ds-label">Note sur le trajet</label><textarea rows="2" maxlength="1000" class="ds-textarea" oninput="ETAPES[${i}].description=this.value" placeholder="Ex : 45 km à vélo, pique-nique au bord du lac">${esc(e.description)}</textarea></div>
+            </div></div>`).join('') : '<p class="ds-hint !mt-0">Aucune étape pour le moment.</p>';
+    }
+};
+document.querySelector('input[name=itinerant]').addEventListener('change', e => { $('etapesBox').classList.toggle('hidden', !e.target.checked); if (e.target.checked && !ETAPES.length) Etapes.add(); });
+Etapes.render();
+
 // ------------------------------------------------ envoi
 $('campForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -535,7 +560,7 @@ $('campForm').addEventListener('submit', async e => {
     btn.disabled = true; const label = btn.textContent; btn.textContent = 'Enregistrement…';
     try {
         const fd = new FormData(form);
-        fd.set('type', TAGS.join(', ')); fd.set('tarifs', JSON.stringify(SELECTED));
+        fd.set('type', TAGS.join(', ')); fd.set('tarifs', JSON.stringify(SELECTED)); fd.set('etapes', JSON.stringify(ETAPES.filter(x => x.lieu.trim() !== '')));
         const r = await fetch(IS_EDIT ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');

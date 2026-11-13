@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') fin(['success' => false, 'message' =>
 
 $uid = (int)$_SESSION['user']['id'];
 try {
-    options_ensure($pdo); attente_ensure($pdo);
+    options_ensure($pdo); attente_ensure($pdo); etapes_ensure($pdo);
     // Le séjour est désigné par son jeton secret (jamais par un identifiant numérique)
     $st = $pdo->prepare("SELECT c.id, c.image_url FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE c.token = ? AND o.user_id = ?");
     $st->execute([(string)($_POST['token'] ?? ''), $uid]);
@@ -30,6 +30,7 @@ try {
     camp_enregistrer_tarifs($pdo, $campId, $tarifIds);
     camp_enregistrer_attente($pdo, $campId, $_POST);
     options_enregistrer($pdo, $campId, $_POST);
+    etapes_enregistrer($pdo, $campId, !empty($data['itinerant']), $_POST['etapes'] ?? '[]');
     $pdo->commit();
 
     fin(['success' => true]);

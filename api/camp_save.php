@@ -2,6 +2,7 @@
 // api/camp_save.php : lecture / validation du formulaire de séjour, partagée par add_camp.php et update_camp.php.
 require_once __DIR__ . '/options.php';
 require_once __DIR__ . '/attente.php';
+require_once __DIR__ . '/etapes.php';
 
 /**
  * Valide $in (le POST du formulaire) pour le directeur $uid.
