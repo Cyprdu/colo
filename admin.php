@@ -1,95 +1,89 @@
 <?php
-// 1. D'ABORD LA CONFIG (Session start est dedans)
-require_once 'api/config.php';
+// admin.php : tableau de bord du back-office
+require_once __DIR__ . '/admin_lib.php';
+adm_guard();
 
-// 2. SÉCURITÉ
-if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_admin'])) {
-    header('Location: index');
-    exit;
-}
+$k = [
+    'users'      => adm_one("SELECT COUNT(*) FROM users"),
+    'users30'    => adm_one("SELECT COUNT(*) FROM users WHERE created_at >= (NOW() - INTERVAL 30 DAY)"),
+    'orgas'      => adm_one("SELECT COUNT(*) FROM organisateurs"),
+    'camps'      => adm_one("SELECT COUNT(*) FROM camps WHERE supprime = 0"),
+    'campsok'    => adm_one("SELECT COUNT(*) FROM camps WHERE valide = 1 AND supprime = 0"),
+    'insc'       => adm_one("SELECT COUNT(*) FROM inscriptions"),
+    'inscpay'    => adm_one("SELECT COUNT(*) FROM inscriptions WHERE statut_paiement = 'PAYE' AND montant_paye > 0"),
+    'ca'         => adm_one("SELECT COALESCE(SUM(montant_paye), 0) FROM inscriptions WHERE statut_paiement = 'PAYE'"),
+    'ca30'       => adm_one("SELECT COALESCE(SUM(montant_paye), 0) FROM inscriptions WHERE statut_paiement = 'PAYE' AND id IN (SELECT id FROM inscriptions)"),
+    'commission' => adm_one("SELECT COALESCE(SUM(montant_total - montant_apres_commission), 0) FROM virements"),
+    'wallets'    => adm_one("SELECT COALESCE(SUM(portefeuille), 0) FROM organisateurs"),
+];
+$b = adm_badges();
+$pending = [
+    ['Demandes directeur', $b['users'], 'admin_list.php?e=users&f=demandes', 'users'],
+    ['Séjours à valider', $b['camps'], 'admin_list.php?e=camps&f=attente', 'tent'],
+    ['Virements à traiter', $b['virements'], 'admin_list.php?e=virements&f=attente', 'bank'],
+    ['Messages sans réponse', $b['contacts'], 'admin_list.php?e=contacts&f=attente', 'mail'],
+];
+$months = adm_rows("SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, COUNT(*) AS n FROM users WHERE created_at >= (NOW() - INTERVAL 6 MONTH) GROUP BY m ORDER BY m");
+$maxm = max(1, ...array_map('intval', array_column($months, 'n') ?: [1]));
+$recent = adm_rows("SELECT i.id, i.statut, i.statut_paiement, i.prix_final, c.nom AS camp, CONCAT_WS(' ', e.prenom, e.nom) AS enfant
+                    FROM inscriptions i LEFT JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id ORDER BY i.id DESC LIMIT 6");
+$audit = adm_rows("SELECT action, cible, email, created_at FROM admin_audit ORDER BY id DESC LIMIT 6");
+$n = fn($v) => number_format((int)$v, 0, ',', ' ');
 
-// 3. LOGIQUE
-$error = null;
-
-try {
-    // Récupérer le nombre de demandes d'accès directeur en attente
-    $stmtDirectors = $pdo->query("SELECT COUNT(*) FROM users WHERE is_directeur = 0 AND demande_en_cours = 1");
-    $countDirectors = $stmtDirectors->fetchColumn();
-
-    // Récupérer le nombre de demandes de camps en attente
-    $stmtCamps = $pdo->query("SELECT COUNT(*) FROM camps WHERE en_attente = 1 AND valide = 0 AND refuse = 0");
-    $countCamps = $stmtCamps->fetchColumn();
-    
-    // Récupérer le nombre de demandes de virement en attente (NOUVEAU)
-    $stmtVirements = $pdo->query("SELECT COUNT(*) FROM virements WHERE effectue = 0");
-    $countVirements = $stmtVirements->fetchColumn();
-
-} catch (Exception $e) {
-    $error = "Erreur SQL : " . $e->getMessage();
-}
-
-// 4. AFFICHAGE HTML
-require_once 'partials/header.php';
+adm_head('Tableau de bord', 'admin.php');
 ?>
+<section class="kpis">
+  <div class="kpi"><span class="ico"><?= ic('users') ?></span><div><b><?= $n($k['users']) ?></b><span>Utilisateurs</span><small>+<?= $n($k['users30']) ?> ces 30 jours</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('building') ?></span><div><b><?= $n($k['orgas']) ?></b><span>Organismes</span><small>Portefeuilles : <?= adm_money($k['wallets']) ?></small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('tent') ?></span><div><b><?= $n($k['camps']) ?></b><span>Séjours</span><small><?= $n($k['campsok']) ?> validés</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= $n($k['insc']) ?></b><span>Inscriptions</span><small><?= $n($k['inscpay']) ?> payées</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= adm_money($k['ca']) ?></b><span>Chiffre d'affaires</span><small>Paiements encaissés</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= adm_money($k['commission']) ?></b><span>Commissions</span><small>Sur les virements demandés</small></div></div>
+</section>
 
-<title>Tableau de bord Administrateur</title>
+<h2 class="sec"><?= ic('clock') ?> À traiter</h2>
+<section class="todo">
+<?php foreach ($pending as [$label, $count, $href, $icon]): ?>
+  <a class="todo-i<?= $count ? ' hot' : '' ?>" href="<?= h($href) ?>"><?= ic($icon) ?><span><?= h($label) ?></span><b><?= (int)$count ?></b><?= ic('next', 'ic ic-sm') ?></a>
+<?php endforeach; ?>
+</section>
 
-<div class="min-h-screen bg-gray-50 py-10 font-sans">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 class="text-3xl font-extrabold text-[#0A112F] mb-8">Tableau de bord Administrateur</h1>
-        
-        <?php if ($error): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">
-                <p class="font-bold">Attention</p>
-                <p><?= $error ?></p>
-            </div>
-        <?php endif; ?>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            
-            <a href="admin_requests" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition duration-300 border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-xl font-bold text-gray-900">Demandes Directeurs</h2>
-                    <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                </div>
-                <p class="text-4xl font-extrabold text-[#0A112F] mt-4"><?= $countDirectors ?></p>
-                <p class="text-gray-500 mt-1">Demandes d'accès à valider</p>
-            </a>
-
-            <a href="admin_camp_requests" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition duration-300 border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-xl font-bold text-gray-900">Validation des Camps</h2>
-                    <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                </div>
-                <p class="text-4xl font-extrabold text-[#0A112F] mt-4"><?= $countCamps ?></p>
-                <p class="text-gray-500 mt-1">Camps en attente de modération</p>
-            </a>
-            
-            <a href="admin_demande_virement" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition duration-300 border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-xl font-bold text-gray-900">Demandes de Virement</h2>
-                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                </div>
-                <p class="text-4xl font-extrabold text-[#0A112F] mt-4"><?= $countVirements ?></p>
-                <p class="text-gray-500 mt-1">Demandes de virement à traiter</p>
-            </a>
-            
-            <div class="lg:col-span-3">
-                <h2 class="text-2xl font-bold text-[#0A112F] mt-10 mb-4 border-b pb-2">Historique et Rapports</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <a href="admin_history_accepted" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition duration-300 border border-gray-200">
-                        <h3 class="text-lg font-semibold text-gray-700">Camps Publiés (Historique)</h3>
-                        <p class="text-sm text-gray-500 mt-1">Voir tous les camps qui ont été acceptés.</p>
-                    </a>
-                    <a href="admin_history_refused" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition duration-300 border border-gray-200">
-                        <h3 class="text-lg font-semibold text-gray-700">Camps Refusés (Historique)</h3>
-                        <p class="text-sm text-gray-500 mt-1">Voir tous les camps qui ont été refusés.</p>
-                    </a>
-                </div>
-            </div>
-            
-        </div>
-    </div>
+<div class="cols">
+  <section class="card">
+    <h2 class="sec"><?= ic('chart') ?> Nouveaux comptes (6 mois)</h2>
+    <?php if (!$months): ?><p class="muted">Pas de données.</p><?php else: ?>
+    <div class="bars"><?php foreach ($months as $m): ?>
+      <div class="bar"><i style="height:<?= max(6, round(100 * (int)$m['n'] / $maxm)) ?>%"></i><b><?= (int)$m['n'] ?></b><span><?= h(substr($m['m'], 5, 2) . '/' . substr($m['m'], 2, 2)) ?></span></div>
+    <?php endforeach; ?></div><?php endif; ?>
+  </section>
+  <section class="card">
+    <h2 class="sec"><?= ic('ticket') ?> Dernières inscriptions</h2>
+    <?php if (!$recent): ?><p class="muted">Aucune inscription.</p><?php else: ?>
+    <ul class="feed"><?php foreach ($recent as $r): ?>
+      <li><span class="dot"></span><div><b><?= h(trim($r['enfant']) ?: 'Participant') ?></b> · <?= h($r['camp'] ?: 'Séjour') ?><small><?= h($r['statut']) ?> · <?= h($r['statut_paiement']) ?> · <?= adm_money($r['prix_final']) ?></small></div></li>
+    <?php endforeach; ?></ul><?php endif; ?>
+    <a class="more" href="admin_list.php?e=inscriptions">Toutes les inscriptions <?= ic('next', 'ic ic-sm') ?></a>
+  </section>
 </div>
 
-<?php require_once 'partials/footer.php'; ?>
+<div class="cols">
+  <section class="card">
+    <h2 class="sec"><?= ic('shield') ?> Dernières actions d'administration</h2>
+    <?php if (!$audit): ?><p class="muted">Aucune action enregistrée.</p><?php else: ?>
+    <ul class="feed"><?php foreach ($audit as $r): ?>
+      <li><span class="dot"></span><div><b><?= h($r['action']) ?></b> <?= h($r['cible']) ?><small><?= h($r['email']) ?> · <?= h(adm_date($r['created_at'])) ?></small></div></li>
+    <?php endforeach; ?></ul><?php endif; ?>
+    <a class="more" href="admin_audit.php">Journal complet <?= ic('next', 'ic ic-sm') ?></a>
+  </section>
+  <section class="card">
+    <h2 class="sec"><?= ic('database') ?> Outils</h2>
+    <div class="tools">
+      <a href="admin_db.php"><?= ic('database') ?><span>Éditeur de base de données</span></a>
+      <a href="admin_sql.php"><?= ic('terminal') ?><span>Console SQL</span></a>
+      <a href="admin_add_camp.php"><?= ic('plus') ?><span>Ajouter un séjour</span></a>
+      <a href="admin_sessions.php"><?= ic('refresh') ?><span>Migration sessions</span></a>
+    </div>
+    <p class="muted small">L'éditeur de base de données et la console SQL demandent votre mot de passe. Toutes les écritures sont journalisées.</p>
+  </section>
+</div>
+<?php adm_foot(); ?>
