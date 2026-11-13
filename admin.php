@@ -24,6 +24,7 @@ $pending = [
     ['Virements à traiter', $b['virements'], 'admin_list.php?e=virements&f=attente', 'bank'],
     ['Messages sans réponse', $b['contacts'], 'admin_list.php?e=contacts&f=attente', 'mail'],
     ['Paiements à marge négative', compta_negative_count($pdo), 'admin_compta.php#negatives', 'alert'],
+    ["Dettes d'organismes", compta_dettes_count($pdo), 'admin_compta.php?v=versements#dettes', 'alert'],
 ];
 $months = adm_rows("SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, COUNT(*) AS n FROM users WHERE created_at >= (NOW() - INTERVAL 6 MONTH) GROUP BY m ORDER BY m");
 $maxm = max(1, ...array_map('intval', array_column($months, 'n') ?: [1]));

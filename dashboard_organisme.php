@@ -104,7 +104,7 @@ require_once 'partials/mk_icons.php';
                         <?php if ($ready): ?>Versements activés<?php elseif ($hasAccount && !empty($acc['details_submitted'])): ?>Vérification en cours chez Stripe<?php elseif ($hasAccount): ?>Finalisez votre inscription pour être payé<?php else: ?>Activez vos versements<?php endif; ?>
                     </b>
                     <p class="mk-note" style="margin-top:4px;font-size:14px">
-                        <?php if ($ready): ?>L'argent des inscriptions est versé automatiquement sur votre compte bancaire, <?= $delay === 0 ? 'dès le début' : 'le ' . ($delay === 1 ? 'lendemain' : 'jour J+' . $delay) . ' du début' ?> de chaque séjour.
+                        <?php if ($ready): ?>L'argent des inscriptions est versé automatiquement sur votre compte bancaire, <?= $fin['jour_nom'] ? 'chaque <b>' . $fin['jour_nom'] . '</b>' : 'une fois par semaine' ?>, sans attendre le séjour.
                         <?php elseif ($hasAccount && !empty($acc['details_submitted'])): ?>Stripe vérifie votre dossier (en général sous 24 à 48 h). Les sommes restent en sécurité et seront versées dès la validation.
                         <?php else: ?>Pour recevoir le paiement des inscriptions, renseignez votre identité et votre IBAN directement chez Stripe, notre prestataire de paiement. ColoMap ne voit ni ne conserve ces données. Compter 5 minutes.<?php endif; ?>
                     </p>
@@ -120,12 +120,12 @@ require_once 'partials/mk_icons.php';
 
     <section class="mk-section" style="margin-top:20px">
         <div class="mk-grid mk-g4">
-            <div class="mk-stat dark"><div class="k">À recevoir</div><div class="v"><?= fin_eur(max(0, $fin['solde_cents'])) ?></div><div class="s">net de commission, hors sommes déjà versées</div></div>
-            <div class="mk-stat"><div class="k">Prêt à être versé</div><div class="v"><?= fin_eur($fin['deblocable_cents']) ?></div><div class="s"><?= $ready ? 'versé au prochain passage (toutes les heures)' : 'en attente de l\'activation des versements' ?></div></div>
+            <div class="mk-stat dark"><div class="k">Disponible au prochain versement</div><div class="v"><?= fin_eur($fin['prochain']['cents'] ?? 0) ?></div><div class="s"><?= $fin['prochain'] ? 'le ' . ($fin['jour_nom'] ?? '') . ' ' . date('d/m/Y', strtotime($fin['prochain']['d'])) : 'jour de versement en cours d\'attribution' ?><?= $ready ? '' : ' (après activation des versements)' ?></div></div>
+            <div class="mk-stat"><div class="k">Réserve retenue</div><div class="v"><?= fin_eur($fin['reserve_cents']) ?></div><div class="s"><?= number_format($fin['reserve_pct'], 0, ',', ' ') ?> % gardés tant qu'une annulation est possible</div></div>
             <div class="mk-stat"><div class="k">Déjà versé</div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div><div class="s"><?= count($transferts) ?> versement<?= count($transferts) > 1 ? 's' : '' ?> récent<?= count($transferts) > 1 ? 's' : '' ?></div></div>
             <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?></div><div class="s">tout compris, par inscription : <?= fin_eur($fin['commission_nette_cents']) ?> au total</div></div>
         </div>
-        <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Votre solde est négatif de <?= fin_eur(-$fin['solde_cents']) ?> (remboursements après versement). Il sera déduit de vos prochains versements.</div><?php endif; ?>
+        <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Vous devez <?= fin_eur(-$fin['solde_cents']) ?> à ColoMap : une famille a été remboursée après que vous avez reçu l'argent. Cette somme est retirée automatiquement de vos prochains versements.</div><?php endif; ?>
         <?php if ($fin['historique_cents'] > 0): ?><div class="mk-tip" style="margin-top:14px"><?= mk_icon('info', 20) ?><div>Un solde de <b><?= fin_eur($fin['historique_cents']) ?></b> provient de l'ancien système de virement. L'équipe ColoMap le règle manuellement : <a class="underline" href="contact.php">contactez-nous</a> si vous souhaitez le recevoir.</div></div><?php endif; ?>
     </section>
 
@@ -136,11 +136,12 @@ require_once 'partials/mk_icons.php';
             <p class="mk-note" style="margin:0 0 16px;font-size:14px">Un seul prélèvement, affiché ligne par ligne : vous voyez toujours le montant payé par la famille, la commission, puis ce qui vous revient.</p>
             <?php [$exC, $exP, $exF] = fin_commission_split(10000); ?>
             <div class="mk-grid mk-g3">
-                <div><b class="text-[#26343b]">1. La famille paie ColoMap</b><p class="mk-note" style="margin-top:4px">Le paiement par carte est encaissé par ColoMap (via Stripe) au moment de l'inscription. La place est réservée aussitôt.</p></div>
+                <div><b class="text-[#26343b]">1. La famille paie ColoMap</b><p class="mk-note" style="margin-top:4px">Le paiement par carte est encaissé par ColoMap (via Stripe) au moment de l'inscription. La place est réservée aussitôt. Une famille peut annuler et être remboursée selon vos conditions d'annulation.</p></div>
                 <div><b class="text-[#26343b]">2. La commission est retenue sur chaque inscription</b><p class="mk-note" style="margin-top:4px"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?> du montant payé. Elle inclut <b>les frais bancaires de paiement par carte</b> : vous n'avez aucun autre frais à payer. Exemple : pour <?= fin_eur(10000) ?> payés, commission <?= fin_eur($exC) ?>, vous recevez <b><?= fin_eur(10000 - $exC) ?></b>.</p></div>
-                <div><b class="text-[#26343b]">3. Vous êtes versé après le départ</b><p class="mk-note" style="margin-top:4px">Le net est transféré <?= $delay === 0 ? 'le jour du départ' : ($delay === 1 ? 'le lendemain du départ' : $delay . ' jours après le départ') ?> sur votre compte Stripe, puis Stripe le verse sur votre compte bancaire (en général 2 à 3 jours ouvrés). En cas de remboursement d'une famille, la commission correspondante vous est aussi restituée au prorata.</p></div>
+                <div><b class="text-[#26343b]">3. Vous êtes versé chaque semaine</b><p class="mk-note" style="margin-top:4px">Pas besoin d'attendre le séjour : <?= $fin['jour_nom'] ? 'chaque <b>' . $fin['jour_nom'] . '</b>' : 'chaque semaine' ?>, vous recevez les inscriptions payées depuis au moins <b><?= (int)$fin['delai_jours'] ?> jours</b> (délai de sécurité contre les erreurs de paiement). Votre jour est fixe. Stripe verse ensuite sur votre compte bancaire (2 à 3 jours ouvrés).</p></div>
             </div>
-            <?php if ($fin['prochain']): ?><div class="mk-tip" style="margin-top:16px"><?= mk_icon('clock', 20) ?><div><b>Prochain versement : <?= fin_eur((int)$fin['prochain']['net']) ?></b> prévu à partir du <b><?= date('d/m/Y', strtotime($fin['prochain']['d'])) ?></b> (<?= (int)$fin['prochain']['n'] ?> inscription<?= $fin['prochain']['n'] > 1 ? 's' : '' ?>)<?= $ready ? '' : ' : activez vos versements ci-dessus pour le recevoir' ?>.</div></div><?php endif; ?>
+            <div class="mk-tip" style="margin-top:16px"><?= mk_icon('shield', 20) ?><div><b>Pourquoi une réserve de <?= number_format($fin['reserve_pct'], 0, ',', ' ') ?> % ?</b> Tant qu'une famille peut encore annuler et être remboursée, nous gardons <?= number_format($fin['reserve_pct'], 0, ',', ' ') ?> % de chaque paiement de côté pour pouvoir la rembourser sans vous redemander d'argent. Cette réserve vous est versée automatiquement dès qu'aucun remboursement n'est plus possible (séjour commencé ou délai d'annulation dépassé). Rien n'est perdu : c'est une mise de côté, pas un frais.</div></div>
+            <?php if ($fin['prochain']): ?><div class="mk-tip" style="margin-top:12px"><?= mk_icon('clock', 20) ?><div><b>Prochain versement : <?= fin_eur((int)$fin['prochain']['cents']) ?></b> le <b><?= date('d/m/Y', strtotime($fin['prochain']['d'])) ?></b><?= $fin['delai_cents'] > 0 ? '. ' . fin_eur($fin['delai_cents']) . ' sont encore dans le délai de sécurité de ' . (int)$fin['delai_jours'] . ' jours et arriveront un peu plus tard' : '' ?><?= $ready ? '' : ' : activez vos versements ci-dessus pour le recevoir' ?>.</div></div><?php endif; ?>
         </div>
     </section>
 
@@ -182,16 +183,16 @@ require_once 'partials/mk_icons.php';
 
     <!-- Prochains versements -->
     <section class="mk-section">
-        <h2>Prochains versements</h2>
-        <p class="lead">Chaque séjour est versé le <?= $delay === 1 ? 'lendemain' : 'jour J+' . $delay ?> de son départ, une fois la période de contestation courante passée.</p>
+        <h2>Mes sommes en attente, séjour par séjour</h2>
+        <p class="lead">Ce qui sera versé au prochain passage, ce qui est gardé en réserve et pourquoi.</p>
         <?php if (!$fin['prochains']): ?>
             <p class="mk-note" style="margin-top:14px">Aucune inscription payée en attente de versement.</p>
         <?php else: ?>
-            <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table">
-                <thead><tr><th>Séjour</th><th>Départ</th><th>Versement prévu</th><th class="num">Inscr.</th><th class="num">Net</th><th>Statut</th></tr></thead>
+            <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:720px">
+                <thead><tr><th>Séjour</th><th>Départ</th><th class="num">Inscr.</th><th class="num">À verser</th><th class="num">Réserve</th><th class="num">Délai de sécurité</th><th>Réserve libérée le</th></tr></thead>
                 <tbody>
-                <?php foreach ($fin['prochains'] as $p): $lbl = ['attente' => ['En attente', 'info'], 'bloque' => ['Suspendu', 'warn'], 'litige' => ['Litige en cours', 'bad'], 'en_cours' => ['En cours d\'envoi', 'info']][$p['statut']] ?? [$p['statut'], '']; ?>
-                    <tr><td><b><?= htmlspecialchars($p['nom']) ?></b></td><td><?= date('d/m/Y', strtotime($p['date_debut'])) ?></td><td><?= date('d/m/Y', strtotime($p['date_deblocage'])) ?></td><td class="num"><?= (int)$p['n'] ?></td><td class="num"><b><?= fin_eur((int)$p['net']) ?></b></td><td><span class="mk-pill <?= $lbl[1] ?>"><?= $lbl[0] ?></span></td></tr>
+                <?php foreach ($fin['prochains'] as $p): ?>
+                    <tr><td><b><?= htmlspecialchars($p['nom']) ?></b></td><td><?= $p['date_debut'] ? date('d/m/Y', strtotime($p['date_debut'])) : '-' ?></td><td class="num"><?= (int)$p['n'] ?></td><td class="num"><b><?= fin_eur((int)$p['ok']) ?></b></td><td class="num"><?= fin_eur((int)$p['held']) ?></td><td class="num"><?= fin_eur((int)$p['wait']) ?></td><td><?= $p['held'] > 0 && $p['libere'] ? date('d/m/Y', strtotime($p['libere'])) : '-' ?></td></tr>
                 <?php endforeach; ?>
                 </tbody></table></div>
         <?php endif; ?>

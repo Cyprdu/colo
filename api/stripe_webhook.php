@@ -146,6 +146,8 @@ try {
     $pdo->commit();
     http_response_code(200);
     echo 'ok';
+    // Remboursement / litige perdu après versement : reversement Stripe (hors transaction : un échec laisse la demande en file, rejouée par le cron)
+    if (in_array($event->type, ['charge.refunded', 'charge.dispute.closed'], true)) { try { $r = []; fin_process_reversals($pdo, $r); } catch (Throwable $e) { error_log('webhook reversement: ' . $e->getMessage()); } }
     // Frais Stripe réels du paiement (hors transaction : un échec n'annule rien, le cron et la page Comptabilité rattrapent)
     if ($feePI) { try { fin_sync_fees($pdo, $feePI); } catch (Throwable $e) { error_log('webhook frais Stripe: ' . $e->getMessage()); } }
 } catch (Throwable $e) {

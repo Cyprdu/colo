@@ -14,7 +14,7 @@
 // inclut les frais de paiement Stripe. Stripe facture ColoMap (≈ 1,5 % + 0,25 € par carte européenne standard) ; l'organisme ne voit
 // qu'une seule commission. Les frais Stripe RÉELS de chaque paiement sont relevés (balance_transaction) : marge ColoMap = commission - frais.
 // Réglages facultatifs (api/config.php, valeurs par défaut si rien en base) :
-//   PLATFORM_COMMISSION_PERCENT (défaut 2.5)   PLATFORM_COMMISSION_FIXED_CENTS (défaut 30)   PAYOUT_DELAY_DAYS (défaut 1 : jour suivant le début du séjour)
+//   PLATFORM_COMMISSION_PERCENT (défaut 2.5)   PLATFORM_COMMISSION_FIXED_CENTS (défaut 30)   (calendrier des versements : api/versements_lib.php, réglages dans Administration > Comptabilité > Versements)
 //   STRIPE_CONNECT_WEBHOOK_SECRET (endpoint « événements des comptes connectés »)   CRON_SECRET
 // Les valeurs saisies dans l'administration (table fin_reglages) l'emportent sur api/config.php.
 
@@ -28,6 +28,7 @@ function fin_reglages(bool $refresh = false): array {
     $c = [
         'commission_pct' => defined('PLATFORM_COMMISSION_PERCENT') ? (float)PLATFORM_COMMISSION_PERCENT : FIN_DEFAULT_PCT,
         'commission_fixe_cents' => defined('PLATFORM_COMMISSION_FIXED_CENTS') ? (int)PLATFORM_COMMISSION_FIXED_CENTS : FIN_DEFAULT_FIXE_CENTS,
+        'delai_securite_jours' => FIN_DEFAULT_DELAI, 'reserve_pct' => FIN_DEFAULT_RESERVE,
     ];
     global $pdo;
     if (isset($pdo) && $pdo instanceof PDO) {
@@ -35,12 +36,15 @@ function fin_reglages(bool $refresh = false): array {
             fin_ensure($pdo);
             foreach ($pdo->query("SELECT cle, valeur FROM fin_reglages")->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
                 if ($k === 'commission_pct') $c[$k] = (float)$v;
-                elseif ($k === 'commission_fixe_cents') $c[$k] = (int)$v;
+                elseif ($k === 'commission_fixe_cents' || $k === 'delai_securite_jours') $c[$k] = (int)$v;
+                elseif ($k === 'reserve_pct') $c[$k] = (float)$v;
             }
         } catch (Throwable $e) { error_log('fin_reglages: ' . $e->getMessage()); }
     }
     $c['commission_pct'] = max(0.0, min(30.0, $c['commission_pct']));
     $c['commission_fixe_cents'] = max(0, min(500, $c['commission_fixe_cents']));
+    $c['delai_securite_jours'] = max(0, min(60, $c['delai_securite_jours']));
+    $c['reserve_pct'] = max(0.0, min(100.0, $c['reserve_pct']));
     return $c;
 }
 function fin_commission_pct(): float { return fin_reglages()['commission_pct']; }
@@ -84,15 +88,6 @@ function fin_allocate(int $total, array $poids): array {
         $out[$k] = $part; $left -= $part;
     }
     return $out;
-}
-function fin_release_delay_days(): int {
-    return max(0, min(30, defined('PAYOUT_DELAY_DAYS') ? (int)PAYOUT_DELAY_DAYS : 1));
-}
-/** Date à partir de laquelle l'argent d'un séjour peut être transféré à l'organisme */
-function fin_release_date(?string $dateDebut): string {
-    $base = $dateDebut ? strtotime($dateDebut) : time();
-    $d = strtotime('+' . fin_release_delay_days() . ' day', strtotime(date('Y-m-d', $base)));
-    return date('Y-m-d H:i:s', max($d, time() + 86400)); // jamais avant demain : laisse le temps aux litiges/remboursements immédiats
 }
 
 /** Ajoute une colonne si elle n'existe pas (idempotent) */
@@ -168,6 +163,37 @@ function fin_ensure(PDO $pdo): void {
             UNIQUE KEY uq_ins (inscription_id), KEY idx_orga (organisateur_id, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         fin_add_col($pdo, 'stripe_comptes', 'statut', "VARCHAR(16) NULL"); // statut déclaré par l'organisme avant l'inscription Stripe
+        // Calendrier des versements : jour fixe par organisme (1 lundi ... 6 samedi), part déjà versée par ligne, détail par transfert, reversements
+        fin_add_col($pdo, 'organisateurs', 'jour_versement', "TINYINT NULL");
+        fin_add_col($pdo, 'fin_paiements', 'verse_cents', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_transferts', 'reverse_cents', "INT NOT NULL DEFAULT 0");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS fin_transfert_lignes (
+            transfert_id INT NOT NULL, paiement_id INT NOT NULL, montant_cents INT NOT NULL, PRIMARY KEY (transfert_id, paiement_id), KEY idx_pai (paiement_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS fin_reversals (
+            id INT AUTO_INCREMENT PRIMARY KEY, organisateur_id INT NOT NULL, paiement_id INT NOT NULL, montant_cents INT NOT NULL, recupere_cents INT NOT NULL DEFAULT 0,
+            statut VARCHAR(8) NOT NULL DEFAULT 'a_faire', -- a_faire | fait | dette
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, maj DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_statut (statut), KEY idx_orga (organisateur_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS fin_reversal_ops (
+            id INT AUTO_INCREMENT PRIMARY KEY, reversal_id INT NOT NULL, transfert_id INT NOT NULL, montant_cents INT NOT NULL,
+            statut VARCHAR(8) NOT NULL DEFAULT 'prevu', -- prevu | ok | echec
+            stripe_reversal_id VARCHAR(64) NULL, erreur VARCHAR(500) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_rev (reversal_id), KEY idx_tr (transfert_id), KEY idx_statut (statut)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        // Migration unique vers le calendrier hebdomadaire (idempotente) : paiements en attente versables après le délai de sécurité, lignes déjà versées soldées
+        $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_versements_v1'");
+        $mig->execute();
+        if (!(int)$mig->fetchColumn()) {
+            $pdo->exec("UPDATE fin_paiements SET verse_cents = GREATEST(0, net_cents - net_rembourse_cents) WHERE statut = 'verse' AND verse_cents = 0");
+            $dv = $pdo->prepare("SELECT valeur FROM fin_reglages WHERE cle = 'delai_securite_jours'"); $dv->execute();
+            $dval = $dv->fetchColumn();
+            $d = $dval !== false ? (int)$dval : FIN_DEFAULT_DELAI;
+            $pdo->prepare("UPDATE fin_paiements SET date_deblocage = DATE_ADD(created_at, INTERVAL ? DAY) WHERE statut = 'attente' AND date_deblocage > DATE_ADD(created_at, INTERVAL ? DAY)")->execute([$d, $d]);
+            $pdo->exec("INSERT IGNORE INTO fin_reglages (cle, valeur, par) VALUES ('migr_versements_v1', '1', 'migration')");
+        }
+        fin_assign_jours($pdo);
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
     }
@@ -265,6 +291,7 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
         $full = $newRef >= $brut && (int)$p['annul_com'] === 0 && $att === 0;
         $statut = ($full && in_array($p['statut'], ['attente', 'bloque', 'litige'], true)) ? 'rembourse' : $p['statut'];
         $pdo->prepare("UPDATE fin_paiements SET rembourse_cents = ?, net_rembourse_cents = ?, statut = ? WHERE id = ?")->execute([$newRef, $newNetRef, $statut, $p['id']]);
+        fin_reversal_demander($pdo, $p, $newNetRef); // part déjà versée à l'organisme : à récupérer par reversement Stripe, sinon dette
         // Solde de l'organisme : même si le net a déjà été transféré, le solde devient négatif et sera compensé sur ses prochains séjours
         $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$delta / 100, $p['organisateur_id']]);
         fin_audit($pdo, 'remboursement', 'inscription', $p['inscription_id'], ['rembourse_cents' => $newRef, 'net_retire' => $delta, 'deja_verse' => $p['statut'] === 'verse'], 'webhook');
@@ -439,136 +466,9 @@ function fin_account_ready(?array $acc): bool {
     return $acc && !empty($acc['transfers_actif']) && !empty($acc['payouts_enabled']);
 }
 
-// ---------------------------------------------------------------------------------------------
-// Déblocage : transfert du net vers l'organisme
-// ---------------------------------------------------------------------------------------------
-/**
- * Transfère aux organismes l'argent des séjours dont la date de déblocage est passée.
- * Verrou global (un seul passage à la fois). Retourne un petit rapport.
- */
-function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = null): array {
-    fin_ensure($pdo);
-    $rep = ['transferts' => 0, 'montant_cents' => 0, 'reportes' => 0, 'erreurs' => 0];
-    $lock = (int)$pdo->query("SELECT GET_LOCK('colomap_fin_release', 0)")->fetchColumn();
-    if (!$lock) return $rep + ['verrou' => true];
-    try {
-        fin_retry_pending($pdo, $rep);
-        $sql = "SELECT DISTINCT organisateur_id FROM fin_paiements WHERE statut = 'attente' AND date_deblocage <= NOW()";
-        $ids = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($ids as $orgaId) {
-            $orgaId = (int)$orgaId;
-            if ($onlyOrga && $orgaId !== $onlyOrga) continue;
-            try {
-                $acc = fin_account($pdo, $orgaId);
-                if (!$acc || !fin_account_ready($acc)) { try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { $acc = null; } }
-                if (!fin_account_ready($acc)) { $rep['reportes']++; continue; }
-                $tid = fin_prepare_transfer($pdo, $orgaId, $acc['account_id'], 'sejour');
-                if (!$tid) { $rep['reportes']++; continue; }
-                $r = fin_execute_transfer($pdo, $tid, $acteur);
-                if ($r === 'envoye') { $rep['transferts']++; } elseif ($r === 'echec') { $rep['erreurs']++; }
-            } catch (Throwable $e) {
-                $rep['erreurs']++;
-                error_log("fin_release_due orga $orgaId: " . $e->getMessage());
-            }
-        }
-    } finally {
-        $pdo->query("SELECT RELEASE_LOCK('colomap_fin_release')");
-    }
-    return $rep;
-}
 
-/**
- * Étape 1 (transaction) : fige le montant à transférer, marque les lignes « en_cours », réserve le solde.
- * Le montant = min(net restant des séjours débloqués, solde du portefeuille) : les points achetés sur le CA et les
- * remboursements déjà déduits du solde sont donc pris en compte. Retourne l'id du transfert ou null s'il n'y a rien à verser.
- */
-function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $type): ?int {
-    $pdo->beginTransaction();
-    try {
-        $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
-        $st->execute([$orgaId]);
-        $pf = (int)round((float)$st->fetchColumn() * 100);
-        $st = $pdo->prepare("SELECT id, net_cents, net_rembourse_cents FROM fin_paiements
-                             WHERE organisateur_id = ? AND statut = 'attente' AND date_deblocage <= NOW() FOR UPDATE");
-        $st->execute([$orgaId]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-        $due = 0;
-        foreach ($rows as $r) $due += max(0, (int)$r['net_cents'] - (int)$r['net_rembourse_cents']);
-        $amt = min($due, $pf);
-        if (!$rows || $amt <= 0) { $pdo->rollBack(); return null; }
 
-        $token = bin2hex(random_bytes(30));
-        $pdo->prepare("INSERT INTO fin_transferts (token, organisateur_id, montant_cents, type, statut, stripe_account_id, nb_paiements) VALUES (?, ?, ?, ?, 'en_cours', ?, ?)")
-            ->execute([$token, $orgaId, $amt, $type, $accountId, count($rows)]);
-        $tid = (int)$pdo->lastInsertId();
-        $ids = array_map(function ($r) { return (int)$r['id']; }, $rows);
-        $in = implode(',', $ids);
-        $pdo->exec("UPDATE fin_paiements SET statut = 'en_cours', transfert_id = $tid WHERE id IN ($in)");
-        $pdo->prepare("UPDATE organisateurs SET portefeuille = portefeuille - ? WHERE id = ?")->execute([$amt / 100, $orgaId]);
-        fin_audit($pdo, 'transfert_prepare', 'transfert', $tid, ['organisateur' => $orgaId, 'cents' => $amt, 'lignes' => count($rows), 'du' => $due, 'solde' => $pf], 'systeme');
-        $pdo->commit();
-        return $tid;
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        throw $e;
-    }
-}
 
-/**
- * Étape 2 : appel Stripe avec clé d'idempotence (rejouable sans risque de double paiement).
- * Retourne 'envoye', 'echec' (erreur définitive : tout est remis en attente) ou 'incertain' (réseau : sera rejoué).
- */
-function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): string {
-    $st = $pdo->prepare("SELECT * FROM fin_transferts WHERE id = ?");
-    $st->execute([$tid]);
-    $t = $st->fetch(PDO::FETCH_ASSOC);
-    if (!$t || $t['statut'] !== 'en_cours') return $t['statut'] ?? 'echec';
-    $pdo->prepare("UPDATE fin_transferts SET tentatives = tentatives + 1 WHERE id = ?")->execute([$tid]);
-    try {
-        $tr = fin_stripe()->transfers->create([
-            'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'destination' => $t['stripe_account_id'],
-            'transfer_group' => 'ORGA' . $t['organisateur_id'],
-            'description' => 'ColoMap : reversement des séjours (réf. ' . substr($t['token'], 0, 10) . ')',
-            'metadata' => ['transfert_id' => (string)$tid, 'organisateur_id' => (string)$t['organisateur_id'], 'type' => $t['type']],
-        ], ['idempotency_key' => 'colomap-transfer-' . $tid]);
-        $pdo->beginTransaction();
-        $pdo->prepare("UPDATE fin_transferts SET statut = 'envoye', stripe_transfer_id = ?, erreur = NULL WHERE id = ?")->execute([$tr->id, $tid]);
-        $pdo->prepare("UPDATE fin_paiements SET statut = 'verse' WHERE transfert_id = ? AND statut = 'en_cours'")->execute([$tid]);
-        fin_audit($pdo, 'transfert_envoye', 'transfert', $tid, ['stripe' => $tr->id, 'cents' => (int)$t['montant_cents']], $acteur);
-        $pdo->commit();
-        return 'envoye';
-    } catch (\Stripe\Exception\ApiErrorException $e) {
-        $code = (int)$e->getHttpStatus();
-        $definitive = $code >= 400 && $code < 500 && $code !== 429;
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        if (!$definitive) {
-            $pdo->prepare("UPDATE fin_transferts SET erreur = ? WHERE id = ?")->execute([mb_substr($e->getMessage(), 0, 450), $tid]);
-            return 'incertain';
-        }
-        // Erreur définitive (compte non prêt, solde plateforme insuffisant...) : on remet les lignes en attente et on rend le solde
-        $pdo->beginTransaction();
-        $pdo->prepare("UPDATE fin_transferts SET statut = 'echec', erreur = ? WHERE id = ?")->execute([mb_substr($e->getMessage(), 0, 450), $tid]);
-        $pdo->prepare("UPDATE fin_paiements SET statut = 'attente', transfert_id = NULL WHERE transfert_id = ? AND statut = 'en_cours'")->execute([$tid]);
-        $pdo->prepare("UPDATE organisateurs SET portefeuille = portefeuille + ? WHERE id = ?")->execute([(int)($t['brut_cents'] ?: $t['montant_cents']) / 100, $t['organisateur_id']]);
-        fin_audit($pdo, 'transfert_echec', 'transfert', $tid, ['erreur' => $e->getMessage()], $acteur);
-        $pdo->commit();
-        return 'echec';
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        $pdo->prepare("UPDATE fin_transferts SET erreur = ? WHERE id = ?")->execute([mb_substr($e->getMessage(), 0, 450), $tid]);
-        return 'incertain';
-    }
-}
-
-/** Rejoue les transferts restés « en_cours » (réponse perdue) : la clé d'idempotence garantit qu'un seul transfert existe côté Stripe */
-function fin_retry_pending(PDO $pdo, array &$rep): void {
-    $ids = $pdo->query("SELECT id FROM fin_transferts WHERE statut = 'en_cours' AND updated_at < DATE_SUB(NOW(), INTERVAL 2 MINUTE) AND tentatives < 10")->fetchAll(PDO::FETCH_COLUMN);
-    foreach ($ids as $id) {
-        $r = fin_execute_transfer($pdo, (int)$id, 'cron');
-        if ($r === 'envoye') $rep['transferts']++;
-        elseif ($r === 'echec') $rep['erreurs']++;
-    }
-}
 
 /**
  * Solde « historique » (ancien système : crédité en brut sans suivi par inscription) : versé net de commission sur décision d'un administrateur.
@@ -601,56 +501,6 @@ function fin_transfer_legacy(PDO $pdo, int $orgaId, string $acteur): ?int {
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Vues pour les tableaux de bord
-// ---------------------------------------------------------------------------------------------
-/** Situation financière d'un organisme (centimes) */
-function fin_overview(PDO $pdo, int $orgaId): array {
-    fin_ensure($pdo);
-    $st = $pdo->prepare("SELECT portefeuille, solde_points FROM organisateurs WHERE id = ?");
-    $st->execute([$orgaId]);
-    $o = $st->fetch(PDO::FETCH_ASSOC) ?: ['portefeuille' => 0, 'solde_points' => 0];
-
-    $st = $pdo->prepare("SELECT
-            SUM(CASE WHEN statut IN ('attente','bloque','litige','en_cours') THEN net_cents - net_rembourse_cents ELSE 0 END) a_recevoir,
-            SUM(CASE WHEN statut = 'attente' AND date_deblocage <= NOW() THEN net_cents - net_rembourse_cents ELSE 0 END) deblocable,
-            SUM(CASE WHEN statut IN ('attente','bloque','litige','en_cours') THEN commission_cents ELSE 0 END) commission_en_cours,
-            SUM(brut_cents - rembourse_cents) brut_total, SUM(commission_cents) commission_total
-         FROM fin_paiements WHERE organisateur_id = ?");
-    $st->execute([$orgaId]);
-    $s = $st->fetch(PDO::FETCH_ASSOC);
-
-    $st = $pdo->prepare("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_transferts WHERE organisateur_id = ? AND statut = 'envoye'");
-    $st->execute([$orgaId]);
-    $verse = (int)$st->fetchColumn();
-
-    $st = $pdo->prepare("SELECT c.nom, c.date_debut, p.date_deblocage, p.statut, SUM(p.net_cents - p.net_rembourse_cents) net, COUNT(*) n
-                         FROM fin_paiements p JOIN camps c ON c.id = p.camp_id
-                         WHERE p.organisateur_id = ? AND p.statut IN ('attente','bloque','litige','en_cours')
-                         GROUP BY p.camp_id, p.date_deblocage, p.statut, c.nom, c.date_debut ORDER BY p.date_deblocage ASC LIMIT 30");
-    $st->execute([$orgaId]);
-
-    // Prochain versement : date de déblocage la plus proche et montant des séjours débloqués ce jour-là
-    $st2 = $pdo->prepare("SELECT DATE(date_deblocage) d, SUM(net_cents - net_rembourse_cents) net, COUNT(*) n FROM fin_paiements
-                          WHERE organisateur_id = ? AND statut = 'attente' GROUP BY DATE(date_deblocage) ORDER BY d ASC LIMIT 1");
-    $st2->execute([$orgaId]);
-    $prochain = $st2->fetch(PDO::FETCH_ASSOC) ?: null;
-    $st2 = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - IF(annul_com = 1, 0, ROUND(commission_cents * rembourse_cents / brut_cents))), 0) com, COALESCE(SUM(commission_fixe_cents), 0) fixe
-                          FROM fin_paiements WHERE organisateur_id = ?");
-    $st2->execute([$orgaId]);
-    $cd = $st2->fetch(PDO::FETCH_ASSOC);
-
-    $solde = (int)round((float)$o['portefeuille'] * 100);
-    return [
-        'prochain' => $prochain, 'commission_nette_cents' => (int)$cd['com'], 'commission_fixe_total_cents' => (int)$cd['fixe'],
-        'solde_cents' => $solde, 'points' => (int)$o['solde_points'],
-        'a_recevoir_cents' => (int)($s['a_recevoir'] ?? 0), 'deblocable_cents' => (int)($s['deblocable'] ?? 0),
-        'verse_cents' => $verse, 'brut_total_cents' => (int)($s['brut_total'] ?? 0), 'commission_total_cents' => (int)($s['commission_total'] ?? 0),
-        // part du solde non rattachée à un paiement suivi (ancien système) : à régler par l'administration
-        'historique_cents' => max(0, $solde - (int)($s['a_recevoir'] ?? 0)),
-        'prochains' => $st->fetchAll(PDO::FETCH_ASSOC),
-    ];
-}
 
 /** Jeton opaque (HMAC) d'un organisme pour les URLs : aucun identifiant numérique exposé */
 function fin_orga_tok(int $orgaId): string {
@@ -736,10 +586,17 @@ function fin_receipt(PDO $pdo, string $token, int $userId, bool $isAdmin = false
     $v = $st->fetch(PDO::FETCH_ASSOC);
     if ($v) {
         if (!$isAdmin && (int)$v['owner'] !== $userId) return null;
-        $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut
-                             FROM fin_paiements p JOIN camps c ON c.id = p.camp_id WHERE p.transfert_id = ? ORDER BY c.date_debut, p.inscription_id");
+        $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut, l.montant_cents AS montant_ligne
+                             FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id JOIN camps c ON c.id = p.camp_id WHERE l.transfert_id = ? ORDER BY c.date_debut, p.inscription_id");
         $st->execute([$v['id']]);
-        return ['type' => 'connect', 'v' => $v, 'orga' => $v, 'lignes' => $st->fetchAll(PDO::FETCH_ASSOC)];
+        $lignes = $st->fetchAll(PDO::FETCH_ASSOC);
+        if (!$lignes) { // transfert d'avant le calendrier hebdomadaire : tout le net était versé
+            $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut
+                                 FROM fin_paiements p JOIN camps c ON c.id = p.camp_id WHERE p.transfert_id = ? ORDER BY c.date_debut, p.inscription_id");
+            $st->execute([$v['id']]);
+            $lignes = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
+        return ['type' => 'connect', 'v' => $v, 'orga' => $v, 'lignes' => $lignes];
     }
     try {
         $st = $pdo->prepare("SELECT v.*, o.nom AS orga_nom, o.adresse_complete, o.code_postal_orga, o.ville_orga, o.user_id AS owner
@@ -756,3 +613,5 @@ function fin_pdf_txt($s): string {
     $r = @iconv('UTF-8', 'windows-1252//TRANSLIT', (string)$s);
     return $r === false ? (string)$s : $r;
 }
+
+require_once __DIR__ . '/versements_lib.php';

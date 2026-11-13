@@ -13,7 +13,7 @@ if (!$cli) {
 }
 try {
     fin_ensure($pdo);
-    $rep = fin_release_due($pdo, 'cron');
+    $rep = fin_release_due($pdo, 'cron', null, true); // seuls les organismes dont c'est le jour de versement (et jours manqués)
     [$rep['frais_releves'], $rep['frais_restants']] = fin_backfill_fees($pdo); // frais Stripe réels non encore relevés
     fin_audit($pdo, 'cron_deblocage', 'job', date('c'), $rep, 'cron');
     echo json_encode($rep), "\n";
