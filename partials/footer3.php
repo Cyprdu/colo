@@ -2,13 +2,13 @@
 // partials/footer3.php : pied de page de l'accueil (fidèle à la maquette)
 // Les liens pointent vers des pages existantes ; legal.php regroupe les pages légales.
 ?>
-<footer class="bg-[#434e5a] text-white mt-16" role="contentinfo">
+<footer class="bg-[#12372a] text-white mt-16" role="contentinfo">
     <div class="w-full max-w-[1320px] mx-auto px-6 sm:px-10 pt-14 pb-16">
         <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.1fr_1fr_1.3fr_1.1fr]">
 
             <!-- Marque -->
             <div>
-                <a href="./" class="inline-block text-[18px] font-extrabold tracking-tight text-white">ColoMap</a>
+                <a href="./" class="font-display inline-block text-[24px] font-bold text-white leading-none">ColoMap</a>
                 <p class="mt-3 text-[15px] leading-snug text-white/90 max-w-[230px]">Prêt à trouver une nouvelle aventure pour vos enfants ?</p>
                 <div class="mt-5 flex flex-wrap gap-2.5">
                     <span class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white" title="Bientôt disponible">

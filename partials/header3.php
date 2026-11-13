@@ -35,11 +35,12 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
-        body { font-family: 'Montserrat', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        body { font-family: 'Figtree', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #12372a; }
+        .font-display { font-family: 'Fraunces', Georgia, serif; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; } 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
         .body-no-scroll { overflow: hidden; } 
@@ -58,18 +59,18 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
                 <!-- Logo -->
                 <a href="<?php echo clean_url('../'); ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="ColoMap, accueil">
                     <svg width="26" height="28" viewBox="0 0 26 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#26343b"/>
-                        <rect x="9" y="22.5" width="2" height="3.2" fill="#26343b"/>
-                        <path d="M17.5 26.5L22 17l4 9.5h-8.5Z" fill="#26343b"/>
+                        <path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#3f7556"/>
+                        <rect x="9" y="22.5" width="2" height="3.2" fill="#3f7556"/>
+                        <path d="M17.5 26.5L22 17l4 9.5h-8.5Z" fill="#12372a"/>
                     </svg>
-                    <span class="text-[19px] font-extrabold text-[#1f2d33] tracking-tight">ColoMap</span>
+                    <span class="font-display text-[23px] font-bold text-[#12372a] leading-none">ColoMap</span>
                 </a>
 
                 <!-- Recherche rapide -->
                 <div id="search-wrapper" class="hidden md:block flex-1 max-w-[400px] transition-all duration-500 ease-in-out">
                     <form action="recherche" method="GET" class="relative group h-full flex items-center">
                         <input type="text" id="desktop-search-input" name="name" placeholder="Rechercher une colo..." autocomplete="off"
-                               class="w-full h-10 bg-[#f1f3f5] border border-transparent focus:border-gray-300 rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all duration-300 text-[13px] text-gray-700 placeholder-gray-400 relative z-20 outline-none">
+                               class="w-full h-10 bg-[#f3f1ea] border border-transparent focus:border-[#4a7c5d] rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all duration-300 text-[13px] text-gray-700 placeholder-gray-400 relative z-20 outline-none">
                         <button type="submit" aria-label="Rechercher" class="absolute right-0 top-1/2 -translate-y-1/2 mr-4 text-gray-400 hover:text-gray-700 transition-colors z-20">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
                         </button>
@@ -79,25 +80,29 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
 
                 <div class="hidden md:block flex-1"></div>
 
+                <?php if (!$is_animateur): ?>
+                <a href="publier" class="hidden md:inline-flex flex-shrink-0 items-center h-10 px-5 rounded-lg bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white text-[15px] font-semibold transition-colors whitespace-nowrap">Publier une annonce</a>
+                <?php endif; ?>
+
                 <!-- Navigation -->
                 <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
-                    <a href="<?php echo clean_url('../'); ?>" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
+                    <a href="<?php echo clean_url('../'); ?>" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Accueil</a>
 
                     <?php if ($is_animateur): ?>
-                        <a href="espace-animation" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Animation</a>
+                        <a href="espace-animation" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Animation</a>
                     <?php endif; ?>
 
                     <?php if ($is_director): ?>
-                        <a href="organisateurs" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Organisateurs</a>
+                        <a href="organisateurs" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Organisateurs</a>
                     <?php endif; ?>
 
                     <?php if ($is_logged_in && !$is_animateur): ?>
-                        <a href="favorites" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Favoris</a>
-                        <a href="reservations" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Réservations</a>
+                        <a href="favorites" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Favoris</a>
+                        <a href="reservations" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Réservations</a>
                     <?php endif; ?>
 
-                    <a href="contact" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Contact</a>
-                    <a href="aide" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Aide</a>
+                    <a href="contact" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Contact</a>
+                    <a href="aide" class="text-[#2d4a3e] hover:text-[#12372a] px-2.5 py-2 text-[15px] font-medium transition-colors">Aide</a>
                 </div>
 
                 <div class="hidden md:flex items-center gap-3 flex-shrink-0 transition-all duration-300" id="user-actions">
@@ -112,7 +117,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
                                 <?php if (!empty($_SESSION['user']['photo_url'])): ?>
                                     <img class="h-10 w-10 rounded-full object-cover ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url']); ?>" alt="Profil">
                                 <?php else: ?>
-                                    <span class="h-10 w-10 rounded-full bg-[#1478d4] text-white text-[17px] font-bold flex items-center justify-center ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105"><?php echo htmlspecialchars($initial); ?></span>
+                                    <span class="h-10 w-10 rounded-full bg-[#4a7c5d] text-white text-[17px] font-bold flex items-center justify-center ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105"><?php echo htmlspecialchars($initial); ?></span>
                                 <?php endif; ?>
                             </a>
 
@@ -251,7 +256,11 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
                     <a href="messagerie" class="relative text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium"><span>Messagerie</span><span id="unread-badge-mobile" class="absolute top-3 left-32 w-5 h-5 flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full hidden"></span></a>
                 <?php endif; ?>
                 
+                <a href="contact" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Contact</a>
                 <a href="aide" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Aide</a>
+                <?php if (!$is_animateur): ?>
+                <a href="publier" class="bg-[#4a7c5d] text-white hover:bg-[#3b6a4d] block px-3 py-3 rounded-md text-base font-semibold text-center mt-2">Publier une annonce</a>
+                <?php endif; ?>
                 
                 <hr class="my-4 border-gray-200">
                 

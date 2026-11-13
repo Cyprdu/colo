@@ -5,6 +5,11 @@ require_once 'api/config.php';
 // 1. Sécurité
 if (session_status() === PHP_SESSION_NONE) session_start();
 
+if (!isset($_SESSION['user']['id'])) {
+    header('Location: login.php?next=create_camp');
+    exit;
+}
+
 if (!isset($_SESSION['user']['id']) || (!isset($_SESSION['user']['is_directeur']) || !$_SESSION['user']['is_directeur'])) {
     header('Location: index.php');
     exit;

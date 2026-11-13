@@ -3,6 +3,16 @@
 session_start();
 require_once 'api/config.php';
 
+// Page à ouvrir après connexion (?next=nom_de_page) : nom simple uniquement, la page doit exister
+if (isset($_GET['next']) && preg_match('/^[a-z0-9_-]{1,40}$/i', $_GET['next'])) {
+    $_SESSION['after_login'] = $_GET['next'];
+}
+function after_login_url() {
+    $n = $_SESSION['after_login'] ?? '';
+    unset($_SESSION['after_login']);
+    return ($n !== '' && is_file(__DIR__ . '/' . $n . '.php')) ? $n . '.php' : 'index.php';
+}
+
 // 1. Initialisation Google
 $login_url = '#'; 
 if (file_exists('api/google_config.php')) {
@@ -31,7 +41,7 @@ if (!isset($_SESSION['user']) && isset($_COOKIE['remember_me'])) {
                 $new_hash = hash('sha256', $new_token);
                 $pdo->prepare("UPDATE users SET remember_token = ? WHERE id = ?")->execute([$new_hash, $user['id']]);
                 setcookie('remember_me', $user['id'] . ':' . $new_token, time() + (86400 * 30), "/", "", false, true);
-                header("Location: index.php");
+                header("Location: " . after_login_url());
                 exit();
             }
         }
@@ -40,7 +50,7 @@ if (!isset($_SESSION['user']) && isset($_COOKIE['remember_me'])) {
 
 // 3. Redirection si déjà connecté
 if (isset($_SESSION['user'])) {
-    header("Location: index.php");
+    header("Location: " . after_login_url());
     exit();
 }
 
@@ -92,7 +102,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             }
                         }
 
-                        header("Location: index.php");
+                        header("Location: " . after_login_url());
                         exit();
                     }
                 } else {

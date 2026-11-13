@@ -2,19 +2,18 @@
 /**
  * Fichier : index.php  (page d'accueil)
  * ---------------------------------------------------------------
- *   - Hero plein écran (photo de montagne), sélecteur "Rechercher pour : {enfant}",
- *     recherche à 3 champs (Catégorie / Mot-clé / Localisation).
- *   - Carrousels par période de vacances, alimentés par api/get_recommendations.php
- *     (classement personnalisé : âge des enfants, favoris, historique, région).
- *   - Cartes à dimensions fixes (la taille de l'image source n'a aucune influence).
- *   - Icônes en SVG inline : aucune dépendance à une police d'icônes pour l'affichage.
+ *   - Hero + recherche à 3 champs (menu catégories à deux colonnes, sélecteur d'enfant).
+ *   - Fil de suggestions personnalisées : UNE seule requête (api/get_recommendations.php)
+ *     renvoie toutes les sections (vacances, coups de cœur, favoris, âge, région, prix, thèmes).
+ *   - Cartes à dimensions fixes : la taille de l'image source n'a aucune influence.
+ *   - Icônes en SVG inline.
  */
 
 require_once 'partials/header3.php';
 
-$is_logged_in   = isset($_SESSION['user']);
-$is_animateur   = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
-$prenom         = $is_logged_in ? ($_SESSION['user']['prenom'] ?? '') : '';
+$is_logged_in = isset($_SESSION['user']);
+$is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
+$prenom       = $is_logged_in ? ($_SESSION['user']['prenom'] ?? '') : '';
 $user_favorites = $_SESSION['user']['favorites'] ?? [];
 
 // ------------------------------------------------------------------
@@ -27,252 +26,228 @@ $holiday_periods = [
     ['label' => 'Vacances au Ski',          'start' => '2027-02-06', 'end' => '2027-03-09'],
 ];
 $today = date('Y-m-d');
-// On ne garde que les périodes pas encore terminées : la page reste pertinente toute seule.
 $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use ($today) {
     return $p['end'] >= $today;
 }));
-$far_future = date('Y-m-d', strtotime('+10 years'));
-
-// Icône flèche réutilisée par les carrousels
-$arrow_svg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 ?>
 
 <style>
-    /* ---------- Hero ---------- */
-    .hero-bg { background: linear-gradient(135deg, #3b4a66 0%, #c98b8b 55%, #f0b48c 100%); }
+    :root { --ink:#12372a; --accent:#4a7c5d; --accent-dark:#3b6a4d; --cream:#f6f3e8; --muted:#6b7f76; --line:#e6e2d6; }
 
-    /* ---------- Carrousels ---------- */
-    .camp-track {
-        display: flex; gap: 16px; overflow-x: auto; scroll-behavior: smooth;
-        scroll-snap-type: x proximity; padding: 2px 84px 6px 2px;
-        scrollbar-width: none; -ms-overflow-style: none;
-    }
-    .camp-track::-webkit-scrollbar { display: none; }
+    /* ---------- Hero ---------- */
+    .hero-bg { background: linear-gradient(135deg, #2f4a57 0%, #6f8f93 55%, #c9d6d3 100%); }
+    .hero-field { padding: 12px 22px; min-width: 0; }
+    .hero-label { display:flex; align-items:center; gap:8px; height:24px; font-size:15px; font-weight:700; color:var(--ink); line-height:24px; }
+    .hero-value { display:flex; align-items:center; justify-content:space-between; width:100%; height:28px; font-size:15px; color:#4b5d55; background:transparent; border:0; padding:0; outline:0; text-align:left; }
+    .hero-field input.hero-value::placeholder { color:#9aa8a1; }
+
+    /* ---------- Menus déroulants ---------- */
+    .dd-panel { position:absolute; z-index:60; background:#fff; border-radius:18px; box-shadow:0 18px 50px rgba(18,55,42,.22); border:1px solid var(--line); }
+    .dd-panel[hidden] { display:none; }
+    .dd-row { display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border-radius:12px; font-size:15px; color:#274a3c; text-align:left; transition:background .15s ease; }
+    .dd-row:hover, .dd-row.is-active { background:#f3f1ea; }
+    .dd-row.is-active { color:var(--ink); font-weight:700; }
+    .dd-row .ico { width:22px; text-align:center; color:#5b7a6a; flex:none; }
+    .dd-row .go { margin-left:auto; color:var(--accent); opacity:0; transition:opacity .15s ease; flex:none; }
+    .dd-row:hover .go, .dd-row.is-active .go { opacity:1; }
+    .dd-row.is-selected { color:var(--accent); font-weight:700; }
+    .dd-col { padding:10px; max-height:420px; overflow-y:auto; }
+    .dd-col + .dd-col { border-left:1px solid var(--line); }
+
+    /* ---------- Rangée de catégories ---------- */
+    .chips { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; }
+    .chips a { font-size:15px; font-weight:600; color:var(--ink); padding:4px 0; border-bottom:2px solid transparent; transition:border-color .15s ease, color .15s ease; white-space:nowrap; }
+    .chips a:hover { color:var(--accent); border-color:var(--accent); }
+    .chips i.dot { width:4px; height:4px; background:var(--ink); border-radius:9999px; margin:0 16px; flex:none; }
+
+    /* ---------- Sections et carrousels ---------- */
+    .sec-title { font-size:24px; font-weight:600; color:var(--ink); line-height:1.2; }
+    .sec-sub   { margin-top:4px; font-size:14px; color:var(--muted); }
+    .sec-more  { font-size:16px; font-weight:600; color:var(--accent); display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+    .sec-more:hover { color:var(--accent-dark); }
+    .camp-track { display:flex; gap:20px; overflow-x:auto; scroll-behavior:smooth; scroll-snap-type:x proximity; padding:2px 2px 8px; scrollbar-width:none; -ms-overflow-style:none; }
+    .camp-track::-webkit-scrollbar { display:none; }
 
     /* ---------- Carte à dimensions fixes ---------- */
-    .camp-card {
-        flex: 0 0 196px; width: 196px; min-width: 196px; max-width: 196px;
-        scroll-snap-align: start;
-        background: #f5f5f5; border-radius: 28px; padding: 12px 12px 16px;
-        display: flex; flex-direction: column;
-        transition: box-shadow .2s ease, transform .2s ease;
-    }
-    .camp-card:hover { box-shadow: 0 8px 24px rgba(15, 23, 42, .10); transform: translateY(-2px); }
-    .camp-org { height: 28px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .camp-org-name { font-size: 11px; font-weight: 700; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .camp-avatar { width: 26px; height: 26px; border-radius: 9999px; flex: none; overflow: hidden; background: #e5e7eb; display: flex; align-items: center; justify-content: center; }
-    .camp-avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .camp-media { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 20px; overflow: hidden; background: #e2e8f0; display: block; }
-    .camp-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
-    .camp-card:hover .camp-media img { transform: scale(1.05); }
-    .camp-title { margin-top: 12px; font-size: 13px; font-weight: 700; line-height: 1.25; color: #111827; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
-    .camp-price { margin-top: 6px; font-size: 13px; color: #1f2937; height: 18px; }
-    .camp-city  { margin-top: 4px; font-size: 11px; color: #4b5563; height: 16px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .camp-date  { margin-top: 2px; font-size: 10px; font-weight: 700; color: #1f2937; height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .camp-card { flex:0 0 216px; width:216px; min-width:216px; max-width:216px; scroll-snap-align:start; display:flex; flex-direction:column; }
+    .camp-org { height:28px; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .camp-avatar { width:24px; height:24px; border-radius:9999px; flex:none; overflow:hidden; background:#e8e5da; display:flex; align-items:center; justify-content:center; }
+    .camp-avatar img { width:100%; height:100%; object-fit:cover; }
+    .camp-org-name { font-size:13px; color:#2d4a3e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .camp-mediawrap { position:relative; width:100%; aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#e6e2d6; }
+    .camp-media { position:absolute; inset:0; display:block; }
+    .camp-media img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .5s ease; }
+    .camp-card:hover .camp-media img { transform:scale(1.04); }
+    .camp-badge { position:absolute; top:10px; left:10px; z-index:2; background:#fff; color:var(--ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:9999px; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+    .fav-btn { position:absolute; top:10px; right:10px; z-index:2; width:34px; height:34px; border-radius:9999px; background:#fff; color:var(--ink); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.15); transition:transform .15s ease; }
+    .fav-btn:hover { transform:scale(1.08); }
+    .fav-btn:active { transform:scale(.92); }
+    .fav-btn svg path { fill:none; stroke:currentColor; stroke-width:1.8; transition:fill .15s ease, stroke .15s ease; }
+    .fav-btn.is-fav { color:#e5484d; }
+    .fav-btn.is-fav svg path { fill:#e5484d; }
+    .camp-title { margin-top:12px; font-size:15px; font-weight:500; line-height:1.3; color:var(--ink); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.6em; }
+    .camp-price { margin-top:4px; font-size:16px; color:var(--ink); height:24px; line-height:24px; }
+    .camp-price b { font-weight:700; }
+    .camp-meta  { font-size:12.5px; color:#71857b; height:17px; line-height:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-    .fav-btn { width: 24px; height: 24px; border-radius: 9999px; background: #1f2933; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; transition: background .2s ease, transform .15s ease; }
-    .fav-btn:hover { transform: scale(1.1); }
-    .fav-btn:active { transform: scale(.92); }
-    .fav-btn.is-fav { background: #e5484d; }
-
-    .skeleton { background: linear-gradient(90deg,#ececec 25%,#f6f6f6 37%,#ececec 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite; }
-    @keyframes sk { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
-    .fade-in-anim { animation: fadeIn .4s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .skeleton { background:linear-gradient(90deg,#ece9dd 25%,#f6f3e8 37%,#ece9dd 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
+    @keyframes sk { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
+    .fade-in-anim { animation:fadeIn .4s ease-out; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 
     /* ---------- Flèches ---------- */
-    .car-btn {
-        position: absolute; top: 50%; transform: translateY(-50%); z-index: 10;
-        width: 48px; height: 48px; border-radius: 9999px; background: #fff; color: #111827;
-        border: 1.5px solid #111827; display: flex; align-items: center; justify-content: center;
-        transition: background .2s ease, color .2s ease, opacity .2s ease;
-    }
-    .car-btn:hover { background: #111827; color: #fff; }
-    .car-next { right: 0; }
-    .car-prev { left: 0; }
-    .car-btn[hidden] { display: none; }
-    @media (max-width: 767px) { .car-btn { display: none; } .camp-track { padding-right: 16px; } }
+    .car-btn { position:absolute; top:136px; transform:translateY(-50%); z-index:10; width:44px; height:44px; border-radius:9999px; background:#fff; color:var(--ink); border:1px solid var(--line); box-shadow:0 4px 14px rgba(18,55,42,.18); display:flex; align-items:center; justify-content:center; transition:background .2s ease, color .2s ease; }
+    .car-btn:hover { background:var(--ink); color:#fff; }
+    .car-next { right:-12px; } .car-prev { left:-12px; }
+    .car-btn[hidden] { display:none; }
+    @media (max-width: 767px) { .car-btn { display:none; } .camp-card { flex-basis:172px; width:172px; min-width:172px; max-width:172px; } .camp-track { gap:14px; } .car-btn { top:100px; } }
 
-    /* ---------- Grille animateur ---------- */
-    #anim-list .camp-card { flex: none; width: 100%; max-width: none; min-width: 0; }
+    #anim-list .camp-card { flex:none; width:100%; max-width:none; min-width:0; }
 </style>
 
 <!-- ================================================================ -->
 <!-- HERO                                                              -->
 <!-- ================================================================ -->
-<section class="relative isolate overflow-hidden hero-bg">
-    <img src="https://img3.wallspic.com/crops/1/6/1/1/8/181161/181161-weisshorn-les_reliefs_montagneux-gamme_de_montagne-colline-hiver-3840x2160.jpg"
-         alt="" class="absolute inset-0 -z-10 w-full h-full object-cover" loading="eager" fetchpriority="high"
-         onerror="this.remove()">
-    <div class="absolute inset-0 -z-10 bg-gradient-to-t from-black/45 via-black/10 to-black/5"></div>
+<section class="relative isolate hero-bg">
+    <div class="absolute inset-0 -z-10 overflow-hidden">
+        <img src="https://img3.wallspic.com/crops/1/6/1/1/8/181161/181161-weisshorn-les_reliefs_montagneux-gamme_de_montagne-colline-hiver-3840x2160.jpg"
+             alt="" class="w-full h-full object-cover" loading="eager" fetchpriority="high" onerror="this.remove()">
+        <div class="absolute inset-0 bg-gradient-to-b from-black/20 via-black/10 to-black/30"></div>
+    </div>
 
-    <div class="w-full max-w-[1320px] mx-auto px-5 sm:px-8 pt-5 pb-8 min-h-[300px] md:min-h-[276px] flex flex-col">
+    <div class="w-full max-w-[1320px] mx-auto px-5 sm:px-8 pt-5 pb-12 min-h-[330px] md:min-h-[350px] flex flex-col">
 
         <?php if ($is_logged_in && !$is_animateur): ?>
-        <!-- Sélecteur "Rechercher pour : {enfant}" -->
+        <!-- Sélecteur « Rechercher pour : {enfant} » -->
         <div class="flex justify-end items-center gap-3">
-            <label for="child-context-select" class="text-[13px] font-bold text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.45)">Rechercher pour&nbsp;:</label>
-            <div class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2">
-                <select id="child-context-select" class="appearance-none bg-transparent font-bold text-[13px] text-gray-900 outline-none cursor-pointer max-w-[130px] truncate">
-                    <option value="">Toute la famille</option>
-                </select>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-gray-700 -ml-1"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-gray-800"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
+            <span class="text-[14px] font-semibold text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">Rechercher pour&nbsp;:</span>
+            <div class="relative">
+                <button type="button" id="child-btn" aria-haspopup="listbox" aria-expanded="false"
+                        class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2 text-[14px] font-bold text-[#12372a]">
+                    <span id="child-label" class="max-w-[150px] truncate">Toute la famille</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#4a7c5d]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
+                </button>
+                <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" role="listbox" hidden></div>
             </div>
         </div>
         <?php endif; ?>
 
-        <div class="flex-1 flex flex-col justify-center text-center pt-2">
-            <h1 class="text-[34px] md:text-[40px] leading-tight font-extrabold text-white tracking-tight mb-7" style="text-shadow:0 2px 12px rgba(0,0,0,.35)">
-                <?php echo $is_logged_in ? 'Bonjour ' . htmlspecialchars($prenom) . ',' : 'Trouvez la colonie idéale'; ?>
+        <div class="flex-1 flex flex-col justify-center text-center pt-3">
+            <h1 class="font-display text-[34px] md:text-[44px] leading-tight font-semibold text-white mb-8" style="text-shadow:0 2px 14px rgba(0,0,0,.35)">
+                <?php echo $is_logged_in ? 'Bonjour ' . htmlspecialchars($prenom) : 'Trouvez la colonie idéale'; ?>
             </h1>
 
             <!-- Barre de recherche -->
             <form id="hero-search-form" action="recherche" method="GET"
-                  class="w-full max-w-[720px] mx-auto text-left bg-white rounded-[28px] md:rounded-full shadow-[0_10px_40px_rgba(0,0,0,.25)] p-2 flex flex-col md:flex-row md:items-center">
-
+                  class="relative w-full max-w-[1000px] mx-auto text-left bg-white rounded-2xl shadow-[0_14px_44px_rgba(0,0,0,.28)] p-2 flex flex-col md:flex-row md:items-center">
                 <input type="hidden" name="age" id="hero-age-hidden" value="">
+                <div id="cat-inputs"></div>
 
-                <div class="flex-[1.05] min-w-0 px-5 py-2 md:py-1.5">
-                    <label for="hero-category" class="block h-5 text-[13px] font-bold text-gray-900 leading-5">Catégorie</label>
-                    <div class="relative">
-                        <select name="themes[]" id="hero-category" class="w-full appearance-none border-0 p-0 pr-5 h-6 text-[14px] text-gray-700 focus:ring-0 outline-none bg-transparent cursor-pointer">
-                            <option value="">Toutes catégories</option>
-                        </select>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="absolute right-0 top-1/2 -translate-y-1/2 text-gray-800 pointer-events-none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    </div>
+                <!-- Catégorie : menu à deux colonnes -->
+                <div class="hero-field flex-[1.05]">
+                    <button type="button" id="cat-btn" aria-haspopup="true" aria-expanded="false" class="block w-full text-left">
+                        <span class="hero-label">Catégorie</span>
+                        <span class="hero-value"><span id="cat-label" class="truncate">Toutes catégories</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="flex-none text-[#12372a]"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </span>
+                    </button>
                 </div>
+                <div class="hidden md:block w-px h-11 bg-[#e6e2d6]"></div><div class="md:hidden h-px bg-[#efece1] mx-5"></div>
 
-                <div class="hidden md:block w-px h-9 bg-gray-200"></div>
-                <div class="md:hidden h-px bg-gray-100 mx-5"></div>
-
-                <div class="flex-[1.15] min-w-0 px-5 py-2 md:py-1.5">
-                    <label for="hero-name" class="flex items-center gap-1.5 h-5 text-[13px] font-bold text-gray-900 leading-5">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.6"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+                <div class="hero-field flex-[1.25]">
+                    <label for="hero-name" class="hero-label">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
                         Que recherchez-vous ?
                     </label>
-                    <input type="text" id="hero-name" name="name" placeholder="Ex : Weekend-Ski" autocomplete="off"
-                           class="w-full border-0 p-0 h-6 text-[14px] text-gray-700 placeholder-gray-300 focus:ring-0 outline-none bg-transparent">
+                    <input type="text" id="hero-name" name="name" placeholder="Ex : Weekend-Ski, voile, théâtre" autocomplete="off" class="hero-value">
                 </div>
+                <div class="hidden md:block w-px h-11 bg-[#e6e2d6]"></div><div class="md:hidden h-px bg-[#efece1] mx-5"></div>
 
-                <div class="hidden md:block w-px h-9 bg-gray-200"></div>
-                <div class="md:hidden h-px bg-gray-100 mx-5"></div>
-
-                <div class="flex-1 min-w-0 px-5 py-2 md:py-1.5">
-                    <label for="hero-city" class="flex items-center gap-1.5 h-5 text-[13px] font-bold text-gray-900 leading-5">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" fill="currentColor"/><circle cx="12" cy="9.5" r="2.4" fill="#fff"/></svg>
+                <div class="hero-field flex-1">
+                    <label for="hero-city" class="hero-label">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2.2"/></svg>
                         Localisation
                     </label>
-                    <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off"
-                           class="w-full border-0 p-0 h-6 text-[14px] text-gray-700 placeholder-gray-600 focus:ring-0 outline-none bg-transparent">
+                    <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value">
                 </div>
 
                 <button type="submit" aria-label="Rechercher"
-                        class="m-1 md:ml-2 h-[54px] md:w-[54px] flex-none flex items-center justify-center gap-2 bg-[#2f3d45] hover:bg-[#1f2a30] text-white rounded-[18px] transition-colors">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="#fff" stroke-width="2.2"/><path d="M20.5 20.5l-4.6-4.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+                        class="m-1 md:ml-2 h-[60px] md:w-[64px] flex-none flex items-center justify-center gap-2 bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white rounded-xl transition-colors">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="#fff" stroke-width="2.2"/><path d="M20.5 20.5l-4.6-4.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
                     <span class="md:hidden font-bold text-sm">Rechercher</span>
                 </button>
+
+                <div id="cat-panel" class="dd-panel left-0 top-[calc(100%+10px)] w-full md:w-[860px] max-w-full flex" hidden>
+                    <div id="cat-groups" class="dd-col w-full md:w-1/2"></div>
+                    <div id="cat-items" class="dd-col w-1/2 hidden md:block"></div>
+                </div>
             </form>
 
-            <p class="mt-5 text-[13px] text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.45)">
-                Vous êtes directeur de camp&nbsp;? <a href="create_camp" class="underline underline-offset-2 hover:text-white/80 transition-colors">Publier une annonce</a>
+            <p class="mt-5 text-[14px] text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">
+                Vous êtes directeur de camp&nbsp;? <a href="publier" class="underline underline-offset-2 font-semibold hover:text-white/80 transition-colors">Publier une annonce</a>
             </p>
         </div>
     </div>
 </section>
 
+<!-- Catégories rapides -->
+<nav class="border-b border-[#efece1]" aria-label="Catégories">
+    <div id="chips" class="chips w-full max-w-[1320px] mx-auto px-5 sm:px-8 py-5 min-h-[68px]"></div>
+</nav>
+
 <main class="flex-1 w-full max-w-[1320px] mx-auto px-5 sm:px-8 pb-6">
-
     <?php if (!$is_animateur): ?>
-        <?php foreach ($holiday_periods as $i => $period): ?>
-        <!-- ======================= <?php echo htmlspecialchars($period['label']); ?> ======================= -->
-        <section class="mt-9" aria-labelledby="h-<?php echo $i; ?>">
-            <h2 id="h-<?php echo $i; ?>" class="text-[20px] md:text-[22px] font-bold text-gray-900 mb-5"><?php echo htmlspecialchars($period['label']); ?> :</h2>
-            <div class="relative">
-                <div id="track-<?php echo $i; ?>" class="camp-track"
-                     data-start="<?php echo $period['start']; ?>" data-end="<?php echo $period['end']; ?>"></div>
-                <button type="button" class="car-btn car-prev" data-target="track-<?php echo $i; ?>" aria-label="Précédent" hidden>
-                    <span class="rotate-180 flex"><?php echo $arrow_svg; ?></span>
-                </button>
-                <button type="button" class="car-btn car-next" data-target="track-<?php echo $i; ?>" aria-label="Suivant"><?php echo $arrow_svg; ?></button>
-            </div>
-        </section>
-
-        <?php if ($i === 0): ?>
-        <!-- ======================= BANNIÈRE ======================= -->
-        <section class="mt-12" aria-label="Rechercher une colonie">
-            <div class="relative bg-[#f8f5ea] rounded-2xl px-6 py-10 md:py-11 text-center overflow-hidden">
-                <svg class="hidden sm:block absolute left-[8%] bottom-3 text-[#26343b]" width="84" height="76" viewBox="0 0 84 76" fill="none" aria-hidden="true">
-                    <path d="M26 3L12 24h8L7 44h10L3 64h46L35 44h10L32 24h8L26 3Z" fill="currentColor"/>
-                    <rect x="24" y="64" width="4" height="9" fill="currentColor"/>
-                    <path d="M44 72L65 34l21 38H44Z" fill="currentColor"/><path d="M65 54l-7 18h14l-7-18Z" fill="#f8f5ea"/><path d="M65 34L65 28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                    <path d="M2 74h80" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                <svg class="hidden sm:block absolute right-[8%] bottom-3 text-[#26343b]" width="84" height="76" viewBox="0 0 84 76" fill="none" aria-hidden="true">
-                    <path d="M26 3L12 24h8L7 44h10L3 64h46L35 44h10L32 24h8L26 3Z" fill="currentColor"/>
-                    <rect x="24" y="64" width="4" height="9" fill="currentColor"/>
-                    <path d="M44 72L65 34l21 38H44Z" fill="currentColor"/><path d="M65 54l-7 18h14l-7-18Z" fill="#f8f5ea"/><path d="M65 34L65 28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                    <path d="M2 74h80" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-
-                <p class="text-[28px] font-extrabold text-gray-900 tracking-tight">ColoMap</p>
-                <p class="mt-1 text-[15px] text-gray-600 max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
-                <a href="recherche" class="mt-5 inline-block bg-[#3a4852] hover:bg-[#26323a] text-white text-[16px] font-bold px-16 py-2.5 rounded-xl transition-colors">Rechercher</a>
-            </div>
-        </section>
-        <?php endif; ?>
-        <?php endforeach; ?>
-
-        <!-- Secours : affiché seulement si aucune offre ne tombe dans les périodes de vacances -->
-        <section id="fallback-section" class="mt-9" hidden aria-labelledby="h-fb">
-            <h2 id="h-fb" class="text-[20px] md:text-[22px] font-bold text-gray-900 mb-5"><?php echo $is_logged_in ? 'Sélection pour vous :' : 'Séjours à venir :'; ?></h2>
-            <div class="relative">
-                <div id="track-fallback" class="camp-track" data-lazy="1"
-                     data-start="<?php echo $today; ?>" data-end="<?php echo $far_future; ?>"></div>
-                <button type="button" class="car-btn car-prev" data-target="track-fallback" aria-label="Précédent" hidden>
-                    <span class="rotate-180 flex"><?php echo $arrow_svg; ?></span>
-                </button>
-                <button type="button" class="car-btn car-next" data-target="track-fallback" aria-label="Suivant"><?php echo $arrow_svg; ?></button>
-            </div>
-        </section>
+        <div id="feed" aria-live="polite"></div>
+        <div id="feed-empty" class="hidden text-center py-16">
+            <p class="text-xl font-semibold text-[#12372a]">Aucun séjour à venir pour le moment</p>
+            <p class="mt-2 text-[#6b7f76]">De nouveaux séjours sont publiés régulièrement.</p>
+            <a href="recherche" class="mt-6 inline-block bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Explorer tous les séjours</a>
+        </div>
     <?php else: ?>
-        <!-- Variante Animateur : missions d'animation éligibles -->
-        <section class="mt-9">
-            <h2 class="text-[20px] md:text-[22px] font-bold text-gray-900 mb-5">Missions ouvertes pour vous :</h2>
-            <div id="anim-list" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4"></div>
-            <div id="anim-empty" class="hidden text-center py-10 text-gray-400">Aucune mission éligible pour le moment. Essayez d'affiner votre recherche ci-dessus.</div>
+        <section class="mt-10">
+            <h2 class="sec-title mb-1">Missions ouvertes pour vous</h2>
+            <p class="sec-sub mb-5">Les séjours qui recherchent des animateurs correspondant à votre profil</p>
+            <div id="anim-list" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-5"></div>
+            <div id="anim-empty" class="hidden text-center py-10 text-[#6b7f76]">Aucune mission éligible pour le moment. Essayez d'affiner votre recherche ci-dessus.</div>
         </section>
     <?php endif; ?>
-
 </main>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const isLoggedIn  = <?php echo json_encode($is_logged_in); ?>;
     const isAnimateur = <?php echo json_encode($is_animateur); ?>;
+    const PERIODS     = <?php echo json_encode($holiday_periods, JSON_UNESCAPED_UNICODE); ?>;
     let userFavorites = <?php echo json_encode(array_map('intval', (array)$user_favorites)); ?>;
 
     // ------------------------------------------------------------
-    // Icônes / visuels (SVG inline, aucune dépendance externe)
+    // Icônes / visuels (SVG inline)
     // ------------------------------------------------------------
-    const ICON_PIN   = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" fill="#4b5563"/><circle cx="12" cy="9.5" r="2.3" fill="#f5f5f5"/></svg>';
-    const ICON_HEART = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 21l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.18L12 21z"/></svg>';
-    const ICON_ORG   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9ca3af"/></svg>';
+    const ICON_PIN   = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" fill="#71857b"/><circle cx="12" cy="9.5" r="2.3" fill="#fff"/></svg>';
+    const ICON_HEART = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z"/></svg>';
+    const ICON_ORG   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa8a1"/></svg>';
+    const ICON_ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     window.CAMP_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e8eef5"/><stop offset="1" stop-color="#cfdae7"/></linearGradient></defs>' +
-        '<rect width="200" height="200" fill="url(#g)"/><g fill="#8aa0b6"><path d="M84 52L66 80h10L60 104h12L54 130h60L96 104h12L92 80h10L84 52z"/><rect x="82" y="130" width="5" height="12"/><path d="M116 140l22-50 22 50z"/></g></svg>');
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0e4"/><stop offset="1" stop-color="#d6dcc9"/></linearGradient></defs>' +
+        '<rect width="200" height="200" fill="url(#g)"/><g fill="#8aa393"><path d="M84 52L66 80h10L60 104h12L54 130h60L96 104h12L92 80h10L84 52z"/><rect x="82" y="130" width="5" height="12"/><path d="M116 140l22-50 22 50z"/></g></svg>');
 
-    const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-    function safeImg(url) { return url ? String(url).replace(/\\/g, '/') : ''; }
+    const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const safeImg = url => url ? String(url).replace(/\\/g, '/') : '';
     function formatDateRange(start, end) {
         const s = start ? new Date(start) : null, e = end ? new Date(end) : null;
         if (!s || isNaN(s)) return '';
-        if (!e || isNaN(e)) return `Dès le ${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
+        if (!e || isNaN(e) || e < s) return `Dès le ${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
         if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
             return `Du ${s.getDate()} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
-        const short = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
-        return `Du ${s.getDate()} ${short(s.getMonth())} au ${e.getDate()} ${short(e.getMonth())} ${e.getFullYear()}`;
+        const sh = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
+        return `Du ${s.getDate()} ${sh(s.getMonth())} au ${e.getDate()} ${sh(e.getMonth())} ${e.getFullYear()}`;
+    }
+    function formatPrice(p) {
+        const n = Number(p);
+        return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');
     }
 
     // Une image qui ne charge pas est remplacée par le visuel ColoMap (taille inchangée)
@@ -284,6 +259,129 @@ document.addEventListener('DOMContentLoaded', function () {
     }, true);
 
     // ------------------------------------------------------------
+    // Menus déroulants
+    // ------------------------------------------------------------
+    const openers = [];   // {btn, panel}
+    function closeAll(except) {
+        openers.forEach(o => { if (o.panel !== except) { o.panel.hidden = true; o.btn.setAttribute('aria-expanded', 'false'); } });
+    }
+    function bindDropdown(btn, panel, onOpen) {
+        openers.push({ btn, panel });
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const willOpen = panel.hidden;
+            closeAll(willOpen ? panel : null);
+            panel.hidden = !willOpen;
+            btn.setAttribute('aria-expanded', String(willOpen));
+            if (willOpen && onOpen) onOpen();
+        });
+        panel.addEventListener('click', e => e.stopPropagation());
+    }
+    document.addEventListener('click', () => closeAll(null));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(null); });
+
+    // ---- Catégories : groupes (colonne gauche) -> sous-catégories (colonne droite)
+    const GROUPS = [
+        { id: 'sport',   label: 'Sport et aventure',        icon: 'fa-person-hiking',  items: ['Aventure', 'Sport', 'Montagne', 'Mer / Littoral', 'Survie / Bushcraft', 'Voyage / Itinérant'] },
+        { id: 'nature',  label: 'Nature et environnement',  icon: 'fa-tree',           items: ['Nature', 'Campagne', 'Écologie'] },
+        { id: 'arts',    label: 'Arts et culture',          icon: 'fa-palette',        items: ['Arts plastiques', 'Cinéma', 'Danse', 'Musique', 'Théâtre', 'Découverte culturelle'] },
+        { id: 'sciences',label: 'Sciences et numérique',    icon: 'fa-flask',          items: ['Sciences', 'Robotique', 'Numérique / Gaming', 'Langues étrangères'] },
+        { id: 'spirit',  label: 'Spiritualité et solidarité', icon: 'fa-hands-praying', items: ['Spiritualité / Prière', 'Pèlerinage', 'Humanitaire / Solidaire'] },
+        { id: 'loisirs', label: 'Bien-être et loisirs',     icon: 'fa-spa',            items: ['Bien-être / Relaxation', 'Jeux', 'Gastronomie / Cuisine', 'Autre'] },
+    ];
+    const catBtn = document.getElementById('cat-btn'), catPanel = document.getElementById('cat-panel');
+    const catGroups = document.getElementById('cat-groups'), catItems = document.getElementById('cat-items');
+    const catLabel = document.getElementById('cat-label'), catInputs = document.getElementById('cat-inputs');
+    let allThemes = [], activeGroup = null, mobileItemsGroup = null;
+    const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
+
+    function setCategory(label, names) {
+        catLabel.textContent = label;
+        catInputs.innerHTML = names.map(n => `<input type="hidden" name="themes[]" value="${esc(n)}">`).join('');
+        closeAll(null);
+    }
+    function groupItems(g) { return g.items.filter(n => allThemes.includes(n)); }
+    function renderCat() {
+        const known = new Set(GROUPS.flatMap(g => g.items));
+        const groups = GROUPS.map(g => ({ ...g, list: groupItems(g) })).filter(g => g.list.length);
+        const extra = allThemes.filter(n => !known.has(n));
+        if (extra.length) groups.push({ id: 'autres', label: 'Autres', icon: 'fa-ellipsis', list: extra });
+        catPanel._groups = groups;
+
+        // mobile : une seule colonne qui bascule groupes <-> sous-catégories
+        if (isMobile() && mobileItemsGroup) {
+            const g = groups.find(x => x.id === mobileItemsGroup) || groups[0];
+            catGroups.innerHTML =
+                `<button type="button" class="dd-row" data-back="1"><span class="ico"><i class="fa-solid fa-arrow-left"></i></span>Retour</button>` +
+                `<button type="button" class="dd-row is-selected" data-all="${g.id}">Tout : ${esc(g.label)}</button>` +
+                g.list.map(n => `<button type="button" class="dd-row" data-item="${esc(n)}">${esc(n)}</button>`).join('');
+            catItems.innerHTML = '';
+            return;
+        }
+        if (!activeGroup && groups.length && !isMobile()) activeGroup = groups[0].id;
+        catGroups.innerHTML =
+            `<button type="button" class="dd-row" data-none="1"><span class="ico"><i class="fa-solid fa-border-all"></i></span>Toutes catégories</button>` +
+            groups.map(g => `<button type="button" class="dd-row${g.id === activeGroup ? ' is-active' : ''}" data-group="${g.id}"><span class="ico"><i class="fa-solid ${g.icon}"></i></span>${esc(g.label)}<span class="go">${ICON_ARROW}</span></button>`).join('');
+        const cur = groups.find(g => g.id === activeGroup);
+        catItems.innerHTML = cur
+            ? `<button type="button" class="dd-row is-selected" data-all="${cur.id}"><span class="ico"><i class="fa-solid ${cur.icon}"></i></span>Tout : ${esc(cur.label)}</button>` +
+              cur.list.map(n => `<button type="button" class="dd-row" data-item="${esc(n)}">${esc(n)}</button>`).join('')
+            : '';
+    }
+    catPanel.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const groups = catPanel._groups || [];
+        if (b.dataset.none)  return setCategory('Toutes catégories', []);
+        if (b.dataset.back)  { mobileItemsGroup = null; return renderCat(); }
+        if (b.dataset.item)  return setCategory(b.dataset.item, [b.dataset.item]);
+        if (b.dataset.all)   { const g = groups.find(x => x.id === b.dataset.all); return g && setCategory(g.label, g.list); }
+        if (b.dataset.group) { if (isMobile()) { mobileItemsGroup = b.dataset.group; } else { activeGroup = b.dataset.group; } renderCat(); }
+    });
+    catPanel.addEventListener('mouseover', e => {
+        const b = e.target.closest('[data-group]');
+        if (b && !isMobile() && b.dataset.group !== activeGroup) { activeGroup = b.dataset.group; renderCat(); }
+    });
+    bindDropdown(catBtn, catPanel, () => { mobileItemsGroup = null; renderCat(); });
+
+    // Catégories : chargement + rangée de raccourcis
+    const CHIP_ORDER = ['Aventure', 'Montagne', 'Mer / Littoral', 'Nature', 'Sport', 'Arts plastiques', 'Musique', 'Sciences', 'Spiritualité / Prière'];
+    fetch('api/get_themes.php').then(r => r.json()).then(themes => {
+        if (!Array.isArray(themes)) return;
+        allThemes = themes.map(t => t.name);
+        const chips = CHIP_ORDER.filter(n => allThemes.includes(n));
+        document.getElementById('chips').innerHTML = chips
+            .map(n => `<a href="recherche?themes[]=${encodeURIComponent(n)}">${esc(n)}</a>`)
+            .join('<i class="dot"></i>');
+    }).catch(() => {});
+
+    // ---- Enfant : liste déroulante + rechargement du fil
+    let currentChildAge = '';
+    const childBtn = document.getElementById('child-btn'), childPanel = document.getElementById('child-panel');
+    if (childBtn && childPanel) {
+        const options = [{ label: 'Toute la famille', age: '' }];
+        const renderChild = () => {
+            childPanel.innerHTML = options.map((o, i) =>
+                `<button type="button" role="option" class="dd-row${String(o.age) === String(currentChildAge) ? ' is-selected' : ''}" data-i="${i}">${esc(o.label)}</button>`).join('');
+        };
+        childPanel.addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            const o = options[Number(b.dataset.i)];
+            currentChildAge = String(o.age);
+            document.getElementById('child-label').textContent = o.label;
+            document.getElementById('hero-age-hidden').value = currentChildAge;
+            closeAll(null);
+            loadFeed();
+        });
+        bindDropdown(childBtn, childPanel, renderChild);
+        fetch('api/get_children.php').then(r => r.json()).then(children => {
+            if (!Array.isArray(children)) return;
+            children.forEach(c => { if (c.age !== null && c.age !== undefined) options.push({ label: `${c.prenom} (${c.age} ans)`, age: c.age }); });
+            renderChild();
+        }).catch(() => {});
+        renderChild();
+    }
+
+    // ------------------------------------------------------------
     // Carte camp : dimensions fixes, quelle que soit l'image source
     // ------------------------------------------------------------
     function campCard(camp) {
@@ -293,35 +391,35 @@ document.addEventListener('DOMContentLoaded', function () {
         const href  = `${detailPage}?${linkParam}`;
         const logo  = camp.organisateur_logo ? `<img src="${esc(safeImg(camp.organisateur_logo))}" alt="" loading="lazy">` : ICON_ORG;
         const img   = safeImg(camp.image_url) || window.CAMP_PLACEHOLDER;
-        const price = (camp.prix !== null && camp.prix !== undefined && !isNaN(camp.prix)) ? `Dès <b>${Number(camp.prix).toFixed(2)}</b>€` : '';
+        const price = (camp.prix !== null && camp.prix !== undefined && !isNaN(camp.prix) && Number(camp.prix) > 0) ? `Dès <b>${formatPrice(camp.prix)} €</b>` : '';
+        const date  = formatDateRange(camp.date_debut, camp.date_fin);
 
         return `
         <article class="camp-card fade-in-anim">
             <div class="camp-org">
-                <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="camp-avatar">${logo}</span>
-                    <span class="camp-org-name">${esc(camp.organisateur_nom || 'ColoMap')}</span>
-                </div>
+                <span class="camp-avatar">${logo}</span>
+                <span class="camp-org-name">${esc(camp.organisateur_nom || 'ColoMap')}</span>
+            </div>
+            <div class="camp-mediawrap">
+                <a href="${href}" class="camp-media" aria-label="${esc(camp.nom)}"><img src="${esc(img)}" alt="${esc(camp.nom)}" loading="lazy" decoding="async"></a>
+                ${camp.badge ? `<span class="camp-badge">${esc(camp.badge)}</span>` : ''}
                 ${(!isAnimateur && isLoggedIn) ? `<button type="button" class="fav-btn favorite-button${isFav ? ' is-fav' : ''}" data-camp-id="${esc(camp.id)}" aria-label="Ajouter aux favoris" aria-pressed="${isFav}">${ICON_HEART}</button>` : ''}
             </div>
-            <a href="${href}" class="camp-media" aria-label="${esc(camp.nom)}">
-                <img src="${esc(img)}" alt="${esc(camp.nom)}" loading="lazy" decoding="async">
-            </a>
             <a href="${href}" class="block">
                 <h3 class="camp-title" title="${esc(camp.nom)}">${esc(camp.nom)}</h3>
                 <p class="camp-price">${price}</p>
-                <p class="camp-city">${camp.ville ? ICON_PIN + '<span class="truncate">' + esc(camp.ville) + '</span>' : ''}</p>
-                <p class="camp-date">${esc(formatDateRange(camp.date_debut, camp.date_fin))}</p>
+                <p class="camp-meta">${camp.ville ? esc(camp.ville) : ''}</p>
+                <p class="camp-meta">${esc(date)}</p>
             </a>
         </article>`;
     }
 
     function skeletonCard() {
         return `<div class="camp-card" aria-hidden="true">
-            <div class="camp-org"><div class="flex items-center gap-1.5"><div class="skeleton w-[26px] h-[26px] rounded-full"></div><div class="skeleton h-3 w-20 rounded"></div></div></div>
-            <div class="skeleton camp-media"></div>
+            <div class="camp-org"><div class="skeleton w-6 h-6 rounded-full"></div><div class="skeleton h-3 w-24 rounded"></div></div>
+            <div class="skeleton camp-mediawrap"></div>
             <div class="skeleton h-3 w-4/5 rounded mt-3"></div>
-            <div class="skeleton h-3 w-1/2 rounded mt-2"></div>
+            <div class="skeleton h-3 w-1/3 rounded mt-3"></div>
             <div class="skeleton h-3 w-2/3 rounded mt-2"></div>
         </div>`;
     }
@@ -332,7 +430,7 @@ document.addEventListener('DOMContentLoaded', function () {
     async function toggleFavorite(button) {
         const campId = parseInt(button.dataset.campId, 10);
         const wasFav = button.classList.contains('is-fav');
-        const setFav = (on) => {
+        const setFav = on => {
             document.querySelectorAll(`.favorite-button[data-camp-id="${campId}"]`).forEach(b => { b.classList.toggle('is-fav', on); b.setAttribute('aria-pressed', on); });
             userFavorites = on ? [...new Set([...userFavorites, campId])] : userFavorites.filter(id => id !== campId);
         };
@@ -343,107 +441,86 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!result.success) throw new Error('revert');
         } catch (e) { setFav(wasFav); }
     }
-    document.body.addEventListener('click', function (e) {
+    document.body.addEventListener('click', e => {
         const btn = e.target.closest('.favorite-button');
         if (btn) { e.preventDefault(); e.stopPropagation(); toggleFavorite(btn); }
     });
 
     // ------------------------------------------------------------
-    // Carrousels : flèches précédent / suivant selon la position
+    // Carrousels : flèches selon la position de défilement
     // ------------------------------------------------------------
     function bindCarousel(track) {
         const wrap = track.parentElement;
         const prev = wrap.querySelector('.car-prev'), next = wrap.querySelector('.car-next');
         const update = () => {
             const max = track.scrollWidth - track.clientWidth - 4;
-            if (prev) prev.hidden = track.scrollLeft <= 4;
-            if (next) next.hidden = track.scrollLeft >= max;
+            prev.hidden = track.scrollLeft <= 4;
+            next.hidden = track.scrollLeft >= max;
         };
-        const step = () => Math.max(track.clientWidth * 0.85, 212);
-        if (next) next.addEventListener('click', () => track.scrollBy({ left: step() }));
-        if (prev) prev.addEventListener('click', () => track.scrollBy({ left: -step() }));
+        const step = () => Math.max(track.clientWidth * 0.85, 236);
+        next.addEventListener('click', () => track.scrollBy({ left: step() }));
+        prev.addEventListener('click', () => track.scrollBy({ left: -step() }));
         track.addEventListener('scroll', update, { passive: true });
         window.addEventListener('resize', update);
-        track._updateArrows = update;
-        update();
-    }
-    document.querySelectorAll('.camp-track').forEach(bindCarousel);
-
-    // ------------------------------------------------------------
-    // Catégories (hero) : depuis la base
-    // ------------------------------------------------------------
-    fetch('api/get_themes.php').then(r => r.json()).then(themes => {
-        const sel = document.getElementById('hero-category');
-        if (!sel || !Array.isArray(themes)) return;
-        [...themes].sort((a, b) => a.name.localeCompare(b.name)).forEach(t => {
-            const opt = document.createElement('option');
-            opt.value = t.name; opt.textContent = t.name;
-            sel.appendChild(opt);
-        });
-    }).catch(() => {});
-
-    // ------------------------------------------------------------
-    // Sélecteur "Rechercher pour : {enfant}"
-    // ------------------------------------------------------------
-    let currentChildAge = '';
-    if (isLoggedIn && !isAnimateur) {
-        fetch('api/get_children.php').then(r => r.json()).then(children => {
-            const sel = document.getElementById('child-context-select');
-            if (!sel || !Array.isArray(children) || children.length === 0) return;
-            children.forEach(c => {
-                if (c.age === null || c.age === undefined) return;
-                const opt = document.createElement('option');
-                opt.value = c.age; opt.textContent = `${c.prenom} (${c.age} ans)`;
-                sel.appendChild(opt);
-            });
-            sel.addEventListener('change', () => {
-                currentChildAge = sel.value;
-                document.getElementById('hero-age-hidden').value = currentChildAge;
-                loadAllSections();
-            });
-        }).catch(() => {});
+        requestAnimationFrame(update);
     }
 
+    function sectionHTML(sec) {
+        const more = sec.more ? `<a class="sec-more" href="${esc(sec.more)}">Voir plus ${ICON_ARROW}</a>` : '';
+        return `
+        <section class="mt-10" aria-labelledby="sec-${esc(sec.id)}">
+            <div class="flex items-end justify-between gap-4 mb-5">
+                <div class="min-w-0"><h2 id="sec-${esc(sec.id)}" class="sec-title">${esc(sec.title)}</h2>${sec.subtitle ? `<p class="sec-sub">${esc(sec.subtitle)}</p>` : ''}</div>
+                ${more}
+            </div>
+            <div class="relative">
+                <div class="camp-track">${sec.camps.map(campCard).join('')}</div>
+                <button type="button" class="car-btn car-prev" aria-label="Précédent" hidden><span style="display:flex;transform:rotate(180deg)">${ICON_ARROW}</span></button>
+                <button type="button" class="car-btn car-next" aria-label="Suivant">${ICON_ARROW}</button>
+            </div>
+        </section>`;
+    }
+
+    const BANNER = `
+        <section class="mt-12" aria-label="Rechercher une colonie">
+            <div class="relative bg-[#f6f3e8] rounded-3xl px-6 py-12 text-center overflow-hidden">
+                <p class="font-display text-[32px] font-bold text-[#12372a] leading-none">ColoMap</p>
+                <p class="mt-3 text-[16px] text-[#4b5d55] max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
+                <a href="recherche" class="mt-6 inline-block bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white text-[16px] font-semibold px-12 py-3 rounded-lg transition-colors">Rechercher</a>
+            </div>
+        </section>`;
+
     // ------------------------------------------------------------
-    // Sections "Vacances de ..." : personnalisées + datées
+    // Fil de suggestions : une seule requête pour toutes les sections
     // ------------------------------------------------------------
-    function loadSection(track) {
-        const section = track.closest('section');
-        section.hidden = false;
-        track.innerHTML = Array(7).fill(skeletonCard()).join('');
-        track.scrollLeft = 0;
-        const params = new URLSearchParams({ limit: 14, date_start: track.dataset.start, date_end: track.dataset.end });
+    const feed = document.getElementById('feed'), feedEmpty = document.getElementById('feed-empty');
+    let feedToken = 0;
+    function loadFeed() {
+        if (!feed) return;
+        const token = ++feedToken;
+        feedEmpty.classList.add('hidden');
+        feed.innerHTML = [0, 1].map(() => `<section class="mt-10"><div class="skeleton h-6 w-56 rounded mb-5"></div><div class="camp-track">${Array(7).fill(skeletonCard()).join('')}</div></section>`).join('');
+
+        const params = new URLSearchParams({ periods: JSON.stringify(PERIODS) });
         if (currentChildAge !== '') params.set('child_age', currentChildAge);
-
-        return fetch(`api/get_recommendations.php?${params}`)
+        fetch(`api/get_recommendations.php?${params}`)
             .then(r => r.json())
             .then(data => {
+                if (token !== feedToken) return; // une requête plus récente a pris le relais
                 if (data && Array.isArray(data.favorites)) userFavorites = data.favorites.map(Number);
-                const camps = (data && data.camps) || [];
-                if (camps.length === 0) { section.hidden = true; return false; }
-                track.innerHTML = camps.map(campCard).join('');
-                requestAnimationFrame(() => track._updateArrows && track._updateArrows());
-                return true;
+                const sections = (data && data.sections) || [];
+                if (!sections.length) { feed.innerHTML = ''; feedEmpty.classList.remove('hidden'); return; }
+                feed.innerHTML = sections.map((s, i) => sectionHTML(s) + (i === 0 ? BANNER : '')).join('');
+                feed.querySelectorAll('.camp-track').forEach(bindCarousel);
             })
-            .catch(() => { section.hidden = true; return false; });
-    }
-
-    function loadAllSections() {
-        const periodTracks = [...document.querySelectorAll('.camp-track:not([data-lazy])')];
-        const fb = document.getElementById('track-fallback');
-        Promise.all(periodTracks.map(loadSection)).then(results => {
-            // Aucune offre dans les périodes de vacances : on propose les prochains séjours
-            if (fb && !results.some(Boolean)) loadSection(fb);
-            else if (fb) fb.closest('section').hidden = true;
-        });
+            .catch(() => { if (token === feedToken) { feed.innerHTML = ''; feedEmpty.classList.remove('hidden'); } });
     }
 
     if (!isAnimateur) {
-        loadAllSections();
+        loadFeed();
     } else {
         // Variante animateur : missions éligibles
-        const animList = document.getElementById('anim-list');
-        const animEmpty = document.getElementById('anim-empty');
+        const animList = document.getElementById('anim-list'), animEmpty = document.getElementById('anim-empty');
         animList.innerHTML = Array(6).fill(skeletonCard()).join('');
         fetch('api/get_eligible_camps_for_animator.php')
             .then(r => r.json())

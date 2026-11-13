@@ -66,7 +66,8 @@ if (isset($_GET['code'])) {
                 $_SESSION['user'] = $stmt->fetch(PDO::FETCH_ASSOC);
             }
 
-            header('Location: ../index.php');
+            $dest = $_SESSION['after_login'] ?? ''; unset($_SESSION['after_login']);
+            header('Location: ../' . (($dest !== '' && preg_match('/^[a-z0-9_-]{1,40}$/i', $dest) && is_file(__DIR__ . '/../' . $dest . '.php')) ? $dest . '.php' : 'index.php'));
             exit();
 
         } catch (PDOException $e) {

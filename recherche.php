@@ -183,17 +183,42 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- CHARGEMENT DONNÉES (Thèmes, Enfants) ---
-    fetch('api/get_themes.php').then(r=>r.json()).then(d=>{
+    // Filtres reçus dans l'URL (depuis l'accueil) : ville, âge, catégories (par nom)
+    const urlParams = new URLSearchParams(window.location.search);
+    const wantedThemes = urlParams.getAll('themes[]').concat(urlParams.getAll('themes'));
+
+    const themesReady = fetch('api/get_themes.php').then(r=>r.json()).then(d=>{
         const l=document.getElementById('themes-list'); l.innerHTML='';
-        d.forEach(t=>{ l.innerHTML+=`<div class="flex items-center gap-2 p-1 hover:bg-white rounded"><input type="checkbox" name="themes[]" value="${t.id}" id="t-${t.id}" class="w-4 h-4 cursor-pointer"><label for="t-${t.id}" class="text-sm flex-1 cursor-pointer select-none">${t.name}</label></div>`; });
+        d.forEach(t=>{
+            // La valeur est le NOM : c'est ce que compare api/get_camps_recherche.php
+            const checked = wantedThemes.includes(t.name) ? 'checked' : '';
+            l.innerHTML+=`<div class="flex items-center gap-2 p-1 hover:bg-white rounded"><input type="checkbox" name="themes[]" value="${t.name}" id="t-${t.id}" ${checked} class="w-4 h-4 cursor-pointer"><label for="t-${t.id}" class="text-sm flex-1 cursor-pointer select-none">${t.name}</label></div>`;
+        });
     }).catch(e=>console.error(e));
 
+    let childrenReady = Promise.resolve();
     if(isLoggedIn){
-        fetch('api/get_children.php').then(r=>r.json()).then(d=>{
+        childrenReady = fetch('api/get_children.php').then(r=>r.json()).then(d=>{
             const s=document.getElementById('filter-child');
             d.forEach(c=>{ s.innerHTML+=`<option value="${c.age}">${c.prenom} (${c.age} ans)</option>`; });
-        });
+        }).catch(()=>{});
     }
+
+    // Applique ville / âge de l'URL une fois les listes chargées, puis lance la recherche
+    Promise.all([themesReady, childrenReady]).then(() => {
+        const city = urlParams.get('city');
+        const cityInput = document.getElementById('filter-city');
+        if (city && cityInput) cityInput.value = city;
+        const age = urlParams.get('age');
+        const ageField = form.elements['age'];
+        if (age && ageField) {
+            if (ageField.tagName === 'SELECT' && ![...ageField.options].some(o => o.value === age)) {
+                ageField.add(new Option(age + ' ans', age));
+            }
+            ageField.value = age;
+        }
+        performSearch();
+    });
 
     // --- GESTION HISTORIQUE ---
     function updateHistoryWithCount(term, count) {
@@ -373,8 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if(closeBtn) closeBtn.addEventListener('click', () => toggleDrawer(false));
     if(overlay) overlay.addEventListener('click', () => toggleDrawer(false));
 
-    // Lancer la recherche au chargement
-    performSearch();
+    // La recherche initiale est lancée une fois les filtres de l'URL appliqués (voir plus haut)
 });
 </script>
 
