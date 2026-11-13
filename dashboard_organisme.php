@@ -1,360 +1,183 @@
 <?php
-// 1. D'ABORD LA CONFIG
+// dashboard_organisme.php?organisateur_id=N : tableau de bord d'un organisme (versements Stripe, solde, marketing, séjours).
 require_once 'api/config.php';
+require_once 'api/finance_lib.php';
+require_once 'api/marketing_lib.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 
-// 2. SÉCURITÉ
-if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
-    header('Location: index');
-    exit;
-}
+$orgaId = (int)($_GET['organisateur_id'] ?? 0);
+$userId = (int)$_SESSION['user']['id'];
+$error = isset($_GET['error']) ? mb_substr(strip_tags((string)$_GET['error']), 0, 300) : null;
+$success = isset($_GET['success']) ? mb_substr(strip_tags((string)$_GET['success']), 0, 300) : null;
+$orga = null; $camps = []; $fin = null; $acc = null; $transferts = []; $legacy = []; $mkStats = [];
 
-// 3. LOGIQUE MÉTIER
-$organisateurId = filter_input(INPUT_GET, 'organisateur_id', FILTER_VALIDATE_INT);
-$userId = $_SESSION['user']['id'];
-$organisateur = null;
-$camps = [];
-$virements = []; 
-$error = null;
-$logo_url = 'assets/default_logo.png'; // Logo par défaut
-
-if (!$organisateurId) {
-    $error = "ID d'organisme non spécifié.";
-} else {
-    try {
-        // A. Vérifier que l'organisme appartient bien à l'utilisateur et récupérer TOUTES ses données
-        $stmtOrga = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
-        $stmtOrga->execute([$organisateurId, $userId]);
-        $organisateur = $stmtOrga->fetch(PDO::FETCH_ASSOC);
-
-        if ($organisateur) {
-            // B. Récupérer les camps liés à cet organisme
-            $sqlCamps = "
-                SELECT 
-                    c.*,
-                    (SELECT COUNT(*) FROM inscriptions WHERE camp_id = c.id) as nb_inscrits
-                FROM camps c
-                WHERE c.organisateur_id = ?
-                ORDER BY c.date_debut DESC
-            ";
-            
-            $stmtCamps = $pdo->prepare($sqlCamps);
-            $stmtCamps->execute([$organisateurId]);
-            $camps = $stmtCamps->fetchAll(PDO::FETCH_ASSOC);
-
-            // C. Calculer des statistiques
-            $stats = [
-                'total_camps' => count($camps),
-                'total_inscrits' => array_sum(array_column($camps, 'nb_inscrits')), 
-                'solde_disponible' => floatval($organisateur['portefeuille'])
-            ];
-            
-            // D. Récupérer l'historique des virements
-            $stmtVirements = $pdo->prepare("
-                SELECT token, montant_total, montant_apres_commission, date_demande, effectue, date_virement_effectue, date_virement_estime
-                FROM virements
-                WHERE organisateur_id = ?
-                ORDER BY date_demande DESC
-            ");
-            $stmtVirements->execute([$organisateurId]);
-            $virements = $stmtVirements->fetchAll(PDO::FETCH_ASSOC);
-
-            // Mise à jour du logo
-            if (!empty($organisateur['logo_url'])) {
-                $logo_url = htmlspecialchars($organisateur['logo_url']);
-            }
-
-            // Vérifier les messages d'erreur de redirection
-            $externalError = filter_input(INPUT_GET, 'error', FILTER_SANITIZE_STRING);
-            if ($externalError) {
-                $error = $externalError;
-            }
-            
-            // Message de succès (ex: après validation identité)
-            $successMsg = filter_input(INPUT_GET, 'success', FILTER_SANITIZE_STRING);
-
-        } else {
-            $error = "Organisme introuvable ou vous n'êtes pas autorisé à y accéder.";
+try {
+    fin_ensure($pdo); mk_ensure($pdo);
+    $st = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
+    $st->execute([$orgaId, $userId]);
+    $orga = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$orga) {
+        $error = "Organisme introuvable ou vous n'êtes pas autorisé à y accéder.";
+    } else {
+        // État du compte Stripe : on resynchronise au retour de l'inscription, ou si le dossier n'est pas encore complet
+        $acc = fin_account($pdo, $orgaId);
+        $stale = !$acc || (!fin_account_ready($acc) && strtotime($acc['maj']) < time() - 60);
+        if (!empty($orga['stripe_account_id']) && ($stale || ($_GET['stripe'] ?? '') === 'retour')) {
+            try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { error_log('dashboard sync: ' . $e->getMessage()); }
         }
-
-    } catch (Exception $e) {
-        $error = "Erreur SQL : " . $e->getMessage();
+        $fin = fin_overview($pdo, $orgaId);
+        $st = $pdo->prepare("SELECT * FROM fin_transferts WHERE organisateur_id = ? ORDER BY created_at DESC LIMIT 20");
+        $st->execute([$orgaId]);
+        $transferts = $st->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $st = $pdo->prepare("SELECT token, montant_total, montant_apres_commission, date_demande, effectue, date_virement_effectue FROM virements WHERE organisateur_id = ? ORDER BY date_demande DESC LIMIT 20");
+            $st->execute([$orgaId]);
+            $legacy = $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) { $legacy = []; }
+        $mkStats = mk_camp_stats($pdo, $orgaId, 30);
     }
+} catch (Throwable $e) {
+    error_log('dashboard_organisme: ' . $e->getMessage());
+    $error = 'Une erreur est survenue. Réessayez dans un instant.';
 }
 
-// NOUVEAU : Vérification du statut Stripe (Identité vérifiée ou non)
-$isStripeReady = ($organisateur && !empty($organisateur['stripe_account_id']));
+$ready = fin_account_ready($acc);
+$hasAccount = $orga && !empty($orga['stripe_account_id']);
+$due = $acc && !empty($acc['exigences']) ? (json_decode($acc['exigences'], true) ?: []) : [];
+$delay = fin_release_delay_days();
+$mkTot = ['i' => 0, 'c' => 0, 'n' => 0];
+foreach ($mkStats as $c) { $mkTot['i'] += $c['impressions']; $mkTot['c'] += $c['clics']; $mkTot['n'] += $c['inscriptions']; }
 
-// 4. AFFICHAGE HTML
+$body_class = 'bg-white';
 require_once 'partials/header.php';
+require_once 'partials/mk_icons.php';
 ?>
+<title>Tableau de bord - <?= htmlspecialchars($orga['nom'] ?? 'Organisme') ?></title>
+<link rel="stylesheet" href="assets/mk.css?v=1">
 
-<title>Dashboard - <?= htmlspecialchars($organisateur['nom'] ?? 'Organisme') ?></title>
+<main class="mk-wrap">
+<a href="public_infos.php" class="mk-back"><?= mk_icon('back', 16) ?> Mes organismes</a>
 
-<div class="min-h-screen bg-gray-50 py-10 font-sans">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        <?php if ($error): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">
-                <p class="font-bold">Erreur de gestion</p>
-                <p><?= $error ?></p>
-            </div>
-            <a href="public_infos" class="text-[#0A112F] font-bold hover:underline block mt-4">&larr; Retour à la sélection</a>
-        <?php else: ?>
+<?php if (!$orga): ?>
+    <div class="ds-alert-err"><b>Erreur.</b> <?= htmlspecialchars($error ?? '') ?></div>
+<?php else: ?>
+    <?php if ($error): ?><div class="ds-alert-err" style="margin-bottom:16px" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($success): ?><div class="ds-alert-ok" style="margin-bottom:16px"><?= htmlspecialchars($success) ?></div><?php endif; ?>
 
-            <?php if (isset($successMsg)): ?>
-                <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm">
-                    <p class="font-bold">Succès</p>
-                    <p><?= $successMsg ?></p>
-                </div>
-            <?php endif; ?>
-
-            <div class="mb-8">
-                <a href="public_infos" class="text-gray-500 hover:text-[#0A112F] inline-flex items-center mb-6 transition">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-                    Retour à la sélection des organismes
-                </a>
-                
-                <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div class="flex items-center gap-4">
-                        <?php if (isset($logo_url)): ?>
-                            <img src="<?= $logo_url ?>" alt="Logo de l'organisme" class="w-16 h-16 object-contain rounded-full border border-gray-200 p-1">
-                        <?php endif; ?>
-                        <div>
-                            <h1 class="text-3xl font-extrabold text-[#0A112F]">Tableau de bord : <?= htmlspecialchars($organisateur['nom']) ?></h1>
-                            <div class="flex items-center gap-2 mt-1">
-                                <p class="text-gray-500">Vue d'ensemble et gestion.</p>
-                                <?php if ($isStripeReady): ?>
-                                    <span class="px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700 border border-green-200">Virements Actifs</span>
-                                <?php else: ?>
-                                    <span class="px-2 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200">Identité à vérifier</span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="flex flex-col sm:flex-row gap-4 mt-4 md:mt-0">
-                        <a href="edit_organisateur?id=<?= $organisateur['id'] ?>" class="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition transform hover:-translate-y-0.5">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                            Modifier les informations
-                        </a>
-                        
-                        <?php if (!$isStripeReady): ?>
-                            
-                            <a href="verify_identity?organisateur_id=<?= $organisateur['id'] ?>" 
-                               class="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition transform hover:-translate-y-0.5 animate-pulse">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Ajouter les documents d'identité
-                            </a>
-
-                        <?php else: ?>
-                            
-                            <?php 
-                            $solde = $stats['solde_disponible'];
-                            if ($solde > 0): 
-                            ?>
-                                <a href="demande_de_virement_info?organisateur_id=<?= $organisateur['id'] ?>" 
-                                   class="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition transform hover:-translate-y-0.5">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                                    Virer l'argent (<?= number_format($solde, 2, ',', ' ') ?>€)
-                                </a>
-                            <?php else: ?>
-                                <button disabled class="inline-flex items-center justify-center gap-2 bg-gray-400 text-white font-bold py-3 px-6 rounded-xl shadow-lg opacity-75 cursor-not-allowed">
-                                    Solde insuffisant (0.00€)
-                                </button>
-                            <?php endif; ?>
-
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                
-                <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
-                    <p class="text-sm font-medium text-gray-500">Solde Disponible</p>
-                    <p class="text-3xl font-extrabold text-green-700 mt-1">
-                        <?= number_format($stats['solde_disponible'], 2, ',', ' ') ?>€
-                    </p>
-                    <p class="text-xs text-gray-400 mt-2">Portefeuille actuel</p>
-                </div>
-
-                <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-[#0A112F]">
-                    <p class="text-sm font-medium text-gray-500">Nombre de Séjours</p>
-                    <p class="text-3xl font-extrabold text-[#0A112F] mt-1">
-                        <?= $stats['total_camps'] ?>
-                    </p>
-                    <p class="text-xs text-gray-400 mt-2">Camps actifs pour cet organisme</p>
-                </div>
-
-                <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
-                    <p class="text-sm font-medium text-gray-500">Inscriptions Totales</p>
-                    <p class="text-3xl font-extrabold text-blue-700 mt-1">
-                        <?= $stats['total_inscrits'] ?>
-                    </p>
-                    <p class="text-xs text-gray-400 mt-2">Toutes inscriptions confondues</p>
-                </div>
-            </div>
-            
-            <?php 
-                $iban_ok = !empty($organisateur['iban']);
-                $bic_ok = !empty($organisateur['bic_swift']);
-            ?>
-            <div class="bg-white rounded-xl shadow-md p-8 mb-10">
-                <h2 class="text-xl font-bold text-gray-900 mb-6 border-b pb-3">Informations Administratives et Bancaires</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-8 text-sm">
-                    
-                    <div class="p-2 border rounded-lg bg-gray-50">
-                        <p class="font-semibold text-gray-600">Statut Légal</p>
-                        <p class="text-gray-900 mt-0.5"><?= htmlspecialchars($organisateur['statut_legal'] ?? 'Non renseigné') ?></p>
-                    </div>
-
-                    <div class="p-2 border rounded-lg bg-gray-50">
-                        <p class="font-semibold text-gray-600">Email de Contact</p>
-                        <p class="text-gray-900 mt-0.5"><?= htmlspecialchars($organisateur['email'] ?? 'Non renseigné') ?></p>
-                    </div>
-
-                    <div class="p-2 border rounded-lg bg-gray-50">
-                        <p class="font-semibold text-gray-600">Téléphone</p>
-                        <p class="text-gray-900 mt-0.5"><?= htmlspecialchars($organisateur['tel'] ?? 'Non renseigné') ?></p>
-                    </div>
-
-                    <div class="md:col-span-3 p-2 border rounded-lg bg-gray-50">
-                        <p class="font-semibold text-gray-600">Adresse Administrative</p>
-                        <p class="text-gray-900 mt-0.5">
-                            <?= htmlspecialchars($organisateur['adresse_complete'] ?? 'Non renseigné') ?>, 
-                            <?= htmlspecialchars($organisateur['code_postal_orga'] ?? '') ?> 
-                            <?= htmlspecialchars($organisateur['ville_orga'] ?? '') ?>, 
-                            <?= htmlspecialchars($organisateur['pays_orga'] ?? 'France') ?>
-                        </p>
-                    </div>
-                    
-                    <div class="p-2 border rounded-lg <?= $iban_ok ? 'bg-green-50' : 'bg-red-50' ?> md:col-span-2">
-                        <p class="font-semibold text-gray-600">IBAN</p>
-                        <p class="text-gray-900 mt-0.5 font-mono break-all"><?= htmlspecialchars($organisateur['iban'] ?? 'Non renseigné') ?></p>
-                    </div>
-                    
-                    <div class="p-2 border rounded-lg <?= $bic_ok ? 'bg-green-50' : 'bg-red-50' ?>">
-                        <p class="font-semibold text-gray-600">BIC / SWIFT</p>
-                        <p class="text-gray-900 mt-0.5"><?= htmlspecialchars($organisateur['bic_swift'] ?? 'Non renseigné') ?></p>
-                    </div>
-                    
-                    <?php if (!$iban_ok || !$bic_ok): ?>
-                        <div class="md:col-span-3 text-red-700 text-sm mt-2 p-3 bg-red-100 rounded-lg">
-                            ⚠️ Attention : IBAN ou BIC manquant. Veuillez <a href="edit_organisateur?id=<?= $organisateur['id'] ?>" class="font-bold underline">modifier les informations</a> pour permettre les virements.
-                        </div>
-                    <?php endif; ?>
-                    
-                </div>
-            </div>
-
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-[#0A112F]">Historique des Demandes de Virement</h2>
-                <?php if (!empty($virements)): ?>
-                    <a href="pdf_export_virements_history?organisateur_id=<?= $organisateurId ?>" target="_blank" class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm transition">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2v5h-2m0 0h-2m2 0v-5m-9-1h-2v5h2m0 0h-2m2 0v-5m-2-12h10v10h-10v-10zm-2 10h14v10h-14v-10z"/></svg>
-                        Exporter en PDF
-                    </a>
-                <?php endif; ?>
-            </div>
-            
-            <?php if (empty($virements)): ?>
-                <div class="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100 mb-10">
-                    <p class="text-gray-500">Aucune demande de virement n'a été enregistrée pour cet organisme.</p>
-                </div>
-            <?php else: ?>
-                <div class="bg-white rounded-xl shadow-md overflow-hidden mb-10">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Demande du</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant Net</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant Brut</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut & Dates</th>
-                                <th scope="col" class="relative px-6 py-3"><span class="sr-only">Détails</span></th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            <?php foreach ($virements as $virement): 
-                                $status_text = $virement['effectue'] == 1 ? 'Effectué' : 'En attente';
-                                $status_color = $virement['effectue'] == 1 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
-                            ?>
-                            <tr>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    <?= date('d/m/Y', strtotime($virement['date_demande'])) ?>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700">
-                                    <?= number_format($virement['montant_apres_commission'], 2, ',', ' ') ?>€
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    <?= number_format($virement['montant_total'], 2, ',', ' ') ?>€
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?= $status_color ?>">
-                                        <?= $status_text ?>
-                                    </span>
-                                    <?php if ($virement['effectue'] == 1): ?>
-                                        <p class="text-xs text-gray-500 mt-1">Viré le <?= date('d/m/Y', strtotime($virement['date_virement_effectue'])) ?></p>
-                                    <?php elseif ($virement['date_virement_estime']): ?>
-                                        <p class="text-xs text-blue-500 mt-1">Estimé le <?= date('d/m/Y', strtotime($virement['date_virement_estime'])) ?></p>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <a href="virement?t=<?= $virement['token'] ?>" class="text-[#0A112F] hover:text-blue-600">Détails</a>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-
-            <h2 class="text-2xl font-bold text-[#0A112F] mb-6">Séjours gérés par <?= htmlspecialchars($organisateur['nom']) ?></h2>
-            
-            <?php if (empty($camps)): ?>
-                <div class="bg-white rounded-3xl shadow-sm p-12 text-center border border-gray-100">
-                    <p class="text-gray-500 mb-6">Cet organisme n'a encore publié aucun séjour.</p>
-                    <a href="create_camp" class="text-[#0A112F] font-bold hover:underline">Créer un nouveau séjour &rarr;</a>
-                </div>
-            <?php else: ?>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    
-                    <?php foreach ($camps as $camp): 
-                        // Calculs pour la carte
-                        $quota = max(1, intval($camp['quota_global']));
-                        $inscrits = intval($camp['nb_inscrits']);
-                        $percent = min(100, round(($inscrits / $quota) * 100));
-                        // Utilise l'image du camp ou une image par défaut
-                        $img = !empty($camp['image_url']) ? htmlspecialchars($camp['image_url']) : 'assets/default_camp.jpg'; 
-                    ?>
-                    <div class="bg-white rounded-2xl shadow-sm hover:shadow-md transition border border-gray-200 overflow-hidden flex flex-col">
-                        <div class="relative h-32 w-full overflow-hidden">
-                            <img src="<?= $img ?>" alt="Cover" class="w-full h-full object-cover">
-                        </div>
-                        <div class="p-4 flex-1 flex flex-col">
-                            <h3 class="font-bold text-lg text-gray-900 truncate"><?= htmlspecialchars($camp['nom']) ?></h3>
-                            <p class="text-sm text-gray-500 mt-1"><?= htmlspecialchars($camp['ville']) ?></p>
-                            
-                            <div class="mt-4 mb-2">
-                                <div class="flex justify-between text-xs font-semibold mb-1">
-                                    <span class="text-gray-500">Inscrits</span>
-                                    <span class="text-[#0A112F]"><?= $inscrits ?> / <?= $quota ?></span>
-                                </div>
-                                <div class="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
-                                    <div class="bg-[#0A112F] h-1 rounded-full" style="width: <?= $percent ?>%"></div>
-                                </div>
-                            </div>
-                            
-                            <a href="gestion_camp?t=<?= $camp['token'] ?>" class="mt-auto block w-full text-center py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold hover:bg-gray-200 transition">
-                                Gérer les inscrits
-                            </a>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-
-        <?php endif; ?>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:14px;min-width:0">
+            <?php if (!empty($orga['logo_url'])): ?><img src="<?= htmlspecialchars($orga['logo_url']) ?>" alt="" style="width:56px;height:56px;border-radius:16px;object-fit:cover;border:1px solid var(--ds-line)"><?php endif; ?>
+            <div style="min-width:0"><p class="ds-eyebrow">Tableau de bord</p><h1 class="ds-h1" style="overflow-wrap:anywhere"><?= htmlspecialchars($orga['nom']) ?></h1></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="ds-btn ds-btn-light" href="edit_organisateur.php?id=<?= $orgaId ?>">Modifier l'organisme</a>
+            <a class="ds-btn" href="marketing.php?id=<?= $orgaId ?>"><?= mk_icon('star', 18) ?> Marketing</a>
+        </div>
     </div>
-</div>
 
+    <!-- Versements Stripe -->
+    <section class="mk-section" style="margin-top:28px">
+        <div class="ds-card" style="padding:24px;display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+            <div style="display:flex;gap:14px;align-items:flex-start;max-width:640px">
+                <span class="ds-tile-ico" style="background:<?= $ready ? '#e6efe9' : 'var(--ds-cream)' ?>;color:<?= $ready ? '#2d5a43' : '#6b5518' ?>"><?= mk_icon($ready ? 'check' : 'bank') ?></span>
+                <div>
+                    <b class="text-[#26343b] text-[17px]">
+                        <?php if ($ready): ?>Versements activés<?php elseif ($hasAccount && !empty($acc['details_submitted'])): ?>Vérification en cours chez Stripe<?php elseif ($hasAccount): ?>Finalisez votre inscription pour être payé<?php else: ?>Activez vos versements<?php endif; ?>
+                    </b>
+                    <p class="mk-note" style="margin-top:4px;font-size:14px">
+                        <?php if ($ready): ?>L'argent des inscriptions est versé automatiquement sur votre compte bancaire, <?= $delay === 0 ? 'dès le début' : 'le ' . ($delay === 1 ? 'lendemain' : 'jour J+' . $delay) . ' du début' ?> de chaque séjour.
+                        <?php elseif ($hasAccount && !empty($acc['details_submitted'])): ?>Stripe vérifie votre dossier (en général sous 24 à 48 h). Les sommes restent en sécurité et seront versées dès la validation.
+                        <?php else: ?>Pour recevoir le paiement des inscriptions, renseignez votre identité et votre IBAN directement chez Stripe, notre prestataire de paiement. ColoMap ne voit ni ne conserve ces données. Compter 5 minutes.<?php endif; ?>
+                    </p>
+                    <?php if ($hasAccount && !$ready && $due): ?><p class="mk-note" style="margin-top:6px"><?= count($due) ?> information<?= count($due) > 1 ? 's' : '' ?> restant à fournir.</p><?php endif; ?>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <?php if (!$ready): ?><a class="ds-btn" href="api/connect_onboarding.php?organisateur_id=<?= $orgaId ?>"><?= $hasAccount ? 'Continuer mon inscription' : 'Activer mes versements' ?> <?= mk_icon('arrow', 16) ?></a>
+                <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light" href="api/connect_dashboard.php?organisateur_id=<?= $orgaId ?>" target="_blank" rel="noopener">Mon espace Stripe</a><?php endif; ?>
+            </div>
+        </div>
+    </section>
+
+    <section class="mk-section" style="margin-top:20px">
+        <div class="mk-grid mk-g4">
+            <div class="mk-stat dark"><div class="k">À recevoir</div><div class="v"><?= fin_eur(max(0, $fin['solde_cents'])) ?></div><div class="s">net de commission, hors sommes déjà versées</div></div>
+            <div class="mk-stat"><div class="k">Prêt à être versé</div><div class="v"><?= fin_eur($fin['deblocable_cents']) ?></div><div class="s"><?= $ready ? 'versé au prochain passage (toutes les heures)' : 'en attente de l\'activation des versements' ?></div></div>
+            <div class="mk-stat"><div class="k">Déjà versé</div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div><div class="s"><?= count($transferts) ?> versement<?= count($transferts) > 1 ? 's' : '' ?> récent<?= count($transferts) > 1 ? 's' : '' ?></div></div>
+            <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %</div><div class="s">prélevée sur chaque inscription payée en ligne : <?= fin_eur($fin['commission_total_cents']) ?> au total</div></div>
+        </div>
+        <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Votre solde est négatif de <?= fin_eur(-$fin['solde_cents']) ?> (remboursements après versement). Il sera déduit de vos prochains versements.</div><?php endif; ?>
+        <?php if ($fin['historique_cents'] > 0): ?><div class="mk-tip" style="margin-top:14px"><?= mk_icon('info', 20) ?><div>Un solde de <b><?= fin_eur($fin['historique_cents']) ?></b> provient de l'ancien système de virement. L'équipe ColoMap le règle manuellement : <a class="underline" href="contact.php">contactez-nous</a> si vous souhaitez le recevoir.</div></div><?php endif; ?>
+    </section>
+
+    <!-- Marketing -->
+    <section class="mk-section" style="margin-top:20px">
+        <div class="ds-card" style="padding:22px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+            <div style="max-width:620px"><b class="text-[#26343b] text-[17px]">Marketing : <?= number_format((int)$fin['points'], 0, ',', ' ') ?> points</b>
+                <p class="mk-note" style="margin-top:4px;font-size:14px">Sur 30 jours : <?= number_format($mkTot['i'], 0, ',', ' ') ?> impressions, <?= number_format($mkTot['c'], 0, ',', ' ') ?> visites, <?= $mkTot['n'] ?> inscription<?= $mkTot['n'] > 1 ? 's' : '' ?>.
+                <?= $fin['solde_cents'] >= 1000 ? 'Vous pouvez payer vos points avec vos gains, sans carte.' : '' ?></p></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="ds-btn ds-btn-light" href="marketing_dashboard.php?id=<?= $orgaId ?>"><?= mk_icon('chart', 18) ?> Statistiques</a><a class="ds-btn" href="marketing.php?id=<?= $orgaId ?>">Booster mes séjours</a></div>
+        </div>
+    </section>
+
+    <!-- Prochains versements -->
+    <section class="mk-section">
+        <h2>Prochains versements</h2>
+        <p class="lead">Chaque séjour est versé le <?= $delay === 1 ? 'lendemain' : 'jour J+' . $delay ?> de son départ, une fois la période de contestation courante passée.</p>
+        <?php if (!$fin['prochains']): ?>
+            <p class="mk-note" style="margin-top:14px">Aucune inscription payée en attente de versement.</p>
+        <?php else: ?>
+            <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table">
+                <thead><tr><th>Séjour</th><th>Départ</th><th>Versement prévu</th><th class="num">Inscr.</th><th class="num">Net</th><th>Statut</th></tr></thead>
+                <tbody>
+                <?php foreach ($fin['prochains'] as $p): $lbl = ['attente' => ['En attente', 'info'], 'bloque' => ['Suspendu', 'warn'], 'litige' => ['Litige en cours', 'bad'], 'en_cours' => ['En cours d\'envoi', 'info']][$p['statut']] ?? [$p['statut'], '']; ?>
+                    <tr><td><b><?= htmlspecialchars($p['nom']) ?></b></td><td><?= date('d/m/Y', strtotime($p['date_debut'])) ?></td><td><?= date('d/m/Y', strtotime($p['date_deblocage'])) ?></td><td class="num"><?= (int)$p['n'] ?></td><td class="num"><b><?= fin_eur((int)$p['net']) ?></b></td><td><span class="mk-pill <?= $lbl[1] ?>"><?= $lbl[0] ?></span></td></tr>
+                <?php endforeach; ?>
+                </tbody></table></div>
+        <?php endif; ?>
+    </section>
+
+    <!-- Historique -->
+    <section class="mk-section">
+        <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap"><div><h2>Historique des versements</h2><p class="lead">Chaque versement a son justificatif, détaillé inscription par inscription.</p></div>
+            <?php if ($transferts || $legacy): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="pdf_export_virements_history.php?organisateur_id=<?= $orgaId ?>" target="_blank"><?= mk_icon('doc', 16) ?> Export PDF</a><?php endif; ?></div>
+        <?php if (!$transferts && !$legacy): ?>
+            <p class="mk-note" style="margin-top:14px">Aucun versement pour le moment.</p>
+        <?php else: ?>
+            <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table">
+                <thead><tr><th>Date</th><th>Référence</th><th class="num">Montant</th><th>Statut</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($transferts as $t): $s = ['envoye' => ['Envoyé à Stripe', 'ok'], 'en_cours' => ['En cours', 'info'], 'echec' => ['Échec, nouvel essai', 'bad']][$t['statut']] ?? [$t['statut'], '']; ?>
+                    <tr><td><?= date('d/m/Y H:i', strtotime($t['created_at'])) ?></td><td class="mk-note"><?= htmlspecialchars(substr($t['token'], 0, 10)) ?> · <?= (int)$t['nb_paiements'] ?> inscr.</td><td class="num"><b><?= fin_eur((int)$t['montant_cents']) ?></b></td><td><span class="mk-pill <?= $s[1] ?>"><?= $s[0] ?></span></td><td class="num"><a class="underline" href="virement.php?t=<?= urlencode($t['token']) ?>">Justificatif</a></td></tr>
+                <?php endforeach; ?>
+                <?php foreach ($legacy as $v): ?>
+                    <tr><td><?= date('d/m/Y', strtotime($v['date_demande'])) ?></td><td class="mk-note">Ancien système</td><td class="num"><b><?= fin_eur((int)round($v['montant_apres_commission'] * 100)) ?></b></td><td><span class="mk-pill <?= $v['effectue'] ? 'ok' : 'warn' ?>"><?= $v['effectue'] ? 'Effectué' : 'En attente' ?></span></td><td class="num"><a class="underline" href="virement.php?t=<?= urlencode($v['token']) ?>">Justificatif</a></td></tr>
+                <?php endforeach; ?>
+                </tbody></table></div>
+        <?php endif; ?>
+    </section>
+
+    <!-- Séjours -->
+    <section class="mk-section">
+        <h2>Séjours de <?= htmlspecialchars($orga['nom']) ?></h2>
+        <?php if (!$mkStats): ?>
+            <p class="mk-note" style="margin-top:14px">Aucun séjour publié. <a class="underline" href="create_camp.php">Créer un séjour</a></p>
+        <?php else: ?>
+            <div class="mk-grid mk-g3" style="margin-top:16px">
+                <?php foreach ($mkStats as $c): $qt = max(1, (int)$c['quota_global']); $pc = min(100, round($c['inscrits_total'] / $qt * 100)); ?>
+                    <div class="ds-card" style="padding:18px;display:flex;flex-direction:column">
+                        <b class="text-[#26343b]" style="overflow-wrap:anywhere"><?= htmlspecialchars($c['nom']) ?></b>
+                        <span class="mk-note"><?= htmlspecialchars($c['ville'] ?? '') ?> · <?= $c['date_debut'] ? date('d/m/Y', strtotime($c['date_debut'])) : '' ?></span>
+                        <div style="margin-top:12px;display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span class="mk-note">Inscrits</span><span><?= (int)$c['inscrits_total'] ?> / <?= (int)$c['quota_global'] ?></span></div>
+                        <div class="mk-meter" style="margin-top:6px"><span style="width:<?= $pc ?>%"></span></div>
+                        <div class="mk-note" style="margin-top:10px"><?= number_format($c['impressions'], 0, ',', ' ') ?> impr. · <?= number_format($c['clics'], 0, ',', ' ') ?> visites (30 j)</div>
+                        <div style="margin-top:auto;padding-top:14px;display:flex;gap:8px;flex-wrap:wrap"><a class="ds-btn ds-btn-light mk-btn-sm" href="gestion_camp.php?t=<?= urlencode($c['token']) ?>">Inscrits</a><?php if (!empty($c['valide'])): ?><a class="ds-btn mk-btn-sm" href="boost.php?t=<?= urlencode($c['token']) ?>">Booster</a><?php endif; ?></div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
+</main>
 <?php require_once 'partials/footer.php'; ?>

@@ -1,271 +1,214 @@
 <?php
-// Fichier: marketing.php
+// marketing.php : Marketing & visibilité. L'argumentaire, l'offre de boosts, le solde de points et les séjours à booster.
 require_once 'api/config.php';
-require_once 'partials/header.php';
-
-// SÉCURITÉ
+require_once 'api/marketing_lib.php';
+require_once 'api/finance_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['user']['id']) || !$_SESSION['user']['is_directeur']) {
-    header('Location: index.php');
-    exit;
+if (!isset($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
+
+$userId = (int)$_SESSION['user']['id'];
+$orgaId = (int)($_GET['id'] ?? 0);
+mk_ensure($pdo); fin_ensure($pdo);
+
+$st = $pdo->prepare("SELECT id, nom, solde_points, portefeuille, logo_url FROM organisateurs WHERE user_id = ? ORDER BY nom ASC");
+$st->execute([$userId]);
+$orgas = $st->fetchAll(PDO::FETCH_ASSOC);
+if (!$orgaId && count($orgas) === 1) { header('Location: marketing.php?id=' . (int)$orgas[0]['id']); exit; }
+
+$orga = null;
+foreach ($orgas as $o) if ((int)$o['id'] === $orgaId) $orga = $o;
+if ($orgaId && !$orga) { header('Location: marketing.php'); exit; }
+
+$camps = []; $tot = ['impressions' => 0, 'clics' => 0, 'inscriptions' => 0, 'points' => 0]; $avgPrice = 0.0; $walletCents = 0;
+if ($orga) {
+    $camps = mk_camp_stats($pdo, $orgaId, 30);
+    foreach ($camps as $c) { $tot['impressions'] += $c['impressions']; $tot['clics'] += $c['clics']; $tot['inscriptions'] += $c['inscriptions']; $tot['points'] += $c['points_depenses']; }
+    $q = $pdo->prepare("SELECT AVG(i.montant_paye) FROM inscriptions i JOIN camps c ON c.id = i.camp_id WHERE c.organisateur_id = ? AND i.statut_paiement = 'PAYE' AND i.montant_paye > 0");
+    $q->execute([$orgaId]);
+    $avgPrice = (float)$q->fetchColumn();
+    if ($avgPrice <= 0) { $q = $pdo->prepare("SELECT AVG(prix) FROM camps WHERE organisateur_id = ? AND prix > 0"); $q->execute([$orgaId]); $avgPrice = (float)$q->fetchColumn(); }
+    $walletCents = fin_points_budget_cents($pdo, $orgaId);
 }
+$proof = mk_platform_proof($pdo);
+$boosts = mk_boosts();
+$net = $avgPrice * (1 - fin_commission_pct() / 100);
+function mk_money($v) { return number_format($v, 2, ',', ' ') . ' €'; }
 
-$userId = $_SESSION['user']['id'];
-$orgaId = $_GET['id'] ?? null;
-
-// --- VUE 1 : SÉLECTION DE L'ORGANISME ---
-if (!$orgaId) {
-    $stmt = $pdo->prepare("SELECT id, nom, solde_points, logo_url FROM organisateurs WHERE user_id = ? ORDER BY nom ASC");
-    $stmt->execute([$userId]);
-    $orgas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$body_class = 'bg-white';
+require_once 'partials/header.php';
+require_once 'partials/mk_icons.php';
 ?>
-    <div class="min-h-screen bg-gray-50 py-12 font-sans text-slate-800">
-        <div class="max-w-5xl mx-auto px-4">
-            <div class="mb-8">
-                <a href="profile.php" class="text-sm text-gray-500 hover:text-black mb-2 inline-block">&larr; Retour tableau de bord</a>
-                <h1 class="text-3xl font-bold text-gray-900">Marketing & Visibilité</h1>
-                <p class="text-gray-500 mt-2">Sélectionnez l'organisme pour lequel vous souhaitez gérer la publicité.</p>
-            </div>
+<title>Marketing et visibilité - ColoMap</title>
+<link rel="stylesheet" href="assets/mk.css?v=1">
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <?php foreach($orgas as $orga): ?>
-                    <a href="marketing.php?id=<?= $orga['id'] ?>" class="group block bg-white border border-gray-200 rounded-xl p-6 hover:border-black transition-all hover:shadow-lg relative overflow-hidden">
-                        <div class="flex justify-between items-start">
-                            <div class="flex items-center gap-4">
-                                <?php if(!empty($orga['logo_url'])): ?>
-                                    <img src="<?= htmlspecialchars($orga['logo_url']) ?>" class="w-12 h-12 rounded object-cover border">
-                                <?php else: ?>
-                                    <div class="w-12 h-12 rounded bg-gray-100 flex items-center justify-center text-gray-400 font-bold text-xl">
-                                        <?= strtoupper(substr($orga['nom'], 0, 1)) ?>
-                                    </div>
-                                <?php endif; ?>
-                                <div>
-                                    <h3 class="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors"><?= htmlspecialchars($orga['nom']) ?></h3>
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">Solde actuel</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <span class="block text-2xl font-bold font-mono text-gray-900"><?= number_format($orga['solde_points'], 0, ',', ' ') ?></span>
-                                <span class="text-xs font-medium text-gray-400">PTS</span>
-                            </div>
-                        </div>
-                        <div class="mt-6 flex justify-end">
-                            <span class="text-sm font-medium text-blue-600 group-hover:translate-x-1 transition-transform inline-flex items-center">
-                                Gérer & Recharger &rarr;
-                            </span>
-                        </div>
-                    </a>
-                <?php endforeach; ?>
-                
-                <?php if(empty($orgas)): ?>
-                    <div class="col-span-2 text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
-                        <p class="text-gray-500">Vous n'avez pas encore créé d'organisme.</p>
-                        <a href="create_organisateur.php" class="mt-4 inline-block bg-black text-white px-4 py-2 rounded text-sm font-medium">Créer un organisme</a>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-<?php
-    require_once 'partials/footer.php';
-    exit;
-}
+<main class="mk-wrap">
+    <a href="profile.php" class="mk-back"><?= mk_icon('back', 16) ?> Tableau de bord</a>
 
-// --- VUE 2 : DASHBOARD DE L'ORGANISME ---
-// Récupération sécurisée de l'organisme
-$stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
-$stmt->execute([$orgaId, $userId]);
-$orga = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$orga) die("Organisme introuvable ou accès refusé.");
-
-// Récupération des camps
-$stmtCamps = $pdo->prepare("
-    SELECT id, nom, date_debut, date_fin, token, boost_vedette_fin, boost_urgence_fin, date_bump 
-    FROM camps 
-    WHERE organisateur_id = ? AND supprime = 0 
-    ORDER BY date_debut DESC
-");
-$stmtCamps->execute([$orgaId]);
-$camps = $stmtCamps->fetchAll(PDO::FETCH_ASSOC);
-?>
-
-<div class="min-h-screen bg-gray-50 py-10 font-sans text-slate-800">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6">
-        
-        <div class="mb-8">
-            <a href="marketing.php" class="text-sm text-gray-500 hover:text-black mb-4 inline-flex items-center gap-1">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                Changer d'organisme
-            </a>
-            
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-center gap-6">
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900"><?= htmlspecialchars($orga['nom']) ?></h1>
-                    <p class="text-sm text-gray-500 mt-1">Gérez votre portefeuille de points et boostez vos séjours.</p>
-                </div>
-                
-                <div class="flex items-center gap-6 bg-slate-50 px-6 py-4 rounded-lg border border-slate-100">
-                    <div class="text-right">
-                        <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Portefeuille</p>
-                        <p class="text-3xl font-bold font-mono text-slate-900"><?= number_format($orga['solde_points'], 0, ',', ' ') ?> <span class="text-sm font-sans font-medium text-slate-500">pts</span></p>
-                    </div>
-                    <button onclick="openShopModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg text-sm font-bold shadow-md transition-all hover:-translate-y-0.5 flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-                        Recharger
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <?php if(isset($_GET['success'])): ?>
-            <div class="bg-green-50 text-green-800 border border-green-200 p-4 rounded-lg mb-6 text-center font-medium">
-                Paiement réussi ! Vos points ont été crédités.
-            </div>
-        <?php endif; ?>
-
-        <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            Vos séjours éligibles
-            <span class="bg-gray-100 text-gray-600 text-xs py-0.5 px-2 rounded-full"><?= count($camps) ?></span>
-        </h2>
-
-        <div class="space-y-4">
-            <?php foreach($camps as $camp): ?>
-                <div class="bg-white border border-gray-200 rounded-lg p-5 flex flex-col md:flex-row items-center justify-between hover:border-blue-300 transition-colors group">
-                    
-                    <div class="flex-grow mb-4 md:mb-0 w-full md:w-auto">
-                        <div class="flex items-center gap-3 mb-1">
-                            <h3 class="font-bold text-lg text-gray-900"><?= htmlspecialchars($camp['nom']) ?></h3>
-                            
-                            <?php if($camp['boost_vedette_fin'] && new DateTime($camp['boost_vedette_fin']) > new DateTime()): ?>
-                                <span class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide border border-indigo-200">À la une</span>
-                            <?php endif; ?>
-                            
-                            <?php if($camp['boost_urgence_fin'] && new DateTime($camp['boost_urgence_fin']) > new DateTime()): ?>
-                                <span class="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide border border-red-200">Urgence</span>
-                            <?php endif; ?>
-                        </div>
-                        <p class="text-sm text-gray-500 flex items-center gap-2">
-                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            Du <?= date('d/m/Y', strtotime($camp['date_debut'])) ?> au <?= date('d/m/Y', strtotime($camp['date_fin'])) ?>
-                        </p>
-                    </div>
-
-                    <div class="flex items-center gap-3 w-full md:w-auto">
-                        <a href="boost.php?t=<?= $camp['token'] ?>" class="w-full md:w-auto text-center bg-white border border-gray-300 text-gray-700 hover:border-blue-600 hover:text-blue-600 px-5 py-2.5 rounded-lg text-sm font-medium transition shadow-sm flex items-center justify-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            Booster
-                        </a>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-
-            <?php if(empty($camps)): ?>
-                <div class="p-12 text-center bg-white border border-dashed border-gray-300 rounded-xl text-gray-500">
-                    <p class="mb-4">Aucun séjour actif pour cet organisme.</p>
-                    <a href="create_camp.php" class="text-blue-600 font-medium hover:underline">Publier un séjour</a>
-                </div>
+    <section class="mk-hero">
+        <p class="ds-eyebrow" style="color:rgba(255,255,255,.75)">Marketing ColoMap</p>
+        <h1>Remplissez vos séjours avec les familles qui les cherchent</h1>
+        <p>Votre séjour est déjà visible gratuitement. Les boosts le placent devant les familles au moment où elles comparent, et vous voyez précisément ce que chaque point investi rapporte : impressions, clics, inscriptions et coût par inscription.</p>
+        <div class="mk-actions">
+            <?php if ($orga): ?>
+                <button type="button" class="ds-btn mk-btn-inv" onclick="mkOpen()"><?= mk_icon('wallet', 18) ?> Acheter des points</button>
+                <a href="marketing_dashboard.php?id=<?= (int)$orga['id'] ?>" class="ds-btn mk-btn-ghost"><?= mk_icon('chart', 18) ?> Voir mes statistiques</a>
+            <?php else: ?>
+                <a href="#organismes" class="ds-btn mk-btn-inv">Choisir mon organisme</a>
             <?php endif; ?>
         </div>
-    </div>
-</div>
+    </section>
 
-<div id="shopModal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity backdrop-blur-sm" onclick="closeShopModal()"></div>
-        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+    <?php if (isset($_GET['success'])): ?>
+        <div class="ds-alert-ok" style="margin-top:18px"><b>Paiement reçu.</b> Vos points apparaissent dans votre solde dans quelques instants (le temps que Stripe nous confirme le paiement).</div>
+    <?php endif; ?>
 
-        <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
-            <div class="bg-white px-8 py-8">
-                <div class="flex justify-between items-center mb-8">
-                    <div>
-                        <h3 class="text-xl font-bold text-gray-900">Recharger le compte</h3>
-                        <p class="text-sm text-gray-500 mt-1"><?= htmlspecialchars($orga['nom']) ?></p>
-                    </div>
-                    <button onclick="closeShopModal()" class="text-gray-400 hover:text-gray-600 transition bg-gray-100 p-2 rounded-full">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
+    <?php if (!$orga): ?>
+    <section class="mk-section" id="organismes">
+        <h2>Pour quel organisme ?</h2>
+        <div class="mk-grid mk-g2" style="margin-top:16px">
+            <?php foreach ($orgas as $o): ?>
+                <a class="ds-tile" href="marketing.php?id=<?= (int)$o['id'] ?>">
+                    <span class="ds-tile-ico"><?php if (!empty($o['logo_url'])): ?><img src="<?= htmlspecialchars($o['logo_url']) ?>" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:14px"><?php else: echo mk_icon('users'); endif; ?></span>
+                    <span style="flex:1;min-width:0"><b class="block text-[#26343b]" style="overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($o['nom']) ?></b><span class="mk-note"><?= number_format((int)$o['solde_points'], 0, ',', ' ') ?> points</span></span>
+                    <?= mk_icon('arrow', 18) ?>
+                </a>
+            <?php endforeach; ?>
+            <?php if (!$orgas): ?><p class="mk-note">Vous n'avez pas encore d'organisme. <a class="underline" href="create_organisateur.php">Créer un organisme</a></p><?php endif; ?>
+        </div>
+    </section>
+    <?php else: ?>
 
-                <div class="space-y-4">
-                    <div onclick="buyPoints('decouverte')" class="cursor-pointer border border-gray-200 rounded-xl p-5 flex items-center justify-between hover:border-blue-600 hover:bg-blue-50 transition group">
-                        <div class="flex items-center gap-4">
-                            <div class="h-10 w-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">D</div>
-                            <div>
-                                <span class="block font-bold text-gray-900 group-hover:text-blue-700">Pack Découverte</span>
-                                <span class="text-sm text-gray-500">100 points</span>
-                            </div>
-                        </div>
-                        <span class="font-mono font-bold text-lg text-gray-900">10,00 €</span>
-                    </div>
+    <section class="mk-section" style="margin-top:28px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <h2 class="text-[22px] font-extrabold text-[#26343b]"><?= htmlspecialchars($orga['nom']) ?></h2>
+            <?php if (count($orgas) > 1): ?><a class="mk-note underline" href="marketing.php">Changer d'organisme</a><?php endif; ?>
+        </div>
+        <div class="mk-grid mk-g4" style="margin-top:14px">
+            <div class="mk-stat dark"><div class="k">Solde de points</div><div class="v"><?= number_format((int)$orga['solde_points'], 0, ',', ' ') ?></div><div class="s">= <?= mk_money((int)$orga['solde_points'] * MK_POINT_EUR) ?> de visibilité</div></div>
+            <div class="mk-stat"><div class="k">Impressions (30 j)</div><div class="v"><?= number_format($tot['impressions'], 0, ',', ' ') ?></div><div class="s">fois où vos séjours ont été affichés</div></div>
+            <div class="mk-stat"><div class="k">Visites (30 j)</div><div class="v"><?= number_format($tot['clics'], 0, ',', ' ') ?></div><div class="s"><?= $tot['impressions'] > 0 ? number_format($tot['clics'] / $tot['impressions'] * 100, 1, ',', ' ') . ' % des impressions' : 'pas encore de données' ?></div></div>
+            <div class="mk-stat"><div class="k">Inscriptions (30 j)</div><div class="v"><?= number_format($tot['inscriptions'], 0, ',', ' ') ?></div><div class="s"><?= $tot['points'] > 0 ? number_format($tot['points'], 0, ',', ' ') . ' pts investis' : 'aucun boost sur la période' ?></div></div>
+        </div>
+    </section>
+    <?php endif; ?>
 
-                    <div onclick="buyPoints('standard')" class="cursor-pointer border-2 border-blue-600 bg-white rounded-xl p-5 flex items-center justify-between hover:shadow-md transition relative transform hover:-translate-y-1">
-                        <div class="absolute -top-3 right-4 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-sm">Populaire</div>
-                        <div class="flex items-center gap-4">
-                            <div class="h-10 w-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">S</div>
-                            <div>
-                                <span class="block font-bold text-gray-900">Pack Standard</span>
-                                <span class="text-sm text-gray-500">600 points <span class="text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded text-xs ml-2">+20% Offert</span></span>
-                            </div>
-                        </div>
-                        <span class="font-mono font-bold text-lg text-blue-700">50,00 €</span>
-                    </div>
-
-                    <div onclick="buyPoints('agence')" class="cursor-pointer border border-gray-200 rounded-xl p-5 flex items-center justify-between hover:border-blue-600 hover:bg-blue-50 transition group">
-                        <div class="flex items-center gap-4">
-                            <div class="h-10 w-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold">A</div>
-                            <div>
-                                <span class="block font-bold text-gray-900 group-hover:text-blue-700">Pack Agence</span>
-                                <span class="text-sm text-gray-500">1500 points <span class="text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded text-xs ml-2">+50% Offert</span></span>
-                            </div>
-                        </div>
-                        <span class="font-mono font-bold text-lg text-gray-900">100,00 €</span>
-                    </div>
-                </div>
-                
-                <p class="text-center text-xs text-gray-400 mt-8 flex items-center justify-center gap-1">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                    Paiement sécurisé via Stripe
-                </p>
+    <section class="mk-section">
+        <h2>Trois boosts, trois objectifs</h2>
+        <p class="lead">Chaque boost augmente le poids de votre séjour dans le classement. Il ne remplace pas la pertinence : un séjour qui ne correspond pas à la recherche reste derrière.</p>
+        <div class="mk-grid mk-g3" style="margin-top:22px">
+            <div class="mk-offer">
+                <div class="ico"><?= mk_icon('up') ?></div>
+                <h3><?= $boosts['bump']['label'] ?></h3>
+                <p>Un coup de projecteur immédiat, pour passer devant les séjours similaires aux heures de pointe.</p>
+                <ul><li>Poids du séjour +50 % à l'instant T</li><li>L'effet s'estompe progressivement sur 3 jours</li><li>Cumulable avec les autres boosts</li></ul>
+                <div class="foot"><div class="mk-price"><?= $boosts['bump']['cost'] ?> pts<small><?= mk_money($boosts['bump']['cost'] * MK_POINT_EUR) ?></small></div></div>
+            </div>
+            <div class="mk-offer rec">
+                <span class="tag">Le plus efficace</span>
+                <div class="ico"><?= mk_icon('star') ?></div>
+                <h3><?= $boosts['vedette']['label'] ?></h3>
+                <p>Votre séjour est mis en avant 7 jours dans la recherche et sur l'accueil, avec la mention « Sponsorisé ».</p>
+                <ul><li>Poids du séjour +55 % pendant 7 jours</li><li>Présent dans la rubrique « À la une » de l'accueil</li><li>Reconductible : les jours s'ajoutent</li></ul>
+                <div class="foot"><div class="mk-price"><?= $boosts['vedette']['cost'] ?> pts<small><?= mk_money($boosts['vedette']['cost'] * MK_POINT_EUR) ?> pour 7 jours</small></div></div>
+            </div>
+            <div class="mk-offer">
+                <div class="ico"><?= mk_icon('clock') ?></div>
+                <h3><?= $boosts['urgence']['label'] ?></h3>
+                <p>Pour combler les dernières places d'un séjour qui part bientôt : il ressort quand les familles cherchent un départ proche.</p>
+                <ul><li>Poids du séjour +20 % pendant 3 jours</li><li>Réservé aux séjours qui partent dans moins de 45 jours</li><li>Badge « Dernière minute »</li></ul>
+                <div class="foot"><div class="mk-price"><?= $boosts['urgence']['cost'] ?> pts<small><?= mk_money($boosts['urgence']['cost'] * MK_POINT_EUR) ?> pour 3 jours</small></div></div>
             </div>
         </div>
-    </div>
-</div>
+    </section>
 
-<script src="https://js.stripe.com/v3/"></script>
-<script>
-    const stripe = Stripe('<?= STRIPE_PUBLISHABLE_KEY ?>');
+    <section class="mk-section">
+        <h2>Ce que ça peut rapporter</h2>
+        <div class="mk-grid mk-g3" style="margin-top:18px">
+            <div class="mk-stat">
+                <div class="k">Rentabilité</div>
+                <?php if ($orga && $net > 0): $cost = $boosts['vedette']['cost'] * MK_POINT_EUR; ?>
+                    <div class="v">x<?= number_format($net / $cost, 0, ',', ' ') ?></div>
+                    <div class="s">Prix moyen d'une inscription chez vous : <b><?= mk_money($avgPrice) ?></b>. Une seule inscription de plus rembourse <?= number_format($net / $cost, 1, ',', ' ') ?> fois une Mise à la une (<?= mk_money($cost) ?>).</div>
+                <?php else: ?>
+                    <div class="v">1 inscription</div>
+                    <div class="s">Une Mise à la une coûte <?= mk_money($boosts['vedette']['cost'] * MK_POINT_EUR) ?> : une seule inscription supplémentaire à 250 € la rembourse largement.</div>
+                <?php endif; ?>
+            </div>
+            <div class="mk-stat">
+                <div class="k">Effet mesuré sur ColoMap</div>
+                <?php if ($proof): ?>
+                    <div class="v">x<?= number_format($proof['multiplicateur'], 1, ',', ' ') ?></div>
+                    <div class="s">Les séjours boostés reçoivent <?= number_format($proof['multiplicateur'], 1, ',', ' ') ?> fois plus de visites par affichage que les autres (30 derniers jours, <?= number_format($proof['boost_impressions'], 0, ',', ' ') ?> impressions observées).</div>
+                <?php else: ?>
+                    <div class="v">100 % mesuré</div>
+                    <div class="s">Vous voyez l'effet réel de chaque boost sur vos séjours : impressions, visites, inscriptions. Pas de promesse, des chiffres.</div>
+                <?php endif; ?>
+            </div>
+            <div class="mk-stat">
+                <div class="k">Sans risque</div>
+                <div class="v">0 abonnement</div>
+                <div class="s">Vous n'achetez que les points dont vous avez besoin, et vous pouvez les payer avec les gains de vos inscriptions sans sortir un euro de votre poche.</div>
+            </div>
+        </div>
+    </section>
 
-    function openShopModal() { document.getElementById('shopModal').classList.remove('hidden'); }
-    function closeShopModal() { document.getElementById('shopModal').classList.add('hidden'); }
+    <?php if ($orga): ?>
+    <section class="mk-section">
+        <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap">
+            <div><h2>Vos séjours</h2><p class="lead">Choisissez le séjour à mettre en avant.</p></div>
+            <a class="ds-btn ds-btn-light mk-btn-sm" href="marketing_dashboard.php?id=<?= (int)$orga['id'] ?>"><?= mk_icon('chart', 16) ?> Statistiques détaillées</a>
+        </div>
+        <?php if (!$camps): ?>
+            <p class="mk-note" style="margin-top:14px">Aucun séjour pour le moment. <a class="underline" href="create_camp.php">Publier un séjour</a></p>
+        <?php else: ?>
+        <div class="mk-table-wrap" style="margin-top:16px">
+            <table class="mk-table">
+                <thead><tr><th>Séjour</th><th>Départ</th><th class="num">Impr.</th><th class="num">Visites</th><th class="num">Inscr.</th><th>Boosts actifs</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($camps as $c): $past = $c['date_debut'] && strtotime($c['date_debut']) < strtotime('today'); ?>
+                    <tr>
+                        <td><b><?= htmlspecialchars($c['nom']) ?></b><div class="mk-note"><?= htmlspecialchars($c['ville'] ?? '') ?></div></td>
+                        <td><?= $c['date_debut'] ? date('d/m/Y', strtotime($c['date_debut'])) : '-' ?></td>
+                        <td class="num"><?= number_format($c['impressions'], 0, ',', ' ') ?></td>
+                        <td class="num"><?= number_format($c['clics'], 0, ',', ' ') ?></td>
+                        <td class="num"><?= $c['inscriptions'] ?></td>
+                        <td>
+                            <?php if ($c['vedette_actif']): ?><span class="mk-pill ok">À la une jusqu'au <?= date('d/m', strtotime($c['boost_vedette_fin'])) ?></span> <?php endif; ?>
+                            <?php if ($c['urgence_actif']): ?><span class="mk-pill warn">Dernière minute</span> <?php endif; ?>
+                            <?php if ($c['bump_actif']): ?><span class="mk-pill info">Remontée</span> <?php endif; ?>
+                            <?php if (!$c['vedette_actif'] && !$c['urgence_actif'] && !$c['bump_actif']): ?><span class="mk-note">Aucun</span><?php endif; ?>
+                        </td>
+                        <td class="num"><?php if (!$past && !empty($c['valide'])): ?><a class="ds-btn mk-btn-sm" href="boost.php?t=<?= urlencode($c['token']) ?>">Booster</a><?php else: ?><span class="mk-note"><?= $past ? 'Terminé' : 'Non publié' ?></span><?php endif; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
 
-    function buyPoints(packType) {
-        // Feedback visuel
-        const modal = document.querySelector('#shopModal .bg-white');
-        modal.classList.add('opacity-50', 'pointer-events-none');
+    <section class="mk-section" id="classement">
+        <h2>Comment fonctionne le classement</h2>
+        <p class="lead">En toute transparence, pour vous comme pour les familles.</p>
+        <div class="mk-grid mk-g2" style="margin-top:18px">
+            <div class="mk-step"><span class="n">1</span><div><b class="text-[#26343b]">La pertinence d'abord</b><p class="mk-note" style="margin-top:4px;font-size:14px">Recherche, âge, dates, prix et lieu filtrent les séjours. Un boost n'ajoute jamais un séjour hors sujet dans les résultats.</p></div></div>
+            <div class="mk-step"><span class="n">2</span><div><b class="text-[#26343b]">Un score par séjour</b><p class="mk-note" style="margin-top:4px;font-size:14px">Pertinence, places restantes, proximité du départ, taux de visite réel et nouveauté. Un séjour qui plaît aux familles monte seul.</p></div></div>
+            <div class="mk-step"><span class="n">3</span><div><b class="text-[#26343b]">Le boost multiplie ce score</b><p class="mk-note" style="margin-top:4px;font-size:14px">+55 % pour la Mise à la une, +20 % en dernière minute, jusqu'à +50 % qui s'estompe pour la Remontée. Une légère rotation évite que les mêmes séjours occupent toujours le haut de page.</p></div></div>
+            <div class="mk-step"><span class="n">4</span><div><b class="text-[#26343b]">Toujours signalé</b><p class="mk-note" style="margin-top:4px;font-size:14px">Les séjours mis à la une portent la mention « Sponsorisé », conformément à la réglementation sur la transparence du classement.</p></div></div>
+        </div>
+    </section>
 
-        fetch('api/create_stripe_boost_session.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ 
-                pack: packType, 
-                organisateur_id: <?= $orgaId ?> // ID de l'organisme actuel
-            })
-        })
-        .then(res => res.json())
-        .then(session => {
-            if(session.error) {
-                alert(session.error);
-                location.reload();
-            } else {
-                stripe.redirectToCheckout({ sessionId: session.id });
-            }
-        })
-        .catch(err => {
-            alert("Erreur de connexion.");
-            location.reload();
-        });
-    }
-</script>
+    <section class="mk-section mk-faq">
+        <h2>Questions fréquentes</h2>
+        <div style="margin-top:10px">
+            <details><summary>Les points expirent-ils ?</summary><p>Non. Ils restent sur le solde de l'organisme et servent pour tous ses séjours.</p></details>
+            <details><summary>Comment payer avec mes gains ?</summary><p>Si des inscriptions ont été payées en ligne, leur montant net de commission constitue votre solde à recevoir. Vous pouvez l'utiliser pour acheter des points : le montant est déduit du prochain versement, sans paiement par carte.</p></details>
+            <details><summary>Que se passe-t-il si un séjour est complet ?</summary><p>Dans la recherche, un séjour complet est automatiquement rétrogradé, même boosté. Vous ne payez pas pour des places que vous n'avez plus.</p></details>
+            <details><summary>Puis-je être remboursé d'un boost ?</summary><p>Un boost activé ne peut pas être annulé. Les points non dépensés restent disponibles. Pour toute question, <a class="underline" href="contact.php">contactez-nous</a>.</p></details>
+        </div>
+    </section>
+</main>
 
+<?php if ($orga) { $mkOrgaId = (int)$orga['id']; $mkWalletCents = $walletCents; require 'partials/mk_shop.php'; } ?>
 <?php require_once 'partials/footer.php'; ?>

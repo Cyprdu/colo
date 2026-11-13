@@ -3,6 +3,7 @@
 
 // 1. CONFIG
 require_once 'api/config.php';
+require_once 'api/finance_lib.php';
 
 // 2. SÉCURITÉ - STRICT ADMIN CHECK
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_admin'])) {
@@ -51,6 +52,12 @@ try {
     $stmtTotal = $pdo->prepare($sqlTotalCommission);
     $stmtTotal->execute([$date_min, $date_max]);
     $totalCommission = $stmtTotal->fetchColumn() ?? 0.00;
+    // + commissions du nouveau système (prélevées à chaque inscription payée, nettes des remboursements)
+    fin_ensure($pdo);
+    $q = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - ROUND(commission_cents * rembourse_cents / brut_cents)), 0) / 100, COALESCE(SUM(brut_cents - rembourse_cents), 0) / 100, COUNT(*) FROM fin_paiements WHERE created_at >= ? AND created_at <= ?");
+    $q->execute([$date_min, $date_max]);
+    [$newCom, $newBrut, $newCount] = $q->fetch(PDO::FETCH_NUM);
+    $totalCommission = (float)$totalCommission + (float)$newCom;
     
     // Montant Total Brut Viré
     $sqlTotalVire = "
@@ -60,7 +67,7 @@ try {
     ";
     $stmtTotalVire = $pdo->prepare($sqlTotalVire);
     $stmtTotalVire->execute([$date_min, $date_max]);
-    $totalVire = $stmtTotalVire->fetchColumn() ?? 0.00;
+    $totalVire = (float)($stmtTotalVire->fetchColumn() ?? 0.00) + (float)$newBrut;
 
     // Nombre de demandes traitées dans la période
     $sqlCountDemandes = "
@@ -70,7 +77,7 @@ try {
     ";
     $stmtCount = $pdo->prepare($sqlCountDemandes);
     $stmtCount->execute([$date_min, $date_max]);
-    $countDemandes = $stmtCount->fetchColumn();
+    $countDemandes = (int)$stmtCount->fetchColumn() + (int)$newCount;
 
 
     // D. Récupération des données pour le graphique mensuel (si le filtre n'est pas "Aujourd'hui" ou "Total")
@@ -92,10 +99,15 @@ try {
         $stmtMonthly->execute([$date_min, $date_max]);
         $monthlyData = $stmtMonthly->fetchAll(PDO::FETCH_ASSOC);
         
-        foreach ($monthlyData as $row) {
-            // Formatage des étiquettes (Ex: Jan 2025)
-            $chart_labels[] = date('M Y', strtotime($row['month_year'])); 
-            $chart_data_commission[] = floatval($row['total_commission']);
+        $byMonth = [];
+        foreach ($monthlyData as $row) $byMonth[$row['month_year']] = floatval($row['total_commission']);
+        $q = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') m, SUM(commission_cents - ROUND(commission_cents * rembourse_cents / brut_cents)) / 100 c FROM fin_paiements WHERE created_at >= ? AND created_at <= ? GROUP BY m");
+        $q->execute([$date_min, $date_max]);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) $byMonth[$row['m']] = ($byMonth[$row['m']] ?? 0) + floatval($row['c']);
+        ksort($byMonth);
+        foreach ($byMonth as $m => $val) {
+            $chart_labels[] = date('M Y', strtotime($m . '-01'));
+            $chart_data_commission[] = $val;
         }
     }
     

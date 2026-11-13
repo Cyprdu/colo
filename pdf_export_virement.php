@@ -1,185 +1,79 @@
 <?php
-// pdf_export_virement.php
-
+// pdf_export_virement.php?t=<jeton> : justificatif PDF d'un versement.
 require_once 'api/config.php';
-require_once 'libs/fpdf/fpdf.php'; // Assurez-vous que le chemin est correct
+require_once 'api/finance_lib.php';
+require_once 'libs/fpdf/fpdf.php';
 
-// Sécurité : Vérifie que l'utilisateur est connecté et est un directeur
-if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
-    http_response_code(403);
-    exit;
-}
+if (session_status() === PHP_SESSION_NONE) session_start();
+if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { http_response_code(403); exit; }
 
-$token = filter_input(INPUT_GET, 't', FILTER_SANITIZE_STRING, FILTER_FLAG_NO_ENCODE_QUOTES);
-$userId = $_SESSION['user']['id'];
-$virement = null;
+try { $rec = fin_receipt($pdo, (string)($_GET['t'] ?? ''), (int)$_SESSION['user']['id'], !empty($_SESSION['user']['is_admin'])); }
+catch (Throwable $e) { $rec = null; }
+if (!$rec) { http_response_code(404); exit('Versement introuvable.'); }
+$v = $rec['v']; $connect = $rec['type'] === 'connect';
 
-if (!$token || strlen($token) !== 60) {
-    die("Token de virement invalide ou manquant.");
-}
+function eur($cents) { return number_format($cents / 100, 2, ',', ' ') . ' EUR'; }
 
-try {
-    // 1. Récupérer les détails du virement et vérifier l'appartenance à l'utilisateur
-    // On récupère également les informations administratives de l'organisme pour les afficher
-    $sql = "
-        SELECT v.*, o.nom as organisateur_nom, o.adresse_complete, o.code_postal_orga, o.ville_orga
-        FROM virements v
-        JOIN organisateurs o ON v.organisateur_id = o.id
-        WHERE v.token = ? AND v.user_id = ?
-    ";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$token, $userId]);
-    $virement = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$virement) {
-        die("Demande de virement introuvable ou accès non autorisé.");
-    }
-
-} catch (Exception $e) {
-    die("Erreur de base de données : " . $e->getMessage());
-}
-
-// --- Logique PDF FPDF ---
-
-class PDF extends FPDF
-{
-    protected $virementData;
-
-    function setVirementData($data)
-    {
-        $this->virementData = $data;
-    }
-
-    // En-tête du document
-    function Header()
-    {
-        $this->SetFont('Arial', 'B', 14);
-        $this->Cell(0, 7, utf8_decode('Demande de Virement - Réf. ' . substr($this->virementData['token'], 0, 10) . '...'), 0, 1, 'C');
-        $this->SetFont('Arial', '', 10);
-        $this->Cell(0, 5, utf8_decode('Organisme : ' . $this->virementData['organisateur_nom']), 0, 1, 'C');
-        $this->Cell(0, 5, utf8_decode('Date de la demande : ' . date('d/m/Y H:i', strtotime($this->virementData['date_demande']))), 0, 1, 'C');
-        $this->Ln(10);
-    }
-
-    // Pied de page du document
-    function Footer()
-    {
-        $this->SetY(-15);
-        $this->SetFont('Arial', 'I', 8);
-        $this->Cell(0, 10, utf8_decode('Document non contractuel. Page ') . $this->PageNo() . '/{nb}', 0, 0, 'C');
-    }
-
-    // Fonction pour dessiner une boîte de section
-    function SectionBox($title)
-    {
-        $this->SetFont('Arial', 'B', 12);
-        $this->SetFillColor(220, 220, 220);
-        $this->Cell(0, 8, utf8_decode($title), 0, 1, 'L', true);
-        $this->SetLineWidth(0.2);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
-        $this->Ln(2);
-    }
-
-    // Contenu principal du PDF
-    function Content()
-    {
-        $v = $this->virementData;
-        $this->SetMargins(15, 15);
-        
-        // --- 1. Bloc Adresses & Contact ---
-        $this->SectionBox("Informations de l'Organisme");
-        $this->SetFont('Arial', '', 10);
-        
-        $this->Cell(90, 5, utf8_decode("Nom : " . $v['organisateur_nom']), 0, 0, 'L');
-        $this->Cell(0, 5, utf8_decode("Demandeur : " . $v['prenom_user'] . ' ' . $v['nom_user']), 0, 1, 'L');
-        
-        $this->Cell(90, 5, utf8_decode("Email : " . $v['email_organisme']), 0, 0, 'L');
-        $this->Cell(0, 5, utf8_decode("Téléphone : " . $v['tel_organisme']), 0, 1, 'L');
-        
-        $adresse = $v['adresse_complete'] . ', ' . $v['code_postal_orga'] . ' ' . $v['ville_orga'];
-        $this->Cell(0, 5, utf8_decode("Adresse Administrative : " . $adresse), 0, 1, 'L');
-        $this->Ln(5);
-
-
-        // --- 2. Bloc Montants ---
-        $this->SectionBox("Détails du Montant");
-        
-        // Montant Total Brut
-        $this->SetFillColor(240, 240, 255);
-        $this->SetFont('Arial', 'B', 10);
-        $this->Cell(80, 8, utf8_decode('Montant BRUT de la demande :'), 1, 0, 'L', true);
-        $this->SetFont('Arial', 'B', 11);
-        $this->Cell(0, 8, number_format($v['montant_total'], 2, ',', ' ') . ' €', 1, 1, 'R', true);
-
-        // Commission
-        $commission = $v['montant_total'] - $v['montant_apres_commission'];
-        $this->SetFont('Arial', '', 10);
-        $this->Cell(80, 6, utf8_decode('Commission ColoMap (' . number_format($v['commission_rate'], 2) . '%) :'), 1, 0, 'L');
-        $this->SetFont('Arial', 'I', 10);
-        $this->Cell(0, 6, '- ' . number_format($commission, 2, ',', ' ') . ' €', 1, 1, 'R');
-        
-        // Montant Net Final
-        $this->SetFillColor(200, 255, 200);
-        $this->SetFont('Arial', 'B', 11);
-        $this->Cell(80, 8, utf8_decode('Montant NET à virer :'), 1, 0, 'L', true);
-        $this->SetFont('Arial', 'B', 12);
-        $this->Cell(0, 8, number_format($v['montant_apres_commission'], 2, ',', ' ') . ' €', 1, 1, 'R', true);
-        $this->Ln(5);
-
-        
-        // --- 3. Bloc Coordonnées Bancaires ---
-        $this->SectionBox(utf8_decode("Coordonnées Bancaires de Réception"));
-        $this->SetFont('Arial', '', 10);
-        
-        $this->Cell(80, 7, 'IBAN :', 1, 0, 'L');
-        $this->SetFont('Arial', 'B', 10);
-        $this->Cell(0, 7, $v['iban'], 1, 1, 'L');
-        
-        $this->SetFont('Arial', '', 10);
-        $this->Cell(80, 7, utf8_decode('BIC / SWIFT :'), 1, 0, 'L');
-        $this->SetFont('Arial', 'B', 10);
-        $this->Cell(0, 7, $v['bic_swift'], 1, 1, 'L');
-        $this->Ln(5);
-
-
-        // --- 4. Bloc Statut ---
-        $this->SectionBox("Statut et Traitement");
-        
-        $this->SetFont('Arial', '', 10);
-        $this->Cell(80, 7, utf8_decode('Statut de la demande :'), 1, 0, 'L');
-        
-        $statut = $v['effectue'] == 1 ? 'Effectué' : 'En attente de traitement';
-        $this->SetFont('Arial', 'B', 10);
-        $this->Cell(0, 7, utf8_decode($statut), 1, 1, 'L');
-        
-        // Affichage des dates
-        if ($v['effectue'] == 1) {
-            $date_vir = date('d/m/Y', strtotime($v['date_virement_effectue']));
-            $this->Cell(80, 7, utf8_decode('Date du virement effectif :'), 1, 0, 'L');
-            $this->SetFont('Arial', 'B', 10);
-            $this->Cell(0, 7, $date_vir, 1, 1, 'L');
-        } else {
-            $date_estimee = date('d/m/Y', strtotime($v['date_virement_estime']));
-            $this->Cell(80, 7, utf8_decode('Date de virement estimée (J+3 ouvrés) :'), 1, 0, 'L');
-            $this->SetFont('Arial', 'B', 10);
-            $this->Cell(0, 7, $date_estimee, 1, 1, 'L');
-        }
-        
-        $this->Ln(5);
-        $this->SetFont('Arial', 'I', 8);
-        $this->MultiCell(0, 4, utf8_decode("Token de référence unique : " . $v['token']), 0, 'L');
-
-    }
-}
-
-$pdf = new PDF('P', 'mm', 'A4');
-$pdf->setVirementData($virement);
-$pdf->AliasNbPages();
+$pdf = new FPDF('P', 'mm', 'A4');
+$pdf->SetMargins(15, 15, 15);
 $pdf->AddPage();
-$pdf->Content();
+$pdf->SetFont('Arial', 'B', 16);
+$pdf->Cell(0, 9, fin_pdf_txt('Justificatif de versement'), 0, 1, 'L');
+$pdf->SetFont('Arial', '', 10);
+$pdf->Cell(0, 5, fin_pdf_txt('ColoMap - moncamp.fr'), 0, 1, 'L');
+$pdf->Ln(4);
+$pdf->SetFont('Arial', 'B', 11);
+$pdf->Cell(0, 6, fin_pdf_txt($v['orga_nom']), 0, 1, 'L');
+$pdf->SetFont('Arial', '', 10);
+$adr = trim(($v['adresse_complete'] ?? '') . ' ' . ($v['code_postal_orga'] ?? '') . ' ' . ($v['ville_orga'] ?? ''));
+if ($adr !== '') $pdf->MultiCell(0, 5, fin_pdf_txt($adr), 0, 'L');
+$pdf->Cell(0, 5, fin_pdf_txt('Référence : ' . $v['token']), 0, 1, 'L');
+$pdf->Cell(0, 5, fin_pdf_txt('Date : ' . date('d/m/Y H:i', strtotime($connect ? $v['created_at'] : $v['date_demande']))), 0, 1, 'L');
+if ($connect) $pdf->Cell(0, 5, fin_pdf_txt('Identifiant Stripe : ' . ($v['stripe_transfer_id'] ?: 'en attente')), 0, 1, 'L');
+$pdf->Ln(5);
 
-// Sortie
-$filename = 'Demande_Virement_' . $virement['organisateur_nom'] . '_' . date('Ymd', strtotime($virement['date_demande'])) . '.pdf';
-$pdf->Output('I', utf8_decode($filename));
+if ($connect) {
+    $pdf->SetFont('Arial', 'B', 9);
+    $pdf->SetFillColor(230, 233, 236);
+    $w = [62, 22, 16, 26, 26, 28];
+    foreach (['Séjour', 'Départ', 'Inscr.', 'Brut', 'Commission', 'Net'] as $i => $h) $pdf->Cell($w[$i], 7, fin_pdf_txt($h), 1, 0, $i > 2 ? 'R' : 'L', true);
+    $pdf->Ln();
+    $pdf->SetFont('Arial', '', 9);
+    $tb = $tc = $tn = 0;
+    foreach ($rec['lignes'] as $l) {
+        $net = $l['net_cents'] - $l['net_rembourse_cents']; $brut = $l['brut_cents'] - $l['rembourse_cents'];
+        $com = $brut - $net;
+        $tb += $brut; $tc += $com; $tn += $net;
+        $pdf->Cell($w[0], 6, fin_pdf_txt(mb_substr($l['camp_nom'], 0, 34)), 1);
+        $pdf->Cell($w[1], 6, date('d/m/Y', strtotime($l['date_debut'])), 1);
+        $pdf->Cell($w[2], 6, '#' . $l['inscription_id'], 1);
+        $pdf->Cell($w[3], 6, eur($brut), 1, 0, 'R');
+        $pdf->Cell($w[4], 6, '- ' . eur($com), 1, 0, 'R');
+        $pdf->Cell($w[5], 6, eur($net), 1, 1, 'R');
+    }
+    $pdf->SetFont('Arial', 'B', 9);
+    $pdf->Cell($w[0] + $w[1] + $w[2], 7, 'Total', 1);
+    $pdf->Cell($w[3], 7, eur($tb), 1, 0, 'R');
+    $pdf->Cell($w[4], 7, '- ' . eur($tc), 1, 0, 'R');
+    $pdf->Cell($w[5], 7, eur($tn), 1, 1, 'R');
+    $pdf->Ln(5);
+    $pdf->SetFont('Arial', 'B', 12);
+    $pdf->Cell(0, 8, fin_pdf_txt('Montant versé à l\'organisme : ' . eur((int)$v['montant_cents'])), 0, 1, 'L');
+    $pdf->SetFont('Arial', 'I', 9);
+    if ((int)$v['montant_cents'] !== $tn) $pdf->MultiCell(0, 5, fin_pdf_txt('Le montant versé diffère du net des inscriptions : des points marketing ou des compensations de remboursements ont été déduits du solde.'), 0, 'L');
+    $pdf->MultiCell(0, 5, fin_pdf_txt('Le versement est effectué vers le compte Stripe de l\'organisme, qui le verse ensuite sur son compte bancaire. Commission : ' . number_format(fin_commission_pct(), 2, ',', ' ') . ' % du montant payé par les familles.'), 0, 'L');
+} else {
+    $pdf->SetFont('Arial', '', 10);
+    $pdf->Cell(80, 7, 'Montant brut', 1); $pdf->Cell(0, 7, eur((int)round($v['montant_total'] * 100)), 1, 1, 'R');
+    $pdf->Cell(80, 7, fin_pdf_txt('Commission (' . number_format($v['commission_rate'], 2, ',', ' ') . ' %)'), 1); $pdf->Cell(0, 7, '- ' . eur((int)round(($v['montant_total'] - $v['montant_apres_commission']) * 100)), 1, 1, 'R');
+    $pdf->SetFont('Arial', 'B', 10);
+    $pdf->Cell(80, 8, 'Net', 1); $pdf->Cell(0, 8, eur((int)round($v['montant_apres_commission'] * 100)), 1, 1, 'R');
+    $pdf->Ln(3);
+    $pdf->SetFont('Arial', '', 9);
+    $pdf->Cell(0, 5, fin_pdf_txt('Statut : ' . ($v['effectue'] ? 'Effectué le ' . date('d/m/Y', strtotime($v['date_virement_effectue'])) : 'En attente') . ' (ancien système)'), 0, 1);
+}
+$pdf->Ln(6);
+$pdf->SetFont('Arial', 'I', 8);
+$pdf->MultiCell(0, 4, fin_pdf_txt('Document généré automatiquement par ColoMap. Il détaille les sommes encaissées pour le compte de l\'organisme et la commission de service prélevée.'), 0, 'L');
+$pdf->Output('I', 'Justificatif_versement_' . substr($v['token'], 0, 8) . '.pdf');
 exit;
-?>

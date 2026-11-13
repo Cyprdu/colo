@@ -10,6 +10,7 @@
 
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'marketing_lib.php';
 
 function normalizeMedia($path, $defaultDir = '') {
     $path = trim((string)$path);
@@ -80,7 +81,7 @@ try {
     $sql = "SELECT c.id, $groupCol AS groupe_id, c.token, c.nom, c.prix, c.ville, c.code_postal, c.image_url,
                    c.date_debut, c.date_fin, c.age_min, c.age_max, c.organisateur_id,
                    c.theme, c.type, c.date_creation,
-                   c.boost_points, c.boost_vedette_fin, c.boost_urgence_fin,
+                   c.boost_points, c.boost_vedette_fin, c.boost_urgence_fin, c.date_bump,
                    o.nom AS organisateur_nom, o.logo_url AS organisateur_logo
             FROM camps c
             LEFT JOIN organisateurs o ON o.id = c.organisateur_id
@@ -123,9 +124,9 @@ try {
         if ($sameTheme) $score += 2;
         if ($nearby)    $score += 2;
         if (in_array($id, $favIds, true)) $score += 1;
-        if ($isVedette) $score += 3;
-        if ($isUrgent)  $score += 1;
-        $score += min(3, (int)$c['boost_points'] / 100);
+        // Effet mesurable des boosts : multiplicateur (mise à la une, dernière minute, remontée qui s'estompe), jamais un simple tri
+        $mk = mk_score($c, $nowDt);
+        $score = ($score + 6) * $mk['boost_factor'];
 
         $c['_score'] = $score; $c['_fits'] = $fits; $c['_vedette'] = $isVedette; $c['_urgent'] = $isUrgent;
         $c['_new'] = $isNew; $c['_sameOrg'] = $sameOrg; $c['_sameTheme'] = $sameTheme; $c['_nearby'] = $nearby;
@@ -141,7 +142,7 @@ try {
     $format = function ($list, $forcedBadge = null) use ($limit) {
         $out = [];
         foreach (array_slice($list, 0, $limit) as $c) {
-            $badge = $forcedBadge ?: ($c['_vedette'] ? 'Coup de cœur' : ($c['_urgent'] ? 'Dernière minute' : ($c['_new'] ? 'Nouveau' : null)));
+            $badge = $forcedBadge ?: ($c['_vedette'] ? 'Sponsorisé' : ($c['_urgent'] ? 'Dernière minute' : ($c['_new'] ? 'Nouveau' : null)));
             $out[] = [
                 'id'               => (int)$c['id'],
                 'token'            => $c['token'],
@@ -187,8 +188,8 @@ try {
     }
 
     // ---- b) Suggestions personnalisées / génériques ----
-    $add('coups-de-coeur', 'Coups de cœur', 'Les séjours mis en avant par les organisateurs', 'recherche',
-         $filter(function ($c) { return $c['_vedette'] || (int)$c['boost_points'] > 0; }), 'Coup de cœur');
+    $add('a-la-une', 'À la une', 'Séjours sponsorisés par leurs organisateurs', 'recherche',
+         $filter(function ($c) { return $c['_vedette']; }), 'Sponsorisé');
 
     if ($userId) {
         $add('favoris-similaires', 'Dans la lignée de vos favoris', "D'après vos favoris et vos réservations", 'favorites',
@@ -236,6 +237,10 @@ try {
         $all = $pool; usort($all, $byScore);
         $add('prochains', 'Séjours à venir', 'Les prochains départs', 'recherche', $all);
     }
+
+    $shown = [];
+    foreach ($sections as $sec) foreach ($sec['camps'] as $cc) $shown[] = $cc['id'];
+    mk_track($pdo, $shown, 'impression', 'accueil');
 
     sendJson(['sections' => $sections, 'favorites' => $favIds, 'personalized' => (bool)$userId]);
 
