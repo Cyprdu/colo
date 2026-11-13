@@ -1,120 +1,123 @@
 <?php
-require_once 'partials/header.php';
+// organisateurs.php : page d'accueil de l'espace organisateur (accès rapides + chiffres clés).
+require_once 'api/config.php';
 
-// SÉCURITÉ
-if (!isset($_SESSION['user']) || !$_SESSION['user']['is_directeur']) {
+if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
     header('Location: index.php');
     exit;
 }
-$initial = strtoupper(substr($_SESSION['user']['prenom'], 0, 1));
-$placeholder_avatar_url = "https://placehold.co/360x360/e2e8f0/2563eb?text=" . urlencode($initial);
+$userId = $_SESSION['user']['id'];
+$prenom = trim((string)($_SESSION['user']['prenom'] ?? ''));
+
+// Chiffres clés (en cas d'erreur la page reste utilisable, sans chiffres)
+$st = ['orgas' => 0, 'avenir' => 0, 'inscrits' => 0, 'solde' => 0.0, 'attente' => 0];
+$orgaIds = [];
+$statsOk = true;
+try {
+    $q = $pdo->prepare("SELECT id, portefeuille FROM organisateurs WHERE user_id = ?");
+    $q->execute([$userId]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) { $orgaIds[] = (int)$o['id']; $st['solde'] += (float)$o['portefeuille']; }
+    $st['orgas'] = count($orgaIds);
+    if ($orgaIds) {
+        $in = implode(',', $orgaIds);
+        $r = $pdo->query("SELECT SUM(date_fin >= CURDATE() AND valide = 1) av, SUM(valide = 0 AND COALESCE(refuse,0) = 0) att FROM camps WHERE organisateur_id IN ($in) AND COALESCE(supprime,0) = 0")->fetch(PDO::FETCH_ASSOC);
+        $st['avenir'] = (int)$r['av']; $st['attente'] = (int)$r['att'];
+        $st['inscrits'] = (int)$pdo->query("SELECT COUNT(*) FROM inscriptions i JOIN camps c ON c.id = i.camp_id WHERE c.organisateur_id IN ($in) AND COALESCE(c.supprime,0) = 0 AND c.date_fin >= CURDATE() AND COALESCE(i.statut,'') NOT IN ('annule','Annulé','Annule')")->fetchColumn();
+    }
+} catch (Throwable $e) {
+    error_log('organisateurs: ' . $e->getMessage());
+    $statsOk = false;
+}
+$financeHref = $st['orgas'] === 1 ? 'dashboard_organisme.php?organisateur_id=' . $orgaIds[0] : 'public_infos.php';
+
+$ico = [
+    'sejours'  => '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    'plus'     => '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+    'orga'     => '<path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6M8 11h.01M16 11h.01"/>',
+    'anim'     => '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.2a3 3 0 010 5.6M18 14.3c1.8.8 3 2.6 3 4.7"/>',
+    'mail'     => '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 8l9 6 9-6"/>',
+    'bolt'     => '<path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/>',
+    'euro'     => '<path d="M17 7a6 6 0 100 10M5 10h8M5 14h8"/>',
+];
+$tiles = [
+    ['mes_camps.php', 'sejours', 'Mes séjours', 'Modifier, dupliquer, suivre les inscrits.'],
+    ['create_camp.php', 'plus', 'Créer un séjour', 'Ajouter une nouvelle offre au catalogue.'],
+    ['public_infos.php', 'orga', 'Mes organismes', 'Informations publiques, contacts, tableau de bord.'],
+    ['demandes-animation.php', 'anim', 'Animateurs', 'Candidatures et inscription de votre équipe.'],
+    ['messagerie.php', 'mail', 'Messagerie', 'Les questions des familles.'],
+    ['marketing.php', 'bolt', 'Marketing et boost', 'Points, mise en avant de vos séjours.'],
+    [$financeHref, 'euro', 'Finances et versements', 'Solde, versements et commissions.'],
+];
+$kpis = [
+    ['Séjours à venir', (string)$st['avenir'], 'mes_camps.php'],
+    ['Inscrits à venir', (string)$st['inscrits'], 'mes_camps.php'],
+    ['Solde à recevoir', number_format($st['solde'], 2, ',', ' ') . ' €', $financeHref],
+    ['En validation', (string)$st['attente'], 'mes_camps.php'],
+];
+
+$body_class = 'bg-white';
+require_once 'partials/header.php';
+$initial = mb_strtoupper(mb_substr($prenom, 0, 1)) ?: 'O';
+$photo = trim((string)($_SESSION['user']['photo_url'] ?? ''));
 ?>
-<title>Espace Organisateur - ColoMap</title>
+<title>Espace organisateur - ColoMap</title>
 
-<main class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-    <div class="flex items-center gap-4 p-6 bg-white rounded-xl shadow border border-gray-200 mb-12">
-        <img class="h-16 w-16 rounded-full object-cover border border-gray-100" 
-             src="<?php echo htmlspecialchars($_SESSION['user']['photo_url'] ?? $placeholder_avatar_url); ?>" 
-             alt="Photo de profil">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Bienvenue, <?php echo htmlspecialchars($_SESSION['user']['prenom']); ?></h1>
-            <p class="text-gray-600">Gérez vos séjours, vos inscriptions et votre visibilité depuis cet espace.</p>
+<main class="ds-page" style="max-width:1000px">
+    <header class="flex items-center gap-4 ds-fade">
+        <span class="w-14 h-14 flex-none rounded-full bg-[#eef2f4] border border-[#e5e7eb] flex items-center justify-center overflow-hidden text-[#3a4852] font-extrabold text-xl">
+            <?php if ($photo): ?><img src="<?= htmlspecialchars($photo) ?>" alt="" class="w-full h-full object-cover" onerror="this.remove()"><?php else: ?><?= htmlspecialchars($initial) ?><?php endif; ?>
+        </span>
+        <div class="min-w-0">
+            <p class="ds-eyebrow">Espace organisateur</p>
+            <h1 class="ds-h1"><?= $prenom !== '' ? 'Bonjour ' . htmlspecialchars($prenom) : 'Bonjour' ?></h1>
         </div>
-    </div>
+    </header>
+    <p class="ds-lead">Gérez vos séjours, vos inscriptions et votre visibilité depuis un seul endroit.</p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        <a href="mes_camps.php" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all group">
-            <div class="flex items-center gap-4">
-                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M4.5 3.75a3 3 0 0 0-3 3v.75h21v-.75a3 3 0 0 0-3-3h-15Z" /><path fill-rule="evenodd" d="M22.5 9.75h-21v7.5a3 3 0 0 0 3 3h15a3 3 0 0 0 3-3v-7.5Zm-18 3.75a.75.75 0 0 1 .75-.75h6a.75.75 0 0 1 0 1.5h-6a.75.75 0 0 1-.75-.75Zm.75 2.25a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 0-1.5h-3Z" clip-rule="evenodd" /></svg>
-                </div>
-                <div>
-                    <h3 class="font-bold text-lg text-gray-900">Mes Séjours</h3>
-                    <p class="text-sm text-gray-500">Modifier, supprimer ou dupliquer vos camps.</p>
-                </div>
-            </div>
-        </a>
+    <?php if (!$statsOk): ?>
+        <div class="ds-alert-err mt-6" role="alert">Les chiffres clés sont momentanément indisponibles. Vos accès restent utilisables.</div>
+    <?php elseif ($st['orgas'] === 0): ?>
+        <div class="ds-alert-err mt-6 flex flex-wrap items-center justify-between gap-3" role="status">
+            <span>Aucun organisme n'est encore rattaché à votre compte.</span>
+            <a href="create_organisateur.php" class="ds-btn ds-btn-sm">Créer mon organisme</a>
+        </div>
+    <?php else: ?>
+        <section class="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="Chiffres clés">
+            <?php foreach ($kpis as $k): ?>
+                <a href="<?= htmlspecialchars($k[2]) ?>" class="ds-card p-5 block transition hover:shadow-lg ds-fade">
+                    <span class="block text-[13px] text-[#6b7780] font-semibold"><?= htmlspecialchars($k[0]) ?></span>
+                    <span class="block mt-1 text-[26px] font-extrabold text-[#26343b] leading-tight"><?= htmlspecialchars($k[1]) ?></span>
+                </a>
+            <?php endforeach; ?>
+        </section>
+    <?php endif; ?>
 
-        <a href="create_camp.php" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-green-500 hover:shadow-md transition-all group">
-            <div class="flex items-center gap-4">
-                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-green-50 text-green-600 flex items-center justify-center group-hover:bg-green-600 group-hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 9a.75.75 0 0 0-1.5 0v2.25H9a.75.75 0 0 0 0 1.5h2.25V15a.75.75 0 0 0 1.5 0v-2.25H15a.75.75 0 0 0 0-1.5h-2.25V9Z" clip-rule="evenodd" /></svg>
-                </div>
-                <div>
-                    <h3 class="font-bold text-lg text-gray-900">Publier un séjour</h3>
-                    <p class="text-sm text-gray-500">Ajouter une nouvelle offre au catalogue.</p>
-                </div>
-            </div>
-        </a>
-
-        <a href="marketing.php" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-500 hover:shadow-md transition-all group">
-            <div class="flex items-center gap-4">
-                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
-                        <path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.75a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.913-.143z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-                <div>
-                    <h3 class="font-bold text-lg text-gray-900">Marketing & Boost</h3>
-                    <p class="text-sm text-gray-500">Gérez vos points et boostez vos séjours.</p>
-                </div>
-            </div>
-        </a>
-
-        <a href="public_infos.php" class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-purple-500 hover:shadow-md transition-all group">
-            <div class="flex items-center gap-4">
-                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" /></svg>
-                </div>
-                <div>
-                    <h3 class="font-bold text-lg text-gray-900">Mes Organismes</h3>
-                    <p class="text-sm text-gray-500">Informations publiques et contacts.</p>
-                </div>
-            </div>
-        </a>
-        
-        <a href="demandes-animation.php" class="relative bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-yellow-500 hover:shadow-md transition-all group">
-            <div class="flex items-center gap-4">
-                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-yellow-50 text-yellow-600 flex items-center justify-center group-hover:bg-yellow-600 group-hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M10.5 6A2.25 2.25 0 0 0 8.25 8.25V10.5a2.25 2.25 0 0 0 4.5 0v-2.25A2.25 2.25 0 0 0 10.5 6Zm-3.75 3.75a.75.75 0 0 0-1.5 0v4.5a.75.75 0 0 0 1.5 0v-4.5ZM10.5 12a.75.75 0 0 0-1.5 0v6.75a.75.75 0 0 0 1.5 0v-6.75ZM15 9.75a.75.75 0 0 1 1.5 0v4.5a.75.75 0 0 1-1.5 0v-4.5ZM12.75 12a.75.75 0 0 1 1.5 0v6.75a.75.75 0 0 1-1.5 0v-6.75Z" /><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3A5.25 5.25 0 0 0 12 1.5ZM9.75 6.75v3a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-3a3.75 3.75 0 0 1 7.5 0v3a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1-.75-.75v-3a2.25 2.25 0 0 0-4.5 0Z" clip-rule="evenodd" /></svg>
-                </div>
-                <div>
-                    <h3 class="font-bold text-lg text-gray-900">Recrutement</h3>
-                    <p class="text-sm text-gray-500">Gérer les candidatures animateurs.</p>
-                </div>
-            </div>
-        </a>
-
-        <a href="messagerie.php" class="relative bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-pink-500 hover:shadow-md transition-all group">
-            <div class="flex items-center gap-4">
-                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center group-hover:bg-pink-600 group-hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
-                </div>
-                <div>
-                    <h3 class="font-bold text-lg text-gray-900">Messagerie</h3>
-                    <p class="text-sm text-gray-500">Questions des parents.</p>
-                </div>
-                <span id="unread-badge" class="absolute top-3 right-3 w-6 h-6 flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full hidden shadow-sm"></span>
-            </div>
-        </a>
-    </div>
+    <nav class="mt-10" aria-label="Accès rapides">
+        <h2 class="ds-eyebrow mb-4">Accès rapides</h2>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <?php foreach ($tiles as $t): ?>
+                <a href="<?= htmlspecialchars($t[0]) ?>" class="ds-tile relative ds-fade">
+                    <span class="ds-tile-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><?= $ico[$t[1]] ?></svg></span>
+                    <span class="min-w-0">
+                        <span class="block font-extrabold text-[16px] text-[#26343b]"><?= htmlspecialchars($t[2]) ?></span>
+                        <span class="block text-[13px] text-[#6b7780] mt-0.5"><?= htmlspecialchars($t[3]) ?></span>
+                    </span>
+                    <?php if ($t[0] === 'messagerie.php'): ?><span id="unread-badge" class="hidden absolute top-3 right-3 min-w-[24px] h-6 px-1.5 flex items-center justify-center bg-[#26343b] text-white text-xs font-bold rounded-full" aria-label="Messages non lus"></span><?php endif; ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+    </nav>
 </main>
 
 <script>
-document.addEventListener('DOMContentLoaded', async function() {
-    const badge = document.getElementById('unread-badge');
-    if (badge) {
-        try {
-            const response = await fetch('api/get_unread_messages_count.php');
-            const data = await response.json();
-            if (data.count > 0) {
-                badge.textContent = data.count;
-                badge.classList.remove('hidden');
-            }
-        } catch (error) {
-            console.error('Erreur de notification:', error);
-        }
-    }
-});
+(async function () {
+    var badge = document.getElementById('unread-badge');
+    if (!badge) return;
+    try {
+        var d = await (await fetch('api/get_unread_messages_count.php')).json();
+        if (d.count > 0) { badge.textContent = d.count; badge.classList.remove('hidden'); }
+    } catch (e) {}
+})();
 </script>
+<style>@media (prefers-reduced-motion: reduce) { .ds-fade { animation: none; } }</style>
+<?php require_once 'partials/footer.php'; ?>
