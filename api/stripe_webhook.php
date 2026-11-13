@@ -1,193 +1,139 @@
 <?php
-// Fichier: api/stripe_webhook.php
-// Webhook Stripe : Gère les Inscriptions (Euros) et l'Achat de Points (Crédits)
+// api/stripe_webhook.php : webhook Stripe (signature vérifiée, idempotent, journalisé).
+//
+// Gère : inscriptions payées, achat de points, expiration de session, remboursements, litiges, état des comptes Connect.
+// Idempotence : chaque événement Stripe (event.id) n'est traité qu'une fois (table stripe_events) ; le tout est dans UNE transaction :
+// en cas d'erreur, rien n'est enregistré et on répond 500 pour que Stripe réessaie.
+// Deux endpoints peuvent pointer ici : « Votre compte » (STRIPE_WEBHOOK_SECRET) et « Comptes connectés » (STRIPE_CONNECT_WEBHOOK_SECRET).
 
-require_once 'config.php';
-require_once '../vendor/autoload.php'; // Charge la librairie Stripe
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/finance_lib.php';
+require_once __DIR__ . '/marketing_lib.php';
 
-// Configuration
-// Assurez-vous que cette constante est définie dans config.php ou remplacez-la par votre clé 'whsec_...'
-if (!defined('STRIPE_WEBHOOK_SECRET') || STRIPE_WEBHOOK_SECRET === '') { error_log('Stripe webhook : STRIPE_WEBHOOK_SECRET non défini'); http_response_code(500); exit(); }
-$webhookSecret = STRIPE_WEBHOOK_SECRET;
+$secrets = array_values(array_filter([
+    defined('STRIPE_WEBHOOK_SECRET') ? STRIPE_WEBHOOK_SECRET : '',
+    defined('STRIPE_CONNECT_WEBHOOK_SECRET') ? STRIPE_CONNECT_WEBHOOK_SECRET : '',
+]));
+if (!$secrets) { error_log('Stripe webhook : aucun secret de signature défini'); http_response_code(500); exit; }
 
-// Récupération du payload brut
-$payload = @file_get_contents('php://input');
-$sig_header = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
+$payload = (string)@file_get_contents('php://input');
+$sig = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
 $event = null;
+foreach ($secrets as $secret) {
+    try { $event = \Stripe\Webhook::constructEvent($payload, $sig, $secret); break; }
+    catch (\Throwable $e) { $event = null; }
+}
+if (!$event) { http_response_code(400); exit; }
 
-// ====================================================================
-// 1. VÉRIFICATION DE SÉCURITÉ (Signature Stripe)
-// ====================================================================
+global $pdo;
+fin_ensure($pdo);
+mk_ensure($pdo);
+
 try {
-    $event = \Stripe\Webhook::constructEvent(
-        $payload, $sig_header, $webhookSecret
-    );
-} catch (\UnexpectedValueException $e) {
-    http_response_code(400); // Payload invalide
-    exit();
-} catch (\Stripe\Exception\SignatureVerificationException $e) {
-    http_response_code(400); // Signature invalide
-    exit();
-} catch (Exception $e) {
-    error_log("Stripe Webhook Error: " . $e->getMessage());
-    http_response_code(500);
-    exit();
-}
+    $pdo->beginTransaction();
 
-// ====================================================================
-// 2. TRAITEMENT DE L'ÉVÉNEMENT
-// ====================================================================
-if ($event->type === 'checkout.session.completed') {
-    $session = $event->data->object;
+    // Idempotence : événement déjà traité ?
+    $st = $pdo->prepare("INSERT IGNORE INTO stripe_events (event_id, type) VALUES (?, ?)");
+    $st->execute([$event->id, $event->type]);
+    if ($st->rowCount() === 0) { $pdo->rollBack(); http_response_code(200); echo 'deja traite'; exit; }
 
-    // On s'assure que le paiement est bien validé ('paid')
-    if ($session->payment_status === 'paid') {
-        
-        $payment_intent_id = $session->payment_intent;
-        $metadata = $session->metadata;
+    $obj = $event->data->object;
 
-        // Connexion BDD (via config.php normalement, mais on s'assure de l'accès)
-        global $pdo; 
+    switch ($event->type) {
 
-        // --------------------------------------------------------------------
-        // CAS A : ACHAT DE PACK DE POINTS (Boost Marketing)
-        // --------------------------------------------------------------------
-        if (isset($metadata->type) && $metadata->type === 'buy_points') {
-            
-            $orgaId = isset($metadata->organisateur_id) ? intval($metadata->organisateur_id) : 0;
-            $pointsToAdd = isset($metadata->points_amount) ? intval($metadata->points_amount) : 0;
+        case 'checkout.session.completed':
+            if (($obj->payment_status ?? '') !== 'paid') break;
+            $meta = $obj->metadata;
+            $pi = $obj->payment_intent ?? null;
 
-            if ($orgaId > 0 && $pointsToAdd > 0) {
-                try {
-                    $pdo->beginTransaction();
-
-                    // Mise à jour du solde de points de l'organisateur
-                    // COALESCE gère le cas où solde_points serait NULL
-                    $stmt = $pdo->prepare("UPDATE organisateurs SET solde_points = COALESCE(solde_points, 0) + ? WHERE id = ?");
-                    $stmt->execute([$pointsToAdd, $orgaId]);
-
-                    // (Optionnel) Ici, vous pourriez insérer une ligne dans une table 'factures_points' pour la compta
-
-                    $pdo->commit();
-                    error_log("WEBHOOK SUCCESS: $pointsToAdd points ajoutés à l'organisateur $orgaId.");
-
-                } catch (Exception $e) {
-                    $pdo->rollBack();
-                    error_log("WEBHOOK ERROR (Points): " . $e->getMessage());
-                    http_response_code(500); // Demande à Stripe de réessayer plus tard
-                    exit();
+            // --- Achat de points par carte ---
+            if (($meta->type ?? '') === 'buy_points') {
+                $orgaId = (int)($meta->organisateur_id ?? 0);
+                $points = (int)($meta->points_amount ?? 0);
+                $pack = null;
+                foreach (mk_packs() as $p) if ($p['points'] === $points) $pack = $p;
+                if ($orgaId > 0 && $pack && (int)$obj->amount_total === $pack['cents']) {
+                    $done = mk_credit_points($pdo, $orgaId, $points, 'carte', (int)$obj->amount_total, 'cs:' . $obj->id);
+                    if ($done) fin_audit($pdo, 'points_achetes_carte', 'organisateur', $orgaId, ['points' => $points, 'cents' => (int)$obj->amount_total, 'session' => $obj->id], 'webhook');
+                } else {
+                    // montant ou pack incohérent : on ne crédite pas, on laisse une trace pour contrôle manuel
+                    fin_audit($pdo, 'anomalie_points', 'session', $obj->id, ['orga' => $orgaId, 'points' => $points, 'montant' => (int)$obj->amount_total], 'webhook');
                 }
+                break;
+            }
+
+            // --- Inscriptions payées ---
+            if (!empty($meta->reservation_token)) {
+                $tokens = array_values(array_filter(array_map('trim', explode(',', (string)$meta->reservation_token))));
+                if (!$tokens) break;
+                $total = (int)$obj->amount_total;
+                $subtotal = (int)($obj->amount_subtotal ?? 0);
+                $ratio = $subtotal > 0 ? $total / $subtotal : 1; // un code promo Stripe réduit le total
+
+                $in = implode(',', array_fill(0, count($tokens), '?'));
+                $up = $pdo->prepare("UPDATE inscriptions SET statut = 'Confirmé', statut_paiement = 'PAYE', stripe_payment_intent_id = ?,
+                                     mode_paiement = 'CARTE', montant_paye = ROUND(prix_final * ?, 2)
+                                     WHERE reservation_token IN ($in) AND statut_paiement <> 'PAYE'");
+                $up->execute(array_merge([$pi, $ratio], $tokens));
+
+                // Ventilation brut / commission / net par inscription + crédit du solde de l'organisme
+                $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total);
+                fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
             } else {
-                error_log("WEBHOOK ERROR: Données manquantes pour l'achat de points.");
+                error_log('WEBHOOK: checkout.session.completed sans type reconnu (' . $obj->id . ')');
             }
-        }
+            break;
 
-        // --------------------------------------------------------------------
-        // CAS B : INSCRIPTION ENFANT (Réservation de séjour)
-        // --------------------------------------------------------------------
-        elseif (isset($metadata->reservation_token)) {
-            
-            $montant_total_eur = $session->amount_total / 100; // Stripe envoie des centimes, on convertit en Euros
-            // Part réellement payée de chaque inscription (un code promo Stripe réduit le total par rapport au sous-total)
-            $subtotal = (int)($session->amount_subtotal ?? 0);
-            $ratio = ($subtotal > 0) ? ((int)$session->amount_total / $subtotal) : 1;
-            $metadata_tokens = $metadata->reservation_token;
-
-            // Conversion de la chaîne "token1,token2" en tableau
-            $tokens = explode(',', $metadata_tokens);
-            $tokens = array_map('trim', $tokens);
-            $tokens = array_filter($tokens); // Nettoyage
-
-            if (!empty($tokens)) {
-                try {
-                    $pdo->beginTransaction();
-
-                    // 1. IDEMPOTENCE : On vérifie si ce paiement a déjà été traité
-                    // On regarde si une inscription porte déjà ce PaymentIntentID
-                    $stmtCheck = $pdo->prepare("SELECT id FROM inscriptions WHERE stripe_payment_intent_id = ? LIMIT 1");
-                    $stmtCheck->execute([$payment_intent_id]);
-                    
-                    if ($stmtCheck->fetch()) {
-                        // Déjà traité, on sort proprement pour ne pas créditer deux fois
-                        $pdo->rollBack();
-                        error_log("WEBHOOK INFO: Paiement $payment_intent_id déjà traité.");
-                        http_response_code(200);
-                        exit();
-                    }
-
-                    // 2. RÉCUPÉRATION DE L'ORGANISATEUR
-                    // On utilise le premier token pour trouver le camp et l'organisateur associé
-                    $firstToken = $tokens[0];
-                    $stmtOrga = $pdo->prepare("
-                        SELECT c.organisateur_id 
-                        FROM inscriptions i 
-                        JOIN camps c ON i.camp_id = c.id 
-                        WHERE i.reservation_token = ?
-                    ");
-                    $stmtOrga->execute([$firstToken]);
-                    $organisateur_id = $stmtOrga->fetchColumn();
-
-                    // 3. MISE À JOUR DES INSCRIPTIONS
-                    // On valide l'inscription, on passe le statut à Confirmé/PAYE
-                    $sqlUpdate = "UPDATE inscriptions 
-                                  SET statut = 'Confirmé', 
-                                      statut_paiement = 'PAYE', 
-                                      stripe_payment_intent_id = ?, 
-                                      mode_paiement = 'CARTE',
-                                      montant_paye = ROUND(prix_final * ?, 2)
-                                  WHERE reservation_token = ? AND statut_paiement <> 'PAYE'";
-                    
-                    $stmtUpdate = $pdo->prepare($sqlUpdate);
-
-                    foreach ($tokens as $token) {
-                        $stmtUpdate->execute([$payment_intent_id, $ratio, $token]);
-                    }
-
-                    // 4. CRÉDITER LE PORTEFEUILLE ORGANISATEUR (En Euros)
-                    if ($organisateur_id) {
-                        // On déduit la commission plateforme ici si nécessaire (ex: 1%)
-                        // Pour l'instant, on crédite tout le montant :
-                        $sqlWallet = "UPDATE organisateurs SET portefeuille = portefeuille + ? WHERE id = ?";
-                        $stmtWallet = $pdo->prepare($sqlWallet);
-                        $stmtWallet->execute([$montant_total_eur, $organisateur_id]);
-                    }
-
-                    $pdo->commit();
-                    error_log("WEBHOOK SUCCESS: Inscription validée pour les tokens " . $metadata_tokens);
-
-                } catch (Exception $e) {
-                    $pdo->rollBack();
-                    error_log("WEBHOOK ERROR (Inscription): " . $e->getMessage());
-                    http_response_code(500);
-                    exit();
+        case 'checkout.session.expired':
+            $meta = $obj->metadata;
+            if (!empty($meta->reservation_token)) {
+                $tokens = array_values(array_filter(array_map('trim', explode(',', (string)$meta->reservation_token))));
+                if ($tokens) {
+                    require_once __DIR__ . '/attente.php'; // le directeur peut autoriser l'attente : la place reste gardée jusqu'à la date limite
+                    attente_liberer($pdo, $tokens);
                 }
             }
-        } 
-        
-        // --------------------------------------------------------------------
-        // CAS INCONNU
-        // --------------------------------------------------------------------
-        else {
-            error_log("WEBHOOK WARNING: Type d'événement checkout inconnu ou métadonnées manquantes.");
-        }
-    }
-}
+            break;
 
-// Session de paiement expirée (non payée) : on libère les places
-if ($event->type === 'checkout.session.expired') {
-    $meta = $event->data->object->metadata;
-    if (isset($meta->reservation_token)) {
-        $tokens = array_filter(array_map('trim', explode(',', $meta->reservation_token)));
-        if ($tokens) {
-            try {
-                // Le directeur peut autoriser l'attente : dans ce cas la place reste gardée jusqu'à la date limite
-                require_once __DIR__ . '/attente.php';
-                attente_liberer($pdo, array_values($tokens));
-            } catch (Exception $e) { error_log('WEBHOOK ERROR (expired): ' . $e->getMessage()); }
-        }
-    }
-}
+        case 'charge.refunded':
+            if (!empty($obj->payment_intent)) fin_apply_refund($pdo, (string)$obj->payment_intent, (int)$obj->amount_refunded, (int)$obj->amount);
+            break;
 
-// Réponse 200 OK à Stripe pour confirmer la bonne réception
-http_response_code(200);
-?>
+        case 'charge.dispute.created':
+            if (!empty($obj->payment_intent)) fin_dispute($pdo, (string)$obj->payment_intent, 'created');
+            break;
+
+        case 'charge.dispute.closed':
+            if (!empty($obj->payment_intent)) {
+                $won = ($obj->status ?? '') === 'won';
+                $amount = 0;
+                if (!$won) { $ch = fin_stripe()->charges->retrieve($obj->charge); $amount = (int)$ch->amount; }
+                fin_dispute($pdo, (string)$obj->payment_intent, $won ? 'won' : 'lost', $amount);
+            }
+            break;
+
+        case 'account.updated': // événement d'un compte connecté (endpoint « Comptes connectés »)
+            $st = $pdo->prepare("SELECT id FROM organisateurs WHERE stripe_account_id = ?");
+            $st->execute([$obj->id]);
+            $orgaId = (int)$st->fetchColumn();
+            if ($orgaId) fin_store_account($pdo, $orgaId, $obj);
+            break;
+
+        case 'payout.failed': // virement bancaire d'un compte connecté refusé (IBAN invalide...) : à signaler
+            fin_audit($pdo, 'payout_echec', 'compte', $event->account ?? '', ['montant' => (int)($obj->amount ?? 0), 'raison' => $obj->failure_message ?? ''], 'webhook');
+            break;
+
+        case 'transfer.reversed':
+            fin_audit($pdo, 'transfert_annule_stripe', 'transfert', $obj->id, ['montant' => (int)($obj->amount ?? 0)], 'webhook');
+            break;
+    }
+
+    $pdo->commit();
+    http_response_code(200);
+    echo 'ok';
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('WEBHOOK ERROR (' . ($event->type ?? '?') . '): ' . $e->getMessage());
+    http_response_code(500); // Stripe réessaiera
+}

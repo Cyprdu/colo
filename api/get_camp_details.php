@@ -8,6 +8,7 @@ error_reporting(E_ALL);
 header('Content-Type: application/json');
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'marketing_lib.php';
 
 $tokenParam = (string)($_GET['t'] ?? '');
 $idParam = (int)($_GET['id'] ?? 0);
@@ -51,6 +52,8 @@ try {
     if (!isset($_SESSION[$sessionKey])) {
         $pdo->prepare("UPDATE camps SET vues = vues + 1 WHERE id = ?")->execute([$id]);
         $_SESSION[$sessionKey] = true;
+        // Clic : une visite = un clic, rattachée à la surface d'où vient le visiteur (recherche, accueil...)
+        mk_track($pdo, [$id], 'clic', mk_surface_from_referer());
     }
 
     // 2. REQUÊTE CORRIGÉE (o.web au lieu de o.site_web)

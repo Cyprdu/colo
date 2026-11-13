@@ -6,6 +6,7 @@ require_once 'config.php';
 require_once 'sessions.php';
 require_once 'options.php';
 require_once 'attente.php';
+require_once 'marketing_lib.php';
 
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
@@ -48,7 +49,9 @@ try {
     }
 
     $select = "SELECT c.id, c.token, c.nom, c.ville, c.code_postal, c.image_url, c.date_debut, c.date_fin, c.age_min, c.age_max,
-            c.type, c.theme, c.groupe_id, c.inscription_en_ligne, c.date_bump,
+            c.type, c.theme, c.groupe_id, c.inscription_en_ligne, c.date_bump, c.date_creation, c.quota_global,
+            c.boost_vedette_fin, c.boost_urgence_fin,
+            (c.quota_global - (SELECT COUNT(*) FROM inscriptions i WHERE i.camp_id = c.id AND i.statut NOT IN ('Annulé', 'annule', 'Annule'))) AS nb_places_restantes,
             o.nom AS organisateur_nom, o.logo_url AS organisateur_logo,
             $priceExpr AS prix_affiche,
             (c.boost_vedette_fin > NOW()) AS is_vedette, (c.boost_urgence_fin > NOW()) AS is_urgence,
@@ -84,13 +87,11 @@ try {
         if ($parts) $sql .= " AND (" . implode(' OR ', $parts) . ")";
     }
 
+    // Tri explicite (prix, date) : respecté tel quel. Tri par pertinence : score calculé plus bas (boosts inclus).
     $sort = $_GET['sort'] ?? 'relevance';
-    $orderBy = "(c.boost_vedette_fin > NOW()) DESC";
-    if ($sort === 'price_asc') $orderBy .= ", prix_affiche ASC";
-    elseif ($sort === 'price_desc') $orderBy .= ", prix_affiche DESC";
-    elseif ($sort === 'date') $orderBy .= ", c.date_debut ASC";
-    else $orderBy .= ($term !== '' ? ", relevance_score DESC" : "") . ", c.date_bump DESC";
-    $sql .= " ORDER BY $orderBy";
+    if ($sort === 'price_asc') $sql .= " ORDER BY prix_affiche ASC";
+    elseif ($sort === 'price_desc') $sql .= " ORDER BY prix_affiche DESC";
+    elseif ($sort === 'date') $sql .= " ORDER BY c.date_debut ASC";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -104,6 +105,18 @@ try {
         $camps = $stmtFb->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    // Classement par pertinence : score organique x effet des boosts (voir mk_score)
+    if (!in_array($sort, ['price_asc', 'price_desc', 'date'], true)) {
+        $ctr = mk_ctr_map($pdo, array_column($camps, 'id'));
+        foreach ($camps as &$cc) {
+            $cc['ctr30'] = $ctr[(int)$cc['id']] ?? 0.05;
+            $sc = mk_score($cc);
+            $cc['_score'] = $sc['score']; $cc['_sponsor'] = $sc['sponsorise'];
+        }
+        unset($cc);
+        usort($camps, function ($a, $b) { return $b['_score'] <=> $a['_score']; });
+    }
+
     // Un camp à plusieurs sessions n'apparaît qu'une fois (sa prochaine session)
     $camps = collapseSessions($camps);
     $total = count($camps);
@@ -114,7 +127,7 @@ try {
 
     $out = [];
     foreach ($camps as $c) {
-        $badge = $c['is_vedette'] ? 'Coup de cœur' : ($c['is_urgence'] ? 'Dernière minute' : null);
+        $badge = !empty($c['_sponsor']) || $c['is_vedette'] ? 'Sponsorisé' : ($c['is_urgence'] ? 'Dernière minute' : null);
         $out[] = [
             'id' => (int)$c['id'], 'token' => $c['token'],
             'nom' => clean($c['nom']), 'ville' => clean($c['ville']),
@@ -124,10 +137,13 @@ try {
             'type_name' => clean($c['type'] ?? ''), 'theme' => clean($c['theme'] ?? ''),
             'prix' => $c['prix_affiche'] !== null ? (float)$c['prix_affiche'] : null,
             'organisateur_nom' => clean($c['organisateur_nom']), 'organisateur_logo' => media($c['organisateur_logo']),
-            'badge' => $badge, 'online' => (bool)$c['inscription_en_ligne'],
+            'badge' => $badge, 'sponsorise' => $badge === 'Sponsorisé', 'online' => (bool)$c['inscription_en_ligne'],
             'sessions_count' => (int)($c['sessions_count'] ?? 1),
         ];
     }
+
+    // Impressions : les séjours réellement renvoyés à l'écran (une page de résultats)
+    mk_track($pdo, array_column($out, 'id'), 'impression', 'recherche');
 
     echo json_encode([
         'status' => 'success', 'is_fallback' => $isFallback,

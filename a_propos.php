@@ -32,7 +32,7 @@ require_once 'partials/header3.php';
     <p class="mt-4 text-[#3b4a54] leading-relaxed">Les organismes publient leurs séjours, définissent leurs tarifs, leurs sessions et leurs propres questions d'inscription, suivent les dossiers des enfants et échangent avec les familles depuis un seul tableau de bord. Les animateurs (BAFA ou non) peuvent consulter les missions ouvertes et se porter candidats. Voir l'<a class="text-[#3d6a8e] underline" href="aide#organisateurs">aide pour les organisateurs</a>.</p>
 
     <h2 class="mt-12 text-[24px] font-extrabold text-[#26343b]">Financement du site</h2>
-    <p class="mt-4 text-[#3b4a54] leading-relaxed">ColoMap est gratuit pour les familles. Le service est financé par la publicité affichée sur les pages d'information, avec votre consentement pour les annonces personnalisées, et par les services proposés aux organisateurs. Les annonces sont toujours signalées comme telles et n'influencent pas le classement des séjours.</p>
+    <p class="mt-4 text-[#3b4a54] leading-relaxed">ColoMap est gratuit pour les familles. Le service est financé par la publicité affichée sur les pages d'information, avec votre consentement pour les annonces personnalisées, et par les services proposés aux organisateurs. Les annonces publicitaires sont toujours signalées comme telles et n'influencent pas le classement des séjours. En revanche, un organisateur peut sponsoriser son séjour pour le mettre en avant : ces séjours portent la mention « Sponsorisé » et peuvent apparaître mieux placés, en plus de la pertinence, de la disponibilité et de la date.</p>
 
     <div class="mt-12 rounded-3xl bg-[#2f3d45] text-white p-8 text-center">
         <p class="text-[22px] font-extrabold">Prêt à trouver le séjour idéal ?</p>
