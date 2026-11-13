@@ -14,13 +14,11 @@ const ADS_CLIENT = 'ca-pub-3659884670016121';
 
 /** Identifiants de blocs d'annonces (AdSense > Annonces > Par bloc d'annonces) */
 const ADS_SLOTS = [
-    'article'  => '6405652824',   // In-article  : aide, contenus longs
-    'detail'   => '7384171500',   // Display     : fiche séjour (colonne de droite)
-    'contact'  => '1183215923',   // Horizontal  : contact
-    'favoris'  => '8390131413',   // In-feed     : favoris
-    'accueil'  => '',             // Display     : accueil, entre deux carrousels
-    'recherche' => '',            // Display     : bas de la recherche
-    'detail_article' => '',       // In-article  : fiche séjour, sous la description
+    'article'        => '2281873279',   // In-article : aide, à propos (bloc « ColoMap - In-article »)
+    'detail_article' => '2281873279',   // In-article : fiche séjour
+    'detail'         => '8318853928',   // Display responsive : fiche séjour (bloc « ColoMap - Display responsive »)
+    'accueil'        => '8318853928',   // Display : accueil, sous les carrousels
+    'recherche'      => '8318853928',   // Display : bas de la recherche
 ];
 
 function ad_slot(string $id, string $slot, array $o = []): void {
