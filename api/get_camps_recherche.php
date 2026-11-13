@@ -29,6 +29,10 @@ try {
     $baseWhere = " WHERE c.valide = 1 AND c.en_attente = 0 AND c.refuse = 0 AND c.supprime = 0 AND c.prive = 0
                    AND COALESCE(c.date_limite_inscription, c.date_debut) >= :today ";
     $params = [':today' => $today];
+    // Catalogue réservé aux animateurs (api/anim_catalogue.php) : uniquement les séjours qui recrutent, à venir
+    if (defined('ANIM_CATALOGUE')) {
+        $baseWhere = " WHERE c.valide = 1 AND c.en_attente = 0 AND c.refuse = 0 AND c.supprime = 0 AND c.recrute_animateurs = 1 AND c.anim_mode = 'recrute' AND c.date_debut >= :today ";
+    }
 
     $priceExpr = "COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix)";
 
@@ -87,7 +91,7 @@ try {
     $camps = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Aucun résultat : on propose les séjours mis en avant (les filtres ne sont pas appliqués)
-    if (empty($camps)) {
+    if (empty($camps) && !defined('ANIM_CATALOGUE')) {
         $isFallback = true;
         $stmtFb = $pdo->prepare(str_replace('{REL}', '0 AS relevance_score', $select) . " AND c.boost_vedette_fin > NOW() ORDER BY c.date_bump DESC LIMIT 12");
         $stmtFb->execute([':today' => $today]);
