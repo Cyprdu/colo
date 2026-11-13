@@ -25,7 +25,7 @@ try {
     $today = date('Y-m-d');
     $limit = min(max((int)($_GET['limit'] ?? 12), 1), 40);
     $start = max(validDate($_GET['date_start'] ?? '', $today), $today);
-    $end   = validDate($_GET['date_end'] ?? '', date('Y-m-d', strtotime('+1 year')));
+    $end   = validDate($_GET['date_end'] ?? '', date('Y-m-d', strtotime('+10 years')));
     $explicitAge = (isset($_GET['child_age']) && is_numeric($_GET['child_age'])) ? (int)$_GET['child_age'] : null;
 
     $userId = $_SESSION['user']['id'] ?? null;

@@ -178,7 +178,7 @@ if (empty($holiday_periods)) {
             <h2 class="text-xl md:text-2xl font-bold text-gray-900 mb-5"><?php echo $is_logged_in ? 'Sélection pour vous :' : 'Séjours à venir :'; ?></h2>
             <div class="relative">
                 <div id="track-fallback" class="camp-track flex gap-5 overflow-x-auto scroll-smooth pb-2"
-                     data-start="<?php echo $today; ?>" data-end="<?php echo date('Y-m-d', strtotime('+1 year')); ?>" data-lazy="1"></div>
+                     data-start="<?php echo $today; ?>" data-end="<?php echo date('Y-m-d', strtotime('+10 years')); ?>" data-lazy="1"></div>
                 <button type="button" data-target="track-fallback"
                         class="carousel-next hidden md:flex absolute top-1/2 -right-4 -translate-y-1/2 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-100 items-center justify-center hover:bg-gray-50 transition-colors z-10"
                         aria-label="Voir plus">
