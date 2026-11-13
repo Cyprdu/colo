@@ -1,5 +1,5 @@
 <?php
-// camp_details.php : fiche d'un séjour (design de l'accueil + choix de session)
+// camp_details.php : fiche d'un séjour (design de l'accueil + choix de dates/formule SANS rechargement)
 require_once 'api/config.php';
 require_once 'partials/header3.php';
 
@@ -45,10 +45,18 @@ try {
     .cd-btn:hover { background:#1f2a30; transform:translateY(-1px); }
     .cd-btn-light { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 18px; border-radius:14px; background:#fff; border:1.5px solid var(--line); color:var(--ink); font-weight:700; font-size:15px; transition:background .15s ease; }
     .cd-btn-light:hover { background:#f1f3f5; }
-    .session { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1.5px solid var(--line); border-radius:14px; background:#fff; transition:border-color .15s ease, background .15s ease; }
-    a.session:hover { border-color:#9db9d6; background:#f7fafd; }
-    .session.is-current { border-color:var(--accent); background:#f1f7fd; }
-    .session.is-full { opacity:.6; }
+
+    /* Choix des dates / formules : boutons, aucun changement de page */
+    .opt { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:11px 13px; border:1.5px solid var(--line); border-radius:14px; background:#fff; text-align:left; transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; cursor:pointer; }
+    .opt:hover { border-color:#9db9d6; background:#f7fafd; }
+    .opt.is-selected { border-color:var(--accent); background:#f1f7fd; box-shadow:0 0 0 3px rgba(20,120,212,.12); }
+    .opt.is-full { opacity:.55; }
+    .opt-title { display:block; font-size:14px; font-weight:700; color:var(--ink); line-height:1.25; }
+    .opt-sub { display:block; margin-top:2px; font-size:12.5px; color:var(--muted); }
+    .dot { width:18px; height:18px; border-radius:9999px; border:2px solid #cbd2d9; flex:none; display:flex; align-items:center; justify-content:center; }
+    .opt.is-selected .dot { border-color:var(--accent); background:var(--accent); }
+    .opt.is-selected .dot::after { content:''; width:6px; height:6px; border-radius:9999px; background:#fff; }
+    .is-switching { opacity:.55; pointer-events:none; transition:opacity .15s ease; }
     .skeleton { background:linear-gradient(90deg,#eceef1 25%,#f6f7f9 37%,#eceef1 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
     @keyframes sk { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
     .fade-in-anim { animation:fadeIn .4s ease-out; }
@@ -162,12 +170,17 @@ try {
                 <div class="lg:sticky lg:top-[92px] space-y-6">
 
                     <div id="booking-card" class="cd-card p-6">
-                        <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]" id="price-label">À partir de</p>
+                        <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]">Tarif</p>
                         <p class="mt-1 flex items-baseline gap-2"><span id="card-price" class="text-[40px] leading-none font-extrabold text-[#26343b]"></span><span class="text-[14px] text-[#6b7780]">par enfant</span></p>
 
+                        <!-- Dates puis formules : rien ne recharge la page -->
                         <div id="sessions-box" class="hidden mt-6">
-                            <p class="text-[14px] font-bold text-[#26343b] mb-3"><span id="sessions-count"></span> sessions : choisissez vos dates</p>
-                            <div id="sessions-list" class="space-y-2 max-h-[300px] overflow-y-auto pr-1"></div>
+                            <p id="dates-title" class="text-[14px] font-bold text-[#26343b] mb-3">Choisissez vos dates</p>
+                            <div id="sessions-dates" class="grid grid-cols-1 gap-2 max-h-[280px] overflow-y-auto pr-1" role="radiogroup" aria-labelledby="dates-title"></div>
+                            <div id="formulas-box" class="hidden mt-5">
+                                <p id="formulas-title" class="text-[14px] font-bold text-[#26343b] mb-3">Choisissez votre formule</p>
+                                <div id="formulas-list" class="grid grid-cols-1 gap-2" role="radiogroup" aria-labelledby="formulas-title"></div>
+                            </div>
                         </div>
 
                         <div id="progress-container" class="hidden mt-6 bg-[#f8f5ea] p-4 rounded-2xl">
@@ -176,7 +189,7 @@ try {
                                 <span id="progress-text" class="text-[#26343b]"></span>
                             </div>
                             <div class="w-full bg-white rounded-full h-2.5 overflow-hidden">
-                                <div id="progress-bar" class="bg-[#26343b] h-2.5 rounded-full transition-all duration-1000 ease-out" style="width:0%"></div>
+                                <div id="progress-bar" class="bg-[#26343b] h-2.5 rounded-full transition-all duration-700 ease-out" style="width:0%"></div>
                             </div>
                         </div>
 
@@ -213,8 +226,8 @@ try {
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
     const isLoggedIn = <?= json_encode($is_logged_in); ?>;
-    const campId = <?= json_encode($camp_id); ?>;
-    const userFavorites = <?= json_encode(array_map('intval', (array)$user_favorites)); ?>;
+    const initialId = <?= json_encode($camp_id ? (int)$camp_id : null); ?>;
+    let userFavorites = <?= json_encode(array_map('intval', (array)$user_favorites)); ?>;
 
     const loader = document.getElementById('loader');
     const content = document.getElementById('camp-content');
@@ -222,34 +235,58 @@ document.addEventListener('DOMContentLoaded', async function () {
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
     const fmtDay = d => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-    const fmtRange = (a, b) => {
-        if (!a || isNaN(a)) return '';
-        if (!b || isNaN(b) || b < a) return `Dès le ${fmtDay(a)} ${a.getFullYear()}`;
-        return `${fmtDay(a)} – ${fmtDay(b)} ${b.getFullYear()}`;
-    };
     const fmtPrice = p => { const n = Number(p); return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ','); };
+
+    // Dates corrigées : certains séjours importés ont un début situé après la fin (année du début erronée)
+    function normRange(debut, fin) {
+        let a = new Date(debut), b = new Date(fin);
+        if (isNaN(a)) return null;
+        if (isNaN(b)) b = a;
+        if (a > b) { const c = new Date(a); c.setFullYear(b.getFullYear()); if (c > b) c.setFullYear(b.getFullYear() - 1); a = c; }
+        return { a, b, nights: Math.max(0, Math.round((b - a) / 86400000)) };
+    }
+    const fmtRange = r => !r ? '' : (r.a.getFullYear() === r.b.getFullYear() ? `${fmtDay(r.a)} – ${fmtDay(r.b)} ${r.b.getFullYear()}` : `${fmtDay(r.a)} ${r.a.getFullYear()} – ${fmtDay(r.b)} ${r.b.getFullYear()}`);
+    const ymd = d => d.toISOString().split('T')[0];
+    const nightsLabel = n => n > 0 ? `${n} nuit${n > 1 ? 's' : ''}` : '1 journée';
 
     // Bouton retour : historique si on vient du site, sinon la recherche
     $('back-link')?.addEventListener('click', e => {
         if (document.referrer && new URL(document.referrer).host === location.host && history.length > 1) { e.preventDefault(); history.back(); }
     });
 
-    if (!campId) {
+    if (!initialId) {
         loader.innerHTML = '<div class="text-center py-20"><h1 class="text-2xl font-bold text-[#26343b]">Séjour introuvable</h1><a href="./" class="inline-block mt-5 bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Retour à l\'accueil</a></div>';
         return;
     }
 
-    try {
-        const response = await fetch(`api/get_camp_details?id=${campId}`);
-        if (!response.ok) throw new Error('Séjour indisponible');
-        const camp = await response.json();
+    // ------------------------------------------------------------
+    // Données : une requête par session, mises en cache (changer de session est instantané)
+    // ------------------------------------------------------------
+    const cache = new Map();          // id -> camp
+    const inflight = new Map();       // id -> promesse
+    function fetchCamp(id) {
+        if (cache.has(id)) return Promise.resolve(cache.get(id));
+        if (inflight.has(id)) return inflight.get(id);
+        const p = fetch(`api/get_camp_details?id=${id}`)
+            .then(r => { if (!r.ok) throw new Error('Séjour indisponible'); return r.json(); })
+            .then(c => { cache.set(id, c); inflight.delete(id); return c; })
+            .catch(e => { inflight.delete(id); throw e; });
+        inflight.set(id, p);
+        return p;
+    }
 
-        const d1 = new Date(camp.date_debut), d2 = new Date(camp.date_fin);
-        const validRange = !isNaN(d1) && !isNaN(d2) && d2 >= d1;
-        const dateStr = fmtRange(d1, d2);
+    let current = null;               // session affichée
+    let descReady = false;
+
+    // ------------------------------------------------------------
+    // Rendu de la session affichée (appelé au chargement ET à chaque changement de session)
+    // ------------------------------------------------------------
+    function render(camp) {
+        current = camp;
+        const r = normRange(camp.date_debut, camp.date_fin);
+        const dateStr = fmtRange(r);
         document.title = `${camp.nom} - ColoMap`;
 
-        // TITRE, ÉTIQUETTES, IMAGE
         $('hero-title').textContent = camp.nom;
         $('hero-location').textContent = camp.ville || '';
         $('hero-dates').textContent = dateStr;
@@ -260,80 +297,59 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (camp.boost_vedette_fin && new Date(camp.boost_vedette_fin) > now) badges.push('Coup de cœur');
         if (camp.boost_urgence_fin && new Date(camp.boost_urgence_fin) > now) badges.push('Dernière minute');
         $('hero-badges').innerHTML = badges.map(b => `<span class="inline-block bg-[#f8f5ea] text-[#26343b] text-[12px] font-bold px-3 py-1.5 rounded-full">${esc(b)}</span>`).join('');
-        const heroImg = $('hero-image');
-        heroImg.onerror = () => { heroImg.onerror = null; heroImg.remove(); };
-        if (camp.image_url) heroImg.src = String(camp.image_url).replace(/\\/g, '/');
-        else heroImg.remove();
 
-        // DESCRIPTION
+        const heroImg = $('hero-image'), src = camp.image_url ? String(camp.image_url).replace(/\\/g, '/') : '';
+        heroImg.style.display = src ? '' : 'none';
+        if (src && heroImg.getAttribute('src') !== src) heroImg.src = src;
+        heroImg.onerror = () => { heroImg.style.display = 'none'; };
+
+        // Description
         const descEl = $('camp-desc'), descBox = $('camp-desc-container'), btnMore = $('btn-see-more'), grad = $('desc-gradient');
         descEl.innerHTML = camp.description ? esc(camp.description).replace(/\n/g, '<br>') : 'Aucune description.';
-        const fitDescription = () => {   // appelé une fois le contenu visible (sinon la hauteur mesurée est nulle)
+        descBox.classList.add('max-h-44'); grad.classList.remove('hidden'); btnMore.classList.remove('hidden'); btnMore.textContent = 'Voir plus';
+        requestAnimationFrame(() => {
             if (descEl.scrollHeight <= 180) { btnMore.classList.add('hidden'); grad.classList.add('hidden'); descBox.classList.remove('max-h-44'); }
-        };
-        btnMore.addEventListener('click', () => {
-            const collapsed = descBox.classList.toggle('max-h-44');
-            grad.classList.toggle('hidden', !collapsed);
-            btnMore.textContent = collapsed ? 'Voir plus' : 'Voir moins';
         });
+        if (!descReady) {
+            descReady = true;
+            btnMore.addEventListener('click', () => {
+                const collapsed = descBox.classList.toggle('max-h-44');
+                grad.classList.toggle('hidden', !collapsed);
+                btnMore.textContent = collapsed ? 'Voir plus' : 'Voir moins';
+            });
+        }
 
-        // DÉTAILS PRATIQUES
+        // Détails pratiques
         $('info-organizer').textContent = camp.orga_nom || 'Non spécifié';
-        const days = validRange ? Math.round((d2 - d1) / 86400000) + 1 : null;
-        $('info-duration').textContent = days ? `${days} jour${days > 1 ? 's' : ''} / ${days - 1} nuit${days - 1 > 1 ? 's' : ''}` : 'À confirmer';
+        $('info-duration').textContent = r ? `${r.nights + 1} jour${r.nights + 1 > 1 ? 's' : ''} / ${nightsLabel(r.nights)}` : 'À confirmer';
         $('info-age').textContent = `${camp.age_min} à ${camp.age_max} ans`;
         $('info-place').textContent = [camp.adresse, [camp.code_postal, camp.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') || (camp.ville || '');
         if (camp.video_url) {
             let embedUrl = camp.video_url;
             if (embedUrl.includes('youtube.com/watch')) embedUrl = embedUrl.replace('watch?v=', 'embed/');
             else if (embedUrl.includes('youtu.be/')) embedUrl = embedUrl.replace('youtu.be/', 'youtube.com/embed/');
-            $('video-frame').src = embedUrl;
+            if ($('video-frame').getAttribute('src') !== embedUrl) $('video-frame').src = embedUrl;
             $('video-wrapper').classList.remove('hidden');
-        }
-        $('map-frame').src = `https://maps.google.com/maps?q=${encodeURIComponent(`${camp.ville || ''} ${camp.code_postal || ''}`)}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
+        } else { $('video-wrapper').classList.add('hidden'); }
+        const mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(`${camp.ville || ''} ${camp.code_postal || ''}`)}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
+        if ($('map-frame').getAttribute('src') !== mapSrc) $('map-frame').src = mapSrc;
 
-        // CARTE DE RÉSERVATION
+        // Carte de réservation
         $('card-price').textContent = `${fmtPrice(camp.prix)} €`;
         $('card-age').textContent = `${camp.age_min} – ${camp.age_max} ans`;
         $('card-dates').textContent = dateStr;
-
-        // SESSIONS (plusieurs sessions pour un même camp)
-        const sessions = Array.isArray(camp.sessions) ? camp.sessions : [];
-        if (sessions.length > 1) {
-            $('sessions-count').textContent = sessions.length;
-            $('sessions-box').classList.remove('hidden');
-            const prices = sessions.map(s => Number(s.prix)).filter(p => p > 0);
-            if (prices.length && Math.min(...prices) !== Math.max(...prices)) {
-                $('card-price').textContent = `${fmtPrice(camp.prix)} €`;
-            }
-            $('sessions-list').innerHTML = sessions.map(s => {
-                const a = new Date(s.date_debut), b = new Date(s.date_fin);
-                const full = s.places_restantes === 0;
-                const places = s.places_restantes === null ? '' : (full ? 'Complet' : `${s.places_restantes} place${s.places_restantes > 1 ? 's' : ''}`);
-                const inner = `
-                    <span class="min-w-0">
-                        <span class="block text-[14px] font-bold text-[#26343b]">${esc(fmtRange(a, b))}</span>
-                        <span class="block text-[12.5px] text-[#6b7780] mt-0.5">${esc(places)}</span>
-                    </span>
-                    <span class="flex items-center gap-2 flex-none">
-                        <span class="text-[14px] font-bold text-[#26343b]">${fmtPrice(s.prix)} €</span>
-                        ${s.is_current ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-label="Session affichée"><circle cx="12" cy="12" r="10" fill="#1478d4"/><path d="M7.5 12.5l3 3 6-6.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
-                    </span>`;
-                return s.is_current
-                    ? `<div class="session is-current${full ? ' is-full' : ''}" aria-current="true">${inner}</div>`
-                    : `<a href="camp_details?t=${encodeURIComponent(s.token)}" class="session${full ? ' is-full' : ''}">${inner}</a>`;
-            }).join('');
-        }
+        renderSessionPicker(camp);
 
         // Remplissage (inscription en ligne uniquement)
+        const prog = $('progress-container');
         if (camp.inscription_en_ligne == 1) {
             const pct = camp.percent_filled || 0;
-            $('progress-container').classList.remove('hidden');
-            setTimeout(() => { $('progress-bar').style.width = `${pct}%`; }, 300);
+            prog.classList.remove('hidden');
+            $('progress-bar').style.width = `${pct}%`;
             $('progress-text').textContent = `${pct}% rempli`;
-        }
+        } else { prog.classList.add('hidden'); }
 
-        // BOUTON DE RÉSERVATION
+        // Bouton de réservation
         const places = camp.places_restantes || 0;
         let cta = '';
         if (camp.lien_externe) {
@@ -342,84 +358,189 @@ document.addEventListener('DOMContentLoaded', async function () {
         } else if (camp.inscription_en_ligne == 1 && places > 0) {
             cta = isLoggedIn
                 ? `<a href="inscription?camp_t=${encodeURIComponent(camp.token)}" class="cd-btn">Réserver via ColoMap</a>`
-                : `<a href="login.php?redirect=${encodeURIComponent(window.location.href)}" class="cd-btn">Se connecter pour réserver</a>`;
+                : `<a href="login.php?redirect=${encodeURIComponent(location.origin + '/camp_details?t=' + camp.token)}" class="cd-btn">Se connecter pour réserver</a>`;
         } else if (camp.inscription_en_ligne == 1 && places === 0) {
             cta = `<button type="button" disabled class="cd-btn" style="background:#eceef1;color:#9aa3ab;cursor:not-allowed">Inscriptions closes</button>`;
         }
         $('cta-container').innerHTML = cta;
 
-        // ORGANISATEUR
+        // Organisateur
         $('orga-name').textContent = camp.orga_nom || '';
         $('orga-initial').textContent = camp.orga_nom ? camp.orga_nom.charAt(0).toUpperCase() : '?';
         const contact = $('contact-container');
+        contact.innerHTML = '';
         if (camp.organisateur_user_id) {
             if (isLoggedIn) {
                 const b = document.createElement('button');
-                b.type = 'button'; b.className = 'cd-btn';
-                b.style.fontSize = '15px'; b.style.padding = '13px 18px';
+                b.type = 'button'; b.className = 'cd-btn'; b.style.fontSize = '15px'; b.style.padding = '13px 18px';
                 b.textContent = "Contacter l'organisateur";
                 b.onclick = () => contactOrganisateur(camp.organisateur_user_id, camp.id);
                 contact.appendChild(b);
             } else {
-                contact.innerHTML = `<a href="login.php?redirect=${encodeURIComponent(window.location.href)}" class="text-[14px] text-[#1478d4] hover:text-[#0f62ae] font-semibold underline block text-center">Connectez-vous pour contacter l'organisateur</a>`;
+                contact.innerHTML = `<a href="login.php?redirect=${encodeURIComponent(location.origin + '/camp_details?t=' + camp.token)}" class="text-[14px] text-[#1478d4] hover:text-[#0f62ae] font-semibold underline block text-center">Connectez-vous pour contacter l'organisateur</a>`;
             }
         }
-        if (camp.orga_website) {
-            $('website-container').innerHTML = `<a href="${esc(camp.orga_website)}" target="_blank" rel="noopener" class="cd-btn-light mt-3">Voir le site de l'organisme</a>`;
-        }
+        $('website-container').innerHTML = camp.orga_website
+            ? `<a href="${esc(camp.orga_website)}" target="_blank" rel="noopener" class="cd-btn-light mt-3">Voir le site de l'organisme</a>` : '';
 
-        // FAVORIS
-        if (isLoggedIn) {
-            const btnFav = $('btn-favorite');
-            let isFav = userFavorites.includes(Number(camp.id));
-            const render = on => { btnFav.classList.toggle('is-fav', on); btnFav.setAttribute('aria-pressed', on); };
-            render(isFav);
-            btnFav.addEventListener('click', () => {
-                const old = isFav; isFav = !isFav; render(isFav);
-                fetch('api/toggle_favorite.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campId: camp.id }) })
-                    .then(r => { if (!r.ok) throw new Error(); })
-                    .catch(() => { isFav = old; render(isFav); });
-            });
-        }
+        // Favori (par session)
+        const btnFav = $('btn-favorite');
+        if (btnFav) { const on = userFavorites.includes(Number(camp.id)); btnFav.classList.toggle('is-fav', on); btnFav.setAttribute('aria-pressed', on); }
+    }
 
-        // PARTAGE
-        $('btn-share').addEventListener('click', async () => {
-            const data = { title: camp.nom, text: `Séjour ${camp.nom} à ${camp.ville}`, url: window.location.href };
-            try {
-                if (navigator.share) { await navigator.share(data); return; }
-                await navigator.clipboard.writeText(data.url);
-                $('share-label').textContent = 'Lien copié !';
-                setTimeout(() => { $('share-label').textContent = 'Partager'; }, 2000);
-            } catch (e) { /* partage annulé */ }
+    // ------------------------------------------------------------
+    // Sélecteur : DATES (une ligne par date de départ) puis FORMULES (durée / prix de cette date)
+    // ------------------------------------------------------------
+    function renderSessionPicker(camp) {
+        const raw = Array.isArray(camp.sessions) ? camp.sessions : [];
+        const box = $('sessions-box');
+        if (raw.length < 2) { box.classList.add('hidden'); return; }
+        const sessions = raw.map(s => ({ ...s, r: normRange(s.date_debut, s.date_fin) })).filter(s => s.r)
+            .sort((x, y) => x.r.a - y.r.a || x.prix - y.prix);
+        // regroupement par date de départ
+        const groups = [];
+        sessions.forEach(s => {
+            const key = ymd(s.r.a);
+            let g = groups.find(x => x.key === key);
+            if (!g) { g = { key, start: s.r.a, items: [] }; groups.push(g); }
+            g.items.push(s);
         });
+        const curGroup = groups.find(g => g.items.some(s => s.id === camp.id)) || groups[0];
+        const curItem = curGroup.items.find(s => s.id === camp.id) || curGroup.items[0];
 
-        // CALENDRIER (Google Agenda / fichier .ics sur iOS)
-        $('btn-calendar').addEventListener('click', () => {
-            if (!validRange) return;
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') && !window.MSStream;
-            const title = `Séjour ColoMap: ${camp.nom}`;
-            const details = `Séjour à ${camp.ville}. Plus d'infos: ${window.location.href}`;
-            const locationTxt = [camp.adresse, camp.ville].filter(Boolean).join(', ');
-            const ymd = d => d.toISOString().split('T')[0].replace(/-/g, '');
-            const end = new Date(d2); end.setDate(end.getDate() + 1);   // fin exclusive dans les agendas
-            if (isIOS) {
-                const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ColoMap//Sejour//FR', 'BEGIN:VEVENT',
-                    `UID:${Date.now()}@colomap.fr`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-                    `DTSTART;VALUE=DATE:${ymd(d1)}`, `DTEND;VALUE=DATE:${ymd(end)}`, `SUMMARY:${title}`, `DESCRIPTION:${details}`, `LOCATION:${locationTxt}`,
-                    'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
-                link.download = 'sejour_colomap.ics';
-                document.body.appendChild(link); link.click(); link.remove();
-            } else {
-                window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${ymd(d1)}/${ymd(end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(locationTxt)}&sf=true&output=xml`, '_blank');
+        $('dates-title').textContent = groups.length > 1 ? 'Choisissez vos dates' : 'Dates du séjour';
+        $('sessions-dates').innerHTML = groups.map(g => {
+            const sel = g === curGroup;
+            const allFull = g.items.every(s => s.places_restantes === 0);
+            const sub = g.items.length > 1 ? `${g.items.length} formules` : nightsLabel(g.items[0].r.nights);
+            const min = Math.min(...g.items.map(s => Number(s.prix)));
+            return `<button type="button" role="radio" aria-checked="${sel}" data-id="${g.items[0].id}" data-key="${g.key}" data-nights="${curItem.r.nights}"
+                        class="opt${sel ? ' is-selected' : ''}${allFull ? ' is-full' : ''}">
+                        <span class="flex items-center gap-3 min-w-0"><span class="dot"></span>
+                            <span class="min-w-0"><span class="opt-title">${esc(fmtDay(g.start))} ${g.start.getFullYear()}</span>
+                            <span class="opt-sub">${esc(sub)}${allFull ? ' · Complet' : ''}</span></span></span>
+                        <span class="text-[14px] font-bold text-[#26343b] flex-none">${g.items.length > 1 ? 'dès ' : ''}${fmtPrice(min)} €</span>
+                    </button>`;
+        }).join('');
+
+        // formules de la date choisie
+        const fBox = $('formulas-box');
+        if (curGroup.items.length > 1) {
+            fBox.classList.remove('hidden');
+            $('formulas-list').innerHTML = curGroup.items.map(s => {
+                const sel = s.id === camp.id, full = s.places_restantes === 0;
+                const places = s.places_restantes === null ? '' : (full ? 'Complet' : `${s.places_restantes} place${s.places_restantes > 1 ? 's' : ''}`);
+                return `<button type="button" role="radio" aria-checked="${sel}" data-id="${s.id}" class="opt${sel ? ' is-selected' : ''}${full ? ' is-full' : ''}">
+                        <span class="flex items-center gap-3 min-w-0"><span class="dot"></span>
+                            <span class="min-w-0"><span class="opt-title">${esc(nightsLabel(s.r.nights))}</span>
+                            <span class="opt-sub">${esc(fmtRange(s.r))}${places ? ' · ' + esc(places) : ''}</span></span></span>
+                        <span class="text-[14px] font-bold text-[#26343b] flex-none">${fmtPrice(s.prix)} €</span>
+                    </button>`;
+            }).join('');
+        } else { fBox.classList.add('hidden'); $('formulas-list').innerHTML = ''; }
+
+        box.classList.remove('hidden');
+        box._groups = groups;   // utilisé pour choisir la formule quand on clique sur une date
+    }
+
+    // Clic sur une date ou une formule : on change de session SANS recharger la page
+    $('sessions-box').addEventListener('click', e => {
+        const btn = e.target.closest('button[data-id]');
+        if (!btn) return;
+        let id = Number(btn.dataset.id);
+        if (btn.dataset.key) {   // clic sur une date : formule de même durée sinon la moins chère
+            const g = ($('sessions-box')._groups || []).find(x => x.key === btn.dataset.key);
+            if (g) {
+                const nights = Number(btn.dataset.nights);
+                const same = g.items.find(s => s.r.nights === nights);
+                id = (same || g.items[0]).id;
             }
-        });
+        }
+        if (id !== current.id) switchTo(id);
+    });
+    // Préchargement au survol : le changement est alors immédiat
+    $('sessions-box').addEventListener('pointerover', e => {
+        const btn = e.target.closest('button[data-id]');
+        if (btn) fetchCamp(Number(btn.dataset.id)).catch(() => {});
+    });
 
+    async function switchTo(id, push = true) {
+        const card = $('booking-card');
+        if (!cache.has(id)) card.classList.add('is-switching');
+        try {
+            const camp = await fetchCamp(id);
+            render(camp);
+            if (push) history.pushState({ id }, '', `camp_details?t=${encodeURIComponent(camp.token)}`);
+        } catch (e) {
+            $('sessions-box').insertAdjacentHTML('beforeend', '<p class="text-sm text-red-600 mt-3">Cette session est momentanément indisponible.</p>');
+        } finally { card.classList.remove('is-switching'); }
+    }
+    // Boutons précédent / suivant du navigateur
+    window.addEventListener('popstate', e => {
+        const id = e.state && e.state.id ? e.state.id : initialId;
+        if (current && id !== current.id) switchTo(id, false);
+    });
+
+    // ------------------------------------------------------------
+    // Actions (liées une seule fois, elles utilisent toujours la session affichée)
+    // ------------------------------------------------------------
+    $('btn-favorite')?.addEventListener('click', () => {
+        const btn = $('btn-favorite'), camp = current;
+        const was = userFavorites.includes(Number(camp.id));
+        const apply = on => {
+            userFavorites = on ? [...new Set([...userFavorites, Number(camp.id)])] : userFavorites.filter(i => i !== Number(camp.id));
+            btn.classList.toggle('is-fav', on); btn.setAttribute('aria-pressed', on);
+        };
+        apply(!was);
+        fetch('api/toggle_favorite.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campId: camp.id }) })
+            .then(r => { if (!r.ok) throw new Error(); })
+            .catch(() => apply(was));
+    });
+
+    $('btn-share').addEventListener('click', async () => {
+        const data = { title: current.nom, text: `Séjour ${current.nom} à ${current.ville}`, url: location.href };
+        try {
+            if (navigator.share) { await navigator.share(data); return; }
+            await navigator.clipboard.writeText(data.url);
+            $('share-label').textContent = 'Lien copié !';
+            setTimeout(() => { $('share-label').textContent = 'Partager'; }, 2000);
+        } catch (e) { /* partage annulé */ }
+    });
+
+    $('btn-calendar').addEventListener('click', () => {
+        const camp = current, r = normRange(camp.date_debut, camp.date_fin);
+        if (!r) return;
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') && !window.MSStream;
+        const title = `Séjour ColoMap: ${camp.nom}`;
+        const details = `Séjour à ${camp.ville}. Plus d'infos: ${location.href}`;
+        const where = [camp.adresse, camp.ville].filter(Boolean).join(', ');
+        const compact = d => ymd(d).replace(/-/g, '');
+        const end = new Date(r.b); end.setDate(end.getDate() + 1);   // fin exclusive dans les agendas
+        if (isIOS) {
+            const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ColoMap//Sejour//FR', 'BEGIN:VEVENT',
+                `UID:${Date.now()}@colomap.fr`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+                `DTSTART;VALUE=DATE:${compact(r.a)}`, `DTEND;VALUE=DATE:${compact(end)}`, `SUMMARY:${title}`, `DESCRIPTION:${details}`, `LOCATION:${where}`,
+                'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+            link.download = 'sejour_colomap.ics';
+            document.body.appendChild(link); link.click(); link.remove();
+        } else {
+            window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${compact(r.a)}/${compact(end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(where)}&sf=true&output=xml`, '_blank');
+        }
+    });
+
+    // ------------------------------------------------------------
+    // Démarrage
+    // ------------------------------------------------------------
+    try {
+        const camp = await fetchCamp(initialId);
+        history.replaceState({ id: initialId }, '');
+        render(camp);
         loader.classList.add('hidden');
         content.classList.remove('hidden');
-        fitDescription();
-
+        // précharge les autres sessions en arrière-plan (sans bloquer l'affichage)
+        (camp.sessions || []).slice(0, 12).filter(s => s.id !== initialId).forEach(s => setTimeout(() => fetchCamp(s.id).catch(() => {}), 800));
     } catch (e) {
         console.error(e);
         loader.innerHTML = `<div class="text-center py-20"><p class="text-xl font-bold text-[#26343b] mb-2">Ce séjour n'est pas disponible</p><p class="text-[#6b7780] mb-6">${esc(e.message)}</p><a href="recherche" class="inline-block bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Voir les autres séjours</a></div>`;

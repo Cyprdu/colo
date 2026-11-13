@@ -84,104 +84,130 @@ require_once 'partials/header.php';
             </div>
         <?php else: ?>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <?php foreach ($camps as $camp): 
-                    $quota = max(1, intval($camp['quota_global']));
-                    $inscrits = intval($camp['nb_inscrits']);
-                    $percent = min(100, round(($inscrits / $quota) * 100));
-                    $d1 = date('d/m', strtotime($camp['date_debut']));
-                    $d2 = date('d/m/Y', strtotime($camp['date_fin']));
+            <?php
+// ---- Regroupement : un camp = une carte ; ses sessions (dates) et formules (durée/prix) sont dans la carte ----
+$todayYmd = date('Y-m-d');
+$mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+$fmtDay  = function (DateTime $d) use ($mois) { return $d->format('j') . ' ' . $mois[(int)$d->format('n') - 1]; };
+$fmtFull = function (DateTime $d) use ($fmtDay) { return $fmtDay($d) . ' ' . $d->format('Y'); };
+
+$groupsRaw = [];
+foreach ($camps as $c) {
+    [$n1, $n2] = normalizeSessionDates($c['date_debut'], $c['date_fin']);
+    $c['_start'] = $n1; $c['_end'] = $n2;
+    $c['_nights'] = max(0, (int)$n1->diff($n2)->days);
+    $groupsRaw[sessionGroupKey($c)][] = $c;
+}
+$cards = [];
+foreach ($groupsRaw as $list) {
+    usort($list, function ($a, $b) { return ($a['_start'] <=> $b['_start']) ?: ((float)$a['prix'] <=> (float)$b['prix']); });
+    $rep = null;
+    foreach ($list as $s) { if ($s['_end']->format('Y-m-d') >= $todayYmd) { $rep = $s; break; } }
+    $upcoming = $rep !== null;
+    if (!$rep) $rep = end($list);
+    $byDate = [];
+    foreach ($list as $s) $byDate[$s['_start']->format('Y-m-d')][] = $s;
+    $prices = array_filter(array_map(function ($s) { return (float)$s['prix']; }, $list), function ($p) { return $p > 0; });
+    $tot = 0; $quotaTot = 0; $pub = 0;
+    foreach ($list as $s) { $tot += (int)$s['nb_inscrits']; $quotaTot += max(1, (int)$s['quota_global']); if (empty($s['prive'])) $pub++; }
+    $cards[] = [
+        'rep' => $rep, 'list' => $list, 'byDate' => $byDate, 'upcoming' => $upcoming,
+        'sortKey' => $upcoming ? $rep['_start']->format('Y-m-d') : $list[count($list) - 1]['_end']->format('Y-m-d'),
+        'minPrice' => $prices ? min($prices) : (float)$rep['prix'],
+        'inscrits' => $tot, 'quota' => $quotaTot, 'pub' => $pub,
+    ];
+}
+// À venir d'abord (le plus proche en premier), puis les camps terminés (les plus récents en premier)
+usort($cards, function ($a, $b) {
+    if ($a['upcoming'] !== $b['upcoming']) return $a['upcoming'] ? -1 : 1;
+    return $a['upcoming'] ? strcmp($a['sortKey'], $b['sortKey']) : strcmp($b['sortKey'], $a['sortKey']);
+});
+?>
+            <p class="text-sm text-gray-500 mb-6"><?= count($cards) ?> camp<?= count($cards) > 1 ? 's' : '' ?> · <?= count($camps) ?> session<?= count($camps) > 1 ? 's' : '' ?></p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
+                <?php foreach ($cards as $card):
+                    $camp = $card['rep']; $list = $card['list'];
+                    $nbSessions = count($list); $nbDates = count($card['byDate']);
+                    $percent = min(100, $card['quota'] > 0 ? round($card['inscrits'] / $card['quota'] * 100) : 0);
                     $img = !empty($camp['image_url']) ? $camp['image_url'] : 'assets/default_camp.jpg';
                     $token = $camp['token'];
-                    
-                    // Gestion de la liste des inscrits pour JS
-                    $listeInscrits = $camp['liste_inscrits'] ? str_replace('|||', ',', $camp['liste_inscrits']) : '';
+                    $visLabel = $card['pub'] === $nbSessions ? 'Public' : ($card['pub'] === 0 ? 'Privé' : 'Public en partie');
                 ?>
-                
-                <div class="bg-white rounded-2xl shadow-sm hover:shadow-md transition border border-gray-200 overflow-hidden flex flex-col h-full group relative">
-                    
+                <div class="bg-white rounded-2xl shadow-sm hover:shadow-md transition border border-gray-200 overflow-hidden flex flex-col group relative">
+
                     <a href="gestion_camp.php?t=<?= $token ?>" class="block relative h-48 w-full overflow-hidden cursor-pointer">
-                        <img src="<?= htmlspecialchars($img) ?>" alt="Cover" class="w-full h-full object-cover transition duration-700 group-hover:scale-105">
+                        <img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy" class="w-full h-full object-cover transition duration-700 group-hover:scale-105">
                         <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                        
                         <div class="absolute bottom-4 left-4 right-4">
-                            <h3 class="text-white font-bold text-xl leading-tight truncate shadow-sm"><?= htmlspecialchars($camp['nom']) ?></h3>
-                            <p class="text-gray-200 text-sm flex items-center gap-1 mt-1">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                <?= htmlspecialchars($camp['ville']) ?>
-                            </p>
+                            <h3 class="text-white font-bold text-xl leading-tight truncate"><?= htmlspecialchars($camp['nom']) ?></h3>
+                            <p class="text-gray-200 text-sm mt-1"><?= htmlspecialchars($camp['ville']) ?></p>
                         </div>
                     </a>
-
-                    <div class="absolute top-4 right-4 z-10">
-                        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                            <input type="checkbox" name="toggle" id="toggle_<?= $camp['id'] ?>" 
-                                   class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-all duration-300 <?= !$camp['prive'] ? 'right-0 border-green-400' : 'left-0 border-gray-300' ?>" 
-                                   <?= !$camp['prive'] ? 'checked' : '' ?>
-                                   onchange="toggleCampStatus('<?= $token ?>', this)">
-                            <label for="toggle_<?= $camp['id'] ?>" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer <?= !$camp['prive'] ? 'bg-green-400' : '' ?>"></label>
-                        </div>
-                        <span id="status_text_<?= $camp['id'] ?>" class="text-xs font-bold text-white bg-black/50 px-2 py-1 rounded">
-                            <?= !$camp['prive'] ? 'Public' : 'Privé' ?>
-                        </span>
-                    </div>
+                    <span class="absolute top-4 right-4 z-10 text-xs font-bold text-white bg-black/50 px-2 py-1 rounded"><?= $visLabel ?></span>
 
                     <div class="p-5 flex-1 flex flex-col">
-                        
-                        <div class="flex justify-between items-center mb-4 text-sm text-gray-600">
-                            <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                <span><?= $d1 ?> - <?= $d2 ?></span>
-                            </div>
-                            <div class="font-bold text-[#0A112F] text-lg">
-                                <?= number_format($camp['prix'], 0, ',', ' ') ?>€
-                            </div>
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="inline-block text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
+                                <?= $nbSessions ?> session<?= $nbSessions > 1 ? 's' : '' ?><?= $nbDates !== $nbSessions ? ' · ' . $nbDates . ' date' . ($nbDates > 1 ? 's' : '') : '' ?>
+                            </span>
+                            <span class="font-bold text-[#26343b] text-lg"><?= $nbSessions > 1 ? 'dès ' : '' ?><?= number_format($card['minPrice'], 0, ',', ' ') ?>€</span>
                         </div>
 
-                        <?php $sc = $sessCount[sessionGroupKey($camp)] ?? 1; if ($sc > 1): ?>
-                        <p class="mb-4 inline-block text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5"><?= $sc ?> sessions pour ce camp</p>
-                        <?php endif; ?>
-                        <div class="mb-6">
+                        <div class="mb-5">
                             <div class="flex justify-between text-xs font-semibold mb-1.5">
                                 <span class="text-gray-500">Remplissage</span>
-                                <span class="text-[#0A112F]"><?= $inscrits ?> / <?= $quota ?></span>
+                                <span class="text-[#26343b]"><?= $card['inscrits'] ?> / <?= $card['quota'] ?></span>
                             </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                                <div class="bg-[#0A112F] h-2 rounded-full" style="width: <?= $percent ?>%"></div>
-                            </div>
+                            <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden"><div class="bg-[#26343b] h-2 rounded-full" style="width: <?= $percent ?>%"></div></div>
                         </div>
 
-                        <div class="grid grid-cols-6 gap-2 mt-auto border-t border-gray-100 pt-4">
-                            
-                            <a href="camp_details.php?t=<?= $token ?>" target="_blank" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition tooltip" title="Voir la page">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                            </a>
-
-                            <a href="edit_camp.php?t=<?= $token ?>" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-orange-600 hover:bg-orange-50 transition" title="Modifier">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                            </a>
-
-                            <a href="boost.php?t=<?= $token ?>" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition" title="Booster le camp">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            </a>
-
-                            <button type="button" onclick="openSessionModal('<?= $token ?>', '<?= addslashes(htmlspecialchars($camp['nom'])) ?>', '<?= $camp['date_debut'] ?>', '<?= $camp['date_fin'] ?>')" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 transition" title="Ajouter une session" aria-label="Ajouter une session"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM12 11v6m-3-3h6"/></svg></button>
-
-                            <button type="button" 
-                                    onclick="openDeleteModal('<?= $token ?>', '<?= addslashes(htmlspecialchars($camp['nom'])) ?>', '<?= addslashes($listeInscrits) ?>')" 
-                                    class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition" title="Supprimer">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                            </button>
-
-                            <button onclick="shareLink('<?= $token ?>')" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition" title="Copier le lien">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                            </button>
-
+                        <div class="grid grid-cols-3 gap-2 border-t border-gray-100 pt-4">
+                            <a href="camp_details.php?t=<?= $token ?>" target="_blank" class="flex items-center justify-center gap-2 p-2 rounded-lg text-sm font-semibold text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition" title="Voir la page publique">Voir</a>
+                            <button type="button" onclick="openSessionModal('<?= $token ?>', '<?= addslashes(htmlspecialchars($camp['nom'])) ?>', '<?= $list[count($list) - 1]['_start']->format('Y-m-d') ?>', '<?= $list[count($list) - 1]['_end']->format('Y-m-d') ?>')"
+                                    class="flex items-center justify-center gap-2 p-2 rounded-lg text-sm font-semibold text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition" title="Ajouter une session">+ Session</button>
+                            <button onclick="shareLink('<?= $token ?>')" class="flex items-center justify-center gap-2 p-2 rounded-lg text-sm font-semibold text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition" title="Copier le lien">Partager</button>
                         </div>
+
+                        <details class="mt-4 rounded-xl border border-gray-100 bg-gray-50/60">
+                            <summary class="cursor-pointer select-none px-4 py-3 text-sm font-bold text-[#26343b]">Gérer les <?= $nbSessions ?> session<?= $nbSessions > 1 ? 's' : '' ?></summary>
+                            <div class="px-4 pb-3 max-h-80 overflow-y-auto">
+                            <?php foreach ($card['byDate'] as $ymd => $rows): $first = $rows[0]; ?>
+                                <p class="mt-3 mb-1 text-xs font-extrabold uppercase tracking-wider text-gray-400"><?= $fmtFull($first['_start']) ?><?= count($rows) > 1 ? ' · ' . count($rows) . ' formules' : '' ?></p>
+                                <?php foreach ($rows as $s):
+                                    $sTok = $s['token'];
+                                    $sList = $s['liste_inscrits'] ? str_replace('|||', ',', $s['liste_inscrits']) : '';
+                                    $sQuota = max(1, (int)$s['quota_global']);
+                                ?>
+                                <div class="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+                                    <div class="relative inline-block w-10 h-6 flex-none select-none" title="Visible par les familles">
+                                        <input type="checkbox" id="toggle_<?= $s['id'] ?>"
+                                               class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-all duration-300 <?= empty($s['prive']) ? 'right-0 border-green-400' : 'left-0 border-gray-300' ?>"
+                                               <?= empty($s['prive']) ? 'checked' : '' ?> onchange="toggleCampStatus('<?= $sTok ?>', this)">
+                                        <label for="toggle_<?= $s['id'] ?>" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer <?= empty($s['prive']) ? 'bg-green-400' : '' ?>"></label>
+                                    </div>
+                                    <span id="status_text_<?= $s['id'] ?>" class="sr-only"><?= empty($s['prive']) ? 'Public' : 'Privé' ?></span>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="text-sm font-semibold text-gray-800"><?= $fmtDay($s['_start']) ?> → <?= $fmtDay($s['_end']) ?> <?= $s['_end']->format('Y') ?></p>
+                                        <p class="text-xs text-gray-500"><?= $s['_nights'] ?> nuit<?= $s['_nights'] > 1 ? 's' : '' ?> · <?= number_format($s['prix'], 0, ',', ' ') ?>€ · <?= (int)$s['nb_inscrits'] ?>/<?= $sQuota ?> inscrits</p>
+                                    </div>
+                                    <div class="flex items-center flex-none">
+                                        <a href="edit_camp.php?t=<?= $sTok ?>" class="p-1.5 rounded-lg text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition" title="Modifier cette session" aria-label="Modifier">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.768-6.768a2.5 2.5 0 113.536 3.536L12.536 16.5 8 18l1-5z"/></svg></a>
+                                        <a href="boost.php?t=<?= $sTok ?>" class="p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition" title="Booster" aria-label="Booster">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></a>
+                                        <button type="button" onclick="openDeleteModal('<?= $sTok ?>', '<?= addslashes(htmlspecialchars($s['nom'])) ?>', '<?= addslashes($sList) ?>')" class="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition" title="Supprimer cette session" aria-label="Supprimer">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            <?php endforeach; ?>
+                            </div>
+                        </details>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
+
         <?php endif; ?>
     </div>
 </div>

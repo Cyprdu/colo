@@ -238,29 +238,38 @@ document.addEventListener('DOMContentLoaded', function () {
     const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const safeImg = url => url ? String(url).replace(/\\/g, '/') : '';
+    // Dates corrigées : certains séjours importés ont un début situé après la fin (année du début erronée)
+    function normDates(start, end) {
+        let a = start ? new Date(start) : null, b = end ? new Date(end) : null;
+        if (!a || isNaN(a)) return null;
+        if (!b || isNaN(b)) return { a, b: null };
+        if (a > b) { const c = new Date(a); c.setFullYear(b.getFullYear()); if (c > b) c.setFullYear(b.getFullYear() - 1); a = c; }
+        return { a, b };
+    }
     function formatDateRange(start, end) {
-        const s = start ? new Date(start) : null, e = end ? new Date(end) : null;
-        if (!s || isNaN(s)) return '';
-        if (!e || isNaN(e) || e < s) return `Dès le ${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
+        const r = normDates(start, end);
+        if (!r) return '';
+        const s = r.a, e = r.b;
+        if (!e) return `Dès le ${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
         if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
             return `Du ${s.getDate()} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
         const sh = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
         return `Du ${s.getDate()} ${sh(s.getMonth())} au ${e.getDate()} ${sh(e.getMonth())} ${e.getFullYear()}`;
     }
-    function shortDate(iso) {
-        const d = iso ? new Date(iso) : null;
-        if (!d || isNaN(d)) return '';
-        const m = MONTHS[d.getMonth()];
-        return `${d.getDate()} ${m.length > 5 ? m.slice(0, 4) + '.' : m}`;
+    function shortDate(start, end) {
+        const r = normDates(start, end);
+        if (!r) return '';
+        const m = MONTHS[r.a.getMonth()];
+        return `${r.a.getDate()} ${m.length > 5 ? m.slice(0, 4) + '.' : m}`;
+    }
+    function formatPrice(p) {
+        const n = Number(p);
+        return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');
     }
     // « HAUTELUCE » -> « Hauteluce » (les villes en majuscules de la base)
     function niceCity(v) {
         v = String(v || '').trim();
         return v === v.toUpperCase() ? v.toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : v;
-    }
-    function formatPrice(p) {
-        const n = Number(p);
-        return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');
     }
 
     // Une image qui ne charge pas est remplacée par le visuel ColoMap (taille inchangée)
@@ -406,7 +415,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const img   = safeImg(camp.image_url) || window.CAMP_PLACEHOLDER;
         const price = (camp.prix !== null && camp.prix !== undefined && !isNaN(camp.prix) && Number(camp.prix) > 0) ? `Dès <b>${formatPrice(camp.prix)} €</b>` : '';
         const n     = Number(camp.sessions_count || 1);
-        const date  = n > 1 ? `${n} sessions · dès le ${shortDate(camp.date_debut)}` : formatDateRange(camp.date_debut, camp.date_fin);
+        const date  = n > 1 ? `${n} sessions · dès le ${shortDate(camp.date_debut, camp.date_fin)}` : formatDateRange(camp.date_debut, camp.date_fin);
 
         return `
         <article class="camp-card fade-in-anim">
