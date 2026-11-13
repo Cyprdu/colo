@@ -1,4 +1,5 @@
 <?php
+$body_class = 'bg-white';
 require_once 'partials/header.php';
 
 if (!isset($_SESSION['user']) || !$_SESSION['user']['is_directeur']) {
@@ -17,14 +18,14 @@ $tokenCamp = $_GET['t'] ?? '';
 <main class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
     
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 no-print">
-        <a href="gestion_camp?t=<?= htmlspecialchars($tokenCamp) ?>" class="text-gray-600 hover:text-blue-600 font-medium mb-4 md:mb-0">
+        <a href="gestion_camp?t=<?= htmlspecialchars($tokenCamp) ?>" class="text-[#3b4a54] hover:text-[#26343b] font-semibold mb-4 md:mb-0">
             &larr; Retour au Dashboard
         </a>
         <div class="flex gap-3">
-            <button onclick="window.open('api/secure_file.php?file='+window.carnetToken, '_blank')" id="btn-carnet" class="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-bold hover:bg-red-200 transition hidden">
-                📄 Voir Carnet de Santé
+            <button onclick="window.open('api/secure_file.php?file='+window.carnetToken, '_blank')" id="btn-carnet" class="ds-btn ds-btn-light" style="display:none">
+                Voir le carnet de santé
             </button>
-            <button onclick="generatePDF()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow flex items-center gap-2">
+            <button onclick="generatePDF()" class="ds-btn">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                 Exporter Fiche PDF
             </button>
@@ -37,7 +38,7 @@ $tokenCamp = $_GET['t'] ?? '';
             <div>
                 <h1 class="text-4xl font-extrabold text-gray-900 uppercase tracking-tight" id="child-name">Chargement...</h1>
                 <p class="text-xl text-gray-600 mt-1" id="child-age"></p>
-                <div class="mt-3 inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold" id="camp-name"></div>
+                <div class="mt-3 inline-block bg-[#e5eaef] text-[#26343b] px-3 py-1 rounded-full text-sm font-bold" id="camp-name"></div>
             </div>
             <div class="text-right">
                 <div class="bg-gray-100 p-4 rounded-lg border border-gray-300">
@@ -52,7 +53,7 @@ $tokenCamp = $_GET['t'] ?? '';
             <div class="space-y-8">
                 
                 <section>
-                    <h3 class="text-lg font-bold text-blue-700 uppercase border-b border-blue-200 pb-1 mb-3">Identité</h3>
+                    <h3 class="text-lg font-bold text-[#2d5170] uppercase border-b border-[#d3dbe0] pb-1 mb-3">Identité</h3>
                     <ul class="space-y-2 text-sm text-gray-700">
                         <li><span class="font-bold w-32 inline-block">Date Naissance:</span> <span id="child-dob"></span></li>
                         <li><span class="font-bold w-32 inline-block">Sexe:</span> <span id="child-sex"></span></li>
@@ -102,7 +103,7 @@ $tokenCamp = $_GET['t'] ?? '';
 
                     <div class="mt-4 pt-4 border-t border-red-200">
                         <p class="text-xs font-bold text-gray-500">Carnet de santé</p>
-                        <p class="text-sm text-blue-600 underline cursor-pointer" onclick="window.open('api/secure_file.php?file='+window.carnetToken, '_blank')">
+                        <p class="text-sm text-[#3d6a8e] underline cursor-pointer" onclick="window.open('api/secure_file.php?file='+window.carnetToken, '_blank')">
                             Consulter le document numérisé
                         </p>
                     </div>
@@ -205,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Fichier Carnet
         window.carnetToken = data.carnet_sante_token;
         if(window.carnetToken) {
-            document.getElementById('btn-carnet').classList.remove('hidden');
+            document.getElementById('btn-carnet').style.display = '';
             // Charger dans l'iframe
             document.getElementById('pdf-viewer').src = `api/secure_file.php?file=${window.carnetToken}`;
         } else {

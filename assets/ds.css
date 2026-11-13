@@ -128,3 +128,4 @@ body.ds-legacy [class~="shadow-blue-500/30"], body.ds-legacy [class~="shadow-blu
 .ds-toast.show { opacity: 1; transform: translate(-50%, 0); }
 .ds-bar { position: sticky; bottom: 0; z-index: 30; background: rgba(255, 255, 255, .92); backdrop-filter: blur(8px); border-top: 1px solid var(--ds-line); }
 @media (prefers-reduced-motion: reduce) { .ds-modal, .ds-modal-box, .ds-drawer, .ds-scrim, .ds-toast, .ds-switch span::after { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ds-fade { animation: none; } .ds-tile, .ds-btn, .ds-chip { transition: none; } .ds-tile:hover, .ds-btn:hover { transform: none; } }

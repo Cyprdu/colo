@@ -1,6 +1,7 @@
 <?php 
 require_once 'api/config.php';
-require_once 'partials/header.php'; 
+$body_class = 'bg-white';
+require_once 'partials/header.php';
 
 $token = $_GET['t'] ?? '';
 $isValid = false;
@@ -20,38 +21,26 @@ if ($token) {
 }
 ?>
 
-<title>Nouveau mot de passe</title>
+<title>Nouveau mot de passe - ColoMap</title>
 
-<main class="container mx-auto px-4 py-16 flex justify-center">
-    <div class="w-full max-w-md">
-        <div class="bg-white shadow-lg rounded-xl px-8 pt-6 pb-8 mb-4">
-            
+<main class="ds-page flex items-center justify-center" style="max-width:460px">
+    <div class="w-full ds-card p-8 ds-fade">
             <?php if (!$isValid): ?>
                 <div class="text-center">
-                    <div class="mb-4 text-red-500 font-bold text-xl">⚠️ Oups !</div>
-                    <p class="text-gray-600 mb-6"><?= $errorMsg ?></p>
-                    <a href="forgot_password.php" class="text-blue-600 hover:underline font-bold">Faire une nouvelle demande</a>
+                    <h1 class="text-xl font-extrabold text-[#26343b]">Lien invalide</h1>
+                    <p class="ds-lead mb-6" role="alert"><?= htmlspecialchars($errorMsg) ?></p>
+                    <a href="forgot_password.php" class="ds-btn">Faire une nouvelle demande</a>
                 </div>
             <?php else: ?>
 
-                <form id="reset-form">
-                    <h1 class="text-2xl font-bold text-center text-[#0A112F] mb-6">Nouveau mot de passe</h1>
-                    <div id="message-area" class="mb-4 text-center"></div>
+                <form id="reset-form" novalidate>
+                    <h1 class="ds-h1 !text-[26px] mb-1">Nouveau mot de passe</h1>
+                    <p class="ds-lead mb-6">Choisissez un mot de passe d'au moins 8 caractères.</p>
+                    <div id="message-area" class="mb-4 text-sm font-semibold" role="status" aria-live="polite"></div>
                     <input type="hidden" id="token" value="<?= htmlspecialchars($token) ?>">
-
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Nouveau mot de passe</label>
-                        <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 focus:ring-2 focus:ring-blue-500" id="password" type="password" required>
-                    </div>
-                    
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Confirmer</label>
-                        <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 focus:ring-2 focus:ring-blue-500" id="confirm" type="password" required>
-                    </div>
-
-                    <button class="bg-[#0A112F] hover:bg-blue-900 text-white font-bold py-3 px-6 rounded-lg w-full transition duration-300" type="submit">
-                        Modifier le mot de passe
-                    </button>
+                    <div class="mb-4"><label class="ds-label" for="password">Nouveau mot de passe</label><input class="ds-input" id="password" type="password" autocomplete="new-password" required></div>
+                    <div class="mb-6"><label class="ds-label" for="confirm">Confirmer</label><input class="ds-input" id="confirm" type="password" autocomplete="new-password" required></div>
+                    <button class="ds-btn w-full" type="submit">Modifier le mot de passe</button>
                 </form>
 
                 <script>
@@ -61,14 +50,10 @@ if ($token) {
                     const p2 = document.getElementById('confirm').value;
                     const token = document.getElementById('token').value;
                     const messageArea = document.getElementById('message-area');
+                    const say = (t, ok) => { messageArea.textContent = t; messageArea.className = 'mb-4 text-sm font-semibold ' + (ok === false ? 'text-[#8a3b32]' : 'text-[#26343b]'); };
 
-                    if(p1 !== p2) {
-                        messageArea.innerHTML = '<p class="text-red-500 font-bold">Les mots de passe ne correspondent pas.</p>';
-                        return;
-                    }
-
-                    messageArea.innerHTML = '<p class="text-blue-500">Mise à jour...</p>';
-
+                    if (p1 !== p2) { say('Les mots de passe ne correspondent pas.', false); return; }
+                    say('Mise à jour...');
                     try {
                         const response = await fetch('api/process_password_reset.php', {
                             method: 'POST',
@@ -76,21 +61,19 @@ if ($token) {
                             body: JSON.stringify({ token, password: p1 })
                         });
                         const result = await response.json();
-
                         if (result.success) {
-                            messageArea.innerHTML = `<p class="text-green-500 font-bold">${result.success}</p>`;
+                            say(result.success);
                             setTimeout(() => { window.location.href = 'login.php'; }, 2000);
                         } else {
-                            messageArea.innerHTML = `<p class="text-red-500 font-bold">${result.error}</p>`;
+                            say(result.error || 'Erreur.', false);
                         }
                     } catch (error) {
-                        messageArea.innerHTML = `<p class="text-red-500 font-bold">Erreur technique.</p>`;
+                        say('Erreur technique.', false);
                     }
                 });
                 </script>
 
             <?php endif; ?>
         </div>
-    </div>
 </main>
 <?php require_once 'partials/footer.php'; ?>
