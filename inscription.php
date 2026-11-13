@@ -31,7 +31,7 @@ try {
     $enfants = $stmtEnfants->fetchAll(PDO::FETCH_ASSOC);
 
     // 3. Enfants déjà inscrits
-    $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND statut != 'Annulé'");
+    $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule') AND (statut_paiement <> 'EN_ATTENTE' OR date_inscription > (NOW() - INTERVAL 30 MINUTE))");
     $stmtDeja->execute([$camp['id']]);
     $dejaInscrits = $stmtDeja->fetchAll(PDO::FETCH_COLUMN);
 
@@ -83,6 +83,11 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 <span>Paiement</span>
             </div>
         </div>
+
+        <?php if (!empty($_SESSION['flash_error'])): ?>
+            <div class="mb-6 mx-auto max-w-2xl rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700" role="alert"><?= htmlspecialchars($_SESSION['flash_error']) ?></div>
+            <?php unset($_SESSION['flash_error']); ?>
+        <?php endif; ?>
 
         <form id="mainForm" action="api/create_stripe_session_multi.php" method="POST" class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden min-h-[400px]">
             <input type="hidden" name="camp_t" value="<?= htmlspecialchars($camp_token) ?>">
@@ -212,6 +217,26 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
     let selections = {}; 
     let timerInterval = null;
 
+    // Envoie au serveur le tarif (et le montant libre éventuel) choisi pour chaque enfant.
+    // Le serveur recalcule TOUS les prix à partir de la base : ces champs ne contiennent que des identifiants.
+    function syncHiddenInputs() {
+        const form = document.getElementById('mainForm');
+        form.querySelectorAll('.sel-hidden').forEach(e => e.remove());
+        selectedChildIds.forEach(childId => {
+            const sel = selections[childId] || { tariffId: tariffs[0].id, customPrice: 0 };
+            const add = (name, value) => {
+                const i = document.createElement('input');
+                i.type = 'hidden'; i.name = name; i.value = value; i.className = 'sel-hidden';
+                form.appendChild(i);
+            };
+            add(`tarifs[${childId}]`, sel.tariffId);
+            if (sel.customPrice > 0) add(`custom_prices[${childId}]`, sel.customPrice);
+        });
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('mainForm').addEventListener('submit', syncHiddenInputs);
+    });
+
     // --- NAVIGATION ---
     function goToStep(step) {
         if (step === 2) {
@@ -221,7 +246,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             initStep2();
         }
         if (step === 3) initStep3();
-        if (step === 4) updateSummary();
+        if (step === 4) { updateSummary(); syncHiddenInputs(); }
 
         // UI
         [1, 2, 3, 4].forEach(i => {

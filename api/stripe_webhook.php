@@ -7,7 +7,8 @@ require_once '../vendor/autoload.php'; // Charge la librairie Stripe
 
 // Configuration
 // Assurez-vous que cette constante est définie dans config.php ou remplacez-la par votre clé 'whsec_...'
-$webhookSecret = defined('STRIPE_WEBHOOK_SECRET') ? STRIPE_WEBHOOK_SECRET : 'whsec_votre_cle_secrete_webhook';
+if (!defined('STRIPE_WEBHOOK_SECRET') || STRIPE_WEBHOOK_SECRET === '') { error_log('Stripe webhook : STRIPE_WEBHOOK_SECRET non défini'); http_response_code(500); exit(); }
+$webhookSecret = STRIPE_WEBHOOK_SECRET;
 
 // Récupération du payload brut
 $payload = @file_get_contents('php://input');
@@ -87,6 +88,9 @@ if ($event->type === 'checkout.session.completed') {
         elseif (isset($metadata->reservation_token)) {
             
             $montant_total_eur = $session->amount_total / 100; // Stripe envoie des centimes, on convertit en Euros
+            // Part réellement payée de chaque inscription (un code promo Stripe réduit le total par rapport au sous-total)
+            $subtotal = (int)($session->amount_subtotal ?? 0);
+            $ratio = ($subtotal > 0) ? ((int)$session->amount_total / $subtotal) : 1;
             $metadata_tokens = $metadata->reservation_token;
 
             // Conversion de la chaîne "token1,token2" en tableau
@@ -130,13 +134,13 @@ if ($event->type === 'checkout.session.completed') {
                                       statut_paiement = 'PAYE', 
                                       stripe_payment_intent_id = ?, 
                                       mode_paiement = 'CARTE',
-                                      montant_paye = prix_final 
-                                  WHERE reservation_token = ?";
+                                      montant_paye = ROUND(prix_final * ?, 2)
+                                  WHERE reservation_token = ? AND statut_paiement <> 'PAYE'";
                     
                     $stmtUpdate = $pdo->prepare($sqlUpdate);
 
                     foreach ($tokens as $token) {
-                        $stmtUpdate->execute([$payment_intent_id, $token]);
+                        $stmtUpdate->execute([$payment_intent_id, $ratio, $token]);
                     }
 
                     // 4. CRÉDITER LE PORTEFEUILLE ORGANISATEUR (En Euros)
@@ -165,6 +169,20 @@ if ($event->type === 'checkout.session.completed') {
         // --------------------------------------------------------------------
         else {
             error_log("WEBHOOK WARNING: Type d'événement checkout inconnu ou métadonnées manquantes.");
+        }
+    }
+}
+
+// Session de paiement expirée (non payée) : on libère les places
+if ($event->type === 'checkout.session.expired') {
+    $meta = $event->data->object->metadata;
+    if (isset($meta->reservation_token)) {
+        $tokens = array_filter(array_map('trim', explode(',', $meta->reservation_token)));
+        if ($tokens) {
+            try {
+                $in = implode(',', array_fill(0, count($tokens), '?'));
+                $pdo->prepare("DELETE FROM inscriptions WHERE reservation_token IN ($in) AND statut_paiement = 'EN_ATTENTE'")->execute(array_values($tokens));
+            } catch (Exception $e) { error_log('WEBHOOK ERROR (expired): ' . $e->getMessage()); }
         }
     }
 }

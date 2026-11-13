@@ -5,6 +5,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+$body_class = $body_class ?? 'bg-gray-100';
+
 function clean_url($url) {
     return str_replace(".php", "", $url);
 }
@@ -35,11 +37,12 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style> 
-        body { font-family: 'Inter', sans-serif; } 
+
+    <style>
+        body { font-family: 'Montserrat', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #26343b; }
+        .font-display { font-family: 'Montserrat', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; } 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
         .body-no-scroll { overflow: hidden; } 
@@ -47,20 +50,18 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         .dropdown-menu { display: none; }
         .group:hover .dropdown-menu { display: block; animation: fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* Scrollbar fine pour l'historique */
-        #history-list::-webkit-scrollbar { width: 4px; }
+            #history-list::-webkit-scrollbar { width: 4px; }
         #history-list::-webkit-scrollbar-track { background: #f1f1f1; }
         #history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
-    <link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="/manifest.json">
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ColoMap">
 <link rel="apple-touch-icon" href="/icon-192.png">
 
-<meta name="theme-color" content="#2563eb">
+<meta name="theme-color" content="#26343b">
 
 <script>
 if ('serviceWorker' in navigator) {
@@ -74,68 +75,82 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 </head>
-<body class="bg-gray-100 text-gray-800 flex flex-col min-h-screen">
+<body class="<?php echo htmlspecialchars($body_class); ?> text-gray-800 flex flex-col min-h-screen">
 
-    <header class="bg-white shadow-sm sticky top-0 z-40">
-        <nav class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-            <div class="flex items-center justify-between h-16 gap-4">
-                
-                <div class="flex-shrink-0 flex items-center p-1 z-10">
-                    <a href="<?php echo clean_url('../'); ?>" class="text-2xl font-bold block whitespace-nowrap"><span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">ColoMap</span></a>
-                </div>
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <nav class="w-full px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center h-[68px] gap-4 lg:gap-6">
 
-                <div id="search-wrapper" class="hidden md:block flex-1 max-w-md transition-all duration-500 ease-in-out mx-auto px-4 relative">
+                <!-- Logo -->
+                <a href="<?php echo clean_url('../'); ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="ColoMap, accueil">
+                    <svg width="26" height="28" viewBox="0 0 26 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#26343b"/>
+                        <rect x="9" y="22.5" width="2" height="3.2" fill="#26343b"/>
+                        <path d="M17.5 26.5L22 17l4 9.5h-8.5Z" fill="#26343b"/>
+                    </svg>
+                    <span class="font-display text-[20px] text-[#26343b] leading-none">ColoMap</span>
+                </a>
+
+                <!-- Recherche rapide -->
+                <div id="search-wrapper" class="hidden md:block flex-1 max-w-[400px] transition-all duration-500 ease-in-out relative">
                     <form id="desktop-search-form" action="recherche" method="GET" class="relative group h-full flex items-center">
                         <input type="text" id="desktop-search-input" name="name" placeholder="Rechercher une colo..." autocomplete="off"
-                               class="w-full bg-gray-100 border border-transparent focus:border-blue-300 rounded-full py-2 pl-4 pr-10 focus:ring-4 focus:ring-blue-100 focus:bg-white transition-all duration-300 text-sm shadow-sm relative z-20">
-                        <button type="submit" class="absolute right-0 top-1/2 transform -translate-y-1/2 mr-3 text-gray-400 hover:text-blue-600 transition-colors z-20">
-                            <i class="fa-solid fa-magnifying-glass"></i>
+                               class="w-full h-10 bg-[#f3f1ea] border border-transparent focus:border-[#2f3d45] rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all duration-300 text-[13px] text-gray-700 placeholder-gray-400 relative z-20 outline-none">
+                        <button type="submit" aria-label="Rechercher" class="absolute right-0 top-1/2 -translate-y-1/2 mr-4 text-gray-400 hover:text-gray-700 transition-colors z-20">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
                         </button>
                     </form>
-                    
-                    <div id="history-dropdown" class="hidden absolute top-12 left-0 w-full bg-white shadow-xl rounded-2xl border border-gray-100 z-10 overflow-hidden animate-fade-in-down mx-4" style="left: 0; right: 0; margin: auto;">
+
+                    <div id="history-dropdown" class="hidden absolute top-12 left-0 w-full bg-white shadow-xl rounded-2xl border border-gray-100 z-10 overflow-hidden">
                         <div class="px-4 py-2 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                             <span class="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Recherches récentes</span>
-                            <button id="clear-all-history" class="text-[10px] text-red-400 hover:text-red-600 font-medium hover:underline">Tout effacer</button>
+                            <button id="clear-all-history" type="button" class="text-[10px] text-red-400 hover:text-red-600 font-medium hover:underline">Tout effacer</button>
                         </div>
-                        <div id="history-list" class="max-h-64 overflow-y-auto">
-                            </div>
+                        <div id="history-list" class="max-h-64 overflow-y-auto"></div>
                     </div>
                 </div>
 
-                <div id="nav-links" class="hidden md:flex items-center space-x-2 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
-                    <a href="<?php echo clean_url('../'); ?>" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Accueil</a>
+                <div class="hidden md:block flex-1"></div>
+
+                <?php if (!$is_logged_in || $is_director): ?>
+                <a href="publier" class="hidden md:inline-flex flex-shrink-0 items-center h-10 px-5 rounded-lg bg-[#2f3d45] hover:bg-[#1f2a30] text-white text-[15px] font-semibold transition-colors whitespace-nowrap">Publier une annonce</a>
+                <?php endif; ?>
+
+                <!-- Navigation -->
+                <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
+                    <a href="<?php echo clean_url('../'); ?>" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
 
                     <?php if ($is_animateur): ?>
-                        <a href="espace-animation" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Animation</a>
+                        <a href="espace-animation" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Animation</a>
                     <?php endif; ?>
 
                     <?php if ($is_director): ?>
-                        <a href="organisateurs" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Organisateurs</a>
+                        <a href="organisateurs" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Organisateurs</a>
                     <?php endif; ?>
 
                     <?php if ($is_logged_in && !$is_animateur): ?>
-                        <a href="favorites" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Favoris</a>
-                        <a href="reservations" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Réservations</a>
+                        <a href="favorites" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Favoris</a>
+                        <a href="reservations" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Réservations</a>
                     <?php endif; ?>
 
-                    <?php if (!$is_admin): ?>
-                        <a href="contact" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Contact</a>
-                    <?php endif; ?>
-
-                    <a href="aide" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Aide</a>
+                    <a href="contact" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Contact</a>
+                    <a href="aide" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Aide</a>
                 </div>
 
-                <div class="hidden md:flex items-center gap-4 flex-shrink-0 pl-2 border-l border-transparent transition-all duration-300" id="user-actions">
+                <div class="hidden md:flex items-center gap-3 flex-shrink-0 transition-all duration-300" id="user-actions">
                     <?php if ($is_logged_in): ?>
-                        <a href="messagerie" class="relative text-gray-500 hover:text-gray-900 p-2 rounded-full hover:bg-gray-100 transition-colors" title="Messagerie">
-                            <i class="fa-regular fa-envelope text-xl"></i>
-                            <span id="unread-badge-desktop" class="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-red-600 text-white text-[10px] font-bold rounded-full hidden"></span>
+                        <a href="messagerie" class="relative text-gray-700 hover:text-gray-900 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" title="Messagerie" aria-label="Messagerie">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M4 7.5l8 6 8-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <span id="unread-badge-desktop" class="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-red-600 text-white text-[10px] font-bold rounded-full hidden"></span>
                         </a>
-                        
+
                         <div class="relative group py-2">
-                            <a href="profile" class="relative block">
-                                <img class="h-9 w-9 rounded-full object-cover ring-2 ring-gray-100 transition-transform duration-300 transform group-hover:scale-110" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url'] ?? $placeholder_url_desktop); ?>" alt="Profil">
+                            <a href="profile" class="relative block" aria-label="Mon profil">
+                                <?php if (!empty($_SESSION['user']['photo_url'])): ?>
+                                    <img class="h-10 w-10 rounded-full object-cover ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url']); ?>" alt="Profil">
+                                <?php else: ?>
+                                    <span class="h-10 w-10 rounded-full bg-[#3a4852] text-white text-[17px] font-bold flex items-center justify-center ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105"><?php echo htmlspecialchars($initial); ?></span>
+                                <?php endif; ?>
                             </a>
 
                             <div class="dropdown-menu absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
@@ -146,19 +161,19 @@ if ('serviceWorker' in navigator) {
                                 </div>
 
                                 <div class="py-1">
-                                    <a href="edit_profile" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">
+                                    <a href="edit_profile" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-user-pen w-6 text-center mr-2 text-gray-400"></i> Modifier mes informations
                                     </a>
-                                    <a href="children" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">
+                                    <a href="children" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-children w-6 text-center mr-2 text-gray-400"></i> Gérer mes enfants
                                     </a>
-                                    <a href="favorites" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">
+                                    <a href="favorites" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-heart w-6 text-center mr-2 text-gray-400"></i> Favoris
                                     </a>
-                                    <a href="reservations" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">
+                                    <a href="reservations" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-file-invoice w-6 text-center mr-2 text-gray-400"></i> Réservations
                                     </a>
-                                    <a href="messagerie" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">
+                                    <a href="messagerie" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-regular fa-envelope w-6 text-center mr-2 text-gray-400"></i> Messagerie
                                     </a>
                                 </div>
@@ -205,7 +220,7 @@ if ('serviceWorker' in navigator) {
                         </div>
 
                     <?php else: ?>
-                        <a href="login" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 text-sm whitespace-nowrap">Connexion</a>
+                        <a href="login" class="bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-bold py-2 px-4 rounded-lg transition duration-300 text-sm whitespace-nowrap">Connexion</a>
                     <?php endif; ?>
                 </div>
 
@@ -231,7 +246,7 @@ if ('serviceWorker' in navigator) {
 
             <form id="mobile-search-form" action="recherche" method="GET" class="mb-6 relative">
                 <input type="text" id="mobile-search-input" name="name" placeholder="Rechercher..." autocomplete="off"
-                       class="w-full bg-gray-100 border border-gray-200 rounded-lg py-3 pl-4 pr-10 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                       class="w-full bg-gray-100 border border-gray-200 rounded-lg py-3 pl-4 pr-10 focus:ring-2 focus:ring-[#2f3d45] focus:bg-white transition-all">
                 <button type="submit" class="absolute right-0 top-0 mt-3 mr-4 text-gray-400">
                     <i class="fa-solid fa-magnifying-glass"></i>
                 </button>
@@ -243,7 +258,7 @@ if ('serviceWorker' in navigator) {
                         <img class="h-12 w-12 rounded-full object-cover mr-4" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url'] ?? $placeholder_url_mobile); ?>" alt="Photo de profil">
                         <div>
                             <div class="text-base font-bold text-gray-900"><?php echo htmlspecialchars($_SESSION['user']['prenom']) . ' ' . htmlspecialchars($_SESSION['user']['nom']); ?></div>
-                            <div class="text-sm font-medium text-blue-600">Voir mon profil</div>
+                            <div class="text-sm font-medium text-[#3d6a8e]">Voir mon profil</div>
                         </div>
                     </a>
                 <?php endif; ?>
@@ -273,18 +288,18 @@ if ('serviceWorker' in navigator) {
                     <a href="messagerie" class="relative text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium"><span>Messagerie</span><span id="unread-badge-mobile" class="absolute top-3 left-32 w-5 h-5 flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full hidden"></span></a>
                 <?php endif; ?>
                 
-                <?php if (!$is_admin): ?>
-                    <a href="contact" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Contact</a>
-                <?php endif; ?>
-
+                <a href="contact" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Contact</a>
                 <a href="aide" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Aide</a>
+                <?php if (!$is_logged_in || $is_director): ?>
+                <a href="publier" class="bg-[#2f3d45] text-white hover:bg-[#1f2a30] block px-3 py-3 rounded-md text-base font-semibold text-center mt-2">Publier une annonce</a>
+                <?php endif; ?>
                 
                 <hr class="my-4 border-gray-200">
                 
                 <?php if ($is_logged_in): ?>
                     <a href="api/logout" class="bg-gray-100 text-gray-700 hover:bg-gray-200 block px-3 py-3 rounded-md text-base font-medium text-center">Déconnexion</a>
                 <?php else: ?>
-                    <a href="login" class="bg-blue-600 text-white hover:bg-blue-700 block px-3 py-3 rounded-md text-base font-medium text-center shadow-md shadow-blue-200">Connexion / Inscription</a>
+                    <a href="login" class="bg-[#2f3d45] text-white hover:bg-[#1f2a30] block px-3 py-3 rounded-md text-base font-medium text-center">Connexion / Inscription</a>
                 <?php endif; ?>
             </nav>
         </div>
@@ -384,7 +399,7 @@ if ('serviceWorker' in navigator) {
             desktopInput.addEventListener('focus', () => {
                 // Animation CSS header
                 if(navLinks) { navLinks.style.maxWidth = '0px'; navLinks.style.opacity = '0'; navLinks.style.padding = '0'; navLinks.style.margin = '0'; }
-                if(searchWrapper) { searchWrapper.classList.remove('max-w-md'); searchWrapper.classList.add('max-w-full', 'w-full'); }
+                if(searchWrapper) { searchWrapper.classList.remove('max-w-[400px]'); searchWrapper.classList.add('max-w-full', 'w-full'); }
                 
                 renderHistory();
             });
@@ -405,7 +420,7 @@ if ('serviceWorker' in navigator) {
                     // Reset CSS header si vide
                     if(desktopInput.value === '') {
                         if(navLinks) { navLinks.style.maxWidth = '1000px'; navLinks.style.opacity = '1'; navLinks.style.padding = ''; navLinks.style.margin = ''; }
-                        if(searchWrapper) { searchWrapper.classList.remove('max-w-full', 'w-full'); searchWrapper.classList.add('max-w-md'); }
+                        if(searchWrapper) { searchWrapper.classList.remove('max-w-full', 'w-full'); searchWrapper.classList.add('max-w-[400px]'); }
                     }
                 }, 200);
             });

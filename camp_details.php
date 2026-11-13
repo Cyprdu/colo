@@ -1,38 +1,39 @@
 <?php
 // camp_details.php : fiche d'un séjour (design de l'accueil + choix de dates/formule SANS rechargement)
+// Le séjour est identifié UNIQUEMENT par son jeton (?t=). L'ancien ?id=N (numérique, devinable) redirige vers
+// l'adresse à jeton quand le séjour est public, et n'est servi à personne d'autre.
 require_once 'api/config.php';
-require_once 'partials/header3.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
 
 $is_logged_in = isset($_SESSION['user']);
 $user_favorites = $_SESSION['user']['favorites'] ?? [];
-$token = $_GET['t'] ?? null;
-$id_param = $_GET['id'] ?? null;
-$camp_id = null;
+$camp_token = null;
 
 try {
-    if ($token) {
-        $stmt = $pdo->prepare("SELECT id FROM camps WHERE token = ?");
-        $stmt->execute([$token]);
-        $res = $stmt->fetch();
-        if ($res) $camp_id = $res['id'];
-    } elseif ($id_param) {
-        $stmt = $pdo->prepare("SELECT id, prive FROM camps WHERE id = ?");
-        $stmt->execute([$id_param]);
-        $res = $stmt->fetch();
-        if ($res) {
-            // Camp privé : réservé à l'administrateur
-            if ($res['prive'] == 1 && (!isset($_SESSION['user']['is_admin']) || !$_SESSION['user']['is_admin'])) {
-                echo "<script>window.location.href='./';</script>";
-                exit;
-            }
-            $camp_id = $res['id'];
+    $t = $_GET['t'] ?? null;
+    $id_param = $_GET['id'] ?? null;
+    if ($t !== null && preg_match('/^[A-Za-z0-9]{6,64}$/', (string)$t)) {
+        $stmt = $pdo->prepare("SELECT token FROM camps WHERE token = ?");
+        $stmt->execute([$t]);
+        $camp_token = $stmt->fetchColumn() ?: null;
+    } elseif ($id_param !== null && ctype_digit((string)$id_param)) {
+        $stmt = $pdo->prepare("SELECT token, valide, refuse, supprime, prive FROM camps WHERE id = ?");
+        $stmt->execute([(int)$id_param]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $isAdmin = !empty($_SESSION['user']['is_admin']);
+        $public = $row && !empty($row['token']) && !empty($row['valide']) && empty($row['refuse']) && empty($row['supprime']) && empty($row['prive']);
+        if ($row && !empty($row['token']) && ($public || $isAdmin)) {
+            header('Location: camp_details?t=' . urlencode($row['token']), true, 301);
+            exit;
         }
     }
 } catch (Exception $e) {}
+
+require_once 'partials/header3.php';
 ?>
 
 <style>
-    :root { --ink:#26343b; --accent:#1478d4; --accent-dark:#0f62ae; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
+    :root { --ink:#26343b; --accent:#3d6a8e; --accent-dark:#2d5170; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
     .cd-h2 { font-size:20px; font-weight:700; color:var(--ink); margin-bottom:14px; }
     .cd-chip { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:9999px; background:#f1f3f5; color:#3b4a54; font-size:13.5px; font-weight:600; }
     .cd-chip svg { flex:none; color:#64748b; }
@@ -48,8 +49,8 @@ try {
 
     /* Choix des dates / formules : boutons, aucun changement de page */
     .opt { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:11px 13px; border:1.5px solid var(--line); border-radius:14px; background:#fff; text-align:left; transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; cursor:pointer; }
-    .opt:hover { border-color:#9db9d6; background:#f7fafd; }
-    .opt.is-selected { border-color:var(--accent); background:#f1f7fd; box-shadow:0 0 0 3px rgba(20,120,212,.12); }
+    .opt:hover { border-color:#a9b8c6; background:#f6f8fa; }
+    .opt.is-selected { border-color:var(--accent); background:#f1f5f9; box-shadow:0 0 0 3px rgba(61,106,142,.15); }
     .opt.is-full { opacity:.55; }
     .opt-title { display:block; font-size:14px; font-weight:700; color:var(--ink); line-height:1.25; }
     .opt-sub { display:block; margin-top:2px; font-size:12.5px; color:var(--muted); }
@@ -129,7 +130,7 @@ try {
                         </div>
                         <div id="desc-gradient" class="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
                     </div>
-                    <button id="btn-see-more" type="button" class="mt-3 text-[#1478d4] font-bold hover:text-[#0f62ae] inline-flex items-center gap-1 transition-colors">Voir plus</button>
+                    <button id="btn-see-more" type="button" class="mt-3 text-[#3d6a8e] font-bold hover:text-[#2d5170] inline-flex items-center gap-1 transition-colors">Voir plus</button>
                 </section>
 
                 <section id="video-wrapper" class="hidden" aria-labelledby="h-video">
@@ -204,7 +205,7 @@ try {
                     <div id="orga-card" class="cd-card p-6">
                         <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Organisé par</p>
                         <div class="flex items-center gap-4 mb-5">
-                            <div class="w-14 h-14 rounded-full bg-[#1478d4] text-white flex items-center justify-center text-[22px] font-bold flex-none"><span id="orga-initial">?</span></div>
+                            <div class="w-14 h-14 rounded-full bg-[#3a4852] text-white flex items-center justify-center text-[22px] font-bold flex-none"><span id="orga-initial">?</span></div>
                             <p id="orga-name" class="font-bold text-[#26343b] text-[17px] leading-snug"></p>
                         </div>
                         <div id="contact-container" class="space-y-3"></div>
@@ -226,7 +227,7 @@ try {
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
     const isLoggedIn = <?= json_encode($is_logged_in); ?>;
-    const initialId = <?= json_encode($camp_id ? (int)$camp_id : null); ?>;
+    const initialToken = <?= json_encode($camp_token); ?>;
     let userFavorites = <?= json_encode(array_map('intval', (array)$user_favorites)); ?>;
 
     const loader = document.getElementById('loader');
@@ -254,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (document.referrer && new URL(document.referrer).host === location.host && history.length > 1) { e.preventDefault(); history.back(); }
     });
 
-    if (!initialId) {
+    if (!initialToken) {
         loader.innerHTML = '<div class="text-center py-20"><h1 class="text-2xl font-bold text-[#26343b]">Séjour introuvable</h1><a href="./" class="inline-block mt-5 bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Retour à l\'accueil</a></div>';
         return;
     }
@@ -262,16 +263,16 @@ document.addEventListener('DOMContentLoaded', async function () {
     // ------------------------------------------------------------
     // Données : une requête par session, mises en cache (changer de session est instantané)
     // ------------------------------------------------------------
-    const cache = new Map();          // id -> camp
-    const inflight = new Map();       // id -> promesse
-    function fetchCamp(id) {
-        if (cache.has(id)) return Promise.resolve(cache.get(id));
-        if (inflight.has(id)) return inflight.get(id);
-        const p = fetch(`api/get_camp_details?id=${id}`)
+    const cache = new Map();          // jeton -> séjour
+    const inflight = new Map();       // jeton -> promesse
+    function fetchCamp(tok) {
+        if (cache.has(tok)) return Promise.resolve(cache.get(tok));
+        if (inflight.has(tok)) return inflight.get(tok);
+        const p = fetch(`api/get_camp_details?t=${encodeURIComponent(tok)}`)
             .then(r => { if (!r.ok) throw new Error('Séjour indisponible'); return r.json(); })
-            .then(c => { cache.set(id, c); inflight.delete(id); return c; })
-            .catch(e => { inflight.delete(id); throw e; });
-        inflight.set(id, p);
+            .then(c => { cache.set(tok, c); inflight.delete(tok); return c; })
+            .catch(e => { inflight.delete(tok); throw e; });
+        inflight.set(tok, p);
         return p;
     }
 
@@ -377,7 +378,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 b.onclick = () => contactOrganisateur(camp.organisateur_user_id, camp.id);
                 contact.appendChild(b);
             } else {
-                contact.innerHTML = `<a href="login.php?redirect=${encodeURIComponent(location.origin + '/camp_details?t=' + camp.token)}" class="text-[14px] text-[#1478d4] hover:text-[#0f62ae] font-semibold underline block text-center">Connectez-vous pour contacter l'organisateur</a>`;
+                contact.innerHTML = `<a href="login.php?redirect=${encodeURIComponent(location.origin + '/camp_details?t=' + camp.token)}" class="text-[14px] text-[#3d6a8e] hover:text-[#2d5170] font-semibold underline block text-center">Connectez-vous pour contacter l'organisateur</a>`;
             }
         }
         $('website-container').innerHTML = camp.orga_website
@@ -414,7 +415,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             const allFull = g.items.every(s => s.places_restantes === 0);
             const sub = g.items.length > 1 ? `${g.items.length} formules` : nightsLabel(g.items[0].r.nights);
             const min = Math.min(...g.items.map(s => Number(s.prix)));
-            return `<button type="button" role="radio" aria-checked="${sel}" data-id="${g.items[0].id}" data-key="${g.key}" data-nights="${curItem.r.nights}"
+            return `<button type="button" role="radio" aria-checked="${sel}" data-token="${g.items[0].token}" data-key="${g.key}" data-nights="${curItem.r.nights}"
                         class="opt${sel ? ' is-selected' : ''}${allFull ? ' is-full' : ''}">
                         <span class="flex items-center gap-3 min-w-0"><span class="dot"></span>
                             <span class="min-w-0"><span class="opt-title">${esc(fmtDay(g.start))} ${g.start.getFullYear()}</span>
@@ -430,7 +431,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             $('formulas-list').innerHTML = curGroup.items.map(s => {
                 const sel = s.id === camp.id, full = s.places_restantes === 0;
                 const places = s.places_restantes === null ? '' : (full ? 'Complet' : `${s.places_restantes} place${s.places_restantes > 1 ? 's' : ''}`);
-                return `<button type="button" role="radio" aria-checked="${sel}" data-id="${s.id}" class="opt${sel ? ' is-selected' : ''}${full ? ' is-full' : ''}">
+                return `<button type="button" role="radio" aria-checked="${sel}" data-token="${s.token}" class="opt${sel ? ' is-selected' : ''}${full ? ' is-full' : ''}">
                         <span class="flex items-center gap-3 min-w-0"><span class="dot"></span>
                             <span class="min-w-0"><span class="opt-title">${esc(nightsLabel(s.r.nights))}</span>
                             <span class="opt-sub">${esc(fmtRange(s.r))}${places ? ' · ' + esc(places) : ''}</span></span></span>
@@ -445,40 +446,40 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Clic sur une date ou une formule : on change de session SANS recharger la page
     $('sessions-box').addEventListener('click', e => {
-        const btn = e.target.closest('button[data-id]');
+        const btn = e.target.closest('button[data-token]');
         if (!btn) return;
-        let id = Number(btn.dataset.id);
+        let tok = btn.dataset.token;
         if (btn.dataset.key) {   // clic sur une date : formule de même durée sinon la moins chère
             const g = ($('sessions-box')._groups || []).find(x => x.key === btn.dataset.key);
             if (g) {
                 const nights = Number(btn.dataset.nights);
                 const same = g.items.find(s => s.r.nights === nights);
-                id = (same || g.items[0]).id;
+                tok = (same || g.items[0]).token;
             }
         }
-        if (id !== current.id) switchTo(id);
+        if (tok !== current.token) switchTo(tok);
     });
     // Préchargement au survol : le changement est alors immédiat
     $('sessions-box').addEventListener('pointerover', e => {
-        const btn = e.target.closest('button[data-id]');
-        if (btn) fetchCamp(Number(btn.dataset.id)).catch(() => {});
+        const btn = e.target.closest('button[data-token]');
+        if (btn) fetchCamp(btn.dataset.token).catch(() => {});
     });
 
-    async function switchTo(id, push = true) {
+    async function switchTo(tok, push = true) {
         const card = $('booking-card');
-        if (!cache.has(id)) card.classList.add('is-switching');
+        if (!cache.has(tok)) card.classList.add('is-switching');
         try {
-            const camp = await fetchCamp(id);
+            const camp = await fetchCamp(tok);
             render(camp);
-            if (push) history.pushState({ id }, '', `camp_details?t=${encodeURIComponent(camp.token)}`);
+            if (push) history.pushState({ tok }, '', `camp_details?t=${encodeURIComponent(camp.token)}`);
         } catch (e) {
             $('sessions-box').insertAdjacentHTML('beforeend', '<p class="text-sm text-red-600 mt-3">Cette session est momentanément indisponible.</p>');
         } finally { card.classList.remove('is-switching'); }
     }
     // Boutons précédent / suivant du navigateur
     window.addEventListener('popstate', e => {
-        const id = e.state && e.state.id ? e.state.id : initialId;
-        if (current && id !== current.id) switchTo(id, false);
+        const tok = e.state && e.state.tok ? e.state.tok : initialToken;
+        if (current && tok !== current.token) switchTo(tok, false);
     });
 
     // ------------------------------------------------------------
@@ -534,13 +535,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Démarrage
     // ------------------------------------------------------------
     try {
-        const camp = await fetchCamp(initialId);
-        history.replaceState({ id: initialId }, '');
+        const camp = await fetchCamp(initialToken);
+        history.replaceState({ tok: initialToken }, '');
         render(camp);
         loader.classList.add('hidden');
         content.classList.remove('hidden');
         // précharge les autres sessions en arrière-plan (sans bloquer l'affichage)
-        (camp.sessions || []).slice(0, 12).filter(s => s.id !== initialId).forEach(s => setTimeout(() => fetchCamp(s.id).catch(() => {}), 800));
+        (camp.sessions || []).slice(0, 12).filter(s => s.token !== initialToken).forEach(s => setTimeout(() => fetchCamp(s.token).catch(() => {}), 800));
     } catch (e) {
         console.error(e);
         loader.innerHTML = `<div class="text-center py-20"><p class="text-xl font-bold text-[#26343b] mb-2">Ce séjour n'est pas disponible</p><p class="text-[#6b7780] mb-6">${esc(e.message)}</p><a href="recherche" class="inline-block bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Voir les autres séjours</a></div>`;

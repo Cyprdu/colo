@@ -9,15 +9,42 @@ header('Content-Type: application/json');
 require_once 'config.php';
 require_once 'sessions.php';
 
-$id = $_GET['id'] ?? 0;
+$tokenParam = (string)($_GET['t'] ?? '');
+$idParam = (int)($_GET['id'] ?? 0);
 
-if (!$id) {
+if ($tokenParam === '' && !$idParam) {
     http_response_code(400);
-    echo json_encode(['error' => 'ID manquant']);
+    echo json_encode(['error' => 'Séjour manquant']);
     exit;
 }
 
 try {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+
+    // Résolution du séjour. Le JETON (secret) ouvre n'importe quel séjour de son porteur.
+    // L'identifiant numérique, lui, est devinable : il ne sert que pour un séjour public,
+    // ou pour son propriétaire / un administrateur.
+    if ($tokenParam !== '') {
+        $stmt = $pdo->prepare("SELECT id FROM camps WHERE token = ?");
+        $stmt->execute([$tokenParam]);
+        $id = (int)$stmt->fetchColumn();
+    } else {
+        $stmt = $pdo->prepare("SELECT c.id, c.valide, c.refuse, c.supprime, c.prive, o.user_id AS owner_id
+                               FROM camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id WHERE c.id = ?");
+        $stmt->execute([$idParam]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+        $uid = $_SESSION['user']['id'] ?? null;
+        $isAdmin = !empty($_SESSION['user']['is_admin']);
+        $isOwner = $r && $uid && (int)$r['owner_id'] === (int)$uid;
+        $public = $r && !empty($r['valide']) && empty($r['refuse']) && empty($r['supprime']) && empty($r['prive']);
+        $id = ($r && ($public || $isOwner || $isAdmin)) ? (int)$r['id'] : 0;
+    }
+    if (!$id) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Camp introuvable']);
+        exit;
+    }
+
     // 1. GESTION VUES
     if (session_status() === PHP_SESSION_NONE) session_start();
     $sessionKey = 'viewed_camp_' . $id;

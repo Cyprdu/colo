@@ -32,7 +32,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 ?>
 
 <style>
-    :root { --ink:#26343b; --accent:#1478d4; --accent-dark:#0f62ae; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
+    :root { --ink:#26343b; --accent:#3d6a8e; --accent-dark:#2d5170; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
 
     /* ---------- Hero ---------- */
     .hero-bg { background: linear-gradient(135deg, #2f4a57 0%, #6f8f93 55%, #c9d6d3 100%); }
@@ -126,7 +126,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                         class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2 text-[14px] font-bold text-[#26343b]">
                     <span id="child-label" class="max-w-[150px] truncate">Toute la famille</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#1478d4]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#3d6a8e]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
                 </button>
                 <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" role="listbox" hidden></div>
             </div>

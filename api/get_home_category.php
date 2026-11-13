@@ -220,7 +220,7 @@ foreach ($final_camps as $camp):
     $loc = ($pays !== 'France' && !empty($pays)) ? $pays : $ville;
     $prix = number_format($camp['prix'], 0, ',', ' ');
 ?>
-    <a href="camp_details.php?id=<?= $id ?>" class="camp-card">
+    <a href="camp_details.php?t=<?= urlencode($camp['token']) ?>" class="camp-card">
         <div class="camp-img-wrapper">
             <img src="<?= $img ?>" alt="<?= $nom ?>" class="camp-img" loading="lazy" 
                  referrerpolicy="no-referrer"

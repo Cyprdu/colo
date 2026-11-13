@@ -1,141 +1,212 @@
 <?php
-// Fichier : api/create_stripe_session_multi.php
+// api/create_stripe_session_multi.php : crée la commande (inscriptions) et la session de paiement Stripe.
+//
+// RÈGLE D'OR : tout est recalculé ICI à partir de la base de données.
+// Le navigateur n'envoie que des identifiants (séjour, enfants, tarifs) et, pour un tarif « montant libre »,
+// la somme choisie (jamais inférieure au prix du tarif). Aucun prix reçu n'est cru tel quel.
 
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
-
-if (!defined('STRIPE_SECRET_KEY')) die("Erreur Config Stripe.");
-\Stripe\Stripe::setApiKey(STRIPE_SECRET_KEY);
+require_once __DIR__ . '/sessions.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['user'])) die("Non connecté.");
 
-$baseUrl = defined('DOMAIN') ? rtrim(DOMAIN, '/') : "http://" . $_SERVER['HTTP_HOST'] . dirname(dirname($_SERVER['PHP_SELF']));
+$site = rtrim(defined('BASE_URL') ? BASE_URL : 'https://' . ($_SERVER['HTTP_HOST'] ?? 'moncamp.fr'), '/');
 
-// Données entrantes
-$camp_token = $_POST['camp_t'] ?? '';
-$child_ids = $_POST['child_ids'] ?? [];
-$tarifs_selected = $_POST['tarifs'] ?? []; // Array [child_id => tarif_id]
-$custom_prices = $_POST['custom_prices'] ?? []; // Array [child_id => price]
+if (!isset($_SESSION['user']['id'])) { header('Location: ' . $site . '/login.php'); exit; }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: ' . $site . '/'); exit; }
+if (!defined('STRIPE_SECRET_KEY')) { http_response_code(500); exit('Paiement indisponible : configuration manquante.'); }
+\Stripe\Stripe::setApiKey(STRIPE_SECRET_KEY);
 
-if (empty($camp_token) || empty($child_ids)) die("Données manquantes.");
+$userId = (int)$_SESSION['user']['id'];
+$campToken = (string)($_POST['camp_t'] ?? '');
 
+/** Retour à l'écran d'inscription avec un message clair (rien n'est facturé) */
+function backWithError(string $msg, string $campToken, string $site): void {
+    $_SESSION['flash_error'] = $msg;
+    header('Location: ' . $site . '/inscription.php?camp_t=' . urlencode($campToken));
+    exit;
+}
+
+$childIds = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['child_ids'] ?? [])))));
+if ($campToken === '' || !$childIds) backWithError('Sélectionnez au moins un enfant.', $campToken, $site);
+if (count($childIds) > 10) backWithError('Maximum 10 enfants par commande.', $campToken, $site);
+
+$selectedTarifs = (array)($_POST['tarifs'] ?? []);        // [id enfant => id tarif]
+$customPrices   = (array)($_POST['custom_prices'] ?? []); // [id enfant => montant libre]
+
+$createdIds = []; // inscriptions créées, supprimées si le paiement ne peut pas démarrer
 try {
-    // 1. Récupération Camp
+    // 1. Le séjour : validé, visible, inscriptions en ligne ouvertes
     $stmt = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
-    $stmt->execute([$camp_token]);
+    $stmt->execute([$campToken]);
     $camp = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$camp) die("Camp introuvable.");
+    if (!$camp || empty($camp['valide']) || !empty($camp['refuse']) || !empty($camp['supprime'])) {
+        backWithError('Ce séjour n\'est plus disponible.', $campToken, $site);
+    }
+    if (empty($camp['inscription_en_ligne'])) backWithError('Les inscriptions à ce séjour se font auprès de l\'organisateur.', $campToken, $site);
+    $limite = $camp['date_limite_inscription'] ?: $camp['date_debut'];
+    if ($limite && $limite < date('Y-m-d')) backWithError('Les inscriptions à ce séjour sont closes.', $campToken, $site);
 
-    // Récupération Remise Fratrie (%)
-    $remise_percent = floatval($camp['remise_fratrie'] ?? 0);
+    // 2. Les enfants : ce sont bien ceux du parent connecté
+    $in = implode(',', array_fill(0, count($childIds), '?'));
+    $stmt = $pdo->prepare("SELECT id, prenom, nom, sexe FROM enfants WHERE parent_id = ? AND id IN ($in)");
+    $stmt->execute(array_merge([$userId], $childIds));
+    $children = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $c) $children[(int)$c['id']] = $c;
+    $ordered = [];
+    foreach ($childIds as $cid) if (isset($children[$cid])) $ordered[] = $children[$cid];
+    if (!$ordered) backWithError('Aucun enfant valide sélectionné.', $campToken, $site);
 
-    $line_items = [];
-    $reservation_tokens = [];
-
-    $count = 0;
-    foreach ($child_ids as $child_id) {
-        
-        // Sécurité Enfant
-        $stmtChild = $pdo->prepare("SELECT prenom, nom FROM enfants WHERE id = ? AND parent_id = ?");
-        $stmtChild->execute([$child_id, $_SESSION['user']['id']]);
-        $child = $stmtChild->fetch(PDO::FETCH_ASSOC);
-        if (!$child) continue;
-
-        // --- DÉTERMINATION DU PRIX DE BASE (Selon Tarif Spécifique de l'enfant) ---
-        $tarif_id = $tarifs_selected[$child_id] ?? 'default';
-        $prix_base = 0;
-        $nom_tarif = "Standard";
-
-        if ($tarif_id === 'default') {
-            $prix_base = floatval($camp['prix']);
-        } else {
-            // Verif Tarif
-            $stmtTarif = $pdo->prepare("SELECT t.* FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE t.id = ? AND ct.camp_id = ?");
-            $stmtTarif->execute([$tarif_id, $camp['id']]);
-            $tarifData = $stmtTarif->fetch(PDO::FETCH_ASSOC);
-
-            if (!$tarifData) {
-                // Fallback si tarif hacké/invalide
-                $prix_base = floatval($camp['prix']); 
-            } else {
-                $nom_tarif = $tarifData['nom'];
-                
-                // Gestion Montant Libre
-                if ($tarifData['montant_libre'] == 1) {
-                    $val_custom = floatval($custom_prices[$child_id] ?? 0);
-                    $prix_base = ($val_custom > 0) ? $val_custom : floatval($tarifData['prix']);
-                } else {
-                    $prix_base = floatval($tarifData['prix']);
-                }
-            }
+    // 3. Places : une inscription « active » est payée, confirmée, ou en cours de paiement depuis moins de 30 min
+    $active = "(COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule') AND (statut_paiement <> 'EN_ATTENTE' OR date_inscription > (NOW() - INTERVAL 30 MINUTE)))";
+    $stmt = $pdo->prepare("SELECT i.enfant_id, e.sexe FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.camp_id = ? AND $active");
+    $stmt->execute([$camp['id']]);
+    $already = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $alreadyIds = array_map('intval', array_column($already, 'enfant_id'));
+    foreach ($ordered as $c) {
+        if (in_array((int)$c['id'], $alreadyIds, true)) {
+            backWithError($c['prenom'] . ' est déjà inscrit(e) à ce séjour (ou son paiement est en cours).', $campToken, $site);
         }
-
-        // --- CALCUL PRIX FINAL (Remise Fratrie) ---
-        $prix_final = $prix_base;
-        $desc = "Séjour : " . $camp['nom'] . " ($nom_tarif)";
-
-        if ($count > 0 && $remise_percent > 0) {
-            $montant_remise = $prix_base * ($remise_percent / 100);
-            $prix_final = $prix_base - $montant_remise;
-            $desc .= " + Remise Fratrie -{$remise_percent}%";
+    }
+    $quota = (int)$camp['quota_global'];
+    if ($quota > 0 && count($already) + count($ordered) > $quota) {
+        $left = max(0, $quota - count($already));
+        backWithError($left === 0 ? 'Ce séjour est complet.' : "Il ne reste que $left place" . ($left > 1 ? 's' : '') . ' pour ce séjour.', $campToken, $site);
+    }
+    foreach (['quota_fille' => 'Femme', 'quota_garcon' => 'Homme'] as $col => $sexe) {
+        $q = (int)($camp[$col] ?? 0);
+        if ($q <= 0) continue;
+        $taken = count(array_filter($already, function ($r) use ($sexe) { return $r['sexe'] === $sexe; }));
+        $asked = count(array_filter($ordered, function ($c) use ($sexe) { return $c['sexe'] === $sexe; }));
+        if ($asked > 0 && $taken + $asked > $q) {
+            backWithError('Il n\'y a plus assez de places pour ' . ($sexe === 'Femme' ? 'les filles' : 'les garçons') . ' sur ce séjour.', $campToken, $site);
         }
-
-        $prix_final = round($prix_final, 2);
-        if ($prix_final < 0) $prix_final = 0;
-
-        // --- INSERTION BDD ---
-        $token_inscription = bin2hex(random_bytes(16));
-        $reservation_tokens[] = $token_inscription;
-        
-        $tarif_id_sql = ($tarif_id !== 'default') ? $tarif_id : null;
-
-        $sql = "INSERT INTO inscriptions (camp_id, enfant_id, tarif_id, statut, prix_final, statut_paiement, reservation_token) 
-                VALUES (?, ?, ?, 'En attente', ?, 'EN_ATTENTE', ?)";
-        $pdo->prepare($sql)->execute([$camp['id'], $child_id, $tarif_id_sql, $prix_final, $token_inscription]);
-
-        // --- ITEM STRIPE ---
-        $line_items[] = [
-            'price_data' => [
-                'currency' => 'eur',
-                'product_data' => [
-                    'name' => "Inscription : " . $child['prenom'] . " " . $child['nom'],
-                    'description' => $desc,
-                ],
-                'unit_amount' => intval($prix_final * 100),
-            ],
-            'quantity' => 1,
-        ];
-
-        $count++;
     }
 
-    if (empty($line_items)) die("Erreur : Aucune inscription valide.");
+    // 4. Tarifs du séjour (seuls ceux rattachés à CE séjour sont acceptés)
+    $stmt = $pdo->prepare("SELECT t.* FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE ct.camp_id = ?");
+    $stmt->execute([$camp['id']]);
+    $tarifs = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $t) $tarifs[(int)$t['id']] = $t;
 
-    $tokens_string = implode(',', $reservation_tokens);
+    // 5. Date lisible de la session (affichée sur le paiement)
+    [$s1, $s2] = normalizeSessionDates($camp['date_debut'], $camp['date_fin']);
+    $mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    $fmt = function (DateTime $d) use ($mois) { return $d->format('j') . ' ' . $mois[(int)$d->format('n') - 1]; };
+    $sessionLabel = 'Du ' . $fmt($s1) . ' au ' . $fmt($s2) . ' ' . $s2->format('Y');
 
-    // Session Stripe
-    $checkout_session = \Stripe\Checkout\Session::create([
+    // 6. Prix de chaque enfant, calculé uniquement avec la base
+    $remise = max(0.0, min(100.0, (float)($camp['remise_fratrie'] ?? 0)));
+    $orders = []; // ['child','cents','tarif_id','desc']
+    foreach ($ordered as $index => $child) {
+        $cid = (int)$child['id'];
+        $tarifId = null; $nomTarif = 'Tarif standard';
+        if ($tarifs) {
+            $tid = (int)($selectedTarifs[$cid] ?? 0);
+            if (!isset($tarifs[$tid])) backWithError('Choisissez un tarif pour ' . $child['prenom'] . '.', $campToken, $site);
+            $t = $tarifs[$tid];
+            $tarifId = $tid; $nomTarif = $t['nom'];
+            $base = (float)$t['prix'];
+            if (!empty($t['montant_libre'])) {
+                $libre = (float)str_replace(',', '.', (string)($customPrices[$cid] ?? 0));
+                if ($libre > 0) $base = min(10000.0, max($libre, $base));   // plancher : prix du tarif
+            }
+        } else {
+            $base = (float)$camp['prix'];
+        }
+        $cents = (int)round($base * 100);
+        $desc = $camp['nom'] . ' · ' . $sessionLabel . ' · ' . $nomTarif;
+        if ($index > 0 && $remise > 0) {   // remise fratrie : à partir du 2e enfant
+            $cents = (int)round($cents * (1 - $remise / 100));
+            $desc .= ' · remise fratrie -' . rtrim(rtrim(number_format($remise, 2, '.', ''), '0'), '.') . '%';
+        }
+        $orders[] = ['child' => $child, 'cents' => max(0, $cents), 'tarif_id' => $tarifId, 'desc' => $desc];
+    }
+
+    $totalCents = array_sum(array_column($orders, 'cents'));
+    if ($totalCents > 0 && $totalCents < 50) backWithError('Le montant minimum de paiement par carte est de 0,50 €.', $campToken, $site);
+
+    // 7. Enregistrement (commande « en attente » ; les séjours gratuits sont confirmés tout de suite)
+    $pdo->beginTransaction();
+    $lineItems = []; $payTokens = [];
+    $ins = $pdo->prepare("INSERT INTO inscriptions (camp_id, enfant_id, tarif_id, statut, prix_final, statut_paiement, reservation_token, mode_paiement, montant_paye)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    foreach ($orders as $o) {
+        $token = bin2hex(random_bytes(16));
+        $price = $o['cents'] / 100;
+        if ($o['cents'] === 0) {
+            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'Confirmé', 0, 'PAYE', $token, 'GRATUIT', 0]);
+        } else {
+            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'En attente', $price, 'EN_ATTENTE', $token, 'NON_DEFINI', 0]);
+            $payTokens[] = $token;
+            $lineItems[] = [
+                'price_data' => [
+                    'currency' => 'eur',
+                    'product_data' => [
+                        'name' => mb_substr('Inscription : ' . $o['child']['prenom'] . ' ' . $o['child']['nom'], 0, 250),
+                        'description' => mb_substr($o['desc'], 0, 500),
+                    ],
+                    'unit_amount' => $o['cents'],
+                ],
+                'quantity' => 1,
+            ];
+        }
+        $createdIds[] = (int)$pdo->lastInsertId();
+    }
+    $pdo->commit();
+
+    // Tout est gratuit : rien à payer
+    if (!$lineItems) {
+        header('Location: ' . $site . '/inscription_confirmation.php?success=1&camp_t=' . urlencode($campToken));
+        exit;
+    }
+
+    // 8. Session de paiement Stripe (codes promo Stripe acceptés, expiration 30 min = durée de blocage des places)
+    $tokensString = implode(',', $payTokens);
+    $params = [
         'payment_method_types' => ['card'],
-        'line_items' => $line_items,
         'mode' => 'payment',
-        'success_url' => $baseUrl . '/inscription_confirmation.php?success=1&tokens=' . $tokens_string . '&camp_id=' . $camp['id'],
-        'cancel_url' => $baseUrl . '/inscription_confirmation.php?cancel=1&tokens=' . $tokens_string . '&camp_id=' . $camp['id'],
+        'locale' => 'fr',
+        'line_items' => $lineItems,
+        'allow_promotion_codes' => true,
+        'expires_at' => time() + 1800 + 60,
+        'client_reference_id' => (string)$userId,
+        'success_url' => $site . '/inscription_confirmation.php?success=1&camp_t=' . urlencode($campToken),
+        'cancel_url'  => $site . '/inscription_confirmation.php?cancel=1&camp_t=' . urlencode($campToken) . '&tokens=' . urlencode($tokensString),
         'metadata' => [
-            'reservation_token' => $tokens_string,
-            'camp_id' => $camp['id'],
-            'user_id' => $_SESSION['user']['id'],
-            'type' => 'multi_inscription'
+            'reservation_token' => $tokensString,
+            'camp_id' => (string)$camp['id'],
+            'user_id' => (string)$userId,
+            'type' => 'multi_inscription',
         ],
-    ]);
+        'payment_intent_data' => [
+            'description' => 'ColoMap · ' . mb_substr($camp['nom'], 0, 120) . ' · ' . $sessionLabel,
+            'metadata' => ['reservation_token' => $tokensString, 'camp_id' => (string)$camp['id']],
+        ],
+    ];
+    if (!empty($_SESSION['user']['email'])) $params['customer_email'] = $_SESSION['user']['email'];
 
-    header("Location: " . $checkout_session->url);
+    $checkout = \Stripe\Checkout\Session::create($params);
+
+    // Rapprochement : on garde l'identifiant de la session Stripe sur les inscriptions concernées
+    $in = implode(',', array_fill(0, count($payTokens), '?'));
+    $pdo->prepare("UPDATE inscriptions SET stripe_session_id = ? WHERE reservation_token IN ($in)")
+        ->execute(array_merge([$checkout->id], $payTokens));
+
+    header('Location: ' . $checkout->url, true, 303);
     exit;
 
-} catch (Exception $e) {
-    die("Erreur : " . $e->getMessage());
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    // Le paiement n'a pas pu démarrer : on libère les places réservées
+    if ($createdIds) {
+        $in = implode(',', array_fill(0, count($createdIds), '?'));
+        try { $pdo->prepare("DELETE FROM inscriptions WHERE id IN ($in) AND statut_paiement = 'EN_ATTENTE'")->execute($createdIds); } catch (Throwable $e2) {}
+    }
+    error_log('create_stripe_session_multi: ' . $e->getMessage());
+    backWithError('Le paiement n\'a pas pu démarrer. Aucun montant n\'a été débité, veuillez réessayer.', $campToken, $site);
 }
-?>
