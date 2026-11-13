@@ -35,11 +35,11 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style> 
-        body { font-family: 'Inter', sans-serif; } 
+
+    <style>
+        body { font-family: 'Montserrat', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; } 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
         .body-no-scroll { overflow: hidden; } 
@@ -49,56 +49,71 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 flex flex-col min-h-screen">
+<body class="bg-white text-gray-800 flex flex-col min-h-screen">
 
-    <header class="bg-white shadow-sm sticky top-0 z-40">
-        <nav class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-            <div class="flex items-center justify-between h-16 gap-4">
-                
-                <div class="flex-shrink-0 flex items-center p-1 z-10">
-                    <a href="<?php echo clean_url('../'); ?>" class="text-2xl font-bold block whitespace-nowrap"><span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">ColoMap</span></a>
-                </div>
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <nav class="w-full px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center h-[68px] gap-4 lg:gap-6">
 
-                <div id="search-wrapper" class="hidden md:block flex-1 max-w-md transition-all duration-500 ease-in-out mx-auto px-4">
+                <!-- Logo -->
+                <a href="<?php echo clean_url('../'); ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="ColoMap, accueil">
+                    <svg width="26" height="28" viewBox="0 0 26 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#26343b"/>
+                        <rect x="9" y="22.5" width="2" height="3.2" fill="#26343b"/>
+                        <path d="M17.5 26.5L22 17l4 9.5h-8.5Z" fill="#26343b"/>
+                    </svg>
+                    <span class="text-[19px] font-extrabold text-[#1f2d33] tracking-tight">ColoMap</span>
+                </a>
+
+                <!-- Recherche rapide -->
+                <div id="search-wrapper" class="hidden md:block flex-1 max-w-[400px] transition-all duration-500 ease-in-out">
                     <form action="recherche" method="GET" class="relative group h-full flex items-center">
                         <input type="text" id="desktop-search-input" name="name" placeholder="Rechercher une colo..." autocomplete="off"
-                               class="w-full bg-gray-100 border border-transparent focus:border-blue-300 rounded-full py-2 pl-4 pr-10 focus:ring-4 focus:ring-blue-100 focus:bg-white transition-all duration-300 text-sm shadow-sm relative z-20">
-                        <button type="submit" class="absolute right-0 top-1/2 transform -translate-y-1/2 mr-3 text-gray-400 hover:text-blue-600 transition-colors z-20">
-                            <i class="fa-solid fa-magnifying-glass"></i>
+                               class="w-full h-10 bg-[#f1f3f5] border border-transparent focus:border-gray-300 rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all duration-300 text-[13px] text-gray-700 placeholder-gray-400 relative z-20 outline-none">
+                        <button type="submit" aria-label="Rechercher" class="absolute right-0 top-1/2 -translate-y-1/2 mr-4 text-gray-400 hover:text-gray-700 transition-colors z-20">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
                         </button>
                         <div id="history-dropdown" class="absolute top-12 left-0 w-full bg-white shadow-xl rounded-2xl border border-gray-100 hidden overflow-hidden z-10 animate-fade-in-down"></div>
                     </form>
                 </div>
 
-                <div id="nav-links" class="hidden md:flex items-center space-x-2 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
-                    <a href="<?php echo clean_url('../'); ?>" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Accueil</a>
+                <div class="hidden md:block flex-1"></div>
+
+                <!-- Navigation -->
+                <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
+                    <a href="<?php echo clean_url('../'); ?>" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
 
                     <?php if ($is_animateur): ?>
-                        <a href="espace-animation" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Animation</a>
+                        <a href="espace-animation" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Animation</a>
                     <?php endif; ?>
 
                     <?php if ($is_director): ?>
-                        <a href="organisateurs" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Organisateurs</a>
+                        <a href="organisateurs" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Organisateurs</a>
                     <?php endif; ?>
 
                     <?php if ($is_logged_in && !$is_animateur): ?>
-                        <a href="favorites" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Favoris</a>
-                        <a href="reservations" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Réservations</a>
+                        <a href="favorites" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Favoris</a>
+                        <a href="reservations" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Réservations</a>
                     <?php endif; ?>
 
-                    <a href="aide" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Aide</a>
+                    <a href="contact" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Contact</a>
+                    <a href="aide" class="text-gray-600 hover:text-gray-900 px-2.5 py-2 text-[14px] font-medium transition-colors">Aide</a>
                 </div>
 
-                <div class="hidden md:flex items-center gap-4 flex-shrink-0 pl-2 border-l border-transparent transition-all duration-300" id="user-actions">
+                <div class="hidden md:flex items-center gap-3 flex-shrink-0 transition-all duration-300" id="user-actions">
                     <?php if ($is_logged_in): ?>
-                        <a href="messagerie" class="relative text-gray-500 hover:text-gray-900 p-2 rounded-full hover:bg-gray-100 transition-colors" title="Messagerie">
-                            <i class="fa-regular fa-envelope text-xl"></i>
-                            <span id="unread-badge-desktop" class="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-red-600 text-white text-[10px] font-bold rounded-full hidden"></span>
+                        <a href="messagerie" class="relative text-gray-700 hover:text-gray-900 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" title="Messagerie" aria-label="Messagerie">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M4 7.5l8 6 8-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <span id="unread-badge-desktop" class="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-red-600 text-white text-[10px] font-bold rounded-full hidden"></span>
                         </a>
-                        
+
                         <div class="relative group py-2">
-                            <a href="profile" class="relative block">
-                                <img class="h-9 w-9 rounded-full object-cover ring-2 ring-gray-100 transition-transform duration-300 transform group-hover:scale-110" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url'] ?? $placeholder_url_desktop); ?>" alt="Profil">
+                            <a href="profile" class="relative block" aria-label="Mon profil">
+                                <?php if (!empty($_SESSION['user']['photo_url'])): ?>
+                                    <img class="h-10 w-10 rounded-full object-cover ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url']); ?>" alt="Profil">
+                                <?php else: ?>
+                                    <span class="h-10 w-10 rounded-full bg-[#1478d4] text-white text-[17px] font-bold flex items-center justify-center ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105"><?php echo htmlspecialchars($initial); ?></span>
+                                <?php endif; ?>
                             </a>
 
                             <div class="dropdown-menu absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
@@ -283,12 +298,12 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         if(desktopSearchInput) {
             desktopSearchInput.addEventListener('focus', () => {
                 if(navLinks) { navLinks.style.maxWidth = '0px'; navLinks.style.opacity = '0'; navLinks.style.padding = '0'; navLinks.style.margin = '0'; }
-                if(searchWrapper) { searchWrapper.classList.remove('max-w-md'); searchWrapper.classList.add('max-w-full', 'w-full'); }
+                if(searchWrapper) { searchWrapper.classList.remove('max-w-[400px]'); searchWrapper.classList.add('max-w-full', 'w-full'); }
                 renderHistory();
             });
             desktopSearchInput.addEventListener('blur', () => {
                 if(navLinks) { navLinks.style.maxWidth = '1000px'; navLinks.style.opacity = '1'; navLinks.style.padding = ''; navLinks.style.margin = ''; }
-                if(searchWrapper) { searchWrapper.classList.remove('max-w-full', 'w-full'); searchWrapper.classList.add('max-w-md'); }
+                if(searchWrapper) { searchWrapper.classList.remove('max-w-full', 'w-full'); searchWrapper.classList.add('max-w-[400px]'); }
                 setTimeout(() => { historyDropdown.classList.add('hidden'); }, 200);
             });
             desktopSearchInput.addEventListener('input', () => {
