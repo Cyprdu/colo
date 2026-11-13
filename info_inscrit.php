@@ -1,303 +1,235 @@
 <?php
 /**
- * Page : info_inscrit.php
- * Objectif : Dashboard complet de l'inscription pour le parent
+ * info_inscrit.php?r=<jeton de réservation> : dossier d'UN enfant pour UN séjour.
+ * Suivi du dossier, séjour, fiche de l'enfant, documents, paiement (avec détail des réductions) et organisateur.
+ * L'inscription doit appartenir à un enfant du parent connecté. (Anciens liens camp_id/child_id : convertis en jeton.)
  */
-
 require_once 'api/config.php';
+require_once 'api/orders.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+if (empty($_SESSION['user']['id'])) { header('Location: login.php?redirect=' . urlencode('reservations')); exit; }
+$userId = (int)$_SESSION['user']['id'];
+
+// 1. Jeton de la réservation (ou conversion d'un ancien lien camp_id + child_id, avec contrôle du parent)
+$token = (string)($_GET['r'] ?? '');
+if ($token === '' && !empty($_GET['camp_id']) && !empty($_GET['child_id'])) {
+    $st = $pdo->prepare("SELECT i.reservation_token FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.camp_id = ? AND i.enfant_id = ? AND e.parent_id = ?");
+    $st->execute([(int)$_GET['camp_id'], (int)$_GET['child_id'], $userId]);
+    $token = (string)$st->fetchColumn();
+}
+
+// 2. Données : la commande, l'inscription de cet enfant, sa fiche
+$members = []; $m = null;
+try { $members = loadOrderByToken($pdo, $token, $userId); } catch (Throwable $e) { error_log('info_inscrit: ' . $e->getMessage()); }
+foreach ($members as $x) if ($x['reservation_token'] === $token) $m = $x;
+if (!$m) { header('Location: reservations'); exit; }
+
+$child = $pdo->prepare("SELECT infos_sante, allergies, regime_alimentaire, taille, poids, fiche_sanitaire_token, carnet_sante_token FROM enfants WHERE id = ? AND parent_id = ?");
+$child->execute([(int)$m['enfant_id'], $userId]);
+$child = $child->fetch(PDO::FETCH_ASSOC) ?: [];
+$desc = $pdo->prepare("SELECT description FROM camps WHERE id = ?");
+$desc->execute([(int)$m['camp_id']]);
+$description = (string)$desc->fetchColumn();
+
+$bd = orderBreakdown($members);
+$ln = $bd['lines'][$m['inscription_id']] ?? ['label' => 'Prix du séjour', 'base' => (float)$m['prix_final'], 'remise' => 0, 'pct' => 0, 'price' => (float)$m['prix_final']];
+$live = array_values(array_filter($members, function ($x) { return !isCancelled($x); }));
+$orderToken = $members[0]['reservation_token'];
+
+$cancelled = isCancelled($m);
+$isPaid = $m['statut_paiement'] === 'PAYE';
+$canPay = !$cancelled && !$isPaid && !empty($m['inscription_en_ligne']);
+$age = ageAnnees($m['date_naissance']);
+$lieu = trim(implode(', ', array_filter([trim((string)$m['adresse']), trim($m['code_postal'] . ' ' . $m['ville'])])));
+$img = trim((string)$m['image_url']);
+if ($img !== '') { $img = str_replace('\\', '/', $img); if (!preg_match('#^(https?:)?//#', $img) && strpos($img, 'uploads/') !== 0) $img = 'uploads/camps/' . ltrim($img, '/'); }
+
+// Étapes du dossier : 1 inscrit, 2 validé, 3 payé
+$step = 1;
+if (in_array($m['statut'], ['Confirmé', 'Validé'], true) || $isPaid) $step = 2;
+if ($isPaid) $step = 3;
+$steps = [['Inscription', date('d/m/Y', strtotime($m['date_inscription']))], ['Validation', $step >= 2 ? 'Validée' : 'En cours'], ['Paiement', $isPaid ? 'Réglé' : 'À régler']];
+
+$body_class = 'bg-white';
 require_once 'partials/header.php';
-
-// 1. Sécurité : Vérification de connexion
-if (!isset($_SESSION['user'])) {
-    header('Location: login');
-    exit;
-}
-
-$camp_id = $_GET['camp_id'] ?? '';
-$child_id = $_GET['child_id'] ?? '';
-
-// Adresse à jeton (?r=<jeton de réservation>) : l'inscription doit appartenir à un enfant du parent connecté
-if (!empty($_GET['r']) && preg_match('/^[A-Za-z0-9]{16,64}$/', (string)$_GET['r'])) {
-    $stR = $pdo->prepare("SELECT i.camp_id, i.enfant_id FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.reservation_token = ? AND e.parent_id = ?");
-    $stR->execute([$_GET['r'], $_SESSION['user']['id']]);
-    if ($rr = $stR->fetch(PDO::FETCH_ASSOC)) { $camp_id = $rr['camp_id']; $child_id = $rr['enfant_id']; }
-}
-
-if (empty($camp_id) || empty($child_id)) {
-    header('Location: reservations');
-    exit;
-}
-
-// 2. Récupération des données complètes (Jointures SQL pour tout avoir en une seule requête)
-try {
-    $sql = "
-        SELECT 
-            i.id AS inscription_id, i.reservation_token, i.statut AS statut_inscription, i.statut_paiement, i.date_inscription, i.prix_final,
-            c.id AS camp_real_id, c.nom AS camp_nom, c.description, c.ville, c.adresse, c.code_postal, c.date_debut, c.date_fin, c.image_url,
-            e.id AS enfant_real_id, e.prenom AS enfant_prenom, e.nom AS enfant_nom, e.date_naissance, e.infos_sante, e.taille, e.poids,
-            o.id AS orga_id, o.nom AS orga_nom, o.email AS orga_email, o.tel AS orga_tel, o.user_id AS orga_user_id, o.logo_url
-        FROM inscriptions i
-        JOIN camps c ON i.camp_id = c.id
-        JOIN enfants e ON i.enfant_id = e.id
-        JOIN organisateurs o ON c.organisateur_id = o.id
-        WHERE i.camp_id = ? AND i.enfant_id = ? AND e.parent_id = ?
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$camp_id, $child_id, $_SESSION['user']['id']]);
-    $data = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$data) {
-        // Sécurité anti-IDOR : Si pas de résultat, c'est que l'enfant n'est pas au parent ou n'existe pas
-        die('<div class="container mx-auto py-20 text-center"><h1 class="text-3xl font-bold text-red-600">Accès Refusé</h1><p class="mt-4 text-gray-600">Inscription introuvable ou vous n\'avez pas les droits.</p><a href="reservations" class="inline-block mt-6 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">Retour aux réservations</a></div>');
-    }
-
-} catch (Exception $e) {
-    die("Erreur technique : " . $e->getMessage());
-}
-
-// 3. Préparation des variables d'affichage
-$date_debut = new DateTime($data['date_debut']);
-$date_fin = new DateTime($data['date_fin']);
-$duree = $date_fin->diff($date_debut)->days;
-$is_paid = ($data['statut_paiement'] === 'PAYE');
-$image_camp = !empty($data['image_url']) ? htmlspecialchars($data['image_url']) : 'https://placehold.co/1200x400/e2e8f0/2563eb?text=Camp';
-$logo_orga = !empty($data['logo_url']) ? htmlspecialchars($data['logo_url']) : 'https://placehold.co/100x100/f3f4f6/9ca3af?text=Orga';
-
-// Calcul de l'avancement pour la barre de progression
-$progress_step = 1; // 1: Inscrit
-if ($data['statut_inscription'] === 'Confirmé' || $data['statut_inscription'] === 'Validé') $progress_step = 2;
-if ($is_paid) $progress_step = 3;
-
 ?>
+<title>Dossier de <?= htmlspecialchars($m['enfant_prenom']) ?> - ColoMap</title>
+<style>
+    .ii-card { background:#fff; border:1px solid #e5e7eb; border-radius:24px; }
+    .ii-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#6b7780; }
+    .ii-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 18px; border-radius:12px; font-size:15px; font-weight:700; background:#2f3d45; color:#fff; transition:background .2s ease; text-align:center; }
+    .ii-btn:hover { background:#1f2a30; }
+    .ii-btn-light { background:#fff; color:#26343b; border:1.5px solid #e5e7eb; }
+    .ii-btn-light:hover { background:#f1f3f5; }
+    .ii-doc { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border:1.5px solid #e5e7eb; border-radius:14px; transition:background .15s ease, border-color .15s ease; }
+    a.ii-doc:hover { background:#f6f8fa; border-color:#a9b8c6; }
+</style>
 
-<main class="bg-gray-50 min-h-screen pb-12">
-    
-    <div class="relative w-full h-72 lg:h-96 bg-gray-900 shadow-xl overflow-hidden group">
-        <img src="<?= $image_camp ?>" alt="Couverture du camp" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700">
-        <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent"></div>
-        
-        <div class="absolute bottom-0 left-0 w-full p-4 sm:p-8">
-            <div class="container mx-auto max-w-6xl">
-                <a href="reservations" class="inline-flex items-center text-gray-300 hover:text-white mb-4 transition text-sm font-medium">
-                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-                    Retour aux réservations
-                </a>
-                <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                    <div>
-                        <h1 class="text-3xl md:text-5xl font-bold text-white mb-2 leading-tight"><?= htmlspecialchars($data['camp_nom']) ?></h1>
-                        <p class="text-gray-200 text-lg flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                            <?= htmlspecialchars($data['ville']) ?> (<?= htmlspecialchars($data['code_postal']) ?>)
-                        </p>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <?php if($is_paid): ?>
-                            <span class="px-4 py-2 rounded-full bg-green-500/20 backdrop-blur-md border border-green-400 text-green-100 font-semibold shadow-sm flex items-center">
-                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Dossier Complet
-                            </span>
-                        <?php else: ?>
-                            <span class="px-4 py-2 rounded-full bg-yellow-500/20 backdrop-blur-md border border-yellow-400 text-yellow-100 font-semibold shadow-sm flex items-center">
-                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Paiement en attente
-                            </span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-        </div>
+<main class="flex-1 w-full max-w-[1100px] mx-auto px-5 sm:px-8 pt-8 pb-16">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] font-semibold">
+        <a href="reservations" class="inline-flex items-center gap-2 text-[#3b4a54] hover:text-[#26343b]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Mes réservations
+        </a>
+        <?php if (count($live) > 1): ?>
+            <span class="text-[#cbd2d9]">/</span>
+            <a href="reservation?r=<?= urlencode($orderToken) ?>" class="text-[#3d6a8e] hover:text-[#2d5170]">Toute la commande (<?= count($live) ?> enfants)</a>
+        <?php endif; ?>
     </div>
 
-    <div class="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="mt-5">
+        <span class="inline-block text-[12px] font-bold px-3 py-1.5 rounded-full <?= $cancelled ? 'bg-gray-100 text-gray-600' : ($isPaid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700') ?>">
+            <?= $cancelled ? 'Annulée' : ($isPaid ? 'Dossier complet' : 'Paiement en attente') ?>
+        </span>
+        <h1 class="mt-3 text-[28px] md:text-[34px] font-extrabold text-[#26343b] leading-tight"><?= htmlspecialchars($m['enfant_prenom'] . ' ' . $m['enfant_nom']) ?></h1>
+        <p class="mt-2 text-[15px] text-[#6b7780]"><?= htmlspecialchars($m['camp_nom']) ?> · <?= htmlspecialchars(fmtPlage($m['_start'], $m['_end'])) ?> · <?= htmlspecialchars((string)$m['ville']) ?></p>
+    </div>
 
-            <div class="lg:col-span-2 space-y-8">
+    <!-- Suivi du dossier -->
+    <section class="ii-card mt-8 p-6 sm:p-8" aria-label="Suivi du dossier">
+        <ol class="relative flex justify-between">
+            <span class="absolute top-5 left-[16%] right-[16%] h-[3px] bg-[#e5e7eb] rounded"></span>
+            <span class="absolute top-5 left-[16%] h-[3px] bg-[#2f3d45] rounded transition-all duration-700" style="width: <?= ($step - 1) * 34 ?>%"></span>
+            <?php foreach ($steps as $i => [$label, $sub]): $done = $i < $step; ?>
+                <li class="relative z-10 flex flex-col items-center text-center w-1/3">
+                    <span class="w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-bold ring-4 ring-white <?= $done ? 'bg-[#2f3d45] text-white' : 'bg-white border-2 border-[#cbd2d9] text-[#9aa3ab]' ?>">
+                        <?php if ($done): ?><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><?php else: echo $i + 1; endif; ?>
+                    </span>
+                    <span class="mt-2 text-[14px] font-bold <?= $done ? 'text-[#26343b]' : 'text-[#9aa3ab]' ?>"><?= $label ?></span>
+                    <span class="text-[12.5px] text-[#6b7780]"><?= htmlspecialchars($sub) ?></span>
+                </li>
+            <?php endforeach; ?>
+        </ol>
+    </section>
 
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
-                    <h2 class="text-xl font-bold text-gray-800 mb-6">Suivi du dossier</h2>
-                    <div class="relative">
-                        <div class="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -translate-y-1/2 rounded"></div>
-                        <div class="absolute top-1/2 left-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500 -translate-y-1/2 rounded transition-all duration-1000" style="width: <?= ($progress_step - 1) * 50 ?>%;"></div>
-                        
-                        <div class="relative flex justify-between">
-                            <div class="flex flex-col items-center group">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white bg-gradient-to-r from-blue-500 to-purple-500 ring-4 ring-white z-10 shadow-md">1</div>
-                                <span class="mt-2 text-sm font-semibold text-gray-800">Inscription</span>
-                                <span class="text-xs text-gray-500"><?= date('d/m/Y', strtotime($data['date_inscription'])) ?></span>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold z-10 ring-4 ring-white shadow-md <?= $progress_step >= 2 ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white' : 'bg-gray-200 text-gray-500' ?>">2</div>
-                                <span class="mt-2 text-sm font-semibold <?= $progress_step >= 2 ? 'text-gray-800' : 'text-gray-400' ?>">Validation</span>
-                            </div>
-                            <div class="flex flex-col items-center">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold z-10 ring-4 ring-white shadow-md <?= $progress_step >= 3 ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500' ?>">
-                                    <?php if($progress_step >= 3): ?><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg><?php else: ?>3<?php endif; ?>
-                                </div>
-                                <span class="mt-2 text-sm font-semibold <?= $progress_step >= 3 ? 'text-green-600' : 'text-gray-400' ?>">Paiement</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="p-6 sm:p-8">
-                        <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                            <svg class="w-6 h-6 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            Dates et Lieu
-                        </h2>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                                <p class="text-sm text-blue-600 font-semibold uppercase tracking-wide">Début du séjour</p>
-                                <p class="text-lg font-bold text-gray-800"><?= $date_debut->format('d/m/Y') ?></p>
-                                <p class="text-sm text-gray-600">à 14h00 (exemple)</p>
-                            </div>
-                            <div class="bg-purple-50 p-4 rounded-xl border border-purple-100">
-                                <p class="text-sm text-purple-600 font-semibold uppercase tracking-wide">Fin du séjour</p>
-                                <p class="text-lg font-bold text-gray-800"><?= $date_fin->format('d/m/Y') ?></p>
-                                <p class="text-sm text-gray-600">Durée : <?= $duree ?> jours</p>
-                            </div>
-                        </div>
+        <!-- Colonne principale -->
+        <div class="lg:col-span-2 space-y-8 min-w-0">
 
-                        <div class="mb-4">
-                            <h3 class="font-semibold text-gray-800 mb-2">Adresse :</h3>
-                            <p class="text-gray-600"><?= htmlspecialchars($data['adresse']) ?>, <?= htmlspecialchars($data['code_postal']) ?> <?= htmlspecialchars($data['ville']) ?></p>
-                        </div>
-
-                        <div class="prose prose-sm text-gray-600 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                            <?= nl2br(htmlspecialchars($data['description'])) ?>
-                        </div>
-                    </div>
-                    <a href="https://www.google.com/maps/search/?api=1&query=<?= urlencode($data['adresse'] . ' ' . $data['ville']) ?>" target="_blank" class="block bg-gray-50 hover:bg-gray-100 text-center py-3 text-sm text-blue-600 font-medium border-t transition">
-                        Voir l'itinéraire sur Google Maps &rarr;
-                    </a>
-                </div>
-
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 relative">
-                    <div class="flex justify-between items-start mb-6">
-                        <h2 class="text-xl font-bold text-gray-800 flex items-center">
-                            <svg class="w-6 h-6 mr-2 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            Fiche Enfant
-                        </h2>
-                        <a href="modif_child?id=<?= $data['enfant_real_id'] ?>" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition flex items-center">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                            Modifier
-                        </a>
-                    </div>
-
-                    <div class="flex items-center mb-6">
-                        <div class="w-16 h-16 rounded-full bg-gradient-to-br from-pink-400 to-orange-400 flex items-center justify-center text-2xl font-bold text-white border-4 border-white shadow">
-                            <?= strtoupper(substr($data['enfant_prenom'], 0, 1)) ?>
-                        </div>
-                        <div class="ml-4">
-                            <h3 class="text-xl font-bold text-gray-900"><?= htmlspecialchars($data['enfant_prenom']) ?> <?= htmlspecialchars($data['enfant_nom']) ?></h3>
-                            <p class="text-gray-500 text-sm">Né(e) le <?= date('d/m/Y', strtotime($data['date_naissance'])) ?></p>
-                        </div>
-                    </div>
-
+            <section class="ii-card overflow-hidden" aria-labelledby="h-sejour">
+                <?php if ($img !== ''): ?><div class="relative h-[190px] bg-[#e5e7eb]"><img src="<?= htmlspecialchars($img) ?>" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()"></div><?php endif; ?>
+                <div class="p-6">
+                    <h2 id="h-sejour" class="ii-label mb-4">Dates et lieu</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="bg-gray-50 p-3 rounded-lg">
-                            <span class="block text-xs font-bold text-gray-400 uppercase">Santé / Allergies</span>
-                            <span class="text-gray-800"><?= !empty($data['infos_sante']) ? htmlspecialchars($data['infos_sante']) : 'Aucune info' ?></span>
+                        <div class="rounded-2xl bg-[#f8f5ea] p-4">
+                            <p class="ii-label">Début</p>
+                            <p class="mt-1 text-[17px] font-bold text-[#26343b]"><?= $m['_start']->format('d/m/Y') ?></p>
                         </div>
-                        <div class="bg-gray-50 p-3 rounded-lg">
-                            <span class="block text-xs font-bold text-gray-400 uppercase">Taille / Poids</span>
-                            <span class="text-gray-800">
-                                <?= !empty($data['taille']) ? htmlspecialchars($data['taille']).' cm' : '?' ?> / 
-                                <?= !empty($data['poids']) ? htmlspecialchars($data['poids']).' kg' : '?' ?>
-                            </span>
+                        <div class="rounded-2xl bg-[#f8f5ea] p-4">
+                            <p class="ii-label">Fin</p>
+                            <p class="mt-1 text-[17px] font-bold text-[#26343b]"><?= $m['_end']->format('d/m/Y') ?> <span class="text-[13px] font-semibold text-[#6b7780]">· <?= $m['_nights'] + 1 ?> jours / <?= $m['_nights'] ?> nuit<?= $m['_nights'] > 1 ? 's' : '' ?></span></p>
                         </div>
                     </div>
-                    
-                    <div class="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm flex items-start">
-                        <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <p>N'oubliez pas de mettre à jour la fiche sanitaire de liaison (PDF) avant le départ.</p>
+                    <p class="mt-5 text-[13px] text-[#6b7780]">Adresse</p>
+                    <p class="text-[15px] font-semibold text-[#26343b]"><?= htmlspecialchars($lieu !== '' ? $lieu : (string)$m['ville']) ?></p>
+                    <?php if ($description !== ''): ?>
+                        <div class="mt-4 max-h-40 overflow-y-auto pr-2 text-[14.5px] leading-relaxed text-[#3b4a54]"><?= nl2br(htmlspecialchars($description)) ?></div>
+                    <?php endif; ?>
+                    <a href="https://www.google.com/maps/search/?api=1&query=<?= urlencode($lieu !== '' ? $lieu : (string)$m['ville']) ?>" target="_blank" rel="noopener" class="mt-5 inline-flex items-center gap-2 text-[14px] font-bold text-[#3d6a8e] hover:text-[#2d5170]">Voir l'itinéraire sur Google Maps →</a>
+                </div>
+            </section>
+
+            <section class="ii-card p-6" aria-labelledby="h-enfant">
+                <div class="flex items-start justify-between gap-4">
+                    <h2 id="h-enfant" class="ii-label">Fiche de l'enfant</h2>
+                    <a href="modif_child?id=<?= (int)$m['enfant_id'] ?>" class="text-[13px] font-bold px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-[#26343b] hover:bg-[#f1f3f5] transition">Modifier</a>
+                </div>
+                <div class="mt-4 flex items-center gap-4">
+                    <span class="w-14 h-14 flex-none rounded-full bg-[#3a4852] text-white text-[22px] font-bold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr($m['enfant_prenom'], 0, 1))) ?></span>
+                    <div>
+                        <p class="text-[18px] font-bold text-[#26343b]"><?= htmlspecialchars($m['enfant_prenom'] . ' ' . $m['enfant_nom']) ?></p>
+                        <p class="text-[13.5px] text-[#6b7780]">Né(e) le <?= date('d/m/Y', strtotime($m['date_naissance'])) ?><?= $age !== null ? ' · ' . $age . ' ans' : '' ?></p>
                     </div>
                 </div>
+                <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[14.5px]">
+                    <div class="rounded-2xl bg-[#f1f3f5] p-4"><p class="ii-label">Santé / allergies</p><p class="mt-1 text-[#26343b]"><?= htmlspecialchars(trim(($child['infos_sante'] ?? '') . ' ' . ($child['allergies'] ?? '')) ?: 'Aucune information') ?></p></div>
+                    <div class="rounded-2xl bg-[#f1f3f5] p-4"><p class="ii-label">Taille / poids</p><p class="mt-1 text-[#26343b]"><?= !empty($child['taille']) ? htmlspecialchars($child['taille']) . ' cm' : '?' ?> / <?= !empty($child['poids']) ? htmlspecialchars($child['poids']) . ' kg' : '?' ?></p></div>
+                    <?php if (!empty($child['regime_alimentaire'])): ?><div class="rounded-2xl bg-[#f1f3f5] p-4 sm:col-span-2"><p class="ii-label">Régime alimentaire</p><p class="mt-1 text-[#26343b]"><?= htmlspecialchars($child['regime_alimentaire']) ?></p></div><?php endif; ?>
+                </div>
+            </section>
 
-            </div>
-
-            <div class="lg:col-span-1 space-y-8">
-
-                <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-6 text-center">
-                    <div class="w-20 h-20 mx-auto bg-gray-100 rounded-full p-1 mb-4 shadow-sm">
-                        <img src="<?= $logo_orga ?>" alt="Logo Orga" class="w-full h-full object-contain rounded-full">
-                    </div>
-                    <h3 class="font-bold text-gray-900 text-lg mb-1"><?= htmlspecialchars($data['orga_nom']) ?></h3>
-                    <p class="text-sm text-gray-500 mb-6">Organisateur certifié</p>
-                    
-                    <div class="space-y-3">
-                        <a href="messagerie?new_conv=<?= $data['orga_user_id'] ?>&camp_id=<?= $camp_id ?>" class="block w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition shadow-lg shadow-blue-500/30 flex items-center justify-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-                            Envoyer un message
+            <section aria-labelledby="h-docs">
+                <h2 id="h-docs" class="text-[20px] font-bold text-[#26343b] mb-4">Documents</h2>
+                <div class="space-y-3">
+                    <?php if (!$cancelled && ($isPaid || (float)$m['prix_final'] === 0.0)): ?>
+                        <a href="generate_pdf_certificat.php?r=<?= urlencode($orderToken) ?>" target="_blank" rel="noopener" class="ii-doc">
+                            <span><span class="block text-[15px] font-bold text-[#26343b]">Reçu de paiement</span><span class="block text-[12.5px] text-[#6b7780]">PDF · confirmation d'inscription et détail du paiement</span></span>
+                            <span class="text-[#3d6a8e] font-bold text-[14px]">Télécharger</span>
                         </a>
-                        <?php if(!empty($data['orga_tel'])): ?>
-                            <a href="tel:<?= htmlspecialchars($data['orga_tel']) ?>" class="block w-full py-2.5 px-4 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium rounded-xl transition flex items-center justify-center">
-                                <svg class="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-                                <?= htmlspecialchars($data['orga_tel']) ?>
+                    <?php endif; ?>
+                    <?php foreach ([['carnet_sante_token', 'sante', 'Carnet de santé'], ['fiche_sanitaire_token', 'sanitaire', 'Fiche sanitaire de liaison']] as [$col, $dir, $name]): ?>
+                        <?php if (!empty($child[$col])): ?>
+                            <a href="uploads/<?= $dir ?>/<?= htmlspecialchars($child[$col]) ?>" target="_blank" rel="noopener" class="ii-doc">
+                                <span><span class="block text-[15px] font-bold text-[#26343b]"><?= $name ?></span><span class="block text-[12.5px] text-[#6b7780]">Document enregistré</span></span>
+                                <span class="text-[#3d6a8e] font-bold text-[14px]">Voir</span>
                             </a>
+                        <?php else: ?>
+                            <div class="ii-doc bg-[#f8f5ea] border-[#f8f5ea]">
+                                <span><span class="block text-[15px] font-bold text-[#26343b]"><?= $name ?></span><span class="block text-[12.5px] text-[#6b7780]">Pas encore ajouté(e). À joindre avant le départ.</span></span>
+                                <a href="modif_child?id=<?= (int)$m['enfant_id'] ?>" class="text-[#3d6a8e] font-bold text-[14px] whitespace-nowrap">Ajouter</a>
+                            </div>
                         <?php endif; ?>
-                    </div>
+                    <?php endforeach; ?>
                 </div>
-
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                    <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">Documents & Paiement</h3>
-                    
-                    <div class="mb-6">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-gray-600">Total séjour</span>
-                            <span class="font-bold text-lg text-gray-900"><?= number_format($data['prix_final'], 2, ',', ' ') ?> €</span>
-                        </div>
-                        <div class="w-full bg-gray-100 rounded-full h-2.5">
-                            <div class="bg-green-500 h-2.5 rounded-full" style="width: <?= $is_paid ? '100%' : '0%' ?>"></div>
-                        </div>
-                        <p class="text-xs text-right mt-1 <?= $is_paid ? 'text-green-600' : 'text-orange-500' ?>">
-                            <?= $is_paid ? 'Règlement effectué' : 'Reste à payer : ' . number_format($data['prix_final'], 2, ',', ' ') . ' €' ?>
-                        </p>
-                        
-                        <?php if(!$is_paid): ?>
-                            <form action="api/create_stripe_session.php" method="POST" class="mt-3">
-                                <input type="hidden" name="r" value="<?= htmlspecialchars($data['reservation_token']) ?>">
-                                <button type="submit" class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg text-sm font-bold shadow hover:shadow-lg transition">
-                                    Payer maintenant
-                                </button>
-                            </form>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="space-y-3">
-                        <a href="generate_pdf_certificat.php?r=<?= urlencode($data['reservation_token']) ?>" target="_blank" class="flex items-center p-3 rounded-lg border border-gray-200 hover:border-red-300 hover:bg-red-50 transition group">
-                            <div class="bg-red-100 p-2 rounded-lg text-red-600 group-hover:text-red-700">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                            </div>
-                            <div class="ml-3">
-                                <p class="text-sm font-bold text-gray-800 group-hover:text-red-700">Certificat d'inscription</p>
-                                <p class="text-xs text-gray-500">Format PDF</p>
-                            </div>
-                        </a>
-
-                        <?php if (!empty($data['fiche_sanitaire_token'])): ?>
-                        <a href="uploads/sante/<?= htmlspecialchars($data['fiche_sanitaire_token']) ?>" target="_blank" class="flex items-center p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition group">
-                            <div class="bg-blue-100 p-2 rounded-lg text-blue-600 group-hover:text-blue-700">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                            </div>
-                            <div class="ml-3">
-                                <p class="text-sm font-bold text-gray-800 group-hover:text-blue-700">Fiche Sanitaire</p>
-                                <p class="text-xs text-gray-500">Document envoyé</p>
-                            </div>
-                        </a>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div class="text-center mt-4">
-                    <p class="text-sm text-gray-500">Une question ? <a href="aide.php" class="text-blue-600 hover:underline">Consultez la FAQ</a></p>
-                </div>
-
-            </div>
+            </section>
         </div>
+
+        <!-- Colonne droite : paiement + organisateur -->
+        <aside class="space-y-6 min-w-0">
+            <div class="ii-card p-6">
+                <h2 class="ii-label mb-4">Paiement de <?= htmlspecialchars($m['enfant_prenom']) ?></h2>
+                <div class="space-y-2 text-[14px]">
+                    <div class="flex justify-between gap-3"><span class="text-[#3b4a54] min-w-0 truncate"><?= htmlspecialchars($ln['label']) ?></span><span class="font-bold text-[#26343b] flex-none"><?= htmlspecialchars(fmtEuro((float)$ln['base'])) ?></span></div>
+                    <?php if ($ln['remise'] > 0.005): ?>
+                        <div class="flex justify-between"><span class="text-[#6b7780]">Remise fratrie −<?= (int)$ln['pct'] ?> %</span><span class="font-semibold text-[#26343b]">− <?= htmlspecialchars(fmtEuro((float)$ln['remise'])) ?></span></div>
+                    <?php endif; ?>
+                    <div class="flex justify-between pt-3 mt-1 border-t border-[#e5e7eb] text-[16px]"><span class="font-bold text-[#26343b]">Total</span><span class="font-extrabold text-[#26343b]"><?= htmlspecialchars(fmtEuro((float)$m['prix_final'])) ?></span></div>
+                </div>
+                <div class="mt-4 h-2 rounded-full bg-[#eceef1] overflow-hidden"><div class="h-2 rounded-full bg-[#2f3d45]" style="width: <?= $isPaid ? '100' : '0' ?>%"></div></div>
+                <p class="mt-2 text-[12.5px] text-right <?= $isPaid ? 'text-[#3b4a54]' : 'text-[#6b7780]' ?>"><?= $cancelled ? 'Réservation annulée' : ($isPaid ? 'Règlement effectué' : 'Reste à payer : ' . fmtEuro((float)$m['prix_final'])) ?></p>
+                <?php if ($bd['promo'] > 0.005 && $isPaid): ?><p class="mt-1 text-[12.5px] text-[#6b7780]">Un code promo a été appliqué sur la commande (− <?= htmlspecialchars(fmtEuro($bd['promo'])) ?>).</p><?php endif; ?>
+
+                <?php if ($canPay): ?>
+                    <form action="api/create_stripe_session.php" method="POST" class="mt-5">
+                        <input type="hidden" name="r" value="<?= htmlspecialchars($orderToken) ?>">
+                        <button type="submit" class="ii-btn">Payer maintenant</button>
+                    </form>
+                <?php endif; ?>
+                <?php if (count($live) > 1): ?>
+                    <a href="reservation?r=<?= urlencode($orderToken) ?>" class="ii-btn ii-btn-light mt-3">Gérer toute la commande</a>
+                <?php endif; ?>
+            </div>
+
+            <div class="ii-card p-6 text-center">
+                <div class="w-16 h-16 mx-auto rounded-full bg-[#f1f3f5] overflow-hidden flex items-center justify-center text-[22px] font-bold text-[#26343b]">
+                    <?php if (!empty($m['orga_logo'])): ?><img src="<?= htmlspecialchars($m['orga_logo']) ?>" alt="" class="w-full h-full object-contain" onerror="this.remove()"><?php else: echo htmlspecialchars(mb_strtoupper(mb_substr((string)$m['orga_nom'], 0, 1))); endif; ?>
+                </div>
+                <p class="mt-3 text-[17px] font-bold text-[#26343b]"><?= htmlspecialchars((string)$m['orga_nom']) ?></p>
+                <p class="text-[13px] text-[#6b7780]">Organisateur du séjour</p>
+                <div class="mt-5 space-y-3">
+                    <?php if (!empty($m['orga_user_id'])): ?><button type="button" id="btn-contact" class="ii-btn">Envoyer un message</button><?php endif; ?>
+                    <?php if (!empty($m['orga_tel'])): ?><a href="tel:<?= htmlspecialchars($m['orga_tel']) ?>" class="ii-btn ii-btn-light"><?= htmlspecialchars($m['orga_tel']) ?></a><?php endif; ?>
+                </div>
+            </div>
+
+            <p class="text-center text-[13px] text-[#6b7780]">Une question ? <a href="aide" class="underline">Consultez l'aide</a> ou <a href="contact" class="underline">contactez-nous</a>.</p>
+        </aside>
     </div>
 </main>
+
+<script>
+document.getElementById('btn-contact')?.addEventListener('click', async function () {
+    const btn = this; btn.disabled = true; btn.style.opacity = '.6';
+    try {
+        const res = await fetch('api/start_conversation.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ organisateurId: <?= json_encode((int)$m['orga_user_id']) ?>, campId: <?= json_encode((int)$m['camp_id']) ?> }) });
+        const data = await res.json();
+        if (data.conversationId) window.location.href = 'messagerie?conv_id=' + data.conversationId;
+        else { alert(data.error || 'Erreur'); btn.disabled = false; btn.style.opacity = ''; }
+    } catch (e) { alert('Erreur réseau'); btn.disabled = false; btn.style.opacity = ''; }
+});
+</script>
 
 <?php require_once 'partials/footer.php'; ?>

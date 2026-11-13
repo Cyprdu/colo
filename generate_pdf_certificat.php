@@ -26,6 +26,7 @@ $first = $members[0];
 $status = orderStatus($members);
 $tot = orderTotals($members);
 $ref = orderRef($members);
+$bd = orderBreakdown($members);
 $live = array_values(array_filter($members, function ($m) { return !isCancelled($m); }));
 if (!$live) $live = $members;
 $isPaid = $status[0] === 'paid';
@@ -105,19 +106,33 @@ $pdf->Section('Participants');
 $pdf->SetFillColor(241, 243, 245);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(70, 8, enc('Participant'), 0, 0, 'L', true);
-$pdf->Cell(65, 8, enc('Formule'), 0, 0, 'L', true);
-$pdf->Cell(45, 8, enc('Montant'), 0, 1, 'R', true);
+$pdf->Cell(65, 8, enc('Tarif'), 0, 0, 'L', true);
+$pdf->Cell(45, 8, enc('Prix'), 0, 1, 'R', true);
 $pdf->SetFont('Arial', '', 10.5);
 foreach ($live as $m) {
+    $ln = $bd['lines'][$m['inscription_id']] ?? ['label' => 'Prix du séjour', 'base' => (float)$m['prix_final'], 'remise' => 0, 'pct' => 0];
     $pdf->Cell(70, 9, enc($m['enfant_prenom'] . ' ' . $m['enfant_nom']), 'B', 0, 'L');
-    $pdf->Cell(65, 9, enc($m['tarif_nom'] ?: 'Tarif standard'), 'B', 0, 'L');
-    $pdf->Cell(45, 9, enc(eur((float)$m['prix_final'])), 'B', 1, 'R');
+    $pdf->Cell(65, 9, enc($ln['label']), 'B', 0, 'L');
+    $pdf->Cell(45, 9, enc(eur((float)$ln['base'])), 'B', 1, 'R');
+    if ($ln['remise'] > 0.005) {   // la réduction est visible, sur sa propre ligne
+        $pdf->SetFont('Arial', 'I', 9.5);
+        $pdf->SetTextColor(90, 102, 110);
+        $pdf->Cell(70, 7, '', 'B', 0, 'L');
+        $pdf->Cell(65, 7, enc('Remise fratrie -' . $ln['pct'] . ' %'), 'B', 0, 'L');
+        $pdf->Cell(45, 7, enc('- ' . eur((float)$ln['remise'])), 'B', 1, 'R');
+        $pdf->SetFont('Arial', '', 10.5);
+        $pdf->SetTextColor(38, 52, 59);
+    }
 }
 
 // Paiement
 $pdf->Section('Paiement');
+if ($bd['fratrie'] > 0.005) {
+    $pdf->Row('Sous-total', eur($bd['subtotal']), false);
+    $pdf->Row('Remise fratrie', '- ' . eur($bd['fratrie']), false);
+}
 $pdf->Row('Total de la commande', eur($tot['due']));
-if ($isPaid && $tot['discount'] > 0.005) $pdf->Row('Réduction (code promo)', '- ' . eur($tot['discount']));
+if ($bd['promo'] > 0.005) $pdf->Row('Code promo', '- ' . eur($bd['promo']), false);
 $pdf->Row($isPaid ? 'Montant réglé' : 'Déjà réglé', eur($tot['paid']));
 if (!$isPaid) $pdf->Row('Reste à payer', eur(max(0, $tot['due'] - $tot['paid'])));
 $pdf->Row('Moyen de paiement', $mode, false);

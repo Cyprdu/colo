@@ -7,9 +7,9 @@ require_once __DIR__ . '/sessions.php';
 
 const ORDER_SELECT = "SELECT i.id AS inscription_id, i.reservation_token, i.stripe_session_id, i.stripe_payment_intent_id,
         i.statut, i.statut_paiement, i.mode_paiement, i.prix_final, i.montant_paye, i.date_inscription,
-        t.nom AS tarif_nom,
+        t.nom AS tarif_nom, t.prix AS tarif_prix, t.montant_libre AS tarif_libre,
         c.id AS camp_id, c.token AS camp_token, c.nom AS camp_nom, c.ville, c.adresse, c.code_postal, c.image_url,
-        c.date_debut, c.date_fin, c.inscription_en_ligne, c.valide, c.refuse, c.supprime,
+        c.date_debut, c.date_fin, c.inscription_en_ligne, c.valide, c.refuse, c.supprime, c.remise_fratrie,
         o.nom AS orga_nom, o.logo_url AS orga_logo, o.user_id AS orga_user_id, o.email AS orga_email, o.tel AS orga_tel,
         e.id AS enfant_id, e.prenom AS enfant_prenom, e.nom AS enfant_nom, e.date_naissance
     FROM inscriptions i
@@ -100,4 +100,46 @@ function fmtEuro(float $v): string { return number_format($v, 2, ',', ' ') . ' �
 function ageAnnees(?string $naissance): ?int {
     if (!$naissance) return null;
     try { return (new DateTime($naissance))->diff(new DateTime())->y; } catch (Throwable $e) { return null; }
+}
+
+/**
+ * Détail du prix de chaque inscription : tarif choisi, remise fratrie, prix payé.
+ * Le prix de base est celui du tarif enregistré ; pour une ancienne commande sans tarif enregistré,
+ * la base est reconstituée à partir de la remise fratrie du séjour (2e enfant et suivants).
+ * @return array [inscription_id => ['label','base','remise','pct','price']]
+ */
+function orderLines(array $members): array {
+    $live = array_values(array_filter($members, function ($m) { return !isCancelled($m); }));
+    usort($live, function ($a, $b) { return (int)$a['inscription_id'] <=> (int)$b['inscription_id']; });
+    $rate = $live ? (float)($live[0]['remise_fratrie'] ?? 0) : 0.0;
+    $lines = [];
+    foreach ($live as $idx => $m) {
+        $price = (float)$m['prix_final'];
+        $base = $price;
+        if ($m['tarif_prix'] !== null && empty($m['tarif_libre'])) {
+            $base = max($price, (float)$m['tarif_prix']);
+        } elseif ($idx > 0 && $rate > 0 && $rate < 100) {
+            $guess = round($price / (1 - $rate / 100), 2);
+            if ($guess > $price) $base = $guess;
+        }
+        $remise = round(max(0.0, $base - $price), 2);
+        $lines[$m['inscription_id']] = [
+            'label'  => $m['tarif_nom'] ?: 'Prix du séjour',
+            'base'   => $base,
+            'remise' => $remise,
+            'pct'    => ($remise > 0.005 && $base > 0) ? (int)round($remise / $base * 100) : 0,
+            'price'  => $price,
+        ];
+    }
+    return $lines;
+}
+
+/** Totaux du détail : sous-total, remise fratrie, code promo (écart entre prix et montant réglé) */
+function orderBreakdown(array $members): array {
+    $lines = orderLines($members);
+    $sub = 0.0; $fratrie = 0.0;
+    foreach ($lines as $l) { $sub += $l['base']; $fratrie += $l['remise']; }
+    $t = orderTotals($members);
+    $promo = ($t['paid'] > 0 && $t['due'] - $t['paid'] > 0.005 && orderStatus($members)[0] === 'paid') ? round($t['due'] - $t['paid'], 2) : 0.0;
+    return ['lines' => $lines, 'subtotal' => $sub, 'fratrie' => $fratrie, 'promo' => $promo, 'due' => $t['due'], 'paid' => $t['paid']];
 }

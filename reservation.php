@@ -17,6 +17,7 @@ $first = $members[0];
 $status = orderStatus($members);
 $tot = orderTotals($members);
 $ref = orderRef($members);
+$bd = orderBreakdown($members);   // détail : tarif, remise fratrie, code promo
 $token = $first['reservation_token'];
 $live = array_values(array_filter($members, function ($m) { return !isCancelled($m); }));
 $canPay = in_array($status[0], ['pending', 'partial'], true) && !empty($first['inscription_en_ligne']);
@@ -99,7 +100,8 @@ require_once 'partials/header.php';
                             <div class="min-w-0">
                                 <p class="text-[17px] font-bold text-[#26343b] truncate"><?= htmlspecialchars($m['enfant_prenom'] . ' ' . $m['enfant_nom']) ?></p>
                                 <p class="text-[13px] text-[#6b7780]">
-                                    <?= $age !== null ? $age . ' ans · ' : '' ?><?= htmlspecialchars($m['tarif_nom'] ?: 'Tarif standard') ?> ·
+                                    <?php $ln = $bd['lines'][$m['inscription_id']] ?? null; ?>
+                                    <?= $age !== null ? $age . ' ans · ' : '' ?><?= htmlspecialchars($ln['label'] ?? 'Prix du séjour') ?><?= ($ln && $ln['pct'] > 0) ? ' · remise fratrie −' . $ln['pct'] . ' %' : '' ?> ·
                                     <?= $cancelled ? 'Annulée' : ($paid ? 'Payée' : 'À régler') ?>
                                 </p>
                             </div>
@@ -119,17 +121,27 @@ require_once 'partials/header.php';
         <aside class="min-w-0">
             <div class="rv-card p-6 lg:sticky lg:top-[92px]">
                 <h2 class="rv-label mb-4">Paiement</h2>
-                <ul class="space-y-3 text-[14px]">
-                    <?php foreach ($live as $m): ?>
-                        <li class="flex justify-between gap-3"><span class="text-[#3b4a54] min-w-0 truncate"><?= htmlspecialchars($m['enfant_prenom']) ?> <span class="text-[#6b7780]">· <?= htmlspecialchars($m['tarif_nom'] ?: 'Standard') ?></span></span><span class="font-bold text-[#26343b] flex-none"><?= htmlspecialchars(fmtEuro((float)$m['prix_final'])) ?></span></li>
+                <ul class="space-y-4 text-[14px]">
+                    <?php foreach ($live as $m): $ln = $bd['lines'][$m['inscription_id']] ?? ['label' => 'Prix du séjour', 'base' => (float)$m['prix_final'], 'remise' => 0, 'pct' => 0]; ?>
+                        <li>
+                            <div class="flex justify-between gap-3"><span class="text-[#26343b] font-semibold min-w-0 truncate"><?= htmlspecialchars($m['enfant_prenom']) ?></span><span class="font-bold text-[#26343b] flex-none"><?= htmlspecialchars(fmtEuro((float)$ln['base'])) ?></span></div>
+                            <div class="text-[13px] text-[#6b7780]"><?= htmlspecialchars($ln['label']) ?></div>
+                            <?php if ($ln['remise'] > 0.005): ?>
+                                <div class="mt-1 flex justify-between text-[13px] text-[#3b4a54]"><span>Remise fratrie −<?= (int)$ln['pct'] ?> %</span><span class="font-semibold">− <?= htmlspecialchars(fmtEuro((float)$ln['remise'])) ?></span></div>
+                            <?php endif; ?>
+                        </li>
                     <?php endforeach; ?>
                 </ul>
                 <div class="mt-4 pt-4 border-t border-[#e5e7eb] space-y-2 text-[14px]">
-                    <div class="flex justify-between"><span class="text-[#6b7780]">Total</span><span class="font-bold text-[#26343b]"><?= htmlspecialchars(fmtEuro($tot['due'])) ?></span></div>
-                    <?php if ($tot['paid'] > 0 && $tot['discount'] > 0.005 && $status[0] === 'paid'): ?>
-                        <div class="flex justify-between"><span class="text-[#6b7780]">Réduction (code promo)</span><span class="font-bold text-emerald-700">− <?= htmlspecialchars(fmtEuro($tot['discount'])) ?></span></div>
+                    <?php if ($bd['fratrie'] > 0.005): ?>
+                        <div class="flex justify-between"><span class="text-[#6b7780]">Sous-total</span><span class="font-semibold text-[#26343b]"><?= htmlspecialchars(fmtEuro($bd['subtotal'])) ?></span></div>
+                        <div class="flex justify-between"><span class="text-[#6b7780]">Remise fratrie</span><span class="font-semibold text-[#26343b]">− <?= htmlspecialchars(fmtEuro($bd['fratrie'])) ?></span></div>
                     <?php endif; ?>
-                    <div class="flex justify-between text-[16px]"><span class="font-bold text-[#26343b]">Réglé</span><span class="font-extrabold text-[#26343b]"><?= htmlspecialchars(fmtEuro($tot['paid'])) ?></span></div>
+                    <div class="flex justify-between"><span class="text-[#6b7780]">Total de la commande</span><span class="font-bold text-[#26343b]"><?= htmlspecialchars(fmtEuro($tot['due'])) ?></span></div>
+                    <?php if ($bd['promo'] > 0.005): ?>
+                        <div class="flex justify-between"><span class="text-[#6b7780]">Code promo</span><span class="font-semibold text-[#26343b]">− <?= htmlspecialchars(fmtEuro($bd['promo'])) ?></span></div>
+                    <?php endif; ?>
+                    <div class="flex justify-between text-[16px] pt-1"><span class="font-bold text-[#26343b]">Réglé</span><span class="font-extrabold text-[#26343b]"><?= htmlspecialchars(fmtEuro($tot['paid'])) ?></span></div>
                     <?php if ($mode): ?><div class="flex justify-between"><span class="text-[#6b7780]">Moyen de paiement</span><span class="font-semibold text-[#26343b]"><?= $mode ?></span></div><?php endif; ?>
                     <div class="flex justify-between"><span class="text-[#6b7780]">Réservé le</span><span class="font-semibold text-[#26343b]"><?= htmlspecialchars((new DateTime($first['date_inscription']))->format('d/m/Y')) ?></span></div>
                 </div>
