@@ -82,6 +82,12 @@ try {
                 $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total);
                 if ($pi && $n) $feePI = (string)$pi;
                 fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
+                // Inscription de l'équipe d'animation (adultes, hors inscriptions d'enfants) : mêmes règles de commission
+                if (($meta->type ?? '') === 'equipe_inscription') {
+                    require_once __DIR__ . '/equipe.php';
+                    $ne = equipe_confirmer($pdo, $tokens, $pi, (string)$obj->id, $total, $ratio);
+                    fin_audit($pdo, 'equipe_payee', 'session', $obj->id, ['total' => $total, 'lignes' => $ne], 'webhook');
+                }
             } else {
                 error_log('WEBHOOK: checkout.session.completed sans type reconnu (' . $obj->id . ')');
             }
@@ -94,6 +100,8 @@ try {
                 if ($tokens) {
                     require_once __DIR__ . '/attente.php'; // le directeur peut autoriser l'attente : la place reste gardée jusqu'à la date limite
                     attente_liberer($pdo, $tokens);
+                    require_once __DIR__ . '/equipe.php';
+                    equipe_liberer($pdo, $tokens);
                 }
             }
             break;

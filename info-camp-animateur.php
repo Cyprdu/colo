@@ -1,11 +1,10 @@
 <?php
 // info-camp-animateur.php : fiche d'un séjour pour un animateur + candidature.
 //   ?t=<jeton séjour>  séjour du catalogue « je recherche des animateurs »
-//   ?l=<jeton lien>    lien d'inscription du directeur (séjour « mes propres animateurs », non répertorié)
 $body_class = 'bg-white';
 require_once 'partials/header.php';
-$t = (string)($_GET['t'] ?? ''); $l = (string)($_GET['l'] ?? '');
-$self = 'info-camp-animateur.php?' . ($l !== '' ? 'l=' . urlencode($l) : 't=' . urlencode($t));
+$t = (string)($_GET['t'] ?? '');
+$self = 'info-camp-animateur.php?t=' . urlencode($t);
 if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlencode($self)); exit; }
 $is_anim = !empty($_SESSION['user']['is_animateur']);
 ?>
@@ -24,11 +23,11 @@ $is_anim = !empty($_SESSION['user']['is_animateur']);
 <script src="assets/js/anim.js?v=1"></script>
 <script>
 (function () {
-    var A = window.ANIM, T = <?= json_encode($t) ?>, L = <?= json_encode($l) ?>, SELF = <?= json_encode($self) ?>, box = document.getElementById('box');
+    var A = window.ANIM, T = <?= json_encode($t) ?>, SELF = <?= json_encode($self) ?>, box = document.getElementById('box');
     function row(ic, label, val) { return '<div class="flex items-start gap-3"><span class="ds-tile-ico" style="width:40px;height:40px;font-size:16px">' + A.icon(ic, 'w-5 h-5') + '</span><div><p class="text-[12px] font-bold uppercase tracking-wide text-[#6b7780]">' + label + '</p><p class="text-[15px] text-[#26343b]">' + val + '</p></div></div>'; }
     async function show() {
         try {
-            var c = await A.api('api/anim_animateur.php?a=camp&' + (L ? 'l=' + encodeURIComponent(L) : 't=' + encodeURIComponent(T)));
+            var c = await A.api('api/anim_animateur.php?a=camp&t=' + encodeURIComponent(T));
             var img = c.image_url ? '<img src="' + A.esc(c.image_url) + '" alt="" class="w-full object-cover" style="height:260px;border-radius:20px">' : '';
             var action;
             if (c.ma_candidature) action = '<div class="ds-alert-ok">Votre candidature : ' + A.statut(c.ma_candidature) + ' <a class="underline ml-2" href="espace-animation">Suivre mes candidatures</a></div>';
@@ -46,7 +45,7 @@ $is_anim = !empty($_SESSION['user']['is_animateur']);
             var go = document.getElementById('go');
             if (go) go.addEventListener('click', async function () {
                 go.disabled = true; var er = document.getElementById('err'); er.classList.add('hidden');
-                try { await A.api('api/anim_animateur.php?a=postuler', { json: { camp: T, lien: L, message: document.getElementById('msg').value } }); A.toast('Candidature envoyée'); show(); }
+                try { await A.api('api/anim_animateur.php?a=postuler', { json: { camp: T, message: document.getElementById('msg').value } }); A.toast('Candidature envoyée'); show(); }
                 catch (e) {
                     er.classList.remove('hidden'); er.innerHTML = A.esc(e.message) + (e.data && e.data.profil ? ' <a class="underline" href="profil-animateur?retour=' + encodeURIComponent(SELF) + '">Compléter mon profil</a>' : '');
                     go.disabled = false;

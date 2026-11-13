@@ -269,7 +269,8 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
         $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$delta / 100, $p['organisateur_id']]);
         fin_audit($pdo, 'remboursement', 'inscription', $p['inscription_id'], ['rembourse_cents' => $newRef, 'net_retire' => $delta, 'deja_verse' => $p['statut'] === 'verse'], 'webhook');
         if ($full) {
-            try { $pdo->prepare("UPDATE inscriptions SET statut = 'Annulé' WHERE id = ?")->execute([$p['inscription_id']]); }
+            // inscription_id négatif = inscription de l'équipe d'animation (table equipe_inscriptions)
+            try { $pdo->prepare(((int)$p['inscription_id'] < 0 ? "UPDATE equipe_inscriptions SET statut = 'Annulé' WHERE id = ?" : "UPDATE inscriptions SET statut = 'Annulé' WHERE id = ?"))->execute([abs((int)$p['inscription_id'])]); }
             catch (Throwable $e) { error_log('fin_apply_refund (statut inscription): ' . $e->getMessage()); }
         }
     }

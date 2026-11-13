@@ -12,6 +12,21 @@ $loadError = false;
 try { $rows = loadParentRows($pdo, $userId); }
 catch (Throwable $e) { $rows = []; $loadError = true; error_log('reservations: ' . $e->getMessage()); }
 
+// Inscriptions en tant qu'animateur (équipe d'animation, option B du séjour) : table equipe_inscriptions, séparée des inscriptions d'enfants
+$equipe = [];
+try {
+    require_once 'api/equipe.php';
+    equipe_ensure($pdo);
+    $st = $pdo->prepare("SELECT e.token, e.prenom, e.nom, e.tarif_nom, e.prix_final, e.statut, e.statut_paiement, e.created_at,
+            c.token AS camp_token, c.nom AS camp_nom, c.ville, c.image_url, c.date_debut, c.date_fin
+        FROM equipe_inscriptions e JOIN camps c ON c.id = e.camp_id WHERE e.user_id = ? AND e.statut <> 'Annulé' ORDER BY c.date_debut ASC");
+    $st->execute([$userId]);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $e) {
+        $expire = $e['statut_paiement'] === 'EN_ATTENTE' && strtotime($e['created_at']) < time() - EQUIPE_ATTENTE_MIN * 60;
+        if (!$expire) $equipe[] = $e;
+    }
+} catch (Throwable $e) { error_log('reservations (équipe): ' . $e->getMessage()); }
+
 $today = new DateTime('today');
 $upcoming = []; $waiting = []; $past = []; $cancelled = []; $toPay = 0;
 foreach (groupOrders($rows) as $members) {
@@ -77,13 +92,59 @@ function resaImg($url) {
         </div>
     <?php endif; ?>
 
-    <?php if (!$rows): ?>
+    <?php if (($_GET['equipe'] ?? '') === 'ok'): ?>
+        <div class="mb-6 rounded-2xl bg-[#eef2f4] px-5 py-4 text-[15px] font-semibold text-[#26343b]">Inscription enregistrée. Le paiement est confirmé dès que votre banque le valide (quelques instants).</div>
+    <?php endif; ?>
+
+    <?php if ($equipe): ?>
+        <section class="mb-10" aria-label="Mes inscriptions en tant qu'animateur">
+            <h2 class="text-[18px] font-extrabold text-[#26343b] mb-3">Mes inscriptions en tant qu'animateur</h2>
+            <div class="space-y-4">
+            <?php foreach ($equipe as $e):
+                $img = resaImg($e['image_url']);
+                $paid = in_array($e['statut_paiement'], ['PAYE', 'GRATUIT'], true);
+            ?>
+                <article class="rs-card flex flex-col md:flex-row">
+                    <a href="camp_details?t=<?= urlencode($e['camp_token']) ?>" class="relative block md:w-[200px] h-[140px] md:h-auto flex-none bg-[#e5e7eb] overflow-hidden" aria-label="Voir le séjour">
+                        <?php if ($img): ?><img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()"><?php endif; ?>
+                        <span class="absolute top-3 left-3 text-[12px] font-bold px-3 py-1.5 rounded-full bg-[#26343b] text-white">Animateur</span>
+                    </a>
+                    <div class="flex-1 min-w-0 p-5 flex flex-wrap items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <h3 class="text-[18px] font-extrabold text-[#26343b]"><?= htmlspecialchars(html_entity_decode($e['camp_nom'])) ?></h3>
+                            <p class="mt-1 text-[14px] text-[#6b7780]"><?= htmlspecialchars(date('d/m/Y', strtotime($e['date_debut'])) . ' – ' . date('d/m/Y', strtotime($e['date_fin']))) ?> · <?= htmlspecialchars($e['ville'] ?? '') ?></p>
+                            <p class="mt-1 text-[13px] text-[#6b7780]"><?= htmlspecialchars($e['prenom'] . ' ' . $e['nom']) ?><?= $e['tarif_nom'] ? ' · ' . htmlspecialchars($e['tarif_nom']) : '' ?></p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[20px] font-extrabold text-[#26343b] leading-none"><?= (float)$e['prix_final'] > 0 ? htmlspecialchars(fmtEuro((float)$e['prix_final'])) : 'Gratuit' ?></p>
+                            <p class="mt-2 text-[12px] font-bold px-3 py-1 rounded-full inline-block <?= $paid ? 'bg-[#eef2f4] text-[#26343b]' : 'bg-[#f8f5ea] text-[#5b4a1c]' ?>"><?= $paid ? 'Inscription confirmée' : 'Paiement en attente' ?></p>
+                            <?php if (!$paid): ?><div class="mt-3"><button type="button" class="rs-btn eq-pay" data-t="<?= htmlspecialchars($e['token']) ?>">Régler maintenant</button></div><?php endif; ?>
+                        </div>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+            </div>
+        </section>
+        <script>
+        document.querySelectorAll('.eq-pay').forEach(function (b) {
+            b.addEventListener('click', async function () {
+                b.disabled = true;
+                try {
+                    var r = await fetch('api/equipe_inscrire.php?a=payer', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: b.dataset.t }) });
+                    var d = await r.json(); if (!r.ok) throw new Error(d.error || 'Paiement impossible.'); location.href = d.url;
+                } catch (e) { alert(e.message); b.disabled = false; }
+            });
+        });
+        </script>
+    <?php endif; ?>
+
+    <?php if (!$rows && !$equipe): ?>
         <div class="text-center py-16 rounded-3xl border border-[#e5e7eb] bg-[#f8f5ea]/50">
             <p class="text-xl font-bold text-[#26343b]">Aucune réservation pour le moment</p>
             <p class="mt-2 text-[#6b7780]">Trouvez le séjour idéal pour vos enfants.</p>
             <a href="recherche" class="rs-btn mt-6">Trouver un séjour</a>
         </div>
-    <?php else: ?>
+    <?php elseif ($rows): ?>
         <div class="flex flex-wrap gap-2 mb-6" role="tablist">
             <?php foreach ($sections as $key => $sec): if (in_array($key, ['cancelled', 'waiting'], true) && !$sec['list']) continue; ?>
                 <button type="button" role="tab" class="rs-tab<?= $key === $firstTab ? ' is-active' : '' ?>" data-tab="<?= $key ?>"><?= $sec['label'] ?> (<?= count($sec['list']) ?>)</button>
