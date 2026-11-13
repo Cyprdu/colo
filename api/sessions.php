@@ -73,7 +73,7 @@ function normalizeSessionDates($debut, $fin): array {
         $d2 = new DateTime($fin ?: ($debut ?: 'now'));
     } catch (Throwable $e) { $d1 = new DateTime(); $d2 = new DateTime(); }
     if ($d1 <= $d2) return [$d1, $d2];
-    $c = DateTime::createFromFormat('Y-n-j', $d2->format('Y') . '-' . $d1->format('n') . '-' . $d1->format('j'));
+    $c = DateTime::createFromFormat('!Y-n-j', $d2->format('Y') . '-' . $d1->format('n') . '-' . $d1->format('j'));
     if (!$c) $c = clone $d1;
     if ($c > $d2) $c->modify('-1 year');
     return [$c, $d2];
