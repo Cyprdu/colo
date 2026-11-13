@@ -2,6 +2,7 @@
 // Contrôle rapide des calculs (sans base ni Stripe) :  php tests/finance_check.php
 require __DIR__ . '/../api/marketing_lib.php';
 require __DIR__ . '/../api/finance_lib.php';
+require __DIR__ . '/../api/annulation_lib.php';
 
 function ok($cond, $msg) { if (!$cond) { fwrite(STDERR, "ECHEC : $msg\n"); exit(1); } echo "ok  $msg\n"; }
 
@@ -44,4 +45,18 @@ $full = mk_score(['nb_places_restantes' => 0, 'quota_global' => 20] + $base, $no
 ok($full['organique'] < $s0['organique'] * 0.5, 'séjour complet fortement rétrogradé');
 $urgLoin = mk_score(['date_debut' => '2027-03-01'] + $base + ['boost_urgence_fin' => '2026-11-20 00:00:00'], $now);
 ok($urgLoin['boost_factor'] === 1.0, 'dernière minute sans effet si le départ est à plus de 45 jours');
+// Annulation par la famille : paliers 100 % / 50 % / 0 % (défaut 30 j / 15 j)
+ok(fin_remboursable_pct(45, 30, 15) === 100 && fin_remboursable_pct(30, 30, 15) === 100, 'à J-30 et plus : 100 %');
+ok(fin_remboursable_pct(29, 30, 15) === 50 && fin_remboursable_pct(15, 30, 15) === 50, 'de J-29 à J-15 : 50 %');
+ok(fin_remboursable_pct(14, 30, 15) === 0 && fin_remboursable_pct(0, 30, 15) === 0, 'moins de 15 jours : 0 %');
+// Remboursement = part remboursable - commission conservée : [remboursé, retenue, pct]. Paiement de 100 EUR, commission 2,80 EUR
+ok(fin_annul_montants(10000, 280, 40, 30, 15) === [9720, 280, 100], '100 % : 97,20 EUR rendus, 2,80 EUR de commission conservés');
+ok(fin_annul_montants(10000, 280, 20, 30, 15) === [4720, 280, 50], '50 % : 50 - 2,80 = 47,20 EUR');
+ok(fin_annul_montants(10000, 280, 5, 30, 15) === [0, 0, 0], '0 % : rien à rendre, rien à retenir');
+ok(fin_annul_montants(300, 280, 20, 30, 15) === [0, 150, 50], 'commission supérieure à la part remboursable : remboursement nul, jamais négatif');
+[$r, $k] = fin_annul_montants(2500, 93, 40, 30, 15);
+ok($r + $k === 2500 && $r === 2407, 'commande de 25 EUR (commission 0,93) : 24,07 EUR = le net de l\'organisme');
+// L'organisme n'est débité que du remboursé : son net restant = net - remboursé = ce qu'il garde selon ses conditions (brut - part remboursable)
+[$r] = fin_annul_montants(10000, 280, 20, 30, 15);
+ok((10000 - 280) - $r === 10000 - 5000, 'organisme : net 97,20 - remboursé 47,20 = 50,00 = 50 % du brut');
 echo "Tout est bon.\n";

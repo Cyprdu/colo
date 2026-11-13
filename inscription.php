@@ -75,6 +75,8 @@ try {
     $dejaInscritsNb = (int)$stmtFr->fetchColumn();
     $enfantsJson = json_encode($enfants);
     $tarifsJson = json_encode($tarifs);
+    require_once 'api/annulation_lib.php';
+    $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
 
 } catch (Exception $e) {
     die("Erreur : " . $e->getMessage());
@@ -239,6 +241,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
 
                 <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
                     <ul id="billing-lines" class="space-y-3 text-sm text-gray-700"></ul>
+                    <p class="mt-4 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3"><b>Conditions d'annulation.</b> <?= htmlspecialchars($annulTexte) ?></p>
                     <hr class="my-4 border-gray-300">
                     <div class="flex justify-between items-end">
                         <span class="text-gray-600 font-medium">Total à régler</span>

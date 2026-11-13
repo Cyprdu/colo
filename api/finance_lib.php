@@ -154,6 +154,19 @@ function fin_ensure(PDO $pdo): void {
         fin_add_col($pdo, 'fin_paiements', 'frais_maj', "DATETIME NULL");
         fin_add_col($pdo, 'organisateurs', 'tva_taux', "DECIMAL(4,1) NULL"); // taux de TVA des séjours de l'organisme (NULL = non applicable)
         fin_add_col($pdo, 'fin_paiements', 'tva_taux_pct', "DECIMAL(4,1) NULL"); // taux en vigueur à la vente (pour le reçu de la famille)
+        // Annulation par la famille : conditions du séjour (100 % jusqu'à N jours avant le début, 50 % jusqu'à M jours, ensuite rien),
+        // remboursement ciblé en attente (annul_attendu) et commission conservée (annul_com : la commission n'est pas rendue au prorata)
+        fin_add_col($pdo, 'fin_paiements', 'annul_attendu', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_paiements', 'annul_com', "TINYINT(1) NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'camps', 'annul_jours_total', "INT NOT NULL DEFAULT 30");
+        fin_add_col($pdo, 'camps', 'annul_jours_moitie', "INT NOT NULL DEFAULT 15");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS fin_annulations (
+            id INT AUTO_INCREMENT PRIMARY KEY, inscription_id INT NOT NULL, organisateur_id INT NOT NULL, parent_id INT NOT NULL,
+            motif VARCHAR(20) NOT NULL, commentaire VARCHAR(500) NULL, pct INT NOT NULL DEFAULT 0,
+            rembourse_cents INT NOT NULL DEFAULT 0, commission_retenue_cents INT NOT NULL DEFAULT 0, refund_id VARCHAR(64) NULL,
+            lu TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_ins (inscription_id), KEY idx_orga (organisateur_id, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         fin_add_col($pdo, 'stripe_comptes', 'statut', "VARCHAR(16) NULL"); // statut déclaré par l'organisme avant l'inscription Stripe
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
@@ -227,14 +240,29 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
     if ($capturedCents <= 0 || $refundedCents <= 0) return;
     $st = $pdo->prepare("SELECT * FROM fin_paiements WHERE payment_intent = ? FOR UPDATE");
     $st->execute([$paymentIntent]);
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $p) {
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    // Annulation par la famille (fin_annul_executer) : le remboursement revient à CETTE inscription (montant attendu), pas au prorata des frères et sœurs,
+    // et la commission ColoMap est conservée : seul le net de l'organisme est débité, du montant remboursé.
+    $reste = $refundedCents - (int)array_sum(array_column($rows, 'rembourse_cents'));
+    foreach ($rows as $p) {
         $brut = (int)$p['brut_cents'];
-        $newRef = $refundedCents >= $capturedCents ? $brut : (int)round($brut * $refundedCents / $capturedCents);
+        $att = (int)$p['annul_attendu'];
+        if ($att > 0) {
+            if ($reste < $att) continue; // le remboursement correspondant n'est pas encore notifié
+            $reste -= $att;
+            $newRef = min($brut, (int)$p['rembourse_cents'] + $att);
+            $newNetRef = min((int)$p['net_cents'], (int)$p['net_rembourse_cents'] + $att);
+            $pdo->prepare("UPDATE fin_paiements SET annul_attendu = 0, annul_com = 1 WHERE id = ?")->execute([$p['id']]);
+        } else {
+            if ((int)$p['annul_com'] === 1) continue; // inscription déjà annulée par la famille : le prorata ne la concerne plus
+            $newRef = $refundedCents >= $capturedCents ? $brut : (int)round($brut * $refundedCents / $capturedCents);
+            $newNetRef = null;
+        }
         $newRef = min($brut, max((int)$p['rembourse_cents'], $newRef));
         if ($newRef <= (int)$p['rembourse_cents']) continue;
-        $newNetRef = min((int)$p['net_cents'], (int)round((int)$p['net_cents'] * $newRef / $brut));
+        if ($newNetRef === null) $newNetRef = min((int)$p['net_cents'], (int)round((int)$p['net_cents'] * $newRef / $brut));
         $delta = $newNetRef - (int)$p['net_rembourse_cents'];
-        $full = $newRef >= $brut;
+        $full = $newRef >= $brut && (int)$p['annul_com'] === 0 && $att === 0;
         $statut = ($full && in_array($p['statut'], ['attente', 'bloque', 'litige'], true)) ? 'rembourse' : $p['statut'];
         $pdo->prepare("UPDATE fin_paiements SET rembourse_cents = ?, net_rembourse_cents = ?, statut = ? WHERE id = ?")->execute([$newRef, $newNetRef, $statut, $p['id']]);
         // Solde de l'organisme : même si le net a déjà été transféré, le solde devient négatif et sera compensé sur ses prochains séjours
@@ -309,7 +337,7 @@ function fin_backfill_fees(PDO $pdo, int $limit = 40): array {
 }
 /** Commission nette des remboursements (la commission est rendue au prorata d'un remboursement), expression SQL pour l'alias $a */
 function fin_sql_com_nette(string $a = 'p'): string {
-    return "($a.commission_cents - ROUND($a.commission_cents * $a.rembourse_cents / $a.brut_cents))";
+    return "($a.commission_cents - IF($a.annul_com = 1, 0, ROUND($a.commission_cents * $a.rembourse_cents / $a.brut_cents)))";
 }
 /** Marge nette ColoMap d'une ligne = commission conservée - frais Stripe - frais de litige (null si les frais ne sont pas connus) */
 function fin_sql_marge(string $a = 'p'): string {
@@ -606,7 +634,7 @@ function fin_overview(PDO $pdo, int $orgaId): array {
                           WHERE organisateur_id = ? AND statut = 'attente' GROUP BY DATE(date_deblocage) ORDER BY d ASC LIMIT 1");
     $st2->execute([$orgaId]);
     $prochain = $st2->fetch(PDO::FETCH_ASSOC) ?: null;
-    $st2 = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - ROUND(commission_cents * rembourse_cents / brut_cents)), 0) com, COALESCE(SUM(commission_fixe_cents), 0) fixe
+    $st2 = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - IF(annul_com = 1, 0, ROUND(commission_cents * rembourse_cents / brut_cents))), 0) com, COALESCE(SUM(commission_fixe_cents), 0) fixe
                           FROM fin_paiements WHERE organisateur_id = ?");
     $st2->execute([$orgaId]);
     $cd = $st2->fetch(PDO::FETCH_ASSOC);

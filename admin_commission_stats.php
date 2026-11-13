@@ -54,7 +54,7 @@ try {
     $totalCommission = $stmtTotal->fetchColumn() ?? 0.00;
     // + commissions du nouveau système (prélevées à chaque inscription payée, nettes des remboursements)
     fin_ensure($pdo);
-    $q = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - ROUND(commission_cents * rembourse_cents / brut_cents)), 0) / 100, COALESCE(SUM(brut_cents - rembourse_cents), 0) / 100, COUNT(*) FROM fin_paiements WHERE created_at >= ? AND created_at <= ?");
+    $q = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - IF(annul_com = 1, 0, ROUND(commission_cents * rembourse_cents / brut_cents))), 0) / 100, COALESCE(SUM(brut_cents - rembourse_cents), 0) / 100, COUNT(*) FROM fin_paiements WHERE created_at >= ? AND created_at <= ?");
     $q->execute([$date_min, $date_max]);
     [$newCom, $newBrut, $newCount] = $q->fetch(PDO::FETCH_NUM);
     $totalCommission = (float)$totalCommission + (float)$newCom;
@@ -101,7 +101,7 @@ try {
         
         $byMonth = [];
         foreach ($monthlyData as $row) $byMonth[$row['month_year']] = floatval($row['total_commission']);
-        $q = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') m, SUM(commission_cents - ROUND(commission_cents * rembourse_cents / brut_cents)) / 100 c FROM fin_paiements WHERE created_at >= ? AND created_at <= ? GROUP BY m");
+        $q = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') m, SUM(commission_cents - IF(annul_com = 1, 0, ROUND(commission_cents * rembourse_cents / brut_cents))) / 100 c FROM fin_paiements WHERE created_at >= ? AND created_at <= ? GROUP BY m");
         $q->execute([$date_min, $date_max]);
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) $byMonth[$row['m']] = ($byMonth[$row['m']] ?? 0) + floatval($row['c']);
         ksort($byMonth);

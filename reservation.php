@@ -156,6 +156,9 @@ require_once 'partials/header.php';
                     <?php endif; ?>
                     <?php if ($hasPaid): ?>
                         <a href="generate_pdf_certificat.php?r=<?= urlencode($token) ?>" target="_blank" rel="noopener" class="rv-btn rv-btn-light">Télécharger le reçu (PDF)</a>
+                        <?php if (!$ended): foreach ($live as $m): if ($m['statut_paiement'] === 'PAYE' && $m['mode_paiement'] === 'CARTE'): ?>
+                            <a href="annuler_inscription.php?r=<?= urlencode($m['reservation_token']) ?>" class="rv-btn rv-btn-light">Annuler l'inscription de <?= htmlspecialchars($m['enfant_prenom']) ?></a>
+                        <?php endif; endforeach; endif; ?>
                     <?php endif; ?>
                 </div>
                 <p class="mt-4 text-[12px] text-[#6b7780]">Une question sur cette réservation&nbsp;? Contactez l'organisateur ou écrivez-nous depuis la page <a href="contact" class="underline">Contact</a>.</p>

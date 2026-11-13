@@ -40,6 +40,9 @@ try {
             try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { error_log('dashboard sync: ' . $e->getMessage()); }
         }
         $fin = fin_overview($pdo, $orgaId);
+        $st = $pdo->prepare("SELECT COUNT(*) FROM fin_annulations WHERE organisateur_id = ? AND lu = 0");
+        $st->execute([$orgaId]);
+        $nbAnnul = (int)$st->fetchColumn();
         $st = $pdo->prepare("SELECT * FROM fin_transferts WHERE organisateur_id = ? ORDER BY created_at DESC LIMIT 20");
         $st->execute([$orgaId]);
         $transferts = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -85,6 +88,7 @@ require_once 'partials/mk_icons.php';
             <div style="min-width:0"><p class="ds-eyebrow">Tableau de bord</p><h1 class="ds-h1" style="overflow-wrap:anywhere"><?= htmlspecialchars($orga['nom']) ?></h1></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="ds-btn ds-btn-light" href="annulations_organisme.php?o=<?= fin_orga_tok($orgaId) ?>">Annulations<?= !empty($nbAnnul) ? ' (' . $nbAnnul . ')' : '' ?></a>
             <a class="ds-btn ds-btn-light" href="edit_organisateur.php?id=<?= $orgaId ?>">Modifier l'organisme</a>
             <a class="ds-btn" href="marketing.php?id=<?= $orgaId ?>"><?= mk_icon('star', 18) ?> Marketing</a>
         </div>
