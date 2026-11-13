@@ -2,7 +2,7 @@
 // api/anim_animateur.php : tout ce que fait un ANIMATEUR connecté.
 //   GET  ?a=profil                         son profil de candidature
 //   POST ?a=profil  (multipart)            enregistre le profil (+ CV pdf/doc/docx, 5 Mo max)
-//   GET  ?a=camp&t=<jeton séjour>          fiche d'un séjour qui recrute   | ?a=camp&l=<jeton lien>  séjour d'un lien privé
+//   GET  ?a=camp&t=<jeton séjour>          fiche d'un séjour qui recrute
 //   POST ?a=postuler {camp|lien, message}  candidature
 //   GET  ?a=mes                            ses candidatures + notifications
 //   POST ?a=retirer {c}                    retire une candidature (jeton)
@@ -75,11 +75,10 @@ try {
     }
 
     if ($a === 'camp' && !$post) {
-        $lien = (string)($_GET['l'] ?? ''); $tok = (string)($_GET['t'] ?? '');
+        $tok = (string)($_GET['t'] ?? '');
         $camp = null;
-        if ($lien !== '') { $r = anim_lien_valide($pdo, $lien); $camp = $r[1] ?? null; }
-        elseif (preg_match('/^[a-f0-9]{16,64}$/i', $tok)) {
-            $st = $pdo->prepare("SELECT * FROM camps WHERE token = ? AND recrute_animateurs = 1 AND anim_mode = 'recrute' AND valide = 1 AND supprime = 0 AND refuse = 0");
+        if (preg_match('/^[a-f0-9]{16,64}$/i', $tok)) {
+            $st = $pdo->prepare("SELECT * FROM camps WHERE token = ? AND recrute_animateurs = 1 AND valide = 1 AND supprime = 0 AND refuse = 0");
             $st->execute([$tok]); $camp = $st->fetch(PDO::FETCH_ASSOC) ?: null;
         }
         if (!$camp) anim_json(['error' => "Ce séjour ne recrute pas ou le lien n'est plus valide."], 404);
@@ -91,14 +90,10 @@ try {
 
     if ($a === 'postuler' && $post) {
         $in = anim_body();
-        $lienTok = (string)($in['lien'] ?? ''); $lienId = null;
-        if ($lienTok !== '') {
-            $r = anim_lien_valide($pdo, $lienTok);
-            if (!$r) anim_json(['error' => "Ce lien n'est plus valide."], 404);
-            [$lien, $camp] = $r; $lienId = (int)$lien['id'];
-        } else {
+        $lienId = null;
+        {
             $tok = (string)($in['camp'] ?? '');
-            $st = $pdo->prepare("SELECT * FROM camps WHERE token = ? AND recrute_animateurs = 1 AND anim_mode = 'recrute' AND valide = 1 AND supprime = 0 AND refuse = 0");
+            $st = $pdo->prepare("SELECT * FROM camps WHERE token = ? AND recrute_animateurs = 1 AND valide = 1 AND supprime = 0 AND refuse = 0");
             $st->execute([$tok]); $camp = $st->fetch(PDO::FETCH_ASSOC);
             if (!$camp) anim_json(['error' => 'Ce séjour ne recrute pas.'], 404);
         }

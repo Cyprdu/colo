@@ -1,12 +1,12 @@
 <?php
 // api/animateurs.php : bibliothèque de la gestion des animateurs (aucun point d'entrée HTTP).
 //
-// Deux modes par séjour, choisis par le directeur (colonne camps.anim_mode) :
-//   'recrute' : « Je recherche des animateurs » -> le séjour apparaît dans le catalogue réservé aux animateurs
-//               (camps.recrute_animateurs = 1, rémunération prévue dans camps.anim_remuneration, NULL = non rémunéré)
-//   'propres' : « Mes propres animateurs » -> pas dans le catalogue ; le directeur génère des liens d'inscription
-//               (table animateur_liens : jeton aléatoire, privé ou public, révocable)
-//   'aucun'   : par défaut.
+// Deux options INDÉPENDANTES par séjour, choisies par le directeur :
+//   (A) camps.recrute_animateurs = 1 : « Recruter des animateurs via ColoMap » -> le séjour apparaît dans le catalogue réservé
+//       aux animateurs, candidatures à valider, rémunération éventuelle (camps.anim_remuneration, NULL = non rémunéré)
+//   (B) camps.equipe_active = 1 : « Inscription de mon équipe d'animation » -> formulaire réservé à SES animateurs (api/equipe.php),
+//       accessible par lien (table animateur_liens : jeton aléatoire, privé ou public, révocable), jamais listé dans le catalogue.
+// (camps.anim_mode : ancienne colonne, plus utilisée.)
 // Tables/colonnes créées automatiquement au premier usage (idempotent), comme api/champs.php.
 // Aucun identifiant numérique n'est exposé : séjours = camps.token, candidatures = candidatures.token, liens = jeton.
 
@@ -19,6 +19,10 @@ function anim_ensure(PDO $pdo): void {
     try {
         $cols = $pdo->query("SHOW COLUMNS FROM camps")->fetchAll(PDO::FETCH_COLUMN);
         if (!in_array('anim_mode', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN anim_mode VARCHAR(10) NOT NULL DEFAULT 'aucun'");
+        if (!in_array('equipe_active', $cols, true)) {
+            $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_active TINYINT(1) NOT NULL DEFAULT 0");
+            $pdo->exec("UPDATE camps SET equipe_active = 1 WHERE anim_mode = 'propres'"); // reprise des séjours déjà en mode « propres »
+        }
         if (!in_array('recrute_animateurs', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN recrute_animateurs TINYINT(1) NOT NULL DEFAULT 0");
         if (!in_array('anim_remuneration', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN anim_remuneration DECIMAL(8,2) NULL");
 
@@ -95,6 +99,8 @@ function anim_require_directeur(): int {
 }
 
 function anim_body(): array {
+    // Les requêtes d'écriture viennent de fetch() en JSON : un formulaire d'un autre site ne peut pas envoyer ce type de contenu (protection CSRF)
+    if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) anim_json(['error' => 'Requête invalide.'], 400);
     $in = json_decode(file_get_contents('php://input'), true);
     return is_array($in) ? $in : [];
 }
@@ -139,7 +145,7 @@ function anim_txt($v, int $max): string {
     return mb_substr(trim(strip_tags((string)$v)), 0, $max);
 }
 
-/** Lien utilisable ? Renvoie [lien, séjour] ou null (inconnu, révoqué, expiré, quota atteint, séjour plus en mode « propres »). */
+/** Lien utilisable ? Renvoie [lien, séjour] ou null (inconnu, révoqué, expiré, quota atteint, inscription d'équipe désactivée sur le séjour). */
 function anim_lien_valide(PDO $pdo, string $token): ?array {
     if (!preg_match('/^[a-f0-9]{40}$/', $token)) return null;
     $st = $pdo->prepare("SELECT l.*, (SELECT COUNT(*) FROM candidatures WHERE lien_id = l.id) AS used FROM animateur_liens l WHERE l.token = ?");
@@ -151,5 +157,5 @@ function anim_lien_valide(PDO $pdo, string $token): ?array {
     $c = $pdo->prepare("SELECT * FROM camps WHERE id = ? AND supprime = 0");
     $c->execute([$l['camp_id']]);
     $camp = $c->fetch(PDO::FETCH_ASSOC);
-    return ($camp && $camp['anim_mode'] === 'propres') ? [$l, $camp] : null;
+    return ($camp && !empty($camp['equipe_active'])) ? [$l, $camp] : null;
 }

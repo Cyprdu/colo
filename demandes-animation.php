@@ -1,6 +1,6 @@
 <?php
 // demandes-animation.php : tableau de bord directeur de la gestion des animateurs.
-// Par séjour : choix du mode (je recrute / mes propres animateurs), candidatures + dossier complet, équipe, liens d'inscription.
+// Par séjour : (A) recrutement via ColoMap (candidatures + dossier complet) et/ou (B) inscription de l'équipe d'animation (liste, export, liens), réglages.
 // Point d'accroche pour edit_camp.php : un lien vers  demandes-animation.php?camp=<jeton du séjour>  (le séjour s'ouvre directement).
 $body_class = 'bg-white';
 require_once 'partials/header.php';
@@ -10,13 +10,15 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
 <main class="ds-page">
     <a href="organisateurs" class="text-[14px] font-semibold text-[#6b7780] hover:text-[#26343b]">&larr; Espace organisateur</a>
     <h1 class="ds-h1 mt-3">Gestion des animateurs</h1>
-    <p class="ds-lead">Pour chaque séjour, recrutez via ColoMap ou invitez vos propres animateurs.</p>
+    <p class="ds-lead">Pour chaque séjour, recrutez via ColoMap et/ou ouvrez l'inscription de votre propre équipe d'animation.</p>
 
     <div class="mt-8 grid gap-6 lg:grid-cols-[300px_1fr] items-start">
         <aside><div id="sejours" class="space-y-2" role="list"></div></aside>
         <section id="detail" class="min-w-0"><div class="ds-card p-10 text-center text-[#6b7780]">Chargement…</div></section>
     </div>
 </main>
+
+<div id="am-holder" class="hidden"><?php $animLegacy = false; $camp = null; include 'partials/anim_modes.php'; ?></div>
 
 <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(38,52,59,.5)" role="dialog" aria-modal="true" aria-label="Dossier de l'animateur">
     <div class="ds-card w-full overflow-y-auto" style="max-width:640px;max-height:90vh"><div id="modal-body" class="p-6 sm:p-8"></div></div>
@@ -27,7 +29,6 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
 (function () {
     var A = window.ANIM, E = A.esc, $ = function (i) { return document.getElementById(i); };
     var API = 'api/anim_directeur.php', sejours = [], cur = null, tab = 'candidatures';
-    var MODES = { recrute: 'Je recherche des animateurs', propres: 'Mes propres animateurs', aucun: 'Non défini' };
 
     function side() {
         $('sejours').innerHTML = sejours.length ? sejours.map(function (s) {
@@ -35,7 +36,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
             return '<button role="listitem" type="button" data-t="' + E(s.token) + '" class="ds-tile w-full text-left" style="padding:14px;display:block;' + (on ? 'border-color:#26343b' : '') + '">' +
                 '<span class="block font-extrabold text-[15px] text-[#26343b]">' + E(s.nom) + '</span>' +
                 '<span class="block text-[12px] text-[#6b7780] mt-1">' + E(A.range(s.date_debut, s.date_fin)) + '</span>' +
-                '<span class="flex flex-wrap gap-2 mt-2"><span class="ds-badge">' + E(MODES[s.anim_mode] || 'Non défini') + '</span>' +
+                '<span class="flex flex-wrap gap-2 mt-2">' + (Number(s.recrute_animateurs) ? '<span class="ds-badge">Recrute via ColoMap</span>' : '') + (Number(s.equipe_active) ? '<span class="ds-badge">Équipe : ' + s.equipe_inscrits + ' inscrit(s)</span>' : '') + (!Number(s.recrute_animateurs) && !Number(s.equipe_active) ? '<span class="ds-badge">Non défini</span>' : '') +
                 (s.en_attente ? '<span class="ds-badge" style="background:#26343b;color:#fff">' + s.en_attente + ' à traiter</span>' : '') + '</span></button>';
         }).join('') : '<div class="ds-card p-5 text-[14px] text-[#6b7780]">Aucun séjour pour le moment.</div>';
         [].forEach.call($('sejours').querySelectorAll('button'), function (b) { b.addEventListener('click', function () { open(b.dataset.t); }); });
@@ -55,10 +56,11 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
 
     function render() {
         if (!cur) return;
-        var tabs = [['candidatures', 'Candidatures' + (cur.en_attente ? ' (' + cur.en_attente + ')' : '')], ['equipe', 'Équipe (' + cur.acceptes + ')']];
-        if (cur.anim_mode === 'propres') tabs.push(['liens', 'Liens d’inscription']);
-        tabs.push(['mode', 'Mode de recrutement']);
+        var tabs = [['candidatures', 'Candidatures' + (cur.en_attente ? ' (' + cur.en_attente + ')' : '')], ['equipe', 'Équipe (' + (cur.acceptes + cur.equipe_inscrits) + ')']];
+        if (Number(cur.equipe_active)) tabs.push(['liens', 'Liens d\u2019inscription']);
+        tabs.push(['mode', 'Réglages']);
         if (!tabs.some(function (x) { return x[0] === tab; })) tab = 'candidatures';
+        if ($('am-root') && !$('am-holder').contains($('am-root'))) $('am-holder').appendChild($('am-root'));
         $('detail').innerHTML = '<div class="ds-card p-5 sm:p-6"><h2 class="font-extrabold text-[20px] text-[#26343b]">' + E(cur.nom) + '</h2>' +
             '<p class="text-[13px] text-[#6b7780]">' + E(cur.ville || '') + ' · ' + E(A.range(cur.date_debut, cur.date_fin)) + '</p>' +
             '<div class="mt-4 flex flex-wrap gap-2" role="tablist">' + tabs.map(function (x) {
@@ -74,8 +76,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
         try {
             var rows = await A.api(API + '?a=candidatures&camp=' + encodeURIComponent(cur.token));
             if (!rows.length) {
-                pane.innerHTML = '<p class="text-[#6b7780]">' + (cur.anim_mode === 'recrute' ? 'Aucune candidature pour le moment. Votre séjour est visible des animateurs.' :
-                    cur.anim_mode === 'propres' ? 'Aucune candidature. Partagez un lien d’inscription avec vos animateurs.' : 'Choisissez un mode de recrutement pour recevoir des candidatures.') + '</p>'; return;
+                pane.innerHTML = '<p class="text-[#6b7780]">' + (Number(cur.recrute_animateurs) ? 'Aucune candidature pour le moment. Votre séjour est visible des animateurs.' : 'Les candidatures arrivent ici si vous activez « Recruter des animateurs via ColoMap » dans les réglages. L\u2019équipe inscrite par lien se trouve dans l\u2019onglet Équipe.') + '</p>'; return;
             }
             pane.innerHTML = '<div class="space-y-3">' + rows.map(function (r) {
                 return '<div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e7eb] p-4"><div><p class="font-extrabold text-[#26343b]">' + E(r.prenom + ' ' + r.nom) + '</p>' +
@@ -113,16 +114,27 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
     $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeM(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeM(); });
 
-    /* ---- Équipe ---- */
+    /* ---- Équipe : animateurs recrutés via ColoMap + équipe inscrite par lien ---- */
     async function paneEquipe() {
         var pane = $('pane');
         try {
             var d = await A.api(API + '?a=equipe&camp=' + encodeURIComponent(cur.token));
-            pane.innerHTML = '<p class="text-[14px] text-[#6b7780] mb-3">' + d.animateurs.length + (d.quota ? ' / ' + d.quota : '') + ' animateur(s) confirmé(s)</p>' +
-                (d.animateurs.length ? '<div class="space-y-2">' + d.animateurs.map(function (x) {
+            var pay = function (x) { return x.statut_paiement === 'PAYE' ? 'Payé' : x.statut_paiement === 'GRATUIT' ? 'Gratuit' : 'Paiement en attente'; };
+            var html = '';
+            if (d.equipe_active) {
+                html += '<div class="flex flex-wrap items-center justify-between gap-3 mb-3"><h3 class="font-extrabold text-[#26343b]">Équipe d’animation inscrite (' + d.inscrits.length + (d.equipe_quota ? ' / ' + d.equipe_quota : '') + ')</h3>' +
+                    '<a class="ds-btn ds-btn-light" style="padding:8px 14px" href="' + API + '?a=equipe_export&camp=' + encodeURIComponent(cur.token) + '">Exporter (CSV)</a></div>' +
+                    (d.inscrits.length ? '<div class="space-y-2">' + d.inscrits.map(function (x) {
+                        return '<div class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#e5e7eb] p-4"><div><p class="font-bold text-[#26343b]">' + E(x.prenom + ' ' + x.nom) + '</p><p class="text-[12px] text-[#6b7780]">' + E(A.BAFA[x.bafa_statut] || '') + (x.tarif_nom ? ' · ' + E(x.tarif_nom) : '') + ' · ' + pay(x) + (Number(x.prix_final) > 0 ? ' (' + A.money(x.prix_final) + ')' : '') + '</p></div>' +
+                            '<div class="text-[13px] text-[#3b4a54] text-right"><a class="underline" href="mailto:' + E(x.email) + '">' + E(x.email) + '</a><br>' + E(x.tel || '') + '</div></div>';
+                    }).join('') + '</div>' : '<p class="text-[#6b7780]">Personne ne s’est encore inscrit. Créez un lien dans l’onglet « Liens d’inscription ».</p>');
+            }
+            html += '<h3 class="font-extrabold text-[#26343b] mt-6 mb-3">Animateurs recrutés via ColoMap (' + d.recrutes.length + (d.quota ? ' / ' + d.quota : '') + ')</h3>' +
+                (d.recrutes.length ? '<div class="space-y-2">' + d.recrutes.map(function (x) {
                     return '<div class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#e5e7eb] p-4"><div><p class="font-bold text-[#26343b]">' + E(x.prenom + ' ' + x.nom) + '</p><p class="text-[12px] text-[#6b7780]">' + E(A.BAFA[x.bafa_statut || 'aucun']) + '</p></div>' +
                         '<div class="text-[13px] text-[#3b4a54] text-right"><a class="underline" href="mailto:' + E(x.email) + '">' + E(x.email) + '</a><br>' + E(x.tel || '') + '</div></div>';
                 }).join('') + '</div>' : '<p class="text-[#6b7780]">Personne n’a encore été accepté.</p>');
+            pane.innerHTML = html;
         } catch (e) { pane.innerHTML = '<div class="ds-alert-err">' + E(e.message) + '</div>'; }
     }
 
@@ -131,7 +143,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
         var pane = $('pane');
         try {
             var ls = await A.api(API + '?a=liens&camp=' + encodeURIComponent(cur.token));
-            var url = function (t) { return location.origin + location.pathname.replace(/[^\/]*$/, '') + 'info-camp-animateur?l=' + t; };
+            var url = function (t) { return location.origin + location.pathname.replace(/[^\/]*$/, '') + 'equipe-inscription?l=' + t; };
             pane.innerHTML = '<form id="lf" class="grid gap-3 sm:grid-cols-[1fr_130px_120px_auto] items-end rounded-2xl p-4" style="background:#f1f3f5">' +
                 '<div><label class="ds-label" for="ll">Libellé</label><input id="ll" class="ds-input" maxlength="120" placeholder="Ex. Équipe été"></div>' +
                 '<div><label class="ds-label" for="lt">Type</label><select id="lt" class="ds-select"><option value="prive">Privé</option><option value="public">Public</option></select></div>' +
@@ -158,24 +170,19 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
         } catch (e) { pane.innerHTML = '<div class="ds-alert-err">' + E(e.message) + '</div>'; }
     }
 
-    /* ---- Mode ---- */
-    function paneMode() {
-        var m = cur.anim_mode, opt = function (v, t, d) {
-            return '<label class="block rounded-2xl border-2 p-4 cursor-pointer" style="border-color:' + (m === v ? '#26343b' : '#e5e7eb') + '"><span class="flex items-center gap-3"><input type="radio" name="mode" value="' + v + '" ' + (m === v ? 'checked' : '') + ' style="accent-color:#26343b"><span class="font-extrabold text-[#26343b]">' + t + '</span></span><span class="block mt-1 ml-7 text-[13px] text-[#6b7780]">' + d + '</span></label>';
-        };
-        $('pane').innerHTML = '<form id="mf" class="space-y-3">' +
-            opt('recrute', 'Je recherche des animateurs', 'Le séjour apparaît dans le catalogue réservé aux animateurs inscrits (avec ou sans BAFA), qui peuvent postuler.') +
-            '<div id="rem" class="ml-7 ' + (m === 'recrute' ? '' : 'hidden') + '"><label class="ds-label" for="rm">Rémunération prévue par animateur (€, laisser vide si non rémunéré)</label><input id="rm" type="number" min="0" step="0.01" class="ds-input" style="max-width:220px" value="' + (cur.anim_remuneration != null ? E(cur.anim_remuneration) : '') + '"></div>' +
-            opt('propres', 'Mes propres animateurs', 'Le séjour n’est pas dans le catalogue. Vous générez des liens d’inscription privés ou publics, révocables.') +
-            opt('aucun', 'Aucun', 'Pas de gestion des animateurs pour ce séjour.') +
-            '<button class="ds-btn mt-2" type="submit">Enregistrer</button></form>';
-        [].forEach.call($('mf').querySelectorAll('[name=mode]'), function (r) { r.addEventListener('change', function () { $('rem').classList.toggle('hidden', r.value !== 'recrute' || !r.checked); }); });
-        $('mf').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            var v = $('mf').querySelector('[name=mode]:checked').value;
-            try { await A.api(API + '?a=mode', { json: { camp: cur.token, mode: v, remuneration: v === 'recrute' ? $('rm').value : null } }); A.toast('Mode enregistré'); await refreshList(); tab = v === 'propres' ? 'liens' : 'candidatures'; render(); }
-            catch (er) { A.toast(er.message, true); }
-        });
+    /* ---- Réglages : blocs A et B (partials/anim_modes.php) ---- */
+    async function paneMode() {
+        var pane = $('pane');
+        try {
+            var cfg = await A.api(API + '?a=config&camp=' + encodeURIComponent(cur.token));
+            var root = $('am-root'); $('am-recrute').checked = false;
+            pane.innerHTML = '<div id="am-slot"></div><div class="mt-5"><button class="ds-btn" id="am-save" type="button">Enregistrer</button></div>';
+            $('am-slot').appendChild(root); AnimModes.load(cfg);
+            $('am-save').addEventListener('click', async function () {
+                try { await AnimModes.save(cur.token); A.toast('Réglages enregistrés'); await refreshList(); if (!Number(cur.equipe_active) && tab === 'liens') tab = 'mode'; render(); }
+                catch (er) { A.toast(er.message, true); }
+            });
+        } catch (e) { pane.innerHTML = '<div class="ds-alert-err">' + E(e.message) + '</div>'; }
     }
     init();
 })();

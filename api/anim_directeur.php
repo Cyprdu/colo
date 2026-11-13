@@ -2,18 +2,21 @@
 // api/anim_directeur.php : tout ce que fait un DIRECTEUR pour ses animateurs. Chaque action vérifie que le séjour / la candidature
 // appartient à un organisateur du directeur connecté. Aucun identifiant numérique en entrée ni en sortie (jetons uniquement).
 //   GET  ?a=sejours                          ses séjours + mode + compteurs
-//   POST ?a=mode {camp, mode, remuneration}  mode : recrute | propres | aucun
+//   GET  ?a=config&camp=<jeton>              réglages (A) recrutement ColoMap et (B) inscription de l'équipe
+//   POST ?a=config {camp, recrute, remuneration, equipe:{active, age_min, quota, tarifs[], champs[]}}
 //   GET  ?a=candidatures&camp=<jeton>        candidatures (camp facultatif = tous)
 //   GET  ?a=dossier&c=<jeton candidature>    dossier complet de l'animateur
 //   POST ?a=decider {c, statut, note}        Accepté | Refusé | Liste d'attente | En attente
 //   GET  ?a=liens&camp=<jeton>               liens d'inscription
 //   POST ?a=lien_creer {camp, type, libelle, max_uses, expire}   POST ?a=lien_revoquer {l}
-//   GET  ?a=equipe&camp=<jeton>              animateurs acceptés
+//   GET  ?a=equipe&camp=<jeton>              équipe : animateurs recrutés (acceptés) + inscrits via lien
+//   GET  ?a=equipe_export&camp=<jeton>       export CSV de l'équipe d'animation inscrite
 require_once 'config.php';
 require_once 'animateurs.php';
+require_once 'equipe.php';
 
 $uid = anim_require_directeur();
-anim_ensure($pdo);
+anim_ensure($pdo); equipe_ensure($pdo);
 $a = $_GET['a'] ?? '';
 $post = $_SERVER['REQUEST_METHOD'] === 'POST';
 
@@ -25,7 +28,8 @@ function anim_mon_camp(PDO $pdo, string $tok, int $uid): array {
 
 try {
     if ($a === 'sejours' && !$post) {
-        $st = $pdo->prepare("SELECT c.token, c.nom, c.ville, c.date_debut, c.date_fin, c.anim_mode, c.anim_remuneration, c.quota_max_anim,
+        $st = $pdo->prepare("SELECT c.token, c.nom, c.ville, c.date_debut, c.date_fin, c.recrute_animateurs, c.equipe_active, c.anim_remuneration, c.quota_max_anim, c.equipe_quota,
+                (SELECT COUNT(*) FROM equipe_inscriptions WHERE camp_id = c.id AND statut <> 'Annulé' AND (statut_paiement <> 'EN_ATTENTE' OR created_at > (NOW() - INTERVAL 30 MINUTE))) AS equipe_inscrits,
                 (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id) AS total,
                 (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id AND statut = 'En attente') AS en_attente,
                 (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id AND statut = 'Accepté') AS acceptes
@@ -33,22 +37,20 @@ try {
             WHERE o.user_id = ? AND c.supprime = 0 AND c.refuse = 0 ORDER BY c.date_debut DESC");
         $st->execute([$uid]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($rows as &$r) { $r['nom'] = htmlspecialchars_decode((string)$r['nom']); $r['total'] = (int)$r['total']; $r['en_attente'] = (int)$r['en_attente']; $r['acceptes'] = (int)$r['acceptes']; }
+        foreach ($rows as &$r) { $r['nom'] = htmlspecialchars_decode((string)$r['nom']); $r['total'] = (int)$r['total']; $r['en_attente'] = (int)$r['en_attente']; $r['acceptes'] = (int)$r['acceptes']; $r['recrute_animateurs'] = (int)$r['recrute_animateurs']; $r['equipe_active'] = (int)$r['equipe_active']; $r['equipe_inscrits'] = (int)$r['equipe_inscrits']; }
         anim_json($rows);
     }
 
-    if ($a === 'mode' && $post) {
+    if ($a === 'config' && !$post) {
+        $camp = anim_mon_camp($pdo, (string)($_GET['camp'] ?? ''), $uid);
+        anim_json(['recrute' => !empty($camp['recrute_animateurs']), 'remuneration' => $camp['anim_remuneration'] !== null ? (float)$camp['anim_remuneration'] : null, 'equipe' => equipe_config($pdo, $camp)]);
+    }
+
+    if ($a === 'config' && $post) {
         $in = anim_body();
         $camp = anim_mon_camp($pdo, (string)($in['camp'] ?? ''), $uid);
-        $mode = $in['mode'] ?? '';
-        if (!in_array($mode, ['recrute', 'propres', 'aucun'], true)) anim_json(['error' => 'Mode invalide.'], 400);
-        $rem = null;
-        if ($mode === 'recrute' && isset($in['remuneration']) && $in['remuneration'] !== '' && $in['remuneration'] !== null) {
-            if (!is_numeric($in['remuneration']) || (float)$in['remuneration'] < 0 || (float)$in['remuneration'] > 100000) anim_json(['error' => 'Rémunération invalide.'], 400);
-            $rem = round((float)$in['remuneration'], 2);
-        }
-        $pdo->prepare("UPDATE camps SET anim_mode = ?, recrute_animateurs = ?, anim_remuneration = ? WHERE id = ?")
-            ->execute([$mode, $mode === 'recrute' ? 1 : 0, $rem, $camp['id']]);
+        $err = equipe_enregistrer($pdo, $camp, $in);
+        if ($err) anim_json(['error' => $err], 400);
         anim_json(['success' => true]);
     }
 
@@ -118,7 +120,7 @@ try {
     if ($a === 'lien_creer' && $post) {
         $in = anim_body();
         $camp = anim_mon_camp($pdo, (string)($in['camp'] ?? ''), $uid);
-        if ($camp['anim_mode'] !== 'propres') anim_json(['error' => "Choisissez d'abord le mode « Mes propres animateurs »."], 409);
+        if (empty($camp['equipe_active'])) anim_json(['error' => "Activez d'abord « Inscription de mon équipe d'animation » pour ce séjour."], 409);
         $type = ($in['type'] ?? 'prive') === 'public' ? 'public' : 'prive';
         $max = isset($in['max_uses']) && is_numeric($in['max_uses']) && (int)$in['max_uses'] > 0 ? min((int)$in['max_uses'], 1000) : null;
         $exp = null;
@@ -140,7 +142,37 @@ try {
         $st = $pdo->prepare("SELECT cd.token, u.prenom, u.nom, u.email, u.tel, p.bafa_statut FROM candidatures cd JOIN users u ON u.id = cd.user_id
             LEFT JOIN animateur_profils p ON p.user_id = cd.user_id WHERE cd.camp_id = ? AND cd.statut = 'Accepté' ORDER BY u.prenom");
         $st->execute([$camp['id']]);
-        anim_json(['quota' => (int)$camp['quota_max_anim'] ?: null, 'animateurs' => $st->fetchAll(PDO::FETCH_ASSOC)]);
+        $ins = $pdo->prepare("SELECT token, prenom, nom, email, tel, bafa_statut, date_naissance, tarif_nom, prix_final, statut, statut_paiement, created_at FROM equipe_inscriptions
+            WHERE camp_id = ? AND statut <> 'Annulé' AND (statut_paiement <> 'EN_ATTENTE' OR created_at > (NOW() - INTERVAL 30 MINUTE)) ORDER BY created_at");
+        $ins->execute([$camp['id']]);
+        anim_json(['quota' => (int)$camp['quota_max_anim'] ?: null, 'recrutes' => $st->fetchAll(PDO::FETCH_ASSOC),
+                   'equipe_active' => !empty($camp['equipe_active']), 'equipe_quota' => (int)$camp['equipe_quota'] ?: null, 'inscrits' => $ins->fetchAll(PDO::FETCH_ASSOC)]);
+    }
+
+    if ($a === 'equipe_export' && !$post) {
+        $camp = anim_mon_camp($pdo, (string)($_GET['camp'] ?? ''), $uid);
+        $champs = equipe_champs($pdo, (int)$camp['id']);
+        $st = $pdo->prepare("SELECT * FROM equipe_inscriptions WHERE camp_id = ? AND statut <> 'Annulé' ORDER BY nom, prenom");
+        $st->execute([$camp['id']]);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        $rep = $pdo->prepare("SELECT champ_id, libelle, valeur FROM equipe_reponses WHERE equipe_id = ?");
+        $cell = function ($v) { $v = (string)$v; return preg_match('/^[=+\-@	]/', $v) ? "'" . $v : $v; }; // anti-injection de formule tableur
+        $head = ['Prénom', 'Nom', 'Date de naissance', 'E-mail', 'Téléphone', 'Diplôme (statut)', 'Diplôme / formation', 'Allergies', 'Régime', 'Urgence (nom)', 'Urgence (tél.)', 'Participation', 'Montant', 'Paiement', 'Inscrit le'];
+        foreach ($champs as $c) $head[] = $c['libelle'];
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="equipe-animation-' . preg_replace('/[^a-z0-9]+/i', '-', strtolower(htmlspecialchars_decode((string)$camp['nom']))) . '.csv"');
+        header('Cache-Control: private, no-store');
+        $out = fopen('php://output', 'w'); fwrite($out, "ï»¿");
+        fputcsv($out, $head, ';');
+        foreach ($rows as $r) {
+            $rep->execute([$r['id']]); $byChamp = [];
+            foreach ($rep->fetchAll(PDO::FETCH_ASSOC) as $x) $byChamp[(int)$x['champ_id']] = $x['valeur'];
+            $line = [$r['prenom'], $r['nom'], $r['date_naissance'], $r['email'], $r['tel'], $r['bafa_statut'], $r['diplome'], $r['allergies'], $r['regime'], $r['urgence_nom'], $r['urgence_tel'],
+                     $r['tarif_nom'], number_format((float)$r['prix_final'], 2, ',', ''), $r['statut_paiement'], $r['created_at']];
+            foreach ($champs as $c) $line[] = $byChamp[$c['id']] ?? '';
+            fputcsv($out, array_map($cell, $line), ';');
+        }
+        fclose($out); exit;
     }
 
     anim_json(['error' => 'Action inconnue.'], 400);

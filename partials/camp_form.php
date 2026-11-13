@@ -194,24 +194,8 @@ $tick = $svg('check', 'w-3 h-3');
                 <button type="button" class="ds-btn ds-btn-light mt-4" onclick="Champs.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une question</button>
             </section>
 
-            <?= $sec('s-anim', 'whistle', 'Recrutement des animateurs', "Recrutez l'équipe d'animation via ColoMap.") ?>
-                <div class="ds-row">
-                    <div><p class="ds-opt-title">Recruter les animateurs via ColoMap</p><p class="ds-opt-sub">Les animateurs peuvent candidater depuis la page du séjour.</p></div>
-                    <label class="ds-switch"><input type="checkbox" name="gestion_animateur" id="toggleAnim" <?= $chk('gestion_animateur') ?> aria-label="Recruter les animateurs via ColoMap"><span></span></label>
-                </div>
-                <div id="animBlock" class="mt-4 space-y-4 <?= $chk('gestion_animateur') ? '' : 'hidden' ?>">
-                    <div class="grid grid-cols-3 gap-4">
-                        <div><label class="ds-label" for="a-tot">Total</label><input id="a-tot" type="number" min="0" name="quota_max_anim" class="ds-input" value="<?= $val('quota_max_anim') ?>"></div>
-                        <div><label class="ds-label" for="a-f">Dont femmes</label><input id="a-f" type="number" min="0" name="quota_anim_fille" class="ds-input" value="<?= $val('quota_anim_fille') ?>"></div>
-                        <div><label class="ds-label" for="a-g">Dont hommes</label><input id="a-g" type="number" min="0" name="quota_anim_garcon" class="ds-input" value="<?= $val('quota_anim_garcon') ?>"></div>
-                    </div>
-                    <div class="grid sm:grid-cols-2 gap-3">
-                        <?php foreach (['anim_plus_18' => 'Majeurs uniquement', 'bafa_obligatoire' => 'BAFA obligatoire', 'remuneration_anim' => 'Animateurs rémunérés', 'anim_doit_payer' => "L'animateur paie une participation"] as $k => $t): ?>
-                            <label class="ds-opt items-center"><input type="checkbox" name="<?= $k ?>" <?= $chk($k) ?>><span class="ds-tick"><?= $tick ?></span><span class="ds-opt-title"><?= $t ?></span></label>
-                        <?php endforeach; ?>
-                    </div>
-                    <div class="max-w-xs"><label class="ds-label" for="a-prix">Participation de l'animateur (€)</label><input id="a-prix" type="number" min="0" step="0.01" name="prix_anim" class="ds-input" value="<?= $val('prix_anim') ?>"></div>
-                </div>
+            <?= $sec('s-anim', 'whistle', "Animateurs de l'équipe", "Deux options distinctes : recruter des animateurs via ColoMap, ou inscrire votre propre équipe d'animation. Vous pouvez activer l'une, l'autre, ou les deux.") ?>
+                <?php $animLegacy = true; include __DIR__ . '/anim_modes.php'; /* point d'accroche animateurs : voir partials/anim_modes.php */ ?>
             </section>
 
             <?= $sec('s-infos', 'info', 'Infos pratiques', "Facultatif : rassure les familles, affiché sur la page du séjour.") ?>
@@ -376,7 +360,6 @@ function refreshToggles() {
     $('blockExternal').classList.toggle('hidden', on);
     $('blockInternal').classList.toggle('hidden', !on);
     $('tosBox').classList.toggle('hidden', !on || IS_EDIT);
-    $('animBlock').classList.toggle('hidden', !$('toggleAnim').checked);
     $('quotaBlock').classList.toggle('hidden', !$('quotaToggle').checked);
     $('attenteJours').classList.toggle('opacity-40', !$('attenteToggle').checked);
     // séjour réservé à un sexe : pas de quota filles / garçons
@@ -384,7 +367,7 @@ function refreshToggles() {
     $('quotaWrap').classList.toggle('hidden', reserve !== '');
     if (reserve !== '') $('quotaToggle').checked = false;
 }
-['toggleOnline', 'toggleAnim', 'quotaToggle', 'attenteToggle'].forEach(i => $(i).addEventListener('change', refreshToggles));
+['toggleOnline', 'quotaToggle', 'attenteToggle'].forEach(i => $(i).addEventListener('change', refreshToggles));
 document.querySelectorAll('input[name=reserve_sexe]').forEach(r => r.addEventListener('change', refreshToggles));
 refreshToggles();
 
@@ -565,6 +548,8 @@ $('campForm').addEventListener('submit', async e => {
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
         const cid = IS_EDIT ? CAMP_ID : d.camp_id;
+        // Réglages animateurs (A : recrutement ColoMap, B : inscription de l'équipe) : enregistrés une fois le séjour créé
+        if (window.AnimModes) { try { await AnimModes.save(IS_EDIT ? form.querySelector('[name=token]').value : d.token); } catch (animErr) { alert(animErr.message + ' Vous pouvez les régler dans « Gestion des animateurs ».'); } }
         const questions = CHAMPS.filter(c => c.libelle.trim() !== '');
         if (cid && (questions.length || IS_EDIT)) await api('api/save_champs.php', { camp_id: cid, champs: questions });
         location.href = 'mes_camps.php?ok=' + (IS_EDIT ? 'updated' : 'created');
