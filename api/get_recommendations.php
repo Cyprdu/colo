@@ -9,6 +9,7 @@
 //   âge de ses enfants, favoris, réservations passées, région de ses enfants.
 
 require_once 'config.php';
+require_once 'sessions.php';
 
 function normalizeMedia($path, $defaultDir = '') {
     $path = trim((string)$path);
@@ -75,7 +76,8 @@ try {
     // ------------------------------------------------------------------
     // 2. Camps candidats : visibles, à venir (une seule requête)
     // ------------------------------------------------------------------
-    $sql = "SELECT c.id, c.token, c.nom, c.prix, c.ville, c.code_postal, c.image_url,
+    $groupCol = campsHaveGroupColumn($pdo) ? 'c.groupe_id' : 'NULL';
+    $sql = "SELECT c.id, $groupCol AS groupe_id, c.token, c.nom, c.prix, c.ville, c.code_postal, c.image_url,
                    c.date_debut, c.date_fin, c.age_min, c.age_max, c.organisateur_id,
                    c.theme, c.type, c.date_creation,
                    c.boost_points, c.boost_vedette_fin, c.boost_urgence_fin,
@@ -152,13 +154,15 @@ try {
                 'organisateur_nom' => $c['organisateur_nom'],
                 'organisateur_logo'=> normalizeMedia($c['organisateur_logo']),
                 'badge'            => $badge,
+                'sessions_count'   => (int)($c['sessions_count'] ?? 1),
             ];
         }
         return $out;
     };
 
     $sections = [];
-    $add = function ($id, $title, $subtitle, $more, $list, $badge = null) use (&$sections, $format) {
+    $add = function ($id, $title, $subtitle, $more, $list, $badge = null) use (&$sections, $format, $pool) {
+        $list = collapseSessions($list, $pool); // une seule carte par camp (ses sessions sont comptées)
         if (count($list) < 3 && $id !== 'prochains') return; // une section presque vide fait pauvre : on la masque
         $sections[] = ['id' => $id, 'title' => $title, 'subtitle' => $subtitle, 'more' => $more, 'camps' => $format($list, $badge)];
     };

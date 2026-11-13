@@ -32,22 +32,22 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 ?>
 
 <style>
-    :root { --ink:#12372a; --accent:#4a7c5d; --accent-dark:#3b6a4d; --cream:#f6f3e8; --muted:#6b7f76; --line:#e6e2d6; }
+    :root { --ink:#26343b; --accent:#1478d4; --accent-dark:#0f62ae; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
 
     /* ---------- Hero ---------- */
     .hero-bg { background: linear-gradient(135deg, #2f4a57 0%, #6f8f93 55%, #c9d6d3 100%); }
     .hero-field { padding: 12px 22px; min-width: 0; }
     .hero-label { display:flex; align-items:center; gap:8px; height:24px; font-size:15px; font-weight:700; color:var(--ink); line-height:24px; }
-    .hero-value { display:flex; align-items:center; justify-content:space-between; width:100%; height:28px; font-size:15px; color:#4b5d55; background:transparent; border:0; padding:0; outline:0; text-align:left; }
-    .hero-field input.hero-value::placeholder { color:#9aa8a1; }
+    .hero-value { display:flex; align-items:center; justify-content:space-between; width:100%; height:28px; font-size:15px; color:#4b5964; background:transparent; border:0; padding:0; outline:0; text-align:left; }
+    .hero-field input.hero-value::placeholder { color:#9aa3ab; }
 
     /* ---------- Menus déroulants ---------- */
     .dd-panel { position:absolute; z-index:60; background:#fff; border-radius:18px; box-shadow:0 18px 50px rgba(18,55,42,.22); border:1px solid var(--line); }
     .dd-panel[hidden] { display:none; }
-    .dd-row { display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border-radius:12px; font-size:15px; color:#274a3c; text-align:left; transition:background .15s ease; }
-    .dd-row:hover, .dd-row.is-active { background:#f3f1ea; }
+    .dd-row { display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border-radius:12px; font-size:15px; color:#3b4a54; text-align:left; transition:background .15s ease; }
+    .dd-row:hover, .dd-row.is-active { background:#f1f3f5; }
     .dd-row.is-active { color:var(--ink); font-weight:700; }
-    .dd-row .ico { width:22px; text-align:center; color:#5b7a6a; flex:none; }
+    .dd-row .ico { width:22px; text-align:center; color:#64748b; flex:none; }
     .dd-row .go { margin-left:auto; color:var(--accent); opacity:0; transition:opacity .15s ease; flex:none; }
     .dd-row:hover .go, .dd-row.is-active .go { opacity:1; }
     .dd-row.is-selected { color:var(--accent); font-weight:700; }
@@ -61,7 +61,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     .chips i.dot { width:4px; height:4px; background:var(--ink); border-radius:9999px; margin:0 16px; flex:none; }
 
     /* ---------- Sections et carrousels ---------- */
-    .sec-title { font-size:24px; font-weight:600; color:var(--ink); line-height:1.2; }
+    .sec-title { font-size:22px; font-weight:700; color:var(--ink); line-height:1.2; }
     .sec-sub   { margin-top:4px; font-size:14px; color:var(--muted); }
     .sec-more  { font-size:16px; font-weight:600; color:var(--accent); display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
     .sec-more:hover { color:var(--accent-dark); }
@@ -71,10 +71,10 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     /* ---------- Carte à dimensions fixes ---------- */
     .camp-card { flex:0 0 216px; width:216px; min-width:216px; max-width:216px; scroll-snap-align:start; display:flex; flex-direction:column; }
     .camp-org { height:28px; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-    .camp-avatar { width:24px; height:24px; border-radius:9999px; flex:none; overflow:hidden; background:#e8e5da; display:flex; align-items:center; justify-content:center; }
+    .camp-avatar { width:24px; height:24px; border-radius:9999px; flex:none; overflow:hidden; background:#e5e7eb; display:flex; align-items:center; justify-content:center; }
     .camp-avatar img { width:100%; height:100%; object-fit:cover; }
-    .camp-org-name { font-size:13px; color:#2d4a3e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .camp-mediawrap { position:relative; width:100%; aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#e6e2d6; }
+    .camp-org-name { font-size:13px; color:#3b4a54; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .camp-mediawrap { position:relative; width:100%; aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#e5e7eb; }
     .camp-media { position:absolute; inset:0; display:block; }
     .camp-media img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .5s ease; }
     .camp-card:hover .camp-media img { transform:scale(1.04); }
@@ -88,9 +88,9 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     .camp-title { margin-top:12px; font-size:15px; font-weight:500; line-height:1.3; color:var(--ink); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.6em; }
     .camp-price { margin-top:4px; font-size:16px; color:var(--ink); height:24px; line-height:24px; }
     .camp-price b { font-weight:700; }
-    .camp-meta  { font-size:12.5px; color:#71857b; height:17px; line-height:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .camp-meta  { font-size:12.5px; color:#6b7780; height:17px; line-height:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-    .skeleton { background:linear-gradient(90deg,#ece9dd 25%,#f6f3e8 37%,#ece9dd 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
+    .skeleton { background:linear-gradient(90deg,#eceef1 25%,#f8f5ea 37%,#eceef1 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
     @keyframes sk { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
     .fade-in-anim { animation:fadeIn .4s ease-out; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
@@ -123,10 +123,10 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
             <span class="text-[14px] font-semibold text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">Rechercher pour&nbsp;:</span>
             <div class="relative">
                 <button type="button" id="child-btn" aria-haspopup="listbox" aria-expanded="false"
-                        class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2 text-[14px] font-bold text-[#12372a]">
+                        class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2 text-[14px] font-bold text-[#26343b]">
                     <span id="child-label" class="max-w-[150px] truncate">Toute la famille</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#4a7c5d]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#1478d4]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
                 </button>
                 <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" role="listbox" hidden></div>
             </div>
@@ -134,7 +134,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
         <?php endif; ?>
 
         <div class="flex-1 flex flex-col justify-center text-center pt-3">
-            <h1 class="font-display text-[34px] md:text-[44px] leading-tight font-semibold text-white mb-8" style="text-shadow:0 2px 14px rgba(0,0,0,.35)">
+            <h1 class="font-display text-[34px] md:text-[42px] leading-tight text-white mb-8" style="text-shadow:0 2px 14px rgba(0,0,0,.35)">
                 <?php echo $is_logged_in ? 'Bonjour ' . htmlspecialchars($prenom) : 'Trouvez la colonie idéale'; ?>
             </h1>
 
@@ -149,11 +149,11 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                     <button type="button" id="cat-btn" aria-haspopup="true" aria-expanded="false" class="block w-full text-left">
                         <span class="hero-label">Catégorie</span>
                         <span class="hero-value"><span id="cat-label" class="truncate">Toutes catégories</span>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="flex-none text-[#12372a]"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="flex-none text-[#26343b]"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </span>
                     </button>
                 </div>
-                <div class="hidden md:block w-px h-11 bg-[#e6e2d6]"></div><div class="md:hidden h-px bg-[#efece1] mx-5"></div>
+                <div class="hidden md:block w-px h-11 bg-[#e5e7eb]"></div><div class="md:hidden h-px bg-[#e5e7eb] mx-5"></div>
 
                 <div class="hero-field flex-[1.25]">
                     <label for="hero-name" class="hero-label">
@@ -162,7 +162,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                     </label>
                     <input type="text" id="hero-name" name="name" placeholder="Ex : Weekend-Ski, voile, théâtre" autocomplete="off" class="hero-value">
                 </div>
-                <div class="hidden md:block w-px h-11 bg-[#e6e2d6]"></div><div class="md:hidden h-px bg-[#efece1] mx-5"></div>
+                <div class="hidden md:block w-px h-11 bg-[#e5e7eb]"></div><div class="md:hidden h-px bg-[#e5e7eb] mx-5"></div>
 
                 <div class="hero-field flex-1">
                     <label for="hero-city" class="hero-label">
@@ -173,7 +173,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                 </div>
 
                 <button type="submit" aria-label="Rechercher"
-                        class="m-1 md:ml-2 h-[60px] md:w-[64px] flex-none flex items-center justify-center gap-2 bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white rounded-xl transition-colors">
+                        class="m-1 md:ml-2 h-[60px] md:w-[64px] flex-none flex items-center justify-center gap-2 bg-[#2f3d45] hover:bg-[#1f2a30] text-white rounded-xl transition-colors">
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="#fff" stroke-width="2.2"/><path d="M20.5 20.5l-4.6-4.6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
                     <span class="md:hidden font-bold text-sm">Rechercher</span>
                 </button>
@@ -184,15 +184,17 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                 </div>
             </form>
 
+            <?php if (!$is_logged_in || ($_SESSION['user']['is_directeur'] ?? false)): ?>
             <p class="mt-5 text-[14px] text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">
                 Vous êtes directeur de camp&nbsp;? <a href="publier" class="underline underline-offset-2 font-semibold hover:text-white/80 transition-colors">Publier une annonce</a>
             </p>
+            <?php endif; ?>
         </div>
     </div>
 </section>
 
 <!-- Catégories rapides -->
-<nav class="border-b border-[#efece1]" aria-label="Catégories">
+<nav class="border-b border-[#e5e7eb]" aria-label="Catégories">
     <div id="chips" class="chips w-full max-w-[1320px] mx-auto px-5 sm:px-8 py-5 min-h-[68px]"></div>
 </nav>
 
@@ -200,16 +202,16 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     <?php if (!$is_animateur): ?>
         <div id="feed" aria-live="polite"></div>
         <div id="feed-empty" class="hidden text-center py-16">
-            <p class="text-xl font-semibold text-[#12372a]">Aucun séjour à venir pour le moment</p>
-            <p class="mt-2 text-[#6b7f76]">De nouveaux séjours sont publiés régulièrement.</p>
-            <a href="recherche" class="mt-6 inline-block bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Explorer tous les séjours</a>
+            <p class="text-xl font-semibold text-[#26343b]">Aucun séjour à venir pour le moment</p>
+            <p class="mt-2 text-[#6b7780]">De nouveaux séjours sont publiés régulièrement.</p>
+            <a href="recherche" class="mt-6 inline-block bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-8 py-3 rounded-lg transition-colors">Explorer tous les séjours</a>
         </div>
     <?php else: ?>
         <section class="mt-10">
             <h2 class="sec-title mb-1">Missions ouvertes pour vous</h2>
             <p class="sec-sub mb-5">Les séjours qui recherchent des animateurs correspondant à votre profil</p>
             <div id="anim-list" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-5"></div>
-            <div id="anim-empty" class="hidden text-center py-10 text-[#6b7f76]">Aucune mission éligible pour le moment. Essayez d'affiner votre recherche ci-dessus.</div>
+            <div id="anim-empty" class="hidden text-center py-10 text-[#6b7780]">Aucune mission éligible pour le moment. Essayez d'affiner votre recherche ci-dessus.</div>
         </section>
     <?php endif; ?>
 </main>
@@ -224,13 +226,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // ------------------------------------------------------------
     // Icônes / visuels (SVG inline)
     // ------------------------------------------------------------
-    const ICON_PIN   = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" fill="#71857b"/><circle cx="12" cy="9.5" r="2.3" fill="#fff"/></svg>';
+    const ICON_PIN   = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" fill="#6b7780"/><circle cx="12" cy="9.5" r="2.3" fill="#fff"/></svg>';
     const ICON_HEART = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z"/></svg>';
-    const ICON_ORG   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa8a1"/></svg>';
+    const ICON_ORG   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa3ab"/></svg>';
     const ICON_ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     window.CAMP_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0e4"/><stop offset="1" stop-color="#d6dcc9"/></linearGradient></defs>' +
-        '<rect width="200" height="200" fill="url(#g)"/><g fill="#8aa393"><path d="M84 52L66 80h10L60 104h12L54 130h60L96 104h12L92 80h10L84 52z"/><rect x="82" y="130" width="5" height="12"/><path d="M116 140l22-50 22 50z"/></g></svg>');
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef1f5"/><stop offset="1" stop-color="#d3dbe6"/></linearGradient></defs>' +
+        '<rect width="200" height="200" fill="url(#g)"/><g fill="#9aa8b8"><path d="M84 52L66 80h10L60 104h12L54 130h60L96 104h12L92 80h10L84 52z"/><rect x="82" y="130" width="5" height="12"/><path d="M116 140l22-50 22 50z"/></g></svg>');
 
     const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
     const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -244,6 +246,12 @@ document.addEventListener('DOMContentLoaded', function () {
             return `Du ${s.getDate()} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
         const sh = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
         return `Du ${s.getDate()} ${sh(s.getMonth())} au ${e.getDate()} ${sh(e.getMonth())} ${e.getFullYear()}`;
+    }
+    function shortDate(iso) {
+        const d = iso ? new Date(iso) : null;
+        if (!d || isNaN(d)) return '';
+        const m = MONTHS[d.getMonth()];
+        return `${d.getDate()} ${m.length > 5 ? m.slice(0, 4) + '.' : m}`;
     }
     // « HAUTELUCE » -> « Hauteluce » (les villes en majuscules de la base)
     function niceCity(v) {
@@ -397,7 +405,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const logo  = camp.organisateur_logo ? `<img src="${esc(safeImg(camp.organisateur_logo))}" alt="" loading="lazy">` : ICON_ORG;
         const img   = safeImg(camp.image_url) || window.CAMP_PLACEHOLDER;
         const price = (camp.prix !== null && camp.prix !== undefined && !isNaN(camp.prix) && Number(camp.prix) > 0) ? `Dès <b>${formatPrice(camp.prix)} €</b>` : '';
-        const date  = formatDateRange(camp.date_debut, camp.date_fin);
+        const n     = Number(camp.sessions_count || 1);
+        const date  = n > 1 ? `${n} sessions · dès le ${shortDate(camp.date_debut)}` : formatDateRange(camp.date_debut, camp.date_fin);
 
         return `
         <article class="camp-card fade-in-anim">
@@ -488,10 +497,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const BANNER = `
         <section class="mt-12" aria-label="Rechercher une colonie">
-            <div class="relative bg-[#f6f3e8] rounded-3xl px-6 py-12 text-center overflow-hidden">
-                <p class="font-display text-[32px] font-bold text-[#12372a] leading-none">ColoMap</p>
-                <p class="mt-3 text-[16px] text-[#4b5d55] max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
-                <a href="recherche" class="mt-6 inline-block bg-[#4a7c5d] hover:bg-[#3b6a4d] text-white text-[16px] font-semibold px-12 py-3 rounded-lg transition-colors">Rechercher</a>
+            <div class="relative bg-[#f8f5ea] rounded-3xl px-6 py-12 text-center overflow-hidden">
+                <p class="font-display text-[30px] text-[#26343b] leading-none">ColoMap</p>
+                <p class="mt-3 text-[16px] text-[#4b5964] max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
+                <a href="recherche" class="mt-6 inline-block bg-[#2f3d45] hover:bg-[#1f2a30] text-white text-[16px] font-semibold px-12 py-3 rounded-lg transition-colors">Rechercher</a>
             </div>
         </section>`;
 

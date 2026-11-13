@@ -3,14 +3,27 @@
 session_start();
 require_once 'api/config.php';
 
-// Page à ouvrir après connexion (?next=nom_de_page) : nom simple uniquement, la page doit exister
+// Page à ouvrir après connexion :
+//   ?next=nom_de_page            (nom simple)
+//   ?redirect=URL_de_ce_site     (adresse complète ou relative, même domaine uniquement, avec ses paramètres)
 if (isset($_GET['next']) && preg_match('/^[a-z0-9_-]{1,40}$/i', $_GET['next'])) {
-    $_SESSION['after_login'] = $_GET['next'];
+    $_SESSION['after_login_url'] = $_GET['next'] . '.php';
+}
+if (isset($_GET['redirect'])) {
+    $u = parse_url((string)$_GET['redirect']);
+    if ($u !== false && (!isset($u['host']) || strcasecmp($u['host'], $_SERVER['HTTP_HOST'] ?? '') === 0)) {
+        $page = basename($u['path'] ?? '');
+        $qs   = isset($u['query']) ? '?' . $u['query'] : '';
+        if (preg_match('/^[a-z0-9_-]{1,40}(\.php)?$/i', $page) && preg_match('/^(\?[A-Za-z0-9_=&%.\-]{0,200})?$/', $qs)) {
+            $_SESSION['after_login_url'] = (substr($page, -4) === '.php' ? $page : $page . '.php') . $qs;
+        }
+    }
 }
 function after_login_url() {
-    $n = $_SESSION['after_login'] ?? '';
-    unset($_SESSION['after_login']);
-    return ($n !== '' && is_file(__DIR__ . '/' . $n . '.php')) ? $n . '.php' : 'index.php';
+    $target = $_SESSION['after_login_url'] ?? '';
+    unset($_SESSION['after_login_url']);
+    $file = strtok($target, '?');
+    return ($file && is_file(__DIR__ . '/' . $file)) ? $target : 'index.php';
 }
 
 // 1. Initialisation Google

@@ -66,8 +66,9 @@ if (isset($_GET['code'])) {
                 $_SESSION['user'] = $stmt->fetch(PDO::FETCH_ASSOC);
             }
 
-            $dest = $_SESSION['after_login'] ?? ''; unset($_SESSION['after_login']);
-            header('Location: ../' . (($dest !== '' && preg_match('/^[a-z0-9_-]{1,40}$/i', $dest) && is_file(__DIR__ . '/../' . $dest . '.php')) ? $dest . '.php' : 'index.php'));
+            $dest = $_SESSION['after_login_url'] ?? ''; unset($_SESSION['after_login_url']);
+            $destFile = (string)strtok($dest, '?');
+            header('Location: ../' . (($destFile !== '' && preg_match('/^[a-z0-9_-]{1,40}\.php$/i', $destFile) && is_file(__DIR__ . '/../' . $destFile)) ? $dest : 'index.php'));
             exit();
 
         } catch (PDOException $e) {

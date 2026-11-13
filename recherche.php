@@ -326,6 +326,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const d = new Date(camp.date_debut);
             dateStr = d.toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'});
         }
+        const nSessions = parseInt(camp.sessions_count || 1, 10);
+        if (nSessions > 1) dateStr = nSessions + ' sessions · dès le ' + dateStr;
 
         // Badges
         let badgesHtml = '';

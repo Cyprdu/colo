@@ -2,7 +2,7 @@
 // partials/footer3.php : pied de page de l'accueil (fidèle à la maquette)
 // Les liens pointent vers des pages existantes ; legal.php regroupe les pages légales.
 ?>
-<footer class="bg-[#12372a] text-white mt-16" role="contentinfo">
+<footer class="bg-[#434e5a] text-white mt-16" role="contentinfo">
     <div class="w-full max-w-[1320px] mx-auto px-6 sm:px-10 pt-14 pb-16">
         <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.1fr_1fr_1.3fr_1.1fr]">
 

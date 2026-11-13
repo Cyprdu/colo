@@ -1,6 +1,7 @@
 <?php
 // 1. CONFIGURATION
 require_once 'api/config.php';
+require_once 'api/sessions.php';
 
 // 2. SÉCURITÉ
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
@@ -39,6 +40,8 @@ try {
 } catch (Exception $e) {
     $error = "Erreur technique : " . $e->getMessage();
 }
+$sessCount = [];
+foreach ($camps as $cc) { $k = sessionGroupKey($cc); $sessCount[$k] = ($sessCount[$k] ?? 0) + 1; }
 require_once 'partials/header.php';
 ?>
 <title>Mes Séjours - Gestion</title>
@@ -135,6 +138,9 @@ require_once 'partials/header.php';
                             </div>
                         </div>
 
+                        <?php $sc = $sessCount[sessionGroupKey($camp)] ?? 1; if ($sc > 1): ?>
+                        <p class="mb-4 inline-block text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5"><?= $sc ?> sessions pour ce camp</p>
+                        <?php endif; ?>
                         <div class="mb-6">
                             <div class="flex justify-between text-xs font-semibold mb-1.5">
                                 <span class="text-gray-500">Remplissage</span>
@@ -159,9 +165,7 @@ require_once 'partials/header.php';
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                             </a>
 
-                            <a href="api/duplicate_camp.php?t=<?= $token ?>" onclick="return confirm('Dupliquer ce séjour ?')" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-green-600 hover:bg-green-50 transition" title="Dupliquer">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"/></svg>
-                            </a>
+                            <button type="button" onclick="openSessionModal('<?= $token ?>', '<?= addslashes(htmlspecialchars($camp['nom'])) ?>', '<?= $camp['date_debut'] ?>', '<?= $camp['date_fin'] ?>')" class="col-span-1 flex items-center justify-center p-2 rounded-lg text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 transition" title="Ajouter une session" aria-label="Ajouter une session"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM12 11v6m-3-3h6"/></svg></button>
 
                             <button type="button" 
                                     onclick="openDeleteModal('<?= $token ?>', '<?= addslashes(htmlspecialchars($camp['nom'])) ?>', '<?= addslashes($listeInscrits) ?>')" 
@@ -339,6 +343,74 @@ function shareLink(token) {
         prompt("Copiez le lien :", fullUrl);
     }
 }
+</script>
+
+
+<div id="sessionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-gray-900/70 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="sessionTitle">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <h3 id="sessionTitle" class="text-xl font-extrabold text-[#26343b] mb-1">Ajouter une session</h3>
+        <p class="text-sm text-gray-500 mb-5">Nouvelles dates pour <b id="sessionCampName"></b>. Tout le reste (description, âges, tarifs, images) est repris du séjour. Les familles verront un seul camp avec plusieurs sessions.</p>
+        <form id="sessionForm" class="space-y-4">
+            <input type="hidden" id="sessionToken">
+            <div class="grid grid-cols-2 gap-3">
+                <label class="block text-sm font-semibold text-gray-700">Début<input type="date" id="sessionDebut" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"></label>
+                <label class="block text-sm font-semibold text-gray-700">Fin<input type="date" id="sessionFin" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"></label>
+            </div>
+            <label class="block text-sm font-semibold text-gray-700">Date limite d'inscription <span class="font-normal text-gray-400">(facultatif)</span>
+                <input type="date" id="sessionLimite" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"></label>
+            <label class="block text-sm font-semibold text-gray-700">Prix de cette session <span class="font-normal text-gray-400">(facultatif, sinon identique)</span>
+                <input type="number" id="sessionPrix" min="0" step="0.01" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2"></label>
+            <p id="sessionError" class="hidden text-sm text-red-600 font-semibold"></p>
+            <div class="flex gap-3 pt-2">
+                <button type="button" onclick="closeSessionModal()" class="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200 transition">Annuler</button>
+                <button type="submit" id="sessionSubmit" class="flex-1 px-4 py-3 bg-[#26343b] text-white rounded-lg font-bold hover:bg-black transition">Ajouter</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openSessionModal(token, name, debut, fin) {
+    document.getElementById('sessionToken').value = token;
+    document.getElementById('sessionCampName').textContent = name;
+    // propose la même durée, une semaine après la dernière session connue (jamais dans le passé)
+    const d = new Date(debut), f = new Date(fin);
+    const days = Math.max(0, Math.round((f - d) / 86400000));
+    let start = new Date(f); start.setDate(start.getDate() + 7);
+    if (isNaN(start) || start < new Date()) start = new Date();
+    const end = new Date(start); end.setDate(end.getDate() + days);
+    const iso = x => x.toISOString().slice(0, 10);
+    document.getElementById('sessionDebut').value = iso(start);
+    document.getElementById('sessionFin').value = iso(end);
+    document.getElementById('sessionLimite').value = '';
+    document.getElementById('sessionPrix').value = '';
+    document.getElementById('sessionError').classList.add('hidden');
+    document.getElementById('sessionModal').classList.remove('hidden');
+}
+function closeSessionModal() { document.getElementById('sessionModal').classList.add('hidden'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSessionModal(); });
+document.getElementById('sessionForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn = document.getElementById('sessionSubmit'), err = document.getElementById('sessionError');
+    btn.disabled = true; btn.textContent = 'Ajout...'; err.classList.add('hidden');
+    try {
+        const res = await fetch('api/add_session.php', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: document.getElementById('sessionToken').value,
+                date_debut: document.getElementById('sessionDebut').value,
+                date_fin: document.getElementById('sessionFin').value,
+                date_limite_inscription: document.getElementById('sessionLimite').value,
+                prix: document.getElementById('sessionPrix').value
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Erreur');
+        window.location.reload();
+    } catch (ex) {
+        err.textContent = ex.message; err.classList.remove('hidden');
+        btn.disabled = false; btn.textContent = 'Ajouter';
+    }
+});
 </script>
 
 <?php require_once 'partials/footer.php'; ?>

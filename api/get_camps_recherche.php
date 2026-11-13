@@ -1,6 +1,7 @@
 <?php
 // Fichier: api/get_camps_recherche.php
 require_once 'config.php';
+require_once 'sessions.php';
 
 // Désactivation des erreurs PHP brutes pour protéger le JSON
 ini_set('display_errors', 0);
@@ -130,6 +131,9 @@ try {
         $stmtFb->execute([':today' => $today]);
         $camps = $stmtFb->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    // Un camp à plusieurs sessions n'apparaît qu'une fois (sa prochaine session), avec le nombre de sessions
+    $camps = collapseSessions($camps);
 
     // -----------------------------------------------------------
     // 4. FORMATAGE DE SORTIE
