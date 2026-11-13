@@ -10,6 +10,19 @@ $orgaId = (int)($_GET['organisateur_id'] ?? 0);
 $userId = (int)$_SESSION['user']['id'];
 $error = isset($_GET['error']) ? mb_substr(strip_tags((string)$_GET['error']), 0, 300) : null;
 $success = isset($_GET['success']) ? mb_substr(strip_tags((string)$_GET['success']), 0, 300) : null;
+// Taux de TVA des séjours (réglage de l'organisme, repris sur les reçus des familles)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'tva') {
+    try {
+        fin_ensure($pdo);
+        if (!fin_csrf_ok()) throw new Exception('Session expirée, rechargez la page.');
+        $tx = (string)($_POST['tva'] ?? '');
+        if (!array_key_exists($tx, fin_tva_taux_permis())) throw new Exception('Taux invalide.');
+        $up = $pdo->prepare("UPDATE organisateurs SET tva_taux = ? WHERE id = ? AND user_id = ?");
+        $up->execute([$tx === '' ? null : $tx, $orgaId, $userId]);
+        fin_audit($pdo, 'tva_modifiee', 'organisateur', $orgaId, ['taux' => $tx === '' ? 'na' : $tx], 'user:' . $userId);
+        header('Location: dashboard_organisme.php?organisateur_id=' . $orgaId . '&success=' . urlencode('Taux de TVA enregistré.')); exit;
+    } catch (Throwable $e) { $error = $e->getMessage(); }
+}
 $orga = null; $recent = []; $camps = []; $fin = null; $acc = null; $transferts = []; $legacy = []; $mkStats = [];
 
 try {
@@ -138,6 +151,19 @@ require_once 'partials/mk_icons.php';
                 <tr><td><?= date('d/m/Y', strtotime($p['created_at'])) ?></td><td><b><?= htmlspecialchars($p['camp']) ?></b></td><td class="num"><?= fin_eur((int)$p['brut_cents']) ?></td><td class="num">- <?= fin_eur((int)$p['commission_cents']) ?></td><td class="num"><b><?= fin_eur((int)$p['net_cents'] - (int)$p['net_rembourse_cents']) ?></b><?= $p['rembourse_cents'] ? '<div class="mk-note">remboursé : ' . fin_eur((int)$p['rembourse_cents']) . '</div>' : '' ?></td><td><?= htmlspecialchars($sl) ?></td></tr>
             <?php endforeach; ?></tbody></table></div>
         <?php endif; ?>
+    </section>
+
+    <!-- TVA -->
+    <section class="mk-section" style="margin-top:20px">
+        <form method="post" class="ds-card" style="padding:22px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
+            <div style="max-width:560px"><b class="text-[#26343b] text-[17px]">TVA sur vos séjours</b>
+                <p class="mk-note" style="margin-top:4px;font-size:14px">Les prix que vous fixez sont des prix TTC : les familles paient ce prix, sans supplément. Si vous êtes assujetti à la TVA, indiquez votre taux : la TVA incluse apparaîtra sur le reçu des familles. Associations et micro-entrepreneurs sont souvent non assujettis : laissez « Non applicable ». Cette indication ne remplace pas l'avis de votre comptable.</p></div>
+            <div style="display:flex;gap:10px;align-items:center">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="act" value="tva">
+                <select class="ds-select" name="tva" aria-label="Taux de TVA"><?php foreach (fin_tva_taux_permis() as $k => $l): $cur = $orga['tva_taux'] === null ? '' : rtrim(rtrim((string)$orga['tva_taux'], '0'), '.'); ?><option value="<?= htmlspecialchars((string)$k) ?>"<?= (string)$k === $cur ? ' selected' : '' ?>><?= htmlspecialchars($l) ?></option><?php endforeach; ?></select>
+                <button class="ds-btn ds-btn-light" type="submit">Enregistrer</button>
+            </div>
+        </form>
     </section>
 
     <!-- Marketing -->

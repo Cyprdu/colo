@@ -5,6 +5,7 @@
 
 require_once 'api/config.php';
 require_once 'api/orders.php';
+require_once 'api/finance_lib.php';
 require 'libs/fpdf/fpdf.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -140,6 +141,22 @@ $pdf->Ln(3);
 $pdf->SetFont('Arial', 'B', 12);
 if ($isPaid) $pdf->SetFillColor(229, 233, 236); else $pdf->SetFillColor(248, 245, 234);   // ardoise clair / crème : couleurs du site
 $pdf->Cell(0, 11, enc('  Statut : ' . ($isPaid ? 'PAYÉ' : mb_strtoupper($status[1]))), 0, 1, 'L', true);
+
+// Détail du prix payé (information : rien n'est ajouté au montant réglé)
+$bk = $isPaid ? fin_order_breakdown($pdo, array_column($live, 'inscription_id')) : null;
+if ($bk) {
+    $c = function (int $cents): string { return eur($cents / 100); };
+    $pdf->Section('Détail du prix payé');
+    $pdf->SetFont('Arial', 'I', 9.5);
+    $pdf->SetTextColor(90, 102, 110);
+    $pdf->MultiCell(0, 5, enc("Vous avez payé " . $c($bk['paye']) . " TTC, aucun frais supplémentaire. Voici ce que contient ce prix :"), 0, 'L');
+    $pdf->SetTextColor(38, 52, 59);
+    $pdf->Ln(2);
+    $pdf->Row('Prix payé (TTC)', $c($bk['paye']));
+    $pdf->Row('dont commission ColoMap', $c($bk['commission']) . ' (' . number_format($bk['pct'], 1, ',', ' ') . ' %' . ($bk['fixe'] > 0 ? ' + ' . $c($bk['fixe']) . ' par inscription' : '') . ', frais de paiement par carte et de gestion inclus)', false);
+    $pdf->Row('dont TVA', $bk['taux'] ? $c($bk['tva']) . ' (TVA ' . number_format($bk['taux'], 1, ',', ' ') . ' % incluse dans le prix)' : 'Non applicable (organisateur non assujetti)', false);
+    $pdf->Row('Part de l\'organisateur', $c($bk['organisateur']) . ' (reversée à ' . $first['orga_nom'] . ')', false);
+}
 
 // Mention
 $pdf->Ln(10);

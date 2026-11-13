@@ -152,6 +152,8 @@ function fin_ensure(PDO $pdo): void {
         fin_add_col($pdo, 'fin_paiements', 'frais_stripe_cents', "INT NULL");
         fin_add_col($pdo, 'fin_paiements', 'frais_litige_cents', "INT NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_paiements', 'frais_maj', "DATETIME NULL");
+        fin_add_col($pdo, 'organisateurs', 'tva_taux', "DECIMAL(4,1) NULL"); // taux de TVA des séjours de l'organisme (NULL = non applicable)
+        fin_add_col($pdo, 'fin_paiements', 'tva_taux_pct', "DECIMAL(4,1) NULL"); // taux en vigueur à la vente (pour le reçu de la famille)
         fin_add_col($pdo, 'stripe_comptes', 'statut', "VARCHAR(16) NULL"); // statut déclaré par l'organisme avant l'inscription Stripe
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
@@ -191,7 +193,7 @@ function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, st
     fin_ensure($pdo);
     if ($amountTotalCents <= 0 || !$tokens) return 0;
     $in = implode(',', array_fill(0, count($tokens), '?'));
-    $st = $pdo->prepare("SELECT i.id, i.prix_final, i.camp_id, c.date_debut, c.organisateur_id
+    $st = $pdo->prepare("SELECT i.id, i.prix_final, i.camp_id, c.date_debut, c.organisateur_id, (SELECT o.tva_taux FROM organisateurs o WHERE o.id = c.organisateur_id) AS tva
                          FROM inscriptions i JOIN camps c ON c.id = i.camp_id
                          WHERE i.reservation_token IN ($in) AND i.prix_final > 0 ORDER BY i.id");
     $st->execute(array_values($tokens));
@@ -202,14 +204,14 @@ function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, st
     if ($sum <= 0) return 0;
 
     $left = $amountTotalCents; $n = count($rows); $created = 0;
-    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, date_deblocage)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, tva_taux_pct, date_deblocage)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     foreach ($rows as $k => $r) {
         $brut = ($k === $n - 1) ? $left : (int)round($amountTotalCents * (float)$r['prix_final'] / $sum);
         $brut = max(0, min($brut, $left)); $left -= $brut;
         if ($brut <= 0 || !$r['organisateur_id']) continue;
         [$com, , $fixe] = fin_commission_split($brut); $net = $brut - $com;
-        $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, fin_release_date($r['date_debut'])]);
+        $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, $r['tva'], fin_release_date($r['date_debut'])]);
         if ($ins->rowCount() === 1) {
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
             fin_audit($pdo, 'paiement_recu', 'inscription', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent], 'webhook');
@@ -633,6 +635,38 @@ function fin_orga_from_tok(PDO $pdo, string $tok, ?int $userId = null): int {
     else { $st = $pdo->prepare("SELECT id FROM organisateurs WHERE user_id = ?"); $st->execute([$userId]); $ids = $st->fetchAll(PDO::FETCH_COLUMN); }
     foreach ($ids as $id) if (hash_equals(fin_orga_tok((int)$id), $tok)) return (int)$id;
     return 0;
+}
+
+/** Taux de TVA acceptés pour un organisme (clé '' = non applicable) */
+function fin_tva_taux_permis(): array { return ['' => 'Non applicable (pas de TVA)', '5.5' => '5,5 %', '10' => '10 %', '20' => '20 %']; }
+
+/** TVA incluse dans un montant TTC (centimes) ; 0 si le taux est nul ou non applicable */
+function fin_tva_incluse(int $ttcCents, $taux): int {
+    $t = (float)$taux;
+    return $t > 0 ? (int)round($ttcCents - $ttcCents / (1 + $t / 100)) : 0;
+}
+
+/**
+ * Détail du prix payé par la famille pour des inscriptions (ids) : ce que contient le prix, sans rien ajouter au montant.
+ * Part de l'organisateur = payé - commission ColoMap - TVA incluse. Null si aucun paiement suivi (anciennes commandes).
+ */
+function fin_order_breakdown(PDO $pdo, array $inscriptionIds): ?array {
+    $inscriptionIds = array_values(array_filter(array_map('intval', $inscriptionIds)));
+    if (!$inscriptionIds) return null;
+    fin_ensure($pdo);
+    $in = implode(',', array_fill(0, count($inscriptionIds), '?'));
+    $st = $pdo->prepare("SELECT brut_cents, commission_cents, tva_taux_pct, commission_pct, commission_fixe_cents FROM fin_paiements WHERE inscription_id IN ($in)");
+    $st->execute($inscriptionIds);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) return null;
+    $b = ['paye' => 0, 'commission' => 0, 'tva' => 0, 'taux' => null, 'pct' => (float)$rows[0]['commission_pct'], 'fixe' => (int)$rows[0]['commission_fixe_cents']];
+    foreach ($rows as $r) {
+        $b['paye'] += (int)$r['brut_cents']; $b['commission'] += (int)$r['commission_cents'];
+        $b['tva'] += fin_tva_incluse((int)$r['brut_cents'], $r['tva_taux_pct']);
+        if ($r['tva_taux_pct'] !== null && (float)$r['tva_taux_pct'] > 0) $b['taux'] = (float)$r['tva_taux_pct'];
+    }
+    $b['organisateur'] = $b['paye'] - $b['commission'] - $b['tva'];
+    return $b;
 }
 
 /** Derniers paiements d'un organisme (pour son tableau de bord) */
