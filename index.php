@@ -205,13 +205,13 @@ $arrow_svg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns=
                 <svg class="hidden sm:block absolute left-[8%] bottom-3 text-[#26343b]" width="84" height="76" viewBox="0 0 84 76" fill="none" aria-hidden="true">
                     <path d="M26 3L12 24h8L7 44h10L3 64h46L35 44h10L32 24h8L26 3Z" fill="currentColor"/>
                     <rect x="24" y="64" width="4" height="9" fill="currentColor"/>
-                    <path d="M50 70L66 32l17 38H50Z" fill="currentColor"/><path d="M66 32v38" stroke="#f8f5ea" stroke-width="2"/>
+                    <path d="M44 72L65 34l21 38H44Z" fill="currentColor"/><path d="M65 54l-7 18h14l-7-18Z" fill="#f8f5ea"/><path d="M65 34L65 28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
                     <path d="M2 74h80" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
                 <svg class="hidden sm:block absolute right-[8%] bottom-3 text-[#26343b]" width="84" height="76" viewBox="0 0 84 76" fill="none" aria-hidden="true">
                     <path d="M26 3L12 24h8L7 44h10L3 64h46L35 44h10L32 24h8L26 3Z" fill="currentColor"/>
                     <rect x="24" y="64" width="4" height="9" fill="currentColor"/>
-                    <path d="M50 70L66 32l17 38H50Z" fill="currentColor"/><path d="M66 32v38" stroke="#f8f5ea" stroke-width="2"/>
+                    <path d="M44 72L65 34l21 38H44Z" fill="currentColor"/><path d="M65 54l-7 18h14l-7-18Z" fill="#f8f5ea"/><path d="M65 34L65 28" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
                     <path d="M2 74h80" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
 
@@ -271,7 +271,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!e || isNaN(e)) return `Dès le ${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
         if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
             return `Du ${s.getDate()} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
-        return `Du ${s.getDate()} ${MONTHS[s.getMonth()]} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
+        const short = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
+        return `Du ${s.getDate()} ${short(s.getMonth())} au ${e.getDate()} ${short(e.getMonth())} ${e.getFullYear()}`;
     }
 
     // Une image qui ne charge pas est remplacée par le visuel ColoMap (taille inchangée)
