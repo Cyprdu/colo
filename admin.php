@@ -56,7 +56,7 @@ adm_head('Tableau de bord', 'admin.php');
     <h2 class="sec"><?= ic('chart') ?> Nouveaux comptes (6 mois)</h2>
     <?php if (!$months): ?><p class="muted">Pas de données.</p><?php else: ?>
     <div class="bars"><?php foreach ($months as $m): ?>
-      <div class="bar"><i style="height:<?= max(6, round(100 * (int)$m['n'] / $maxm)) ?>%"></i><b><?= (int)$m['n'] ?></b><span><?= h(substr($m['m'], 5, 2) . '/' . substr($m['m'], 2, 2)) ?></span></div>
+      <div class="cbar"><i class="h<?= min(100, max(5, (int)(ceil(100 * (int)$m['n'] / $maxm / 5) * 5))) ?>"></i><b><?= (int)$m['n'] ?></b><span><?= h(substr($m['m'], 5, 2) . '/' . substr($m['m'], 2, 2)) ?></span></div>
     <?php endforeach; ?></div><?php endif; ?>
   </section>
   <section class="card">

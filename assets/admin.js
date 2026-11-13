@@ -37,7 +37,7 @@
   }
 
   /* ---------- modales ---------- */
-  function open(m) { m.hidden = false; var f = m.querySelector('input,textarea,button.btn:not(.ghost)'); if (f) setTimeout(function () { f.focus(); }, 30); }
+  function open(m) { m.hidden = false; var f = m.querySelector('input:not(.sr),textarea,button.btn:not(.ghost)'); if (f) setTimeout(function () { f.focus(); }, 30); }
   function close(m) { m.hidden = true; }
   document.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('[data-close]')) { var m = e.target.closest('.modal'); if (m) close(m); }
@@ -84,7 +84,7 @@
     return new Promise(function (res) {
       var m = $('#m-reauth'), inp = $('#re-pass'), err = $('#re-err'), go = $('#re-go');
       inp.value = ''; err.textContent = '';
-      var finish = function (v) { go.onclick = null; inp.onkeydown = null; m.removeEventListener('click', onClose); close(m); res(v); };
+      var finish = function (v) { $('#re-form').onsubmit = null; m.removeEventListener('click', onClose); close(m); res(v); };
       var onClose = function (e) { if ((e.target.closest && e.target.closest('[data-close]')) || e.target === m) finish(false); };
       m.addEventListener('click', onClose);
       var submit = function () {
@@ -94,7 +94,7 @@
           unlockedUntil = Date.now() + 590 * 1000; refreshLock(); inp.value = ''; go.disabled = false; finish(true);
         }).catch(function (e) { go.disabled = false; err.textContent = e.message; inp.select(); });
       };
-      go.onclick = submit; inp.onkeydown = function (e) { if (e.key === 'Enter') submit(); };
+      var form = $('#re-form'); form.onsubmit = function (e) { e.preventDefault(); submit(); };
       open(m);
     });
   }
@@ -232,7 +232,8 @@
         $('#row-title').textContent = isNew ? 'Nouvelle ligne : ' + t : 'Modifier ' + t + ' #' + pk; $('#row-err').textContent = '';
         cols.forEach(function (c) {
           var long = /text|blob|json/i.test(c.type), val = row[c.name];
-          var inp = el(long ? 'textarea' : 'input', { class: 'in' + (long ? ' mono' : ''), rows: long ? '4' : false, type: long ? false : (c.sensitive ? 'password' : 'text'), autocomplete: 'off' });
+          var inp = el(long ? 'textarea' : 'input', { class: 'in' + (long ? ' mono' : ''), rows: long ? '4' : false, type: long ? false : 'text', autocomplete: 'off', 'data-lpignore': 'true', 'data-1p-ignore': 'true', spellcheck: 'false' });
+          if (c.sensitive) inp.classList.add('secret');   // pas de type=password : le navigateur ne propose ni ne remplit rien ici
           var isPk = !isNew && c.name === j.pk;
           if (c.sensitive) { inp.placeholder = isNew ? '' : '(inchangé : tapez une nouvelle valeur pour remplacer)'; }
           else inp.value = val == null ? '' : String(val);
