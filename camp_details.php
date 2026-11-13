@@ -104,7 +104,7 @@ try {
         </div>
 
         <!-- Image -->
-        <div class="relative rounded-3xl overflow-hidden bg-[#e5e7eb]" style="aspect-ratio:16/7; max-height:460px; min-height:220px">
+        <div class="relative rounded-3xl overflow-hidden bg-[#e5e7eb]" style="width:100%; height:clamp(220px, 34vw, 460px)">
             <img id="hero-image" src="" alt="Couverture du séjour" class="absolute inset-0 w-full h-full object-cover">
         </div>
 
