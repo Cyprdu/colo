@@ -108,7 +108,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 <!-- ================================================================ -->
 <!-- HERO                                                              -->
 <!-- ================================================================ -->
-<section class="relative isolate hero-bg">
+<section class="relative isolate z-30 hero-bg">
     <div class="absolute inset-0 -z-10 overflow-hidden">
         <img src="https://img3.wallspic.com/crops/1/6/1/1/8/181161/181161-weisshorn-les_reliefs_montagneux-gamme_de_montagne-colline-hiver-3840x2160.jpg"
              alt="" class="w-full h-full object-cover" loading="eager" fetchpriority="high" onerror="this.remove()">
@@ -244,6 +244,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return `Du ${s.getDate()} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
         const sh = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
         return `Du ${s.getDate()} ${sh(s.getMonth())} au ${e.getDate()} ${sh(e.getMonth())} ${e.getFullYear()}`;
+    }
+    // « HAUTELUCE » -> « Hauteluce » (les villes en majuscules de la base)
+    function niceCity(v) {
+        v = String(v || '').trim();
+        return v === v.toUpperCase() ? v.toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : v;
     }
     function formatPrice(p) {
         const n = Number(p);
@@ -408,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <a href="${href}" class="block">
                 <h3 class="camp-title" title="${esc(camp.nom)}">${esc(camp.nom)}</h3>
                 <p class="camp-price">${price}</p>
-                <p class="camp-meta">${camp.ville ? esc(camp.ville) : ''}</p>
+                <p class="camp-meta">${camp.ville ? esc(niceCity(camp.ville)) : ''}</p>
                 <p class="camp-meta">${esc(date)}</p>
             </a>
         </article>`;

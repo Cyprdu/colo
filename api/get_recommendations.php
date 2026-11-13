@@ -159,7 +159,7 @@ try {
 
     $sections = [];
     $add = function ($id, $title, $subtitle, $more, $list, $badge = null) use (&$sections, $format) {
-        if (!$list) return;
+        if (count($list) < 3 && $id !== 'prochains') return; // une section presque vide fait pauvre : on la masque
         $sections[] = ['id' => $id, 'title' => $title, 'subtitle' => $subtitle, 'more' => $more, 'camps' => $format($list, $badge)];
     };
     $filter = function ($fn) use ($pool, $byScore) {
