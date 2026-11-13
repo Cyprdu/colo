@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function card(c) {
         const href = 'camp_details?t=' + encodeURIComponent(c.token);
-        const logo = c.organisateur_logo ? `<img src="${esc(media(c.organisateur_logo))}" alt="" onerror="this.remove()">` : '👤';
+        const logo = c.organisateur_logo ? `<img src="${esc(media(c.organisateur_logo))}" alt="" '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa3ab"/></svg>';
         return `<article class="fcard" data-id="${esc(c.id)}">
             <div class="fcard-org"><span class="fcard-avatar">${logo}</span><span class="fcard-org-name">${esc(c.organisateur_nom || 'ColoMap')}</span></div>
             <div class="fcard-media"><a href="${href}" aria-label="${esc(c.nom)}"><img src="${esc(media(c.image_url))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${PLACEHOLDER}'"></a>

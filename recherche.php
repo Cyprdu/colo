@@ -97,34 +97,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     @media (min-width:1024px) { #filters .fhead, #filters .ffoot { display:none; } }
 </style>
 
-<!-- ================================ HERO + BARRE ================================ -->
-<section class="rs-hero">
-    <div class="max-w-[1280px] mx-auto px-5 sm:px-8 pt-10 pb-12">
-        <h1 class="text-white font-extrabold text-[30px] md:text-[42px] leading-tight">Trouvez la colonie idéale</h1>
-        <p class="mt-2 text-white/85 text-[16px] md:text-[18px] max-w-2xl">Comparez les séjours, filtrez par âge, dates et budget, puis réservez en ligne en quelques minutes.</p>
-
-        <form id="sbar" class="sbar mt-7" role="search" aria-label="Rechercher un séjour" autocomplete="off">
-            <label class="sbar-field">
-                <span class="sbar-label">Quoi ?</span>
-                <input id="f-name" class="sbar-input" type="search" name="name" placeholder="Mot-clé, activité, nom du séjour" value="<?= htmlspecialchars($q) ?>">
-            </label>
-            <label class="sbar-field">
-                <span class="sbar-label">Où ?</span>
-                <input id="f-city" class="sbar-input" type="text" name="city" placeholder="Ville ou code postal">
-                
-            </label>
-            <label class="sbar-field">
-                <span class="sbar-label">Âge de l'enfant</span>
-                <?php if ($is_logged_in): ?>
-                    <select id="f-age" class="sbar-input" name="age"><option value="">Tous les âges</option></select>
-                <?php else: ?>
-                    <input id="f-age" class="sbar-input" type="number" name="age" min="3" max="25" placeholder="Ex : 12 ans">
-                <?php endif; ?>
-            </label>
-            <button type="submit" class="sbar-go"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>Rechercher</button>
-        </form>
-    </div>
-</section>
+<input type="hidden" id="f-name" value="<?= htmlspecialchars($q) ?>">
 
 <main class="max-w-[1280px] mx-auto px-5 sm:px-8 py-8">
     <!-- catégories -->
@@ -138,6 +111,20 @@ $q = trim((string)($_GET['name'] ?? ''));
                 <button type="button" id="f-close" class="w-10 h-10 rounded-full hover:bg-[#f1f3f5] flex items-center justify-center" aria-label="Fermer les filtres"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg></button>
             </div>
             <div class="fbody">
+                <div class="fsec">
+                    <p class="ftitle">Localisation</p>
+                    <input id="f-city" type="text" class="finput" name="city" placeholder="Ville ou code postal" autocomplete="off" aria-label="Ville ou code postal">
+                </div>
+
+                <div class="fsec">
+                    <p class="ftitle">Âge de l'enfant</p>
+                    <?php if ($is_logged_in): ?>
+                        <select id="f-age" class="finput" name="age" aria-label="Âge de l'enfant"><option value="">Tous les âges</option></select>
+                    <?php else: ?>
+                        <input id="f-age" type="number" class="finput" name="age" min="3" max="25" placeholder="Ex : 12 ans" aria-label="Âge de l'enfant">
+                    <?php endif; ?>
+                </div>
+
                 <div class="fsec">
                     <p class="ftitle">Période</p>
                     <div class="flex flex-col gap-2" id="periods">
@@ -441,7 +428,6 @@ $q = trim((string)($_GET['name'] ?? ''));
     // ---------------------------------------------------------------- évènements
     var timer;
     var later = function () { clearTimeout(timer); timer = setTimeout(function () { search(true); }, 350); };
-    $('sbar').addEventListener('submit', function (e) { e.preventDefault(); search(true); document.activeElement && document.activeElement.blur(); });
     ['f-name', 'f-city'].forEach(function (i) { $(i).addEventListener('input', later); });
     $('f-age').addEventListener('change', function () { search(true); });
     $('f-age').addEventListener('input', later);
@@ -486,6 +472,7 @@ $q = trim((string)($_GET['name'] ?? ''));
 
     // ---------------------------------------------------------------- démarrage
     applyFromUrl(); priceLabel(); syncPeriods();
+    var hs = document.getElementById('desktop-search-input'); if (hs && $('f-name').value) hs.value = $('f-name').value;
     var themesReady = fetch('api/get_themes.php').then(function (r) { return r.json(); }).then(function (t) {
         if (Array.isArray(t)) allThemes = t.map(function (x) { return x.name; });
     }).catch(function () {});

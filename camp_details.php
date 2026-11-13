@@ -165,7 +165,7 @@ require_once 'partials/header3.php';
                     <div id="route" class="mt-4 rounded-2xl bg-[#f8f5ea] p-5 hidden"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Parcours itinérant</p><ol id="route-list"></ol></div>
                     <div id="info-extra" class="mt-4 space-y-4 hidden"></div>
                     <div class="mt-4 rounded-3xl overflow-hidden border border-[#e5e7eb]">
-                        <iframe id="map-frame" title="Carte" class="w-full block" style="height:300px;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                        <iframe id="map-frame" title="Carte" class="w-full block" style="height:190px;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
                     </div>
                 </section>
             </div>

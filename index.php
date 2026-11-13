@@ -187,7 +187,6 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 
             <?php if (!$is_logged_in || ($_SESSION['user']['is_directeur'] ?? false)): ?>
             <p class="mt-5 text-[14px] text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">
-                Vous êtes directeur de camp&nbsp;? <a href="publier" class="underline underline-offset-2 font-semibold hover:text-white/80 transition-colors">Publier une annonce</a>
             </p>
             <?php endif; ?>
         </div>

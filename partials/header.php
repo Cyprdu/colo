@@ -59,6 +59,11 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
+        #nav-links > a { position:relative; transition:color .2s ease, transform .2s ease; }
+        #nav-links > a::after { content:''; position:absolute; left:10px; right:10px; bottom:3px; height:2px; border-radius:2px; background:#3d6a8e; transform:scaleX(0); transform-origin:left center; transition:transform .25s ease; }
+        #nav-links > a:hover { transform:translateY(-1px); }
+        #nav-links > a:hover::after { transform:scaleX(1); }
+        @media (prefers-reduced-motion: reduce) { #nav-links > a, #nav-links > a::after { transition:none; } #nav-links > a:hover { transform:none; } }
         body { font-family: 'Montserrat', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #26343b; }
         .font-display { font-family: 'Montserrat', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; } 
@@ -114,7 +119,7 @@ if ('serviceWorker' in navigator) {
                 </a>
 
                 <!-- Recherche rapide -->
-                <div id="search-wrapper" class="hidden md:block flex-1 max-w-[400px] transition-all duration-500 ease-in-out relative">
+                <div id="search-wrapper" class="hidden md:block flex-1 max-w-[560px] transition-all duration-500 ease-in-out relative">
                     <form id="desktop-search-form" action="recherche" method="GET" class="relative group h-full flex items-center">
                         <input type="text" id="desktop-search-input" name="name" placeholder="Rechercher une colo..." autocomplete="off"
                                class="w-full h-10 bg-[#f3f1ea] border border-transparent focus:border-[#2f3d45] rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all duration-300 text-[13px] text-gray-700 placeholder-gray-400 relative z-20 outline-none">
@@ -134,9 +139,6 @@ if ('serviceWorker' in navigator) {
 
                 <div class="hidden md:block flex-1"></div>
 
-                <?php if (!$is_logged_in || $is_director): ?>
-                <a href="publier" class="hidden md:inline-flex flex-shrink-0 items-center h-10 px-5 rounded-lg bg-[#2f3d45] hover:bg-[#1f2a30] text-white text-[15px] font-semibold transition-colors whitespace-nowrap">Publier une annonce</a>
-                <?php endif; ?>
 
                 <!-- Navigation -->
                 <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
@@ -232,11 +234,8 @@ if ('serviceWorker' in navigator) {
                                 <?php endif; ?>
 
                                 <div class="border-t border-gray-100 py-1">
-                                    <a href="aide" class="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                                        <i class="fa-regular fa-circle-question w-6 text-center mr-2"></i> Aide
-                                    </a>
-                                    <a href="api/logout" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
-                                        <i class="fa-solid fa-arrow-right-from-bracket w-6 text-center mr-2"></i> Déconnexion
+                                    <a href="api/logout" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-red-50 hover:text-red-600 font-bold transition-colors">
+                                        <i class="fa-solid fa-arrow-right-from-bracket w-6 text-center mr-2"></i> Se déconnecter
                                     </a>
                                 </div>
                             </div>
@@ -315,7 +314,6 @@ if ('serviceWorker' in navigator) {
                 <a href="contact" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Contact</a>
                 <a href="aide" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Aide</a>
                 <?php if (!$is_logged_in || $is_director): ?>
-                <a href="publier" class="bg-[#2f3d45] text-white hover:bg-[#1f2a30] block px-3 py-3 rounded-md text-base font-semibold text-center mt-2">Publier une annonce</a>
                 <?php endif; ?>
                 
                 <hr class="my-4 border-gray-200">
@@ -422,8 +420,8 @@ if ('serviceWorker' in navigator) {
         if (desktopInput) {
             desktopInput.addEventListener('focus', () => {
                 // Animation CSS header
-                if(navLinks) { navLinks.style.maxWidth = '0px'; navLinks.style.opacity = '0'; navLinks.style.padding = '0'; navLinks.style.margin = '0'; }
-                if(searchWrapper) { searchWrapper.classList.remove('max-w-[400px]'); searchWrapper.classList.add('max-w-full', 'w-full'); }
+                if(navLinks && window.innerWidth < 1100) { navLinks.style.maxWidth = '0px'; navLinks.style.opacity = '0'; navLinks.style.padding = '0'; navLinks.style.margin = '0'; }
+                if(searchWrapper && window.innerWidth < 1100) { searchWrapper.classList.remove('max-w-[560px]'); searchWrapper.classList.add('max-w-full', 'w-full'); }
                 
                 renderHistory();
             });
@@ -444,7 +442,7 @@ if ('serviceWorker' in navigator) {
                     // Reset CSS header si vide
                     if(desktopInput.value === '') {
                         if(navLinks) { navLinks.style.maxWidth = '1000px'; navLinks.style.opacity = '1'; navLinks.style.padding = ''; navLinks.style.margin = ''; }
-                        if(searchWrapper) { searchWrapper.classList.remove('max-w-full', 'w-full'); searchWrapper.classList.add('max-w-[400px]'); }
+                        if(searchWrapper) { searchWrapper.classList.remove('max-w-full', 'w-full'); searchWrapper.classList.add('max-w-[560px]'); }
                     }
                 }, 200);
             });
