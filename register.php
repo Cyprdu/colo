@@ -1,121 +1,118 @@
-<?php require_once 'partials/header.php'; ?>
-<title>Inscription - ColoMap</title>
-
-<main class="container mx-auto px-4 py-16 flex justify-center">
-    <div class="w-full max-w-lg">
-        <form id="register-form" class="bg-white shadow-lg rounded-xl px-8 pt-6 pb-8 mb-4">
-            <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Créer un compte</h1>
-            
-            <div id="message-area" class="mb-4 text-center"></div>
-
-            <div class="flex flex-wrap -mx-3 mb-4">
-                <div class="w-full md:w-1/2 px-3 mb-4 md:mb-0">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="prenom">Prénom</label>
-                    <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700" id="prenom" type="text" required>
-                </div>
-                <div class="w-full md:w-1/2 px-3">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="nom">Nom</label>
-                    <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700" id="nom" type="text" required>
-                </div>
-            </div>
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-bold mb-2" for="mail">Email</label>
-                <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700" id="mail" type="email" required>
-            </div>
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-bold mb-2" for="naissance">Date de naissance</label>
-                <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700" id="naissance" type="date" required>
-            </div>
-             <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-bold mb-2" for="sexe">Sexe</label>
-                <select id="sexe" class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700">
-                    <option>Homme</option>
-                    <option>Femme</option>
-                </select>
-            </div>
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-bold mb-2" for="password">Mot de passe</label>
-                <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700" id="password" type="password" required>
-            </div>
-            
-            <div class="mb-6 border-t pt-6">
-                <label class="block text-gray-700 text-sm font-bold mb-2">Je m'inscris en tant que :</label>
-                <div class="mt-2 flex justify-around">
-                    <label class="flex items-center">
-                        <input type="radio" name="role" value="parent" class="h-4 w-4 text-blue-600" checked>
-                        <span class="ml-2 text-gray-800">Parent</span>
-                    </label>
-                    <label class="flex items-center">
-                        <input type="radio" name="role" value="animateur" class="h-4 w-4 text-blue-600">
-                        <span class="ml-2 text-gray-800">Animateur</span>
-                    </label>
-                </div>
-                 <div class="mt-4">
-                     <label class="flex items-center">
-                        <input type="checkbox" id="bafa" class="h-4 w-4 text-blue-600">
-                        <span class="ml-2 text-sm text-gray-800">Je possède le BAFA</span>
-                    </label>
-                </div>
-            </div>
-            
-            <div class="flex items-center justify-between">
-                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg w-full" type="submit">
-                    S'inscrire
-                </button>
-            </div>
-        </form>
+<?php
+// register.php : création de compte (parent ou animateur)
+$auth_title    = 'Inscription - ColoMap';
+$scene_kicker  = 'Rejoignez la communauté';
+$scene_title   = 'Votre colo commence ici.';
+$scene_text    = 'Créez votre compte en une minute : réservez, suivez chaque séjour et échangez avec les organisateurs.';
+$scene_points  = [['fa-bolt', 'Réservation en quelques clics'], ['fa-lock', 'Paiement sécurisé par Stripe'], ['fa-child-reaching', 'Une fiche par enfant, réutilisable'], ['fa-comments', 'Messagerie avec les organisateurs']];
+$auth_alt      = ['text' => 'Déjà un compte ?', 'label' => 'Se connecter', 'href' => 'login.php'];
+require_once 'partials/auth_start.php';
+?>
+<div class="rise">
+    <div>
+        <h1 class="auth-title">Créer un compte</h1>
+        <p class="auth-sub">Quelques informations et vous êtes dans l'aventure.</p>
     </div>
-</main>
+
+    <div id="message-area" class="mt-5" aria-live="polite"></div>
+
+    <form id="register-form" class="mt-6 space-y-5">
+        <div>
+            <span class="ds-label">Je m'inscris en tant que</span>
+            <div class="grid grid-cols-2 gap-3">
+                <label class="role-card"><input type="radio" name="role" value="parent" checked><span class="box"><i class="fa-solid fa-people-roof"></i><b>Parent</b><span>Réserver des séjours pour mes enfants</span></span></label>
+                <label class="role-card"><input type="radio" name="role" value="animateur"><span class="box"><i class="fa-solid fa-bullhorn"></i><b>Animateur</b><span>Trouver des missions d'animation</span></span></label>
+            </div>
+            <label id="bafa-row" class="mt-3 hidden items-center gap-2 text-[14px] text-[#3b4a54] cursor-pointer select-none">
+                <input type="checkbox" id="bafa" class="h-4 w-4 rounded border-gray-300 accent-[#2f3d45]"> Je possède le BAFA
+            </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label class="ds-label" for="prenom">Prénom</label><div class="field"><i class="fa-regular fa-user ico"></i><input class="ds-input" id="prenom" type="text" autocomplete="given-name" required></div></div>
+            <div><label class="ds-label" for="nom">Nom</label><div class="field"><i class="fa-regular fa-user ico"></i><input class="ds-input" id="nom" type="text" autocomplete="family-name" required></div></div>
+        </div>
+        <div><label class="ds-label" for="mail">Email</label><div class="field"><i class="fa-regular fa-envelope ico"></i><input class="ds-input" id="mail" type="email" autocomplete="email" required placeholder="vous@exemple.fr"></div></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label class="ds-label" for="naissance">Date de naissance</label><div class="field"><i class="fa-regular fa-calendar ico"></i><input class="ds-input" id="naissance" type="date" autocomplete="bday" required></div></div>
+            <div><label class="ds-label" for="sexe">Sexe</label><div class="field"><i class="fa-solid fa-venus-mars ico"></i><select id="sexe" class="ds-select" style="padding-left:44px;height:52px"><option>Homme</option><option>Femme</option></select></div></div>
+        </div>
+        <div>
+            <label class="ds-label" for="password">Mot de passe</label>
+            <div class="field">
+                <i class="fa-solid fa-lock ico"></i>
+                <input class="ds-input" id="password" type="password" autocomplete="new-password" required minlength="8" placeholder="8 caractères minimum" style="padding-right:48px">
+                <button type="button" id="toggle-pw" class="absolute inset-y-0 right-0 pr-4 flex items-center text-[#9aa3ab] hover:text-[#26343b]" aria-label="Afficher ou masquer le mot de passe"><i class="fa-solid fa-eye"></i></button>
+            </div>
+            <div class="meter mt-3" aria-hidden="true"><i id="pw-bar"></i></div>
+            <p id="pw-hint" class="mt-1.5 text-[12.5px] text-[#6b7780]">Mélangez lettres, chiffres et symboles pour un mot de passe solide.</p>
+        </div>
+
+        <button type="submit" class="auth-btn" id="register-btn"><span>Rejoindre l'aventure</span><i class="fa-solid fa-arrow-right arrow"></i><span class="spin"></span></button>
+    </form>
+</div>
 
 <script>
-document.getElementById('register-form').addEventListener('submit', async function(event) {
-    event.preventDefault();
-    const messageArea = document.getElementById('message-area');
-    messageArea.innerHTML = '<p class="text-blue-500">Création du compte...</p>';
+(function () {
+    const $ = id => document.getElementById(id);
 
-    const formData = {
-        nom: document.getElementById('nom').value,
-        prenom: document.getElementById('prenom').value,
-        mail: document.getElementById('mail').value,
-        naissance: document.getElementById('naissance').value,
-        sexe: document.getElementById('sexe').value,
-        password: document.getElementById('password').value,
-        role: document.querySelector('input[name="role"]:checked').value,
-        bafa: document.getElementById('bafa').checked
+    // BAFA : seulement pour les animateurs
+    function syncRole() {
+        const anim = document.querySelector('input[name="role"]:checked').value === 'animateur';
+        const row = $('bafa-row');
+        row.classList.toggle('hidden', !anim); row.classList.toggle('flex', anim);
+        if (!anim) $('bafa').checked = false;
+    }
+    document.querySelectorAll('input[name="role"]').forEach(r => r.addEventListener('change', syncRole));
+
+    // mot de passe : œil + jauge de robustesse
+    $('toggle-pw').addEventListener('click', function () {
+        const f = $('password'), show = f.type === 'password';
+        f.type = show ? 'text' : 'password';
+        this.querySelector('i').className = 'fa-solid ' + (show ? 'fa-eye-slash' : 'fa-eye');
+    });
+    $('password').addEventListener('input', function () {
+        const v = this.value; let score = 0;
+        if (v.length >= 8) score++; if (v.length >= 12) score++;
+        if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++; if (/\d/.test(v)) score++; if (/[^A-Za-z0-9]/.test(v)) score++;
+        const pct = v ? Math.max(12, score * 20) : 0;
+        const bar = $('pw-bar'); bar.style.width = pct + '%';
+        bar.style.background = score <= 2 ? '#a9b8c6' : (score === 3 ? '#5b7a91' : '#2f3d45');
+        $('pw-hint').textContent = !v ? 'Mélangez lettres, chiffres et symboles pour un mot de passe solide.' : (score <= 2 ? 'Encore un effort : ajoutez des chiffres ou des majuscules.' : (score === 3 ? 'Bien. Un symbole le rendrait excellent.' : 'Excellent mot de passe.'));
+    });
+
+    const alertBox = (type, text) => {
+        const ok = type === 'ok';
+        $('message-area').innerHTML = '<div class="' + (ok ? 'ds-alert-ok' : 'ds-alert-err') + ' flex items-start gap-3" role="' + (ok ? 'status' : 'alert') + '"><i class="fa-solid ' + (ok ? 'fa-circle-check check-pop' : 'fa-circle-exclamation') + ' mt-0.5"></i><p class="text-[14px] font-semibold"></p></div>';
+        $('message-area').querySelector('p').textContent = text;
     };
 
-    try {
-        const response = await fetch('api/user_register.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Affichage du succès
-            messageArea.innerHTML = `<p class="text-green-500 font-bold">${result.success}</p>`;
-            
-            // Redirection vers validation.php avec le token URL reçu
-            setTimeout(() => { 
-                if(result.redirect_token) {
-                    window.location.href = 'validation.php?t=' + result.redirect_token; 
-                } else {
-                    // Fallback au cas où (ne devrait pas arriver si l'API est à jour)
-                    window.location.href = 'login.php';
-                }
-            }, 1500);
-            
-        } else {
-            // Affichage de l'erreur
-            messageArea.innerHTML = `<p class="text-red-500 font-bold">${result.error}</p>`;
+    $('register-form').addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const btn = $('register-btn'); btn.classList.add('is-loading'); $('message-area').innerHTML = '';
+        const formData = {
+            nom: $('nom').value, prenom: $('prenom').value, mail: $('mail').value, naissance: $('naissance').value,
+            sexe: $('sexe').value, password: $('password').value,
+            role: document.querySelector('input[name="role"]:checked').value, bafa: $('bafa').checked
+        };
+        try {
+            const response = await fetch('api/user_register.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
+            const result = await response.json();
+            if (result.success) {
+                alertBox('ok', result.success);
+                // Redirection vers validation.php avec le jeton reçu
+                setTimeout(() => { window.location.href = result.redirect_token ? 'validation.php?t=' + result.redirect_token : 'login.php'; }, 1500);
+            } else {
+                alertBox('err', result.error || 'Une erreur est survenue.');
+                btn.classList.remove('is-loading');
+                $('message-area').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        } catch (error) {
+            console.error(error);
+            alertBox('err', 'Une erreur est survenue. Réessayez dans un instant.');
+            btn.classList.remove('is-loading');
         }
-    } catch (error) {
-        console.error(error);
-        messageArea.innerHTML = `<p class="text-red-500 font-bold">Une erreur est survenue.</p>`;
-    }
-});
+    });
+})();
 </script>
-</body>
-</html>
+<?php require_once 'partials/auth_end.php'; ?>

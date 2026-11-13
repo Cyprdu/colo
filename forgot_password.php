@@ -1,56 +1,55 @@
-<?php require_once 'partials/header.php'; ?>
-<title>Mot de passe oublié - ColoMap</title>
-
-<main class="container mx-auto px-4 py-16 flex justify-center">
-    <div class="w-full max-w-md">
-        <form id="forgot-form" class="bg-white shadow-lg rounded-xl px-8 pt-6 pb-8 mb-4">
-            <h1 class="text-2xl font-bold text-center text-[#0A112F] mb-2">Mot de passe oublié ?</h1>
-            <p class="text-gray-500 text-center text-sm mb-6">Entrez votre e-mail pour recevoir un lien de réinitialisation.</p>
-
-            <div id="message-area" class="mb-4 text-center"></div>
-
-            <div class="mb-6">
-                <label class="block text-gray-700 text-sm font-bold mb-2" for="mail">Adresse Email</label>
-                <input class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="mail" type="email" placeholder="exemple@mail.com" required>
-            </div>
-
-            <div class="flex items-center justify-between">
-                <button class="bg-[#0A112F] hover:bg-blue-900 text-white font-bold py-3 px-6 rounded-lg w-full transition duration-300" type="submit">
-                    Envoyer le lien
-                </button>
-            </div>
-            
-            <p class="text-center text-gray-500 text-sm mt-6">
-                <a class="font-bold text-blue-600 hover:text-blue-800" href="login.php">Retour à la connexion</a>
-            </p>
-        </form>
+<?php
+// forgot_password.php : demande d'un lien de réinitialisation du mot de passe
+$auth_title   = 'Mot de passe oublié - ColoMap';
+$scene_kicker = 'Pas de panique';
+$scene_title  = 'On retrouve le chemin ensemble.';
+$scene_text   = "Indiquez votre adresse email : nous vous envoyons un lien pour choisir un nouveau mot de passe, et vous repartez à l'aventure.";
+$auth_alt     = ['text' => 'Vous vous en souvenez ?', 'label' => 'Se connecter', 'href' => 'login.php'];
+require_once 'partials/auth_start.php';
+?>
+<div class="rise">
+    <div>
+        <h1 class="auth-title">Mot de passe oublié ?</h1>
+        <p class="auth-sub">Entrez votre email pour recevoir un lien de réinitialisation.</p>
     </div>
-</main>
+
+    <div id="message-area" class="mt-6" aria-live="polite"></div>
+
+    <form id="forgot-form" class="mt-7 space-y-5" novalidate>
+        <div>
+            <label for="mail" class="ds-label">Adresse email</label>
+            <div class="field">
+                <i class="fa-regular fa-envelope ico"></i>
+                <input id="mail" type="email" autocomplete="email" required placeholder="vous@exemple.fr" class="ds-input">
+            </div>
+        </div>
+        <button type="submit" class="auth-btn" id="forgot-btn"><span>Envoyer le lien</span><i class="fa-solid fa-paper-plane arrow"></i><span class="spin"></span></button>
+    </form>
+
+    <p class="mt-6 text-center text-[14px] text-[#6b7780]">Pensez à vérifier vos courriers indésirables.</p>
+</div>
 
 <script>
-document.getElementById('forgot-form').addEventListener('submit', async function(event) {
+document.getElementById('forgot-form').addEventListener('submit', async function (event) {
     event.preventDefault();
-    const mail = document.getElementById('mail').value;
-    const messageArea = document.getElementById('message-area');
-    messageArea.innerHTML = '<p class="text-blue-500">Envoi en cours...</p>';
-
+    const mailInput = document.getElementById('mail'), mail = mailInput.value.trim();
+    const area = document.getElementById('message-area'), btn = document.getElementById('forgot-btn');
+    if (!mailInput.checkValidity() || !mail) { area.innerHTML = '<div class="ds-alert-err flex items-start gap-3" role="alert"><i class="fa-solid fa-circle-exclamation mt-0.5"></i><p class="text-[14px] font-semibold">Saisissez une adresse email valide.</p></div>'; mailInput.focus(); return; }
+    btn.classList.add('is-loading'); area.innerHTML = '';
     try {
-        const response = await fetch('api/request_password_reset.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mail })
-        });
+        const response = await fetch('api/request_password_reset.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mail }) });
         const result = await response.json();
-
         if (result.success) {
-            messageArea.innerHTML = `<div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded text-sm">${result.success}</div>`;
+            area.innerHTML = '<div class="ds-alert-ok flex items-start gap-3" role="status"><i class="fa-solid fa-circle-check mt-0.5 check-pop"></i><p class="text-[14px] font-semibold"></p></div>';
+            area.querySelector('p').textContent = result.success;
             document.getElementById('forgot-form').reset();
         } else {
-            messageArea.innerHTML = `<p class="text-red-500 font-bold">${result.error}</p>`;
+            area.innerHTML = '<div class="ds-alert-err flex items-start gap-3" role="alert"><i class="fa-solid fa-circle-exclamation mt-0.5"></i><p class="text-[14px] font-semibold"></p></div>';
+            area.querySelector('p').textContent = result.error || 'Une erreur est survenue.';
         }
     } catch (error) {
-        messageArea.innerHTML = `<p class="text-red-500 font-bold">Une erreur est survenue.</p>`;
-    }
+        area.innerHTML = '<div class="ds-alert-err flex items-start gap-3" role="alert"><i class="fa-solid fa-circle-exclamation mt-0.5"></i><p class="text-[14px] font-semibold">Une erreur est survenue. Réessayez dans un instant.</p></div>';
+    } finally { btn.classList.remove('is-loading'); }
 });
 </script>
-<?php require_once 'partials/footer.php'; ?>
+<?php require_once 'partials/auth_end.php'; ?>

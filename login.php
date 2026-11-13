@@ -140,122 +140,69 @@ if (isset($_GET['error']) && $_GET['error'] == 'google_auth_failed') {
     $error = "Erreur de communication avec Google.";
 }
 
-// 5. Inclusion du Header
-require_once 'partials/header.php';
+// 5. Page d'entrée (écran partagé : scène de colonie + formulaire)
+$auth_title    = 'Connexion - ColoMap';
+$scene_kicker  = 'Bon retour parmi nous';
+$scene_title   = "Entrez dans l'aventure.";
+$scene_text    = 'Retrouvez vos séjours, vos favoris et vos échanges avec les organisateurs, là où vous les avez laissés.';
+$scene_points  = [['fa-campground', 'Des centaines de séjours à découvrir'], ['fa-shield-heart', 'Organisateurs vérifiés'], ['fa-lock', 'Paiement sécurisé par Stripe']];
+$auth_alt      = ['text' => 'Nouveau ici ?', 'label' => 'Créer un compte', 'href' => 'register.php'];
+require_once 'partials/auth_start.php';
 ?>
-
-<div class="min-h-[calc(100vh-64px)] flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-100 to-slate-300">
-
-    <div class="sm:mx-auto sm:w-full sm:max-w-md">
-        
-        <div class="bg-white py-10 px-4 shadow-2xl rounded-2xl sm:px-10 border border-gray-100 relative overflow-hidden">
-            
-            <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
-
-            <div class="mb-8 text-center">
-                <h2 class="text-3xl font-extrabold text-gray-900 mb-2">
-                    Connexion à <span class="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">ColoMap</span>
-                </h2>
-                <p class="text-sm text-gray-600">
-                    Ou
-                    <a href="register.php" class="font-bold text-blue-600 hover:text-blue-500 transition-colors hover:underline">
-                        créer un nouveau compte
-                    </a>
-                </p>
-            </div>
-
-            <?php if (!empty($error)): ?>
-                <div class="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-md animate-pulse">
-                    <div class="flex">
-                        <div class="flex-shrink-0">
-                            <i class="fa-solid fa-circle-exclamation text-red-500 text-lg"></i>
-                        </div>
-                        <div class="ml-3">
-                            <p class="text-sm text-red-700 font-bold"><?php echo htmlspecialchars($error); ?></p>
-                        </div>
-                    </div>
-                </div>
-            <?php endif; ?>
-
-            <form class="space-y-6" action="" method="POST">
-                <div>
-                    <label for="email" class="block text-sm font-bold text-gray-700 mb-1">Adresse email</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fa-solid fa-envelope text-gray-400"></i>
-                        </div>
-                        <input id="email" name="email" type="email" autocomplete="email" required placeholder="exemple@email.com"
-                               class="appearance-none block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all bg-gray-50 focus:bg-white">
-                    </div>
-                </div>
-
-                <div>
-                    <label for="password" class="block text-sm font-bold text-gray-700 mb-1">Mot de passe</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fa-solid fa-lock text-gray-400"></i>
-                        </div>
-                        <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••"
-                               class="appearance-none block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all bg-gray-50 focus:bg-white">
-                        <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none" title="Afficher/Masquer">
-                            <i class="fa-solid fa-eye" id="eye-icon"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center">
-                        <input id="remember_me" name="remember_me" type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer">
-                        <label for="remember_me" class="ml-2 block text-sm text-gray-700 cursor-pointer select-none">Se souvenir de moi</label>
-                    </div>
-
-                    <div class="text-sm">
-                        <a href="forgot_password.php" class="font-medium text-blue-600 hover:text-blue-500 transition-colors hover:underline">Mot de passe oublié ?</a>
-                    </div>
-                </div>
-
-                <div>
-                    <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all transform hover:-translate-y-0.5 active:scale-95">
-                        Se connecter
-                    </button>
-                </div>
-            </form>
-
-            <div class="mt-8">
-                <div class="relative">
-                    <div class="absolute inset-0 flex items-center">
-                        <div class="w-full border-t border-gray-200"></div>
-                    </div>
-                    <div class="relative flex justify-center text-sm">
-                        <span class="px-3 bg-white text-gray-500 font-medium tracking-wide">OU CONTINUER AVEC</span>
-                    </div>
-                </div>
-
-                <div class="mt-6">
-                    <a href="<?php echo htmlspecialchars($login_url); ?>" 
-                       class="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 transform hover:-translate-y-0.5 active:scale-95 group">
-                        <img class="h-5 w-5 mr-3 group-hover:scale-110 transition-transform" src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google logo">
-                        Compte Google
-                    </a>
-                </div>
-            </div>
-
-        </div>
+<div class="rise">
+    <div>
+        <h1 class="auth-title">Connexion</h1>
+        <p class="auth-sub">Content de vous revoir. Le feu de camp est déjà allumé.</p>
     </div>
+
+    <?php if (!empty($error)): ?>
+        <div class="ds-alert-err flex items-start gap-3 mt-6" role="alert">
+            <i class="fa-solid fa-circle-exclamation mt-0.5"></i>
+            <p class="text-[14px] font-semibold"><?php echo htmlspecialchars($error); ?></p>
+        </div>
+    <?php endif; ?>
+
+    <form class="mt-7 space-y-5" action="" method="POST" data-auth>
+        <div>
+            <label for="email" class="ds-label">Adresse email</label>
+            <div class="field">
+                <i class="fa-regular fa-envelope ico"></i>
+                <input id="email" name="email" type="email" autocomplete="email" required placeholder="vous@exemple.fr" class="ds-input">
+            </div>
+        </div>
+        <div>
+            <label for="password" class="ds-label">Mot de passe</label>
+            <div class="field">
+                <i class="fa-solid fa-lock ico"></i>
+                <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Votre mot de passe" class="ds-input" style="padding-right:48px">
+                <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-4 flex items-center text-[#9aa3ab] hover:text-[#26343b]" title="Afficher / masquer le mot de passe" aria-label="Afficher ou masquer le mot de passe">
+                    <i class="fa-solid fa-eye" id="eye-icon"></i>
+                </button>
+            </div>
+        </div>
+        <div class="flex items-center justify-between gap-3 text-[14px]">
+            <label for="remember_me" class="flex items-center gap-2 cursor-pointer select-none text-[#3b4a54]">
+                <input id="remember_me" name="remember_me" type="checkbox" class="h-4 w-4 rounded border-gray-300 accent-[#2f3d45] cursor-pointer"> Se souvenir de moi
+            </label>
+            <a href="forgot_password.php" class="font-semibold text-[#3d6a8e] hover:text-[#2d5170] hover:underline">Mot de passe oublié ?</a>
+        </div>
+        <button type="submit" class="auth-btn"><span>Entrer dans l'aventure</span><i class="fa-solid fa-arrow-right arrow"></i><span class="spin"></span></button>
+    </form>
+
+    <div class="auth-or">ou</div>
+
+    <a href="<?php echo htmlspecialchars($login_url); ?>" class="google-btn">
+        <img class="h-5 w-5" src="https://www.svgrepo.com/show/475656/google-color.svg" alt="" width="20" height="20"> Continuer avec Google
+    </a>
 </div>
 
 <script>
-    function togglePassword() {
-        const x = document.getElementById("password");
-        const i = document.getElementById("eye-icon");
-        if (x.type === "password") {
-            x.type = "text";
-            i.classList.remove("fa-eye");
-            i.classList.add("fa-eye-slash");
-        } else {
-            x.type = "password";
-            i.classList.remove("fa-eye-slash");
-            i.classList.add("fa-eye");
-        }
-    }
+function togglePassword() {
+    const x = document.getElementById('password'), i = document.getElementById('eye-icon');
+    const show = x.type === 'password';
+    x.type = show ? 'text' : 'password';
+    i.classList.toggle('fa-eye', !show);
+    i.classList.toggle('fa-eye-slash', show);
+}
 </script>
+<?php require_once 'partials/auth_end.php'; ?>
