@@ -118,6 +118,11 @@ try {
 
     // 6. Prix de chaque enfant, calculé uniquement avec la base
     $remise = max(0.0, min(100.0, (float)($camp['remise_fratrie'] ?? 0)));
+    // Remise fratrie : on compte aussi les frères et sœurs DÉJÀ inscrits (ou en cours de paiement) à ce séjour,
+    // même si leur réservation a été faite à un autre moment
+    $st = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND " . attente_clause($camp));
+    $st->execute([$camp['id'], $userId]);
+    $dejaInscrits = (int)$st->fetchColumn();
     $orders = []; // ['child','cents','tarif_id','desc']
     foreach ($ordered as $index => $child) {
         $cid = (int)$child['id'];
@@ -139,7 +144,7 @@ try {
         }
         $cents = (int)round($base * 100);
         $desc = $camp['nom'] . ' · ' . $sessionLabel . ' · ' . $nomTarif;
-        if ($index > 0 && $remise > 0) {   // remise fratrie : à partir du 2e enfant
+        if (($index + $dejaInscrits) > 0 && $remise > 0) {   // remise fratrie : à partir du 2e enfant de la famille sur ce séjour
             $cents = (int)round($cents * (1 - $remise / 100));
             $desc .= ' · remise fratrie -' . rtrim(rtrim(number_format($remise, 2, '.', ''), '0'), '.') . '%';
         }

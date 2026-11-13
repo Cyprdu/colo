@@ -59,6 +59,10 @@ try {
 
     foreach ($tarifs as &$t) $t['plancher'] = tarif_plancher($t);
     unset($t);
+    // Frères et sœurs déjà inscrits à ce séjour (la remise fratrie s'applique aussi si on réserve à un autre moment)
+    $stmtFr = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND " . attente_clause($camp));
+    $stmtFr->execute([$camp['id'], $_SESSION['user']['id']]);
+    $dejaInscritsNb = (int)$stmtFr->fetchColumn();
     $enfantsJson = json_encode($enfants);
     $tarifsJson = json_encode($tarifs);
 
@@ -261,6 +265,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
     const allChildren = <?= $enfantsJson ?>;
     const tariffs = <?= $tarifsJson ?>;
     const remisePercent = <?= $remise_pourcent ?>;
+    const alreadyRegistered = <?= (int)$dejaInscritsNb ?>;
 
     let selectedChildIds = [];
     let selections = {}; 
@@ -445,7 +450,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             let price = (t.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == t.id) ? Math.max(sel.customPrice, fl) : parseFloat(t.prix);
             let detail = `(${t.nom})`;
 
-            if (index > 0 && remisePercent > 0) {
+            if ((index + alreadyRegistered) > 0 && remisePercent > 0) {
                 const discount = price * (remisePercent / 100);
                 price -= discount;
                 detail += ` <span class="text-[#3b4a54] text-xs bg-[#eef2f4] px-1 rounded">Fratrie -${remisePercent}%</span>`;
