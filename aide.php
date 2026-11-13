@@ -84,6 +84,7 @@ JSON_END
 , true);
 
 $body_class = 'bg-white';
+$ads_enabled = true;
 require_once 'partials/header.php';
 ?>
 <title>Centre d'aide - ColoMap</title>
@@ -135,12 +136,7 @@ require_once 'partials/header.php';
     </section>
 
     <?php if ($i === 0): ?>
-        <div class="my-12 rounded-2xl bg-[#f8f5ea] p-4 text-center overflow-hidden">
-            <span class="text-[10px] text-[#9aa3ab] uppercase tracking-widest block mb-3">Publicité</span>
-            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
-            <ins class="adsbygoogle" style="display:block; text-align:center;" data-ad-layout="in-article" data-ad-format="fluid" data-ad-client="ca-pub-3659884670016121" data-ad-slot="6405652824"></ins>
-            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-        </div>
+        <?php ad_slot('aide-1', ADS_SLOTS['article'], ['format' => 'fluid', 'layout' => 'in-article', 'minh' => 280]); ?>
     <?php endif; ?>
     <?php endforeach; ?>
 

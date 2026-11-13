@@ -1,5 +1,6 @@
 <?php
 // Fichier: /recherche.php
+$ads_enabled = true;
 require_once 'partials/header.php';
 
 $search_term = isset($_GET['name']) ? htmlspecialchars($_GET['name']) : '';
@@ -129,6 +130,7 @@ $is_logged_in = isset($_SESSION['user']);
                     <div class="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600 mb-4"></div>
                     <p class="text-gray-400 font-medium">Recherche en cours...</p>
                 </div>
+            <?php ad_slot('recherche-1', ADS_SLOTS['recherche'], ['minh' => 280]); ?>
             </main>
         </div>
     </div>

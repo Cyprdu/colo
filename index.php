@@ -9,6 +9,7 @@
  *   - Icônes en SVG inline.
  */
 
+$ads_enabled = true;
 require_once 'partials/header3.php';
 
 $is_logged_in = isset($_SESSION['user']);
@@ -201,6 +202,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 <main class="flex-1 w-full max-w-[1320px] mx-auto px-5 sm:px-8 pb-6">
     <?php if (!$is_animateur): ?>
         <div id="feed" aria-live="polite"></div>
+        <?php ad_slot('accueil-1', ADS_SLOTS['accueil'], ['minh' => 280]); ?>
         <div id="feed-empty" class="hidden text-center py-16">
             <p class="text-xl font-semibold text-[#26343b]">Aucun séjour à venir pour le moment</p>
             <p class="mt-2 text-[#6b7780]">De nouveaux séjours sont publiés régulièrement.</p>

@@ -43,12 +43,6 @@ require_once 'partials/header.php';
         <a href="recherche" class="ds-btn mt-6">Trouver un séjour</a>
     </div>
 
-    <div class="mt-14 rounded-2xl bg-[#f8f5ea] p-4 text-center overflow-hidden">
-        <span class="text-[10px] text-[#9aa3ab] uppercase tracking-widest block mb-3">Publicité</span>
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
-        <ins class="adsbygoogle" style="display:block" data-ad-format="fluid" data-ad-layout-key="-6t+ed+2i-1n-4w" data-ad-client="ca-pub-3659884670016121" data-ad-slot="8390131413"></ins>
-        <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-    </div>
 </main>
 
 <script>

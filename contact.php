@@ -198,12 +198,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </section>
 
-    <div class="mt-12 rounded-2xl bg-[#f8f5ea] p-4 text-center overflow-hidden">
-        <span class="text-[10px] text-[#9aa3ab] uppercase tracking-widest block mb-3">Publicité</span>
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
-        <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-3659884670016121" data-ad-slot="1183215923" data-ad-format="horizontal" data-full-width-responsive="true"></ins>
-        <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-    </div>
 </main>
 
 <script>

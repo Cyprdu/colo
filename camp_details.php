@@ -29,6 +29,7 @@ try {
     }
 } catch (Exception $e) {}
 
+$ads_enabled = true;
 require_once 'partials/header3.php';
 ?>
 
@@ -212,12 +213,7 @@ require_once 'partials/header3.php';
                         <div id="website-container"></div>
                     </div>
 
-                    <div class="bg-[#f8f5ea] rounded-2xl p-2 text-center min-h-[250px] relative overflow-hidden">
-                        <span class="absolute top-1 right-2 text-[8px] text-gray-400 uppercase bg-white/60 px-1 rounded z-10">Publicité</span>
-                        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
-                        <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-3659884670016121" data-ad-slot="7384171500" data-ad-format="auto" data-full-width-responsive="true"></ins>
-                        <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-                    </div>
+                    <?php ad_slot('detail-1', ADS_SLOTS['detail'], ['minh' => 280]); ?>
                 </div>
             </aside>
         </div>

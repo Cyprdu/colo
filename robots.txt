@@ -1,0 +1,19 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin
+Disallow: /uploads/
+Disallow: /vendor/
+Disallow: /login
+Disallow: /register
+Disallow: /messagerie
+Disallow: /profile
+Disallow: /reservation
+
+# Robot AdSense : doit pouvoir lire toutes les pages publiques pour servir des annonces pertinentes
+User-agent: Mediapartners-Google
+Allow: /
+
+User-agent: Google-Display-Ads-Bot
+Allow: /
+
+Sitemap: https://moncamp.fr/sitemap.xml

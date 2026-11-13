@@ -26,6 +26,7 @@
             <nav aria-label="À propos de ColoMap">
                 <h2 class="text-[16px] font-bold mb-4">À propos de ColoMap</h2>
                 <ul class="space-y-3 text-[15px] text-white/85">
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="a_propos">Qui sommes-nous ?</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Contactez-nous</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#animateurs">Nous rejoindre</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Partenariat</a></li>
