@@ -60,7 +60,7 @@ try {
     foreach ($tarifs as &$t) $t['plancher'] = tarif_plancher($t);
     unset($t);
     // Frères et sœurs déjà inscrits à ce séjour (la remise fratrie s'applique aussi si on réserve à un autre moment)
-    $stmtFr = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND " . attente_clause($camp));
+    $stmtFr = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND statut_paiement = 'PAYE' AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule')");
     $stmtFr->execute([$camp['id'], $_SESSION['user']['id']]);
     $dejaInscritsNb = (int)$stmtFr->fetchColumn();
     $enfantsJson = json_encode($enfants);
