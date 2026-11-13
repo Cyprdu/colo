@@ -13,13 +13,62 @@
 $scene_points = $scene_points ?? [];
 $auth_alt = $auth_alt ?? null;
 
-/** Un pin stylisé (3 étages) ; la classe .sway le balance doucement */
+/** Un sapin « dessiné » : étages irréguliers, branches qui retombent, deux côtés différents ; .sway le balance doucement */
 if (!function_exists('auth_pine')) { function auth_pine(float $x, float $base, float $h, string $fill, float $delay): void {
-    $w = $h * 0.36; $top = $base - $h; $y1 = $top + 0.38 * $h; $y2 = $top + 0.68 * $h;
-    $pts = [[$x, $top], [$x + .55 * $w, $y1], [$x + .28 * $w, $y1], [$x + .82 * $w, $y2], [$x + .45 * $w, $y2], [$x + $w, $base],
-            [$x - $w, $base], [$x - .45 * $w, $y2], [$x - .82 * $w, $y2], [$x - .28 * $w, $y1], [$x - .55 * $w, $y1]];
+    $w = $h * 0.33; $top = $base - $h; $lean = mt_rand(-5, 5) / 10 * ($h / 100);
+    $side = function (int $dir) use ($x, $top, $h, $w, $lean) {
+        $pts = [];
+        for ($t = 0; $t < 5; $t++) {
+            $yT = $top + $h * (0.06 + $t * 0.185);
+            $wf = 0.30 + $t * 0.17;
+            $pts[] = [$x + $lean * (1 - $t / 5) + $dir * $w * $wf * 0.42, $yT + $h * 0.065];          // creux sous la branche
+            $pts[] = [$x + $dir * $w * $wf * (1 + mt_rand(-12, 14) / 100), $yT + $h * (0.19 + mt_rand(-2, 3) / 100)]; // pointe qui retombe
+        }
+        return $pts;
+    };
+    $R = $side(1); $L = array_reverse($side(-1));
+    $pts = array_merge([[$x + $lean, $top]], $R, [[$x + $h * 0.035, $base], [$x - $h * 0.03, $base]], $L);
     $p = implode(' ', array_map(function ($q) { return round($q[0], 1) . ',' . round($q[1], 1); }, $pts));
-    echo '<polygon class="sway" style="animation-delay:-' . $delay . 's;transform-origin:' . $x . 'px ' . $base . 'px" fill="' . $fill . '" points="' . $p . '"/>';
+    echo '<polygon class="sway" style="animation-delay:-' . $delay . 's;transform-origin:' . $x . 'px ' . $base . 'px" fill="' . $fill . '" stroke="' . $fill . '" stroke-width="1.2" stroke-linejoin="round" points="' . $p . '"/>';
+} }
+
+/** Crête rocheuse irrégulière : chaque segment est découpé et légèrement déplacé (pas de lignes parfaites) */
+if (!function_exists('auth_ridge')) { function auth_ridge(array $pts, int $ridgeCount, int $seed): string {
+    mt_srand($seed);
+    $d = 'M' . $pts[0][0] . ' ' . $pts[0][1];
+    for ($i = 1; $i < count($pts); $i++) {
+        [$x0, $y0] = $pts[$i - 1]; [$x1, $y1] = $pts[$i];
+        if ($i < $ridgeCount) {
+            $n = max(2, (int)round(hypot($x1 - $x0, $y1 - $y0) / 38));
+            for ($k = 1; $k < $n; $k++) {
+                $t = $k / $n;
+                $d .= ' L' . round($x0 + ($x1 - $x0) * $t + mt_rand(-30, 30) / 10, 1) . ' ' . round($y0 + ($y1 - $y0) * $t + mt_rand(-45, 45) / 10, 1);
+            }
+        }
+        $d .= ' L' . $x1 . ' ' . $y1;
+    }
+    return $d . ' Z';
+} }
+
+/** Neige d'un sommet : une grande forme au-dessus du pic, découpée en bas par une ligne de neige irrégulière.
+    Elle est rognée par la silhouette de la montagne (clipPath) : elle épouse donc toujours le sommet exact. */
+if (!function_exists('auth_snow')) { function auth_snow(float $px, float $py, float $w, int $seed): string {
+    mt_srand($seed);
+    $pts = [[$px - $w, $py - 80], [$px + $w, $py - 80]];
+    for ($x = $px + $w; $x > $px - $w; $x -= mt_rand(12, 24)) {
+        $edge = abs($x - $px) / $w;
+        $pts[] = [$x, $py + 50 + mt_rand(-14, 20) - $edge * 22];
+    }
+    return implode(' ', array_map(function ($q) { return round($q[0], 1) . ',' . round($q[1], 1); }, $pts));
+} }
+
+/** Pan d'ombre à droite du sommet : une arête légèrement brisée qui descend du pic */
+if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, int $seed): string {
+    mt_srand($seed);
+    $x = $px; $pts = [[$px, $py]];
+    for ($y = $py + 40; $y < $py + 330; $y += mt_rand(34, 60)) { $x += mt_rand(-14, 16); $pts[] = [$x, $y]; }
+    $pts[] = [$x + 6, $py + 340]; $pts[] = [$px + 420, $py + 340]; $pts[] = [$px + 420, $py];
+    return implode(' ', array_map(function ($q) { return round($q[0], 1) . ',' . round($q[1], 1); }, $pts));
 } }
 ?><!DOCTYPE html>
 <html lang="fr">
@@ -140,6 +189,8 @@ if (!function_exists('auth_pine')) { function auth_pine(float $x, float $base, f
                 <radialGradient id="fireHalo"><stop offset="0" stop-color="#f7c873" stop-opacity=".75"/><stop offset="1" stop-color="#f7c873" stop-opacity="0"/></radialGradient>
                 <linearGradient id="flameG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#e2762f"/><stop offset=".55" stop-color="#f3b64e"/><stop offset="1" stop-color="#fbe7a6"/></linearGradient>
                 <linearGradient id="tentG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e4ddc7"/><stop offset="1" stop-color="#b9b29b"/></linearGradient>
+                <filter id="rough" x="-2%" y="-2%" width="104%" height="104%"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="5" xChannelSelector="R" yChannelSelector="G"/></filter>
+                <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="9" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .55 0"/></filter>
             </defs>
 
             <rect width="800" height="1000" fill="url(#sky)"/>
@@ -166,20 +217,41 @@ if (!function_exists('auth_pine')) { function auth_pine(float $x, float $base, f
             </g>
 
             <!-- montagnes lointaines -->
+            <?php
+            $far  = [[-20,700],[60,590],[90,552],[122,584],[150,602],[205,520],[250,431],[290,498],[345,578],[385,540],[420,503],[470,430],[520,374],[575,455],[640,562],[690,512],[720,482],[775,545],[830,622],[830,760],[-20,760]];
+            $near = [[-20,790],[34,700],[70,642],[118,690],[160,722],[210,650],[260,592],[320,672],[370,732],[420,690],[470,642],[535,716],[590,762],[640,700],[690,652],[760,730],[830,782],[830,830],[-20,830]];
+            ?>
+            <clipPath id="clipFar"><path d="<?= auth_ridge($far, 19, 31) ?>"/></clipPath>
+            <clipPath id="clipNear"><path d="<?= auth_ridge($near, 17, 47) ?>"/></clipPath>
             <g class="layer" data-depth="9">
-                <path d="M-20 700 L90 548 L150 600 L250 430 L345 575 L420 500 L520 372 L640 560 L720 480 L830 620 L830 760 L-20 760 Z" fill="#364651"/>
-                <path d="M250 430 L222 478 L246 470 L262 492 L282 468 L300 476 Z" fill="#e9e3d0" opacity=".85"/>
-                <path d="M520 372 L488 428 L512 420 L530 442 L552 418 L574 430 Z" fill="#e9e3d0" opacity=".85"/>
+                <g filter="url(#rough)">
+                    <path d="<?= auth_ridge($far, 19, 31) ?>" fill="#364651"/>
+                    <g clip-path="url(#clipFar)">
+                        <?php foreach ([[250,431,1],[520,374,2],[90,552,3],[720,482,4]] as [$px,$py,$sd]): ?>
+                            <polygon points="<?= auth_facet($px, $py, 70 + $sd) ?>" fill="#1b252c" opacity=".35"/>
+                            <polygon points="<?= auth_snow($px, $py, $sd > 2 ? 46 : 78, 90 + $sd) ?>" fill="#e9e3d0" opacity=".9"/>
+                        <?php endforeach; ?>
+                    </g>
+                    <path d="<?= auth_ridge($far, 19, 31) ?>" fill="none" stroke="#1d2931" stroke-width="1.4" stroke-linejoin="round" opacity=".7"/>
+                </g>
             </g>
             <!-- montagnes proches -->
             <g class="layer" data-depth="14">
-                <path d="M-20 790 L70 640 L160 720 L260 590 L370 730 L470 640 L590 760 L690 650 L830 780 L830 830 L-20 830 Z" fill="#2a3943"/>
-                <path d="M260 590 L238 626 L258 620 L272 636 L290 616 L304 624 Z" fill="#cfd6dc" opacity=".7"/>
+                <g filter="url(#rough)">
+                    <path d="<?= auth_ridge($near, 17, 47) ?>" fill="#2a3943"/>
+                    <g clip-path="url(#clipNear)">
+                        <?php foreach ([[260,592,5],[690,652,6],[70,642,7]] as [$px,$py,$sd]): ?>
+                            <polygon points="<?= auth_facet($px, $py, 110 + $sd) ?>" fill="#141c20" opacity=".35"/>
+                            <polygon points="<?= auth_snow($px, $py, $sd === 5 ? 58 : 38, 130 + $sd) ?>" fill="#cfd6dc" opacity=".72"/>
+                        <?php endforeach; ?>
+                    </g>
+                    <path d="<?= auth_ridge($near, 17, 47) ?>" fill="none" stroke="#141c20" stroke-width="1.4" stroke-linejoin="round" opacity=".7"/>
+                </g>
             </g>
 
             <!-- forêt : arrière-plan -->
             <g class="layer" data-depth="20">
-                <?php mt_srand(5); for ($i = 0; $i < 13; $i++) auth_pine(20 + $i * 62 + mt_rand(-14, 14), 842, mt_rand(110, 160), '#1c2931', mt_rand(0, 55) / 10); ?>
+                <?php mt_srand(5); for ($i = 0; $i < 13; $i++) auth_pine(14 + $i * 61 + mt_rand(-22, 22), 842 + mt_rand(-6, 6), mt_rand(96, 170), '#1c2931', mt_rand(0, 55) / 10); ?>
             </g>
 
             <!-- sol -->
@@ -218,6 +290,7 @@ if (!function_exists('auth_pine')) { function auth_pine(float $x, float $base, f
                     <circle class="firefly" cx="<?= $fx ?>" cy="<?= $fy ?>" r="2.4" fill="#f6e7a8" style="animation-duration:<?= mt_rand(55, 95) / 10 ?>s;animation-delay:-<?= mt_rand(0, 70) / 10 ?>s;filter:drop-shadow(0 0 5px #f6e7a8)"/>
                 <?php endfor; ?>
             </g>
+            <rect width="800" height="1000" filter="url(#grain)" opacity=".16" style="mix-blend-mode:overlay;pointer-events:none"/>
         </svg>
 
         <div class="scene-copy">
