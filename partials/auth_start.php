@@ -225,11 +225,11 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
             <clipPath id="clipNear"><path d="<?= auth_ridge($near, 17, 47) ?>"/></clipPath>
             <g class="layer" data-depth="9">
                 <g filter="url(#rough)">
-                    <path d="<?= auth_ridge($far, 19, 31) ?>" fill="#364651"/>
+                    <path d="<?= auth_ridge($far, 19, 31) ?>" fill="#41535f"/>
                     <g clip-path="url(#clipFar)">
                         <?php foreach ([[250,431,1],[520,374,2],[90,552,3],[720,482,4]] as [$px,$py,$sd]): ?>
                             <polygon points="<?= auth_facet($px, $py, 70 + $sd) ?>" fill="#1b252c" opacity=".35"/>
-                            <polygon points="<?= auth_snow($px, $py, $sd > 2 ? 46 : 78, 90 + $sd) ?>" fill="#e9e3d0" opacity=".9"/>
+                            <polygon points="<?= auth_snow($px, $py, $sd > 2 ? 46 : 78, 90 + $sd) ?>" fill="#e3e1d2" opacity=".86"/>
                         <?php endforeach; ?>
                     </g>
                     <path d="<?= auth_ridge($far, 19, 31) ?>" fill="none" stroke="#1d2931" stroke-width="1.4" stroke-linejoin="round" opacity=".7"/>
