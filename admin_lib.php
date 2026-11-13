@@ -287,6 +287,10 @@ function adm_nav(): array {
             ['admin_list.php?e=boosts', 'bolt', 'Boosts', ''],
             ['admin_list.php?e=contacts', 'mail', 'Messages de contact', 'contacts'],
         ],
+        'Finances' => [
+            ['admin_compta.php', 'euro', 'Comptabilité', ''],
+            ['admin_demande_virement.php', 'bank', 'Versements aux organismes', ''],
+        ],
         'Données'  => [
             ['admin_db.php', 'database', 'Base de données', ''],
             ['admin_sql.php', 'terminal', 'Console SQL', ''],

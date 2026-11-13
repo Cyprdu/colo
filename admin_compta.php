@@ -1,0 +1,233 @@
+<?php
+// admin_compta.php : section « Comptabilité » du back-office (chiffre d'affaires, commissions, frais Stripe, marge nette,
+// montants dus / versés aux organismes, rapprochement avec Stripe, exports CSV, réglage de la commission).
+// Garde, CSRF (champ _csrf) et en-têtes : ceux de admin_lib.php. Pas de script ni de style en ligne (CSP stricte).
+// Le réglage de la commission et le déverrouillage des exports exigent le mot de passe administrateur (adm_reauth).
+require_once __DIR__ . '/admin_lib.php';
+require_once __DIR__ . '/api/compta_lib.php';
+adm_guard();
+fin_ensure($pdo);
+
+$v = in_array($_GET['v'] ?? '', ['synthese', 'organismes', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
+[$from, $to, $periodLabel, $pk] = compta_period($_GET);
+$orgaTok = preg_match('/^[a-f0-9]{24}$/', (string)($_GET['o'] ?? '')) ? (string)$_GET['o'] : '';
+$orgaId = $orgaTok ? fin_orga_from_tok($pdo, $orgaTok) : 0;
+if ($orgaTok && !$orgaId) $orgaTok = '';
+$uid = (int)$_SESSION['user']['id'];
+
+/** URL de la page avec la période / l'organisme courants (aucun identifiant numérique) */
+function cu(array $o = []): string {
+    global $v, $pk, $orgaTok;
+    $q = array_merge(['v' => $v, 'p' => $pk, 'o' => $orgaTok, 'du' => $_GET['du'] ?? '', 'au' => $_GET['au'] ?? ''], $o);
+    if (($q['p'] ?? '') !== 'perso') unset($q['du'], $q['au']);
+    return 'admin_compta.php?' . http_build_query(array_filter($q, fn($x) => $x !== '' && $x !== null));
+}
+function flash_go(string $kind, string $msg, string $to): void { $_SESSION['adm_flash'] = [$kind, $msg]; header('Location: ' . $to); exit; }
+
+/* ------------------------------------------------------------------ actions (POST : CSRF vérifié par adm_guard) */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $act = (string)($_POST['act'] ?? '');
+    try {
+        if ($act === 'commission') {
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=reglages');
+            $pct = (float)str_replace(',', '.', (string)($_POST['pct'] ?? ''));
+            $fixe = ctype_digit((string)($_POST['fixe'] ?? '')) ? (int)$_POST['fixe'] : -1;
+            if (!is_numeric(str_replace(',', '.', (string)($_POST['pct'] ?? ''))) || $pct < 0 || $pct > 30 || $fixe < 0 || $fixe > 500)
+                flash_go('err', 'Valeurs invalides : pourcentage entre 0 et 30, part fixe entre 0 et 500 centimes.', 'admin_compta.php?v=reglages');
+            fin_set_commission($pdo, $pct, $fixe, 'admin:' . $uid);
+            adm_audit('commission_modifiee', 'fin_reglages', number_format($pct, 2, '.', '') . ' % + ' . $fixe . ' c');
+            flash_go('ok', 'Commission enregistrée : ' . number_format($pct, 2, ',', ' ') . ' % + ' . compta_eur($fixe) . ' €. Elle s\'applique aux prochains paiements uniquement.', 'admin_compta.php?v=reglages');
+        }
+        if ($act === 'unlock') {
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            flash_go($ok ? 'ok' : 'err', $ok ? 'Exports déverrouillés pendant 10 minutes.' : $msg, 'admin_compta.php?v=export');
+        }
+        if ($act === 'frais') {
+            [$ok, $ko] = fin_backfill_fees($pdo, 60);
+            adm_audit('compta_frais_releves', null, "$ok relevés, $ko en échec");
+            flash_go($ko && !$ok ? 'err' : 'ok', "$ok paiement(s) mis à jour avec les frais Stripe réels" . ($ko ? ", $ko non disponible(s) chez Stripe (réessayez plus tard)." : '.'), cu());
+        }
+        if ($act === 'payouts') {
+            $n = compta_sync_payouts($pdo);
+            adm_audit('compta_payouts_sync', null, "$n virements");
+            flash_go('ok', "$n virement(s) Stripe synchronisé(s).", 'admin_compta.php?v=rapprochement');
+        }
+    } catch (Throwable $e) {
+        error_log('admin_compta: ' . $e->getMessage());
+        flash_go('err', 'Opération impossible (voir les journaux serveur). Stripe est peut-être injoignable ou la clé non configurée.', 'admin_compta.php?v=' . urlencode($v));
+    }
+    flash_go('err', 'Action inconnue.', 'admin_compta.php');
+}
+
+/* ------------------------------------------------------------------ données */
+$sum = compta_summary($pdo, $from, $to, $orgaId);
+$negN = compta_negative_count($pdo);
+$orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id ORDER BY o.nom")->fetchAll(PDO::FETCH_ASSOC);
+$e = fn($c) => h(fin_eur((int)$c));
+
+adm_head('Comptabilité', 'admin_compta.php');
+$tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Commission'];
+?>
+<nav class="tabs" aria-label="Sections de la comptabilité">
+<?php foreach ($tabs as $k => $l): ?><a class="tab<?= $k === $v ? ' on' : '' ?>" href="<?= h(cu(['v' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
+</nav>
+
+<?php if ($negN > 0): ?>
+<div class="note err"><?= ic('alert') ?><div><b><?= $negN ?> paiement<?= $negN > 1 ? 's' : '' ?> à marge négative.</b> La commission ne couvre pas les frais Stripe réels (carte hors Europe, remboursement, litige...). <a class="lnk" href="<?= h(cu(['v' => 'synthese'])) ?>#negatives">Voir le détail</a> · envisagez d'augmenter la part fixe ou le pourcentage (onglet Commission).</div></div>
+<?php endif; ?>
+
+<?php if ($v === 'synthese' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
+<form class="bar" method="get" action="admin_compta.php">
+  <input type="hidden" name="v" value="<?= h($v) ?>"><input type="hidden" name="p" value="perso">
+  <?php foreach (['mois' => 'Ce mois', 'trimestre' => 'Trimestre', 'annee' => 'Année', 'tout' => 'Tout'] as $k => $l): ?><a class="btn ghost<?= $pk === $k ? ' sel-on' : '' ?>" href="<?= h(cu(['p' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
+  <label class="fld-inline">Du <input class="in dt" type="date" name="du" value="<?= h(substr($from, 0, 10)) ?>"></label>
+  <label class="fld-inline">au <input class="in dt" type="date" name="au" value="<?= h(substr($to, 0, 10)) ?>"></label>
+  <?php if ($v !== 'organismes'): ?><select class="in sel" name="o" aria-label="Organisme"><option value="">Tous les organismes</option>
+    <?php foreach ($orgList as $o): $t = fin_orga_tok((int)$o['id']); ?><option value="<?= h($t) ?>"<?= $t === $orgaTok ? ' selected' : '' ?>><?= h($o['nom']) ?></option><?php endforeach; ?></select><?php endif; ?>
+  <button class="btn" type="submit"><?= ic('search') ?> Appliquer</button>
+  <span class="count"><?= h($periodLabel) ?></span>
+</form>
+<?php endif; ?>
+
+<?php if ($v === 'synthese'): ?>
+<?php if ($sum['frais_inconnus'] > 0): ?>
+<div class="note warn"><?= ic('clock') ?><div><?= $sum['frais_inconnus'] ?> paiement<?= $sum['frais_inconnus'] > 1 ? 's' : '' ?> de la période sans frais Stripe relevés (la marge ci-dessous ne les inclut pas). Le relevé est automatique (webhook + cron) ;
+  <form class="inl" method="post" action="admin_compta.php"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="frais"><button class="btn ghost sm" type="submit">relever maintenant</button></form></div></div>
+<?php endif; ?>
+<section class="kpis">
+  <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= $e($sum['ca']) ?></b><span>Chiffre d'affaires encaissé</span><small><?= $sum['nb'] ?> paiement<?= $sum['nb'] > 1 ? 's' : '' ?> · remboursé : <?= $e($sum['rembourse']) ?></small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions ColoMap</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($sum['frais'] + $sum['litige']) ?></b><span>Frais Stripe réels</span><small>dont litiges : <?= $e($sum['litige']) ?></small></div></div>
+  <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette ColoMap</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('building') ?></span><div><b><?= $e($sum['du_total']) ?></b><span>Dû aux organismes</span><small>net total de la période</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('check') ?></span><div><b><?= $e($sum['verse']) ?></b><span>Déjà versé</span><small>transferts exécutés</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('clock') ?></span><div><b><?= $e($sum['attente']) ?></b><span>En attente de versement</span><small>avant la date de déblocage, suspendu ou en litige</small></div></div>
+</section>
+
+<h2 class="sec"><?= ic('list') ?> Par mois</h2>
+<?php $months = compta_by_month($pdo, $from, $to, $orgaId); ?>
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Mois</th><th class="num">Paiements</th><th class="num">CA</th><th class="num">Commissions</th><th class="num">Frais Stripe</th><th class="num">Marge nette</th></tr></thead><tbody>
+  <?php if (!$months): ?><tr><td colspan="6" class="empty"><p>Aucun paiement sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($months as $m): ?><tr><td data-l="Mois"><?= h(substr($m['m'], 5, 2) . '/' . substr($m['m'], 0, 4)) ?></td><td class="num" data-l="Paiements"><?= (int)$m['nb'] ?></td><td class="num" data-l="CA"><?= $e($m['ca']) ?></td><td class="num" data-l="Commissions"><?= $e($m['commission']) ?></td><td class="num" data-l="Frais Stripe"><?= $e($m['frais'] + $m['litige']) ?></td><td class="num<?= $m['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge nette"><b><?= $e($m['marge']) ?></b></td></tr><?php endforeach; ?>
+  </tbody></table></div>
+
+<?php if ($negN > 0): $neg = compta_negative($pdo); ?>
+<h2 class="sec" id="negatives"><?= ic('alert') ?> Paiements à marge négative</h2>
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Date</th><th>Organisme · séjour</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Frais Stripe</th><th class="num">Marge</th><th>Statut</th></tr></thead><tbody>
+  <?php foreach ($neg as $n): ?><tr><td data-l="Date"><?= h(adm_date($n['created_at'])) ?></td><td data-l="Séjour"><?= h($n['orga']) ?> · <?= h($n['camp']) ?></td><td class="num" data-l="Payé"><?= $e($n['brut_cents']) ?></td><td class="num" data-l="Commission"><?= $e($n['commission']) ?></td><td class="num" data-l="Frais"><?= $e($n['frais'] + $n['litige']) ?><?= $n['litige'] > 0 ? ' <span class="pill bad">litige</span>' : '' ?></td><td class="num neg" data-l="Marge"><b><?= $e($n['marge']) ?></b></td><td data-l="Statut"><?= h($n['statut']) ?><?= $n['rembourse_cents'] > 0 ? ' · remboursé ' . $e($n['rembourse_cents']) : '' ?></td></tr><?php endforeach; ?>
+  </tbody></table></div>
+<p class="muted small">Un remboursement ne restitue pas les frais Stripe : la commission rendue à la famille augmente la perte. Cas normaux à surveiller : cartes hors Europe, litiges (frais fixes élevés).</p>
+<?php endif; ?>
+
+<?php elseif ($v === 'organismes'): $rows = compta_by_orga($pdo, $from, $to); ?>
+<div class="bar"><span class="count"><?= count($rows) ?> organisme<?= count($rows) > 1 ? 's' : '' ?></span><a class="btn ghost" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => 'organismes', 'p' => $pk] + ($pk === 'perso' ? ['du' => substr($from, 0, 10), 'au' => substr($to, 0, 10)] : []))) ?>"><?= ic('list') ?> Exporter (CSV)</a></div>
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Organisme</th><th class="num">Paiements</th><th class="num">CA</th><th class="num">Commission</th><th class="num">Frais Stripe</th><th class="num">Marge</th><th class="num">Dû</th><th class="num">Versé</th><th class="num">En attente</th></tr></thead><tbody>
+  <?php if (!$rows): ?><tr><td colspan="9" class="empty"><p>Aucun paiement sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($rows as $r): ?><tr><td data-l="Organisme"><b><?= h($r['nom']) ?></b></td><td class="num" data-l="Paiements"><?= (int)$r['nb'] ?></td><td class="num" data-l="CA"><?= $e($r['ca']) ?></td><td class="num" data-l="Commission"><?= $e($r['commission']) ?></td><td class="num" data-l="Frais Stripe"><?= $e($r['frais'] + $r['litige']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td><td class="num" data-l="Dû"><?= $e($r['du']) ?></td><td class="num" data-l="Versé"><?= $e($r['verse']) ?></td><td class="num" data-l="En attente"><?= $e($r['attente']) ?></td></tr><?php endforeach; ?>
+  </tbody></table></div>
+
+<?php elseif ($v === 'rapprochement'):
+    $stripeBal = null; $schedule = null; $stripeErr = '';
+    try {
+        $b = fin_stripe()->balance->retrieve();
+        $sum_ = ['disponible' => 0, 'en_attente' => 0];
+        foreach ($b->available as $x) if (strtolower($x->currency) === 'eur') $sum_['disponible'] += (int)$x->amount;
+        foreach ($b->pending as $x) if (strtolower($x->currency) === 'eur') $sum_['en_attente'] += (int)$x->amount;
+        $stripeBal = $sum_;
+        try { $acct = fin_stripe()->accounts->retrieve(); $schedule = $acct->settings->payouts->schedule->interval ?? null; } catch (Throwable $e2) { $schedule = null; }
+    } catch (Throwable $e1) { error_log('compta rapprochement: ' . $e1->getMessage()); $stripeErr = 'Stripe injoignable ou clé non configurée : seule la partie « base de données » est affichée.'; }
+    $rc = compta_reconcile($pdo, $stripeBal);
+    $pays = $pdo->query("SELECT * FROM fin_payouts ORDER BY date_creation DESC LIMIT 30")->fetchAll(PDO::FETCH_ASSOC);
+?>
+<?php if ($stripeErr): ?><div class="note warn"><?= ic('alert') ?><div><?= h($stripeErr) ?></div></div><?php endif; ?>
+<?php if ($schedule !== null && $schedule !== 'manual'): ?>
+<div class="note err"><?= ic('alert') ?><div><b>Les virements Stripe vers votre banque sont en mode « <?= h($schedule) ?> ».</b> Ils vident le solde Stripe, y compris l'argent dû aux organismes : les transferts vers eux échoueraient faute de fonds. Passez les virements en <b>manuel</b> (Stripe &gt; Paramètres &gt; Compte bancaire et devises) et ne virez que le montant « versable » ci-dessous.</div></div>
+<?php endif; ?>
+<div class="bar"><form class="inl" method="post" action="admin_compta.php"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="payouts"><button class="btn" type="submit"><?= ic('refresh') ?> Synchroniser les virements Stripe</button></form><span class="muted small">Lecture seule : aucune action financière n'est déclenchée chez Stripe.</span></div>
+<div class="cols">
+  <section class="card"><h2 class="sec"><?= ic('database') ?> D'après la base (théorique)</h2>
+    <div class="kv"><span>Encaissements d'inscriptions (nets des remboursements)</span><b><?= $e($rc['ca']) ?></b></div>
+    <div class="kv"><span>+ Achats de points par carte</span><b><?= $e($rc['points']) ?></b></div>
+    <div class="kv"><span>− Frais Stripe relevés</span><b><?= $e($rc['frais']) ?></b></div>
+    <div class="kv"><span>− Frais de litige</span><b><?= $e($rc['litige']) ?></b></div>
+    <div class="kv"><span>− Transferts envoyés aux organismes</span><b><?= $e($rc['transferts']) ?></b></div>
+    <div class="kv"><span><b>= Fonds ColoMap attendus (Stripe + banque)</b></span><b><?= $e($rc['theorique']) ?></b></div>
+    <?php if ($rc['frais_inconnus'] > 0): ?><p class="muted small"><?= $rc['frais_inconnus'] ?> paiement(s) sans frais relevés : le théorique est surévalué d'autant.</p><?php endif; ?>
+  </section>
+  <section class="card"><h2 class="sec"><?= ic('bank') ?> D'après Stripe (réel)</h2>
+    <?php if ($stripeBal): ?>
+    <div class="kv"><span>Solde Stripe disponible</span><b><?= $e($stripeBal['disponible']) ?></b></div>
+    <div class="kv"><span>Solde Stripe en attente</span><b><?= $e($stripeBal['en_attente']) ?></b></div>
+    <div class="kv"><span>+ Virements déjà faits vers votre banque (<?= $rc['nb_payouts'] ?>)</span><b><?= $e($rc['payouts']) ?></b></div>
+    <div class="kv"><span><b>= Fonds réellement constatés</b></span><b><?= $e($rc['reel']) ?></b></div>
+    <div class="kv"><span>Écart (réel − théorique)</span><b class="<?= abs($rc['ecart']) > 100 ? 'neg' : '' ?>"><?= $e($rc['ecart']) ?></b></div>
+    <p class="muted small">Un petit écart est normal : frais de virement/Connect facturés par Stripe, paiements antérieurs à ce module, boosts payés par carte, mouvements en cours. Un écart important ou qui grandit est à investiguer (journal d'audit, export des paiements).</p>
+    <?php else: ?><p class="muted">Solde Stripe indisponible.</p><?php endif; ?>
+  </section>
+</div>
+<?php if ($stripeBal): ?>
+<section class="card hl"><h2 class="sec"><?= ic('key') ?> Combien pouvez-vous virer sur votre banque ?</h2>
+  <div class="kv"><span>Solde Stripe disponible</span><b><?= $e($stripeBal['disponible']) ?></b></div>
+  <div class="kv"><span>− Dû aux organismes (net non encore transféré)</span><b><?= $e($rc['du_orgas']) ?></b></div>
+  <div class="kv"><span><b>= Montant versable sur votre banque sans toucher aux fonds des organismes</b></span><b class="big"><?= $e($rc['versable']) ?></b></div>
+  <p class="muted small">C'est votre commission accumulée (marge + frais Stripe déjà payés). Le virement se fait dans Stripe (Soldes &gt; Virement) : ColoMap ne déclenche jamais de virement vers votre banque.</p>
+</section>
+<?php endif; ?>
+<h2 class="sec"><?= ic('bank') ?> Virements Stripe vers la banque de la plateforme</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Créé le</th><th>Arrivée</th><th class="num">Montant</th><th>Statut</th><th>Référence</th></tr></thead><tbody>
+  <?php if (!$pays): ?><tr><td colspan="5" class="empty"><p>Aucun virement synchronisé. Utilisez le bouton ci-dessus.</p></td></tr><?php endif; ?>
+  <?php foreach ($pays as $p): ?><tr><td data-l="Créé"><?= h(adm_date($p['date_creation'])) ?></td><td data-l="Arrivée"><?= h(adm_date($p['date_arrivee'])) ?></td><td class="num" data-l="Montant"><b><?= $e($p['montant_cents']) ?></b></td><td data-l="Statut"><span class="pill <?= $p['statut'] === 'paid' ? 'ok' : ($p['statut'] === 'failed' ? 'bad' : 'warn') ?>"><?= h($p['statut']) ?></span></td><td class="mono small" data-l="Référence"><?= h($p['payout_id']) ?></td></tr><?php endforeach; ?>
+  </tbody></table></div>
+
+<?php elseif ($v === 'export'): ?>
+<?php if (!adm_reauth_ok()): ?>
+<section class="card"><h2 class="sec"><?= ic('lock') ?> Exports verrouillés</h2>
+  <p class="muted">Les exports contiennent toutes les écritures financières. Confirmez votre mot de passe administrateur pour 10 minutes.</p>
+  <form method="post" action="admin_compta.php?v=export"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="unlock">
+    <input class="in pw" type="password" name="password" autocomplete="current-password" placeholder="Mot de passe" required> <button class="btn" type="submit"><?= ic('lock') ?> Déverrouiller</button></form>
+</section>
+<?php else:
+    $qs = ['p' => $pk] + ($pk === 'perso' ? ['du' => substr($from, 0, 10), 'au' => substr($to, 0, 10)] : []) + ($orgaTok ? ['o' => $orgaTok] : []);
+    $exp = [
+        ['paiements', 'Écritures de paiement', 'Une ligne par inscription payée : brut, commission, frais Stripe réels, marge, net dû, statut.'],
+        ['transferts', 'Versements aux organismes', 'Transferts Stripe Connect envoyés (montant, statut, référence).'],
+        ['organismes', 'Synthèse par organisme', 'CA, commissions, frais, marge, dû / versé / en attente (ignore le filtre organisme).'],
+        ['payouts', 'Virements Stripe vers la banque', 'Pour le rapprochement avec votre relevé bancaire (synchroniser d\'abord).'],
+        ['journal', 'Journal d\'audit financier', 'Toutes les opérations (paiements, remboursements, transferts, suspensions).'],
+    ]; ?>
+<p class="muted">Période : <b><?= h($periodLabel) ?></b><?= $orgaTok ? ' · un seul organisme' : '' ?>. Format Excel français (séparateur « ; », UTF-8, virgule décimale).</p>
+<div class="cols">
+<?php foreach ($exp as [$t, $l, $d]): ?><section class="card"><h2 class="sec"><?= ic('list') ?> <?= h($l) ?></h2><p class="muted"><?= h($d) ?></p><a class="btn" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => $t] + $qs)) ?>"><?= ic('external') ?> Télécharger (CSV)</a></section><?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+<?php else: /* réglages */
+    $rg = fin_reglages(true); $stripePct = 1.5; $stripeFixe = 25;
+    $sims = [1500, 2500, 10000, 50000, 200000];
+?>
+<div class="cols">
+  <section class="card"><h2 class="sec"><?= ic('euro') ?> Commission « tout compris »</h2>
+    <p class="muted">Un seul prélèvement par inscription : <b>pourcentage + part fixe</b>. Il inclut les frais de paiement Stripe (facturés à ColoMap) : l'organisme ne voit qu'une commission. Le changement ne s'applique qu'aux <b>prochains paiements</b> ; chaque paiement conserve le taux de sa vente.</p>
+    <form method="post" action="admin_compta.php">
+      <input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="commission">
+      <label class="fld"><span class="fl">Pourcentage du montant payé <small>(0 à 30 %)</small></span><input class="in" name="pct" inputmode="decimal" value="<?= h(number_format($rg['commission_pct'], 2, ',', '')) ?>" required></label>
+      <label class="fld"><span class="fl">Part fixe par inscription, en centimes <small>(0 à 500)</small></span><input class="in" name="fixe" type="number" min="0" max="500" step="1" value="<?= (int)$rg['commission_fixe_cents'] ?>" required></label>
+      <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div>
+    </form>
+  </section>
+  <section class="card"><h2 class="sec"><?= ic('chart') ?> Simulation (frais Stripe estimés : <?= str_replace('.', ',', (string)$stripePct) ?> % + <?= compta_eur($stripeFixe) ?> €)</h2>
+    <div class="tbl-wrap flat"><table class="tbl"><thead><tr><th class="num">Payé</th><th class="num">Commission</th><th class="num">Net organisme</th><th class="num">Frais Stripe</th><th class="num">Marge</th></tr></thead><tbody>
+    <?php foreach ($sims as $s): [$c] = fin_commission_split($s); $f = (int)round($s * $stripePct / 100) + $stripeFixe; $m = $c - $f; ?>
+      <tr><td class="num"><?= $e($s) ?></td><td class="num"><?= $e($c) ?></td><td class="num"><?= $e($s - $c) ?></td><td class="num"><?= $e($f) ?></td><td class="num<?= $m < 0 ? ' neg' : '' ?>"><b><?= $e($m) ?></b></td></tr>
+    <?php endforeach; ?></tbody></table></div>
+    <p class="muted small">Hypothèses à vérifier dans votre tarif Stripe (Paramètres &gt; Tarification) : carte européenne standard 1,5 % + 0,25 € ; cartes britanniques ≈ 2,5 % + 0,25 € ; cartes hors Europe ≈ 3,25 % + 0,25 € (+ conversion). Les frais réels de chaque paiement sont relevés dans la Synthèse ; une marge négative déclenche l'alerte. Hors simulation : Connect Express peut ajouter un abonnement par compte actif et des frais par virement vers l'organisme, à contrôler dans votre facture Stripe.</p>
+    <p class="muted small">Seuil de rentabilité (carte européenne) : une commission de <?= number_format($rg['commission_pct'], 2, ',', ' ') ?> % + <?= compta_eur($rg['commission_fixe_cents']) ?> € couvre les frais Stripe tant que le taux Stripe reste inférieur à <?= number_format($rg['commission_pct'] + 100 * ($rg['commission_fixe_cents'] - $stripeFixe) / 5000, 2, ',', ' ') ?> % sur un panier de 50 €.</p>
+  </section>
+</div>
+<?php endif; ?>
+<?php adm_foot(['page' => 'compta']); ?>

@@ -32,7 +32,7 @@ require_once 'partials/mk_icons.php';
     $lbl = ['envoye' => ['Envoyé', 'ok'], 'en_cours' => ['En cours d\'envoi', 'info'], 'echec' => ['Échec', 'bad']][$v['statut']] ?? [$v['statut'], '']; ?>
     <div class="mk-grid mk-g3" style="margin-top:22px">
         <div class="mk-stat"><div class="k">Encaissé (brut)</div><div class="v"><?= fin_eur($brut) ?></div><div class="s"><?= count($rec['lignes']) ?> inscription<?= count($rec['lignes']) > 1 ? 's' : '' ?></div></div>
-        <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v">- <?= fin_eur($com) ?></div><div class="s"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> % (taux en vigueur à la vente)</div></div>
+        <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v">- <?= fin_eur($com) ?></div><div class="s">tout compris (frais bancaires inclus), au taux en vigueur à la vente</div></div>
         <div class="mk-stat dark"><div class="k">Versé</div><div class="v"><?= fin_eur((int)$v['montant_cents']) ?></div><div class="s"><span class="mk-pill <?= $lbl[1] ?>" style="background:rgba(255,255,255,.18);color:#fff"><?= $lbl[0] ?></span></div></div>
     </div>
     <?php if ((int)$v['montant_cents'] !== $net): ?><p class="mk-note" style="margin-top:10px">Le montant versé diffère du net des inscriptions (<?= fin_eur($net) ?>) : des points marketing ou des compensations de remboursements ont été déduits du solde.</p><?php endif; ?>

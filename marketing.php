@@ -31,7 +31,7 @@ if ($orga) {
 }
 $proof = mk_platform_proof($pdo);
 $boosts = mk_boosts();
-$net = $avgPrice * (1 - fin_commission_pct() / 100);
+$net = $avgPrice - fin_commission_cents((int)round($avgPrice * 100)) / 100;
 function mk_money($v) { return number_format($v, 2, ',', ' ') . ' €'; }
 
 $body_class = 'bg-white';
