@@ -76,7 +76,7 @@ try {
     $enfantsJson = json_encode($enfants);
     $tarifsJson = json_encode($tarifs);
     require_once 'api/annulation_lib.php';
-    $garantiePct = fin_garantie_active() ? fin_reglages()['garantie_pct'] : 0.0; // garantie annulation : service facultatif (réglage admin)
+    $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
 
 } catch (Exception $e) {
     die("Erreur : " . $e->getMessage());
@@ -241,13 +241,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
 
                 <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
                     <ul id="billing-lines" class="space-y-3 text-sm text-gray-700"></ul>
-                    <?php if (!empty($garantiePct) && $garantiePct > 0): ?>
-                    <label class="flex items-start gap-3 mt-4 p-3 rounded-xl bg-white border border-gray-200 cursor-pointer text-sm text-gray-700">
-                        <input type="checkbox" name="garantie" value="1" id="garantie-cb" class="mt-1" onchange="updateSummary()">
-                        <span><b>Garantie annulation</b> (service facultatif ColoMap, +<?= rtrim(rtrim(number_format($garantiePct, 2, ',', ''), '0'), ',') ?> % du total, non remboursable)
-                        <small class="block text-gray-500">En cas d'annulation pour maladie ou accident de l'enfant ou décès d'un proche, ColoMap prend en charge la part que l'organisme ne rembourse pas. Ce service n'est pas un contrat d'assurance.</small></span>
-                    </label>
-                    <?php endif; ?>
+                    <p class="mt-4 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3"><b>Conditions d'annulation.</b> <?= htmlspecialchars($annulTexte) ?></p>
                     <hr class="my-4 border-gray-300">
                     <div class="flex justify-between items-end">
                         <span class="text-gray-600 font-medium">Total à régler</span>
@@ -289,7 +283,6 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
     // Données PHP
     const allChildren = <?= $enfantsJson ?>;
     const tariffs = <?= $tarifsJson ?>;
-    const garantiePct = <?= json_encode((float)($garantiePct ?? 0)) ?>;
     const remisePercent = <?= $remise_pourcent ?>;
     const alreadyRegistered = <?= (int)$dejaInscritsNb ?>;
 
@@ -486,12 +479,6 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             container.innerHTML += `<li class="flex justify-between py-2 border-b border-gray-100"><span>${child.prenom} ${child.nom} <small class="text-gray-500">${detail}</small></span><span class="font-bold">${price.toFixed(2)} €</span></li>`;
         });
 
-        const gcb = document.getElementById('garantie-cb');
-        if (gcb && gcb.checked) {
-            const g = Math.round(total * 100 * garantiePct / 100) / 100;
-            container.innerHTML += `<li class="flex justify-between py-2 border-b border-gray-100"><span>Garantie annulation <small class="text-gray-500">(service ColoMap)</small></span><span class="font-bold">${g.toFixed(2)} €</span></li>`;
-            total += g;
-        }
         document.getElementById('final-total').textContent = total.toFixed(2) + ' €';
     }
 

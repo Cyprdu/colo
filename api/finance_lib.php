@@ -28,7 +28,6 @@ function fin_reglages(bool $refresh = false): array {
     $c = [
         'commission_pct' => defined('PLATFORM_COMMISSION_PERCENT') ? (float)PLATFORM_COMMISSION_PERCENT : FIN_DEFAULT_PCT,
         'commission_fixe_cents' => defined('PLATFORM_COMMISSION_FIXED_CENTS') ? (int)PLATFORM_COMMISSION_FIXED_CENTS : FIN_DEFAULT_FIXE_CENTS,
-        'garantie_active' => 0, 'garantie_pct' => 2.0, 'garantie_partenaire' => '', // garantie annulation : désactivée par défaut
     ];
     global $pdo;
     if (isset($pdo) && $pdo instanceof PDO) {
@@ -37,15 +36,11 @@ function fin_reglages(bool $refresh = false): array {
             foreach ($pdo->query("SELECT cle, valeur FROM fin_reglages")->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
                 if ($k === 'commission_pct') $c[$k] = (float)$v;
                 elseif ($k === 'commission_fixe_cents') $c[$k] = (int)$v;
-                elseif ($k === 'garantie_active') $c[$k] = (int)$v ? 1 : 0;
-                elseif ($k === 'garantie_pct') $c[$k] = (float)$v;
-                elseif ($k === 'garantie_partenaire') $c[$k] = (string)$v;
             }
         } catch (Throwable $e) { error_log('fin_reglages: ' . $e->getMessage()); }
     }
     $c['commission_pct'] = max(0.0, min(30.0, $c['commission_pct']));
     $c['commission_fixe_cents'] = max(0, min(500, $c['commission_fixe_cents']));
-    $c['garantie_pct'] = max(0.0, min(10.0, $c['garantie_pct']));
     return $c;
 }
 function fin_commission_pct(): float { return fin_reglages()['commission_pct']; }
@@ -157,19 +152,18 @@ function fin_ensure(PDO $pdo): void {
         fin_add_col($pdo, 'fin_paiements', 'frais_stripe_cents', "INT NULL");
         fin_add_col($pdo, 'fin_paiements', 'frais_litige_cents', "INT NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_paiements', 'frais_maj', "DATETIME NULL");
-        // Garantie annulation : encaissée À PART (jamais dans brut / commission / net) ; prise en charge = part du remboursement payée par ColoMap
-        fin_add_col($pdo, 'fin_paiements', 'garantie_cents', "INT NOT NULL DEFAULT 0");
-        fin_add_col($pdo, 'fin_paiements', 'garantie_pec_cents', "INT NOT NULL DEFAULT 0");
-        fin_add_col($pdo, 'fin_paiements', 'annul_cible', "TINYINT(1) NOT NULL DEFAULT 0"); // remboursement ciblé sur cette inscription (annulation acceptée)
-        fin_add_col($pdo, 'camps', 'annul_jours_total', "INT NOT NULL DEFAULT 30"); // remboursé à 100 % jusqu'à N jours avant le début
-        fin_add_col($pdo, 'camps', 'annul_jours_moitie', "INT NOT NULL DEFAULT 14"); // 50 % jusqu'à N jours avant ; ensuite rien
+        // Annulation par la famille : conditions du séjour (100 % jusqu'à N jours avant le début, 50 % jusqu'à M jours, ensuite rien),
+        // remboursement ciblé en attente (annul_attendu) et commission conservée (annul_com : la commission n'est pas rendue au prorata)
+        fin_add_col($pdo, 'fin_paiements', 'annul_attendu', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_paiements', 'annul_com', "TINYINT(1) NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'camps', 'annul_jours_total', "INT NOT NULL DEFAULT 30");
+        fin_add_col($pdo, 'camps', 'annul_jours_moitie', "INT NOT NULL DEFAULT 15");
         $pdo->exec("CREATE TABLE IF NOT EXISTS fin_annulations (
-            id INT AUTO_INCREMENT PRIMARY KEY, token CHAR(32) NOT NULL, inscription_id INT NOT NULL, organisateur_id INT NOT NULL, parent_id INT NOT NULL,
-            motif VARCHAR(20) NOT NULL, commentaire VARCHAR(500) NULL, garantie TINYINT(1) NOT NULL DEFAULT 0,
-            organisme_cents INT NOT NULL DEFAULT 0, garantie_pec_cents INT NOT NULL DEFAULT 0, -- remboursement à la charge de l'organisme / de ColoMap (figés à la demande)
-            statut VARCHAR(10) NOT NULL DEFAULT 'demande', -- demande | acceptee | refusee
-            reponse VARCHAR(500) NULL, refund_id VARCHAR(64) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, traite_at DATETIME NULL,
-            UNIQUE KEY uq_token (token), KEY idx_ins (inscription_id), KEY idx_orga (organisateur_id, statut)
+            id INT AUTO_INCREMENT PRIMARY KEY, inscription_id INT NOT NULL, organisateur_id INT NOT NULL, parent_id INT NOT NULL,
+            motif VARCHAR(20) NOT NULL, commentaire VARCHAR(500) NULL, pct INT NOT NULL DEFAULT 0,
+            rembourse_cents INT NOT NULL DEFAULT 0, commission_retenue_cents INT NOT NULL DEFAULT 0, refund_id VARCHAR(64) NULL,
+            lu TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_ins (inscription_id), KEY idx_orga (organisateur_id, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         fin_add_col($pdo, 'stripe_comptes', 'statut', "VARCHAR(16) NULL"); // statut déclaré par l'organisme avant l'inscription Stripe
     } catch (Throwable $e) {
@@ -205,9 +199,8 @@ function fin_points_budget_cents(PDO $pdo, int $orgaId): int {
 /**
  * Enregistre le paiement d'une commande : une ligne par inscription, le montant payé (après code promo) réparti
  * au prorata des prix. Idempotent (une inscription = une ligne). Crédite le solde net de commission.
- * $amountTotalCents = total payé HORS garantie annulation ; $garantieCents (déjà payé, à part) est seulement enregistré sur les lignes.
  */
-function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, string $sessionId, int $amountTotalCents, int $garantieCents = 0): int {
+function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, string $sessionId, int $amountTotalCents): int {
     fin_ensure($pdo);
     if ($amountTotalCents <= 0 || !$tokens) return 0;
     $in = implode(',', array_fill(0, count($tokens), '?'));
@@ -222,18 +215,17 @@ function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, st
     if ($sum <= 0) return 0;
 
     $left = $amountTotalCents; $n = count($rows); $created = 0;
-    $gar = $garantieCents > 0 ? fin_allocate($garantieCents, array_column($rows, 'prix_final')) : array_fill(0, $n, 0);
-    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, date_deblocage, garantie_cents)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, date_deblocage)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     foreach ($rows as $k => $r) {
         $brut = ($k === $n - 1) ? $left : (int)round($amountTotalCents * (float)$r['prix_final'] / $sum);
         $brut = max(0, min($brut, $left)); $left -= $brut;
         if ($brut <= 0 || !$r['organisateur_id']) continue;
         [$com, , $fixe] = fin_commission_split($brut); $net = $brut - $com;
-        $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, fin_release_date($r['date_debut']), (int)$gar[$k]]);
+        $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, fin_release_date($r['date_debut'])]);
         if ($ins->rowCount() === 1) {
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
-            fin_audit($pdo, 'paiement_recu', 'inscription', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'garantie' => (int)$gar[$k], 'pi' => $paymentIntent], 'webhook');
+            fin_audit($pdo, 'paiement_recu', 'inscription', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent], 'webhook');
             $created++;
         }
     }
@@ -247,26 +239,28 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
     $st = $pdo->prepare("SELECT * FROM fin_paiements WHERE payment_intent = ? FOR UPDATE");
     $st->execute([$paymentIntent]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-    // La garantie annulation (payée à part) n'est pas du brut organisme ; la part de remboursement prise en charge par ColoMap non plus.
-    $capturedCents -= (int)array_sum(array_column($rows, 'garantie_cents'));
-    $refundedCents -= (int)array_sum(array_column($rows, 'garantie_pec_cents'));
-    if ($capturedCents <= 0 || $refundedCents <= 0) return;
-    $cibles = array_values(array_filter($rows, fn($p) => (int)$p['annul_cible'] === 1));
-    $dejaRef = (int)array_sum(array_column($rows, 'rembourse_cents'));
+    // Annulation par la famille (fin_annul_executer) : le remboursement revient à CETTE inscription (montant attendu), pas au prorata des frères et sœurs,
+    // et la commission ColoMap est conservée : seul le net de l'organisme est débité, du montant remboursé.
+    $reste = $refundedCents - (int)array_sum(array_column($rows, 'rembourse_cents'));
     foreach ($rows as $p) {
         $brut = (int)$p['brut_cents'];
-        if ($cibles) { // annulation d'UNE inscription : tout le nouveau remboursement lui revient (pas de prorata sur les frères et sœurs)
-            if ((int)$p['annul_cible'] !== 1) continue;
-            $newRef = min($brut, (int)$p['rembourse_cents'] + max(0, $refundedCents - $dejaRef));
-            $pdo->prepare("UPDATE fin_paiements SET annul_cible = 0 WHERE id = ?")->execute([$p['id']]);
+        $att = (int)$p['annul_attendu'];
+        if ($att > 0) {
+            if ($reste < $att) continue; // le remboursement correspondant n'est pas encore notifié
+            $reste -= $att;
+            $newRef = min($brut, (int)$p['rembourse_cents'] + $att);
+            $newNetRef = min((int)$p['net_cents'], (int)$p['net_rembourse_cents'] + $att);
+            $pdo->prepare("UPDATE fin_paiements SET annul_attendu = 0, annul_com = 1 WHERE id = ?")->execute([$p['id']]);
         } else {
+            if ((int)$p['annul_com'] === 1) continue; // inscription déjà annulée par la famille : le prorata ne la concerne plus
             $newRef = $refundedCents >= $capturedCents ? $brut : (int)round($brut * $refundedCents / $capturedCents);
+            $newNetRef = null;
         }
         $newRef = min($brut, max((int)$p['rembourse_cents'], $newRef));
         if ($newRef <= (int)$p['rembourse_cents']) continue;
-        $newNetRef = min((int)$p['net_cents'], (int)round((int)$p['net_cents'] * $newRef / $brut));
+        if ($newNetRef === null) $newNetRef = min((int)$p['net_cents'], (int)round((int)$p['net_cents'] * $newRef / $brut));
         $delta = $newNetRef - (int)$p['net_rembourse_cents'];
-        $full = $newRef >= $brut;
+        $full = $newRef >= $brut && (int)$p['annul_com'] === 0 && $att === 0;
         $statut = ($full && in_array($p['statut'], ['attente', 'bloque', 'litige'], true)) ? 'rembourse' : $p['statut'];
         $pdo->prepare("UPDATE fin_paiements SET rembourse_cents = ?, net_rembourse_cents = ?, statut = ? WHERE id = ?")->execute([$newRef, $newNetRef, $statut, $p['id']]);
         // Solde de l'organisme : même si le net a déjà été transféré, le solde devient négatif et sera compensé sur ses prochains séjours
@@ -341,7 +335,7 @@ function fin_backfill_fees(PDO $pdo, int $limit = 40): array {
 }
 /** Commission nette des remboursements (la commission est rendue au prorata d'un remboursement), expression SQL pour l'alias $a */
 function fin_sql_com_nette(string $a = 'p'): string {
-    return "($a.commission_cents - ROUND($a.commission_cents * $a.rembourse_cents / $a.brut_cents))";
+    return "($a.commission_cents - IF($a.annul_com = 1, 0, ROUND($a.commission_cents * $a.rembourse_cents / $a.brut_cents)))";
 }
 /** Marge nette ColoMap d'une ligne = commission conservée - frais Stripe - frais de litige (null si les frais ne sont pas connus) */
 function fin_sql_marge(string $a = 'p'): string {
@@ -638,7 +632,7 @@ function fin_overview(PDO $pdo, int $orgaId): array {
                           WHERE organisateur_id = ? AND statut = 'attente' GROUP BY DATE(date_deblocage) ORDER BY d ASC LIMIT 1");
     $st2->execute([$orgaId]);
     $prochain = $st2->fetch(PDO::FETCH_ASSOC) ?: null;
-    $st2 = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - ROUND(commission_cents * rembourse_cents / brut_cents)), 0) com, COALESCE(SUM(commission_fixe_cents), 0) fixe
+    $st2 = $pdo->prepare("SELECT COALESCE(SUM(commission_cents - IF(annul_com = 1, 0, ROUND(commission_cents * rembourse_cents / brut_cents))), 0) com, COALESCE(SUM(commission_fixe_cents), 0) fixe
                           FROM fin_paiements WHERE organisateur_id = ?");
     $st2->execute([$orgaId]);
     $cd = $st2->fetch(PDO::FETCH_ASSOC);

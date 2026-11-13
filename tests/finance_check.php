@@ -41,20 +41,18 @@ $full = mk_score(['nb_places_restantes' => 0, 'quota_global' => 20] + $base, $no
 ok($full['organique'] < $s0['organique'] * 0.5, 'séjour complet fortement rétrogradé');
 $urgLoin = mk_score(['date_debut' => '2027-03-01'] + $base + ['boost_urgence_fin' => '2026-11-20 00:00:00'], $now);
 ok($urgLoin['boost_factor'] === 1.0, 'dernière minute sans effet si le départ est à plus de 45 jours');
-
-// Garantie annulation : supplément en % du total HORS garantie (arrondi au centime), jamais sur un total nul
-ok(fin_garantie_cents(10000, 2.0) === 200, 'garantie 2 % sur 100 EUR = 2,00 EUR');
-ok(fin_garantie_cents(2575, 2.0) === 52, 'garantie arrondie au centime (51,5 -> 52)');
-ok(fin_garantie_cents(0, 2.0) === 0 && fin_garantie_cents(10000, 0.0) === 0, 'pas de garantie sur 0 EUR ni à 0 %');
-// Conditions d'annulation (défaut 30 j / 14 j) : 100 % / 50 % / rien
-ok(fin_remboursable_pct(45, 30, 14) === 100 && fin_remboursable_pct(30, 30, 14) === 100, 'plus de 30 jours : 100 %');
-ok(fin_remboursable_pct(29, 30, 14) === 50 && fin_remboursable_pct(14, 30, 14) === 50, 'entre 14 et 29 jours : 50 %');
-ok(fin_remboursable_pct(13, 30, 14) === 0 && fin_remboursable_pct(0, 30, 14) === 0, 'moins de 14 jours : rien');
-// Remboursable : [organisme, prise en charge garantie, total famille]
-ok(fin_annul_montants(10000, 20, 30, 14, false, 'maladie') === [5000, 0, 5000], 'sans garantie : seulement la part de l\'organisme (50 %)');
-ok(fin_annul_montants(10000, 20, 30, 14, true, 'maladie') === [5000, 5000, 10000], 'garantie + maladie : la famille récupère tout, ColoMap complète');
-ok(fin_annul_montants(10000, 20, 30, 14, true, 'autre') === [5000, 0, 5000], 'garantie mais motif non couvert : part organisme seule');
-ok(fin_annul_montants(10000, 5, 30, 14, true, 'deces') === [0, 10000, 10000], 'moins de 14 jours + décès + garantie : 100 % pris en charge par ColoMap');
-ok(fin_annul_montants(3333, 20, 30, 14, true, 'maladie')[2] === 3333, 'somme exacte au centime près');
-ok(fin_annul_montants(-5, 40, 30, 14, true, 'maladie') === [0, 0, 0], 'jamais de montant négatif');
+// Annulation par la famille : paliers 100 % / 50 % / 0 % (défaut 30 j / 15 j)
+ok(fin_remboursable_pct(45, 30, 15) === 100 && fin_remboursable_pct(30, 30, 15) === 100, 'à J-30 et plus : 100 %');
+ok(fin_remboursable_pct(29, 30, 15) === 50 && fin_remboursable_pct(15, 30, 15) === 50, 'de J-29 à J-15 : 50 %');
+ok(fin_remboursable_pct(14, 30, 15) === 0 && fin_remboursable_pct(0, 30, 15) === 0, 'moins de 15 jours : 0 %');
+// Remboursement = part remboursable - commission conservée : [remboursé, retenue, pct]. Paiement de 100 EUR, commission 2,80 EUR
+ok(fin_annul_montants(10000, 280, 40, 30, 15) === [9720, 280, 100], '100 % : 97,20 EUR rendus, 2,80 EUR de commission conservés');
+ok(fin_annul_montants(10000, 280, 20, 30, 15) === [4720, 280, 50], '50 % : 50 - 2,80 = 47,20 EUR');
+ok(fin_annul_montants(10000, 280, 5, 30, 15) === [0, 0, 0], '0 % : rien à rendre, rien à retenir');
+ok(fin_annul_montants(300, 280, 20, 30, 15) === [0, 150, 50], 'commission supérieure à la part remboursable : remboursement nul, jamais négatif');
+[$r, $k] = fin_annul_montants(2500, 93, 40, 30, 15);
+ok($r + $k === 2500 && $r === 2407, 'commande de 25 EUR (commission 0,93) : 24,07 EUR = le net de l\'organisme');
+// L'organisme n'est débité que du remboursé : son net restant = net - remboursé = ce qu'il garde selon ses conditions (brut - part remboursable)
+[$r] = fin_annul_montants(10000, 280, 20, 30, 15);
+ok((10000 - 280) - $r === 10000 - 5000, 'organisme : net 97,20 - remboursé 47,20 = 50,00 = 50 % du brut');
 echo "Tout est bon.\n";

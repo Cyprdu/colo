@@ -30,7 +30,6 @@ function compta_summary(PDO $pdo, string $from, string $to, int $orgaId = 0): ar
                 COALESCE(SUM($com), 0) commission,
                 COALESCE(SUM(p.frais_stripe_cents), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
                 COALESCE(SUM(p.frais_litige_cents), 0) litige,
-                COALESCE(SUM(p.garantie_cents), 0) garantie, COALESCE(SUM(p.garantie_pec_cents), 0) garantie_pec,
                 COALESCE(SUM(p.net_cents - p.net_rembourse_cents), 0) du_total,
                 COALESCE(SUM(CASE WHEN p.statut = 'verse' THEN p.net_cents - p.net_rembourse_cents END), 0) verse,
                 COALESCE(SUM(CASE WHEN p.statut IN ('attente','bloque','litige','en_cours') THEN p.net_cents - p.net_rembourse_cents END), 0) attente,
@@ -41,7 +40,6 @@ function compta_summary(PDO $pdo, string $from, string $to, int $orgaId = 0): ar
     $st->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
     $r = array_map('intval', $st->fetch(PDO::FETCH_ASSOC));
     $r['ca'] = $r['brut'] - $r['rembourse']; // chiffre d'affaires encaissé, net des remboursements
-    $r['garantie_net'] = $r['garantie'] - $r['garantie_pec']; // CA ColoMap de la garantie annulation (frais encaissés - parts prises en charge), hors brut / commission
     return $r;
 }
 
@@ -104,7 +102,7 @@ function compta_sync_payouts(PDO $pdo): int {
  * $stripe = ['disponible' => cents, 'en_attente' => cents] ou null si Stripe est injoignable.
  */
 function compta_reconcile(PDO $pdo, ?array $stripe): array {
-    $a = $pdo->query("SELECT COALESCE(SUM(brut_cents - rembourse_cents), 0) ca, COALESCE(SUM(garantie_cents), 0) garantie, COALESCE(SUM(garantie_pec_cents), 0) pec, COALESCE(SUM(frais_stripe_cents), 0) frais, COALESCE(SUM(frais_litige_cents), 0) litige,
+    $a = $pdo->query("SELECT COALESCE(SUM(brut_cents - rembourse_cents), 0) ca, COALESCE(SUM(frais_stripe_cents), 0) frais, COALESCE(SUM(frais_litige_cents), 0) litige,
                 COALESCE(SUM(frais_stripe_cents IS NULL), 0) inconnus,
                 COALESCE(SUM(CASE WHEN statut IN ('attente','bloque','litige','en_cours') THEN net_cents - net_rembourse_cents END), 0) du
             FROM fin_paiements")->fetch(PDO::FETCH_ASSOC);
@@ -113,8 +111,8 @@ function compta_reconcile(PDO $pdo, ?array $stripe): array {
     try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid','in_transit','pending')")->fetchColumn();
     $nbPayouts = (int)$pdo->query("SELECT COUNT(*) FROM fin_payouts")->fetchColumn();
-    $theorique = (int)$a['ca'] + (int)$a['garantie'] - (int)$a['pec'] + $points - (int)$a['frais'] - (int)$a['litige'] - $transferts; // fonds censés rester chez Stripe ou être partis en banque
-    $r = ['ca' => (int)$a['ca'], 'garantie' => (int)$a['garantie'], 'pec' => (int)$a['pec'], 'points' => $points, 'frais' => (int)$a['frais'], 'litige' => (int)$a['litige'], 'frais_inconnus' => (int)$a['inconnus'],
+    $theorique = (int)$a['ca'] + $points - (int)$a['frais'] - (int)$a['litige'] - $transferts; // fonds censés rester chez Stripe ou être partis en banque
+    $r = ['ca' => (int)$a['ca'], 'points' => $points, 'frais' => (int)$a['frais'], 'litige' => (int)$a['litige'], 'frais_inconnus' => (int)$a['inconnus'],
           'transferts' => $transferts, 'du_orgas' => (int)$a['du'], 'theorique' => $theorique, 'payouts' => $payouts, 'nb_payouts' => $nbPayouts, 'stripe' => $stripe];
     if ($stripe) {
         $solde = $stripe['disponible'] + $stripe['en_attente'];
@@ -157,7 +155,7 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
                 WHERE p.created_at BETWEEN ? AND ?" . ($orgaId ? " AND p.organisateur_id = ?" : "") . " ORDER BY p.created_at, p.id");
         $q->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
         $h = ['Date', 'Inscription', 'Organisme', 'Séjour', 'Référence paiement Stripe', 'Brut payé (€)', 'Remboursé (€)', 'Taux commission (%)', 'Part fixe (€)', 'Commission (€)', 'Commission nette des remboursements (€)',
-              'Frais Stripe réels (€)', 'Frais de litige (€)', 'Marge nette ColoMap (€)', 'Net dû à l\'organisme (€)', 'Net remboursé (€)', 'Statut', 'Date de déblocage', 'Garantie annulation encaissée (€)', 'Garantie prise en charge (€)'];
+              'Frais Stripe réels (€)', 'Frais de litige (€)', 'Marge nette ColoMap (€)', 'Net dû à l\'organisme (€)', 'Net remboursé (€)', 'Statut', 'Date de déblocage'];
         $gen = (function () use ($q, $dt) {
             foreach ($q as $p) {
                 $known = $p['frais_stripe_cents'] !== null;
@@ -165,7 +163,7 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
                     number_format((float)$p['commission_pct'], 2, ',', ''), compta_eur((int)$p['commission_fixe_cents']), compta_eur((int)$p['commission_cents']), compta_eur((int)$p['com_nette']),
                     $known ? compta_eur((int)$p['frais_stripe_cents']) : '', compta_eur((int)$p['frais_litige_cents']),
                     $known ? compta_eur((int)$p['com_nette'] - (int)$p['frais_stripe_cents'] - (int)$p['frais_litige_cents']) : '',
-                    compta_eur((int)$p['net_cents']), compta_eur((int)$p['net_rembourse_cents']), $p['statut'], $dt($p['date_deblocage']), compta_eur((int)$p['garantie_cents']), compta_eur((int)$p['garantie_pec_cents'])];
+                    compta_eur((int)$p['net_cents']), compta_eur((int)$p['net_rembourse_cents']), $p['statut'], $dt($p['date_deblocage'])];
             }
         })();
         return [$h, $gen];

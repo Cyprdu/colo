@@ -1,6 +1,6 @@
 <?php
-// annulations_organisme.php?o=<jeton organisme> : demandes d'annulation des familles (accepter / refuser) et conditions d'annulation par séjour.
-// Acceptation = remboursement Stripe (fin_annul_traiter) ; le solde de l'organisme est ajusté par le webhook.
+// annulations_organisme.php?o=<jeton organisme> : conditions d'annulation par séjour (réglées par l'organisme) et annulations faites par les familles.
+// Les remboursements sont automatiques (fin_annul_executer) ; le solde de l'organisme est ajusté par le webhook.
 require_once 'api/config.php';
 require_once 'api/annulation_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -18,10 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     else {
         try {
             $act = (string)($_POST['act'] ?? '');
-            if ($act === 'accepter' || $act === 'refuser') {
-                [$ok, $m] = fin_annul_traiter($pdo, (string)($_POST['a'] ?? ''), $orgaId, $act === 'accepter', (string)($_POST['reponse'] ?? ''), 'orga:' . $userId);
-                if ($ok) $msg = $m; else $err = $m;
-            } elseif ($act === 'conditions') {
+            if ($act === 'conditions') {
                 $jt = (int)($_POST['jt'] ?? -1); $jm = (int)($_POST['jm'] ?? -1);
                 if ($jt < 0 || $jt > 365 || $jm < 0 || $jm > $jt) $err = 'Jours invalides : le seuil 50 % ne peut pas dépasser le seuil 100 %.';
                 else {
@@ -35,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $list = fin_annul_liste($pdo, $orgaId);
+$pdo->prepare("UPDATE fin_annulations SET lu = 1 WHERE organisateur_id = ?")->execute([$orgaId]);
 $st = $pdo->prepare("SELECT token, nom, date_debut, annul_jours_total jt, annul_jours_moitie jm FROM camps WHERE organisateur_id = ? AND COALESCE(supprime, 0) = 0 ORDER BY date_debut DESC LIMIT 100");
 $st->execute([$orgaId]);
 $camps = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -46,36 +44,27 @@ $stl = ['demande' => 'En attente', 'acceptee' => 'Acceptée', 'refusee' => 'Refu
 ?>
 <title>Demandes d'annulation - ColoMap</title>
 <main class="ds-page" style="max-width:960px">
-  <h1 class="ds-h1">Demandes d'annulation</h1>
-  <p class="ds-lead">Accepter déclenche le remboursement de la famille par carte. Votre part remboursée est déduite de votre solde ; si vous avez déjà été payé, elle est compensée sur vos prochains versements.</p>
+  <h1 class="ds-h1">Annulations</h1>
+  <p class="ds-lead">Les familles annulent elles-mêmes, selon vos conditions ci-dessous ; le remboursement est automatique. La commission ColoMap est conservée : seul votre net remboursé est déduit de votre solde (compensé sur vos prochains versements si vous avez déjà été payé).</p>
   <?php if ($msg): ?><div class="ds-alert-ok" style="margin:16px 0" role="status"><?= $h($msg) ?></div><?php endif; ?>
   <?php if ($err): ?><div class="ds-alert-err" style="margin:16px 0" role="alert"><?= $h($err) ?></div><?php endif; ?>
 
   <div class="ds-card mt-6 divide-y divide-[#f1f3f5]">
-  <?php if (!$list): ?><p class="p-6 ds-lead">Aucune demande pour le moment.</p><?php endif; ?>
+  <?php if (!$list): ?><p class="p-6 ds-lead">Aucune annulation pour le moment.</p><?php endif; ?>
   <?php foreach ($list as $a): ?>
     <div class="p-5">
       <div class="flex flex-wrap justify-between gap-2">
         <div><b><?= $h($a['prenom'] . ' ' . $a['nom']) ?></b> · <?= $h($a['camp']) ?> <span class="ds-lead">(début <?= $h(date('d/m/Y', strtotime($a['date_debut']))) ?>)</span></div>
-        <span class="ds-chip !py-1 !px-3 !text-[13px]"><?= $h($stl[$a['statut']] ?? $a['statut']) ?></span>
+        <span class="ds-lead"><?= $h(date('d/m/Y', strtotime($a['created_at']))) ?></span>
       </div>
-      <p class="mt-1">Motif : <?= $h(FIN_GARANTIE_MOTIFS[$a['motif']] ?? $a['motif']) ?><?= $a['commentaire'] ? ' — « ' . $h($a['commentaire']) . ' »' : '' ?></p>
-      <p class="mt-1">Payé <?= $h(fin_eur((int)$a['brut_cents'])) ?> · à votre charge selon vos conditions : <b><?= $h(fin_eur((int)$a['organisme_cents'])) ?></b>
-        <?php if ((int)$a['garantie_pec_cents'] > 0): ?> · complété par la garantie annulation ColoMap : <?= $h(fin_eur((int)$a['garantie_pec_cents'])) ?> (sans coût pour vous)<?php endif; ?></p>
-      <?php if ($a['statut'] === 'demande'): ?>
-      <form method="post" class="mt-3 flex flex-wrap gap-2 items-center">
-        <input type="hidden" name="csrf" value="<?= $h(fin_csrf()) ?>"><input type="hidden" name="a" value="<?= $h($a['token']) ?>">
-        <input class="ds-input !w-72 !py-2" name="reponse" maxlength="500" placeholder="Message à la famille (facultatif)" aria-label="Message à la famille">
-        <button class="ds-btn" name="act" value="accepter" type="submit">Accepter et rembourser</button>
-        <button class="ds-btn ds-btn-light" name="act" value="refuser" type="submit">Refuser</button>
-      </form>
-      <?php elseif ($a['reponse']): ?><p class="ds-lead mt-1">Votre réponse : <?= $h($a['reponse']) ?></p><?php endif; ?>
+      <p class="mt-1">Motif : <?= $h(FIN_ANNUL_MOTIFS[$a['motif']] ?? $a['motif']) ?><?= $a['commentaire'] ? ' — « ' . $h($a['commentaire']) . ' »' : '' ?></p>
+      <p class="mt-1">Remboursé à la famille (<?= (int)$a['pct'] ?> %) : <b><?= $h(fin_eur((int)$a['rembourse_cents'])) ?></b> · commission ColoMap retenue : <?= $h(fin_eur((int)$a['commission_retenue_cents'])) ?></p>
     </div>
   <?php endforeach; ?>
   </div>
 
   <h2 class="ds-h2 mt-10">Conditions d'annulation par séjour</h2>
-  <p class="ds-lead">Remboursé à 100 % jusqu'à N jours avant le début, à 50 % jusqu'à M jours, puis rien. Valeurs par défaut : 30 et 14 jours.</p>
+  <p class="ds-lead">Remboursé à 100 % jusqu'à N jours avant le début, à 50 % jusqu'à M jours, puis rien. Valeurs par défaut : 30 et 15 jours. Ces conditions sont affichées aux familles avant le paiement.</p>
   <div class="ds-card mt-3 divide-y divide-[#f1f3f5]">
   <?php foreach ($camps as $c): ?>
     <form method="post" class="p-4 flex flex-wrap gap-3 items-center">

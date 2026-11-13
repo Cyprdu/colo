@@ -27,7 +27,7 @@ try {
             try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { error_log('dashboard sync: ' . $e->getMessage()); }
         }
         $fin = fin_overview($pdo, $orgaId);
-        $st = $pdo->prepare("SELECT COUNT(*) FROM fin_annulations WHERE organisateur_id = ? AND statut = 'demande'");
+        $st = $pdo->prepare("SELECT COUNT(*) FROM fin_annulations WHERE organisateur_id = ? AND lu = 0");
         $st->execute([$orgaId]);
         $nbAnnul = (int)$st->fetchColumn();
         $st = $pdo->prepare("SELECT * FROM fin_transferts WHERE organisateur_id = ? ORDER BY created_at DESC LIMIT 20");

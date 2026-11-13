@@ -79,11 +79,9 @@ try {
                 $up->execute(array_merge([$pi, $ratio], $tokens));
 
                 // Ventilation brut / commission / net par inscription + crédit du solde de l'organisme
-                // Garantie annulation : ligne Stripe séparée (montant posé par notre serveur dans les metadata), enregistrée à part
-                $gar = max(0, min($total, (int)round((int)($meta->garantie_cents ?? 0) * $ratio)));
-                $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total - $gar, $gar);
+                $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total);
                 if ($pi && $n) $feePI = (string)$pi;
-                fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'garantie' => $gar, 'lignes' => $n], 'webhook');
+                fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
             } else {
                 error_log('WEBHOOK: checkout.session.completed sans type reconnu (' . $obj->id . ')');
             }
