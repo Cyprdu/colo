@@ -172,6 +172,20 @@ if (empty($holiday_periods)) {
         </section>
         <?php endif; ?>
         <?php endforeach; ?>
+
+        <!-- Secours : affiché seulement si aucune offre ne tombe dans les périodes de vacances -->
+        <section id="fallback-section" class="mb-14 relative hidden">
+            <h2 class="text-xl md:text-2xl font-bold text-gray-900 mb-5"><?php echo $is_logged_in ? 'Sélection pour vous :' : 'Séjours à venir :'; ?></h2>
+            <div class="relative">
+                <div id="track-fallback" class="camp-track flex gap-5 overflow-x-auto scroll-smooth pb-2"
+                     data-start="<?php echo $today; ?>" data-end="<?php echo date('Y-m-d', strtotime('+1 year')); ?>" data-lazy="1"></div>
+                <button type="button" data-target="track-fallback"
+                        class="carousel-next hidden md:flex absolute top-1/2 -right-4 -translate-y-1/2 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-100 items-center justify-center hover:bg-gray-50 transition-colors z-10"
+                        aria-label="Voir plus">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5l7 7-7 7" stroke="#111827" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+            </div>
+        </section>
     <?php else: ?>
         <!-- Variante Animateur : missions d'animation éligibles -->
         <section class="mb-14 relative">
@@ -348,6 +362,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ------------------------------------------------------------
     // Chargement des sections "Vacances de ..." (personnalisées + datées)
     // ------------------------------------------------------------
+    // Retourne une promesse résolue à true si la section affiche au moins un camp
     function loadSection(track) {
         track.innerHTML = Array(6).fill(skeletonCard()).join('');
         const params = new URLSearchParams({
@@ -357,21 +372,31 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         if (currentChildAge !== '') params.set('child_age', currentChildAge);
 
-        fetch(`api/get_recommendations.php?${params.toString()}`)
+        const section = track.parentElement.parentElement;
+        return fetch(`api/get_recommendations.php?${params.toString()}`)
             .then(r => r.json())
             .then(data => {
+                if (data && Array.isArray(data.favorites)) userFavorites = data.favorites.map(Number);
                 const camps = (data && data.camps) || [];
                 if (camps.length === 0) {
-                    track.parentElement.parentElement.classList.add('hidden');
-                    return;
+                    section.classList.add('hidden');
+                    return false;
                 }
                 track.innerHTML = camps.map(c => campCard(c)).join('');
+                section.classList.remove('hidden');
+                return true;
             })
-            .catch(() => { track.parentElement.parentElement.classList.add('hidden'); });
+            .catch(() => { section.classList.add('hidden'); return false; });
     }
 
     function loadAllSections() {
-        document.querySelectorAll('.camp-track').forEach(loadSection);
+        const periodTracks = [...document.querySelectorAll('.camp-track:not([data-lazy])')];
+        Promise.all(periodTracks.map(loadSection)).then(results => {
+            // Aucune offre dans les périodes de vacances : on propose les prochains séjours
+            const fb = document.getElementById('track-fallback');
+            if (fb && !results.some(Boolean)) loadSection(fb);
+            else if (fb) fb.parentElement.parentElement.classList.add('hidden');
+        });
     }
 
     if (!isAnimateur) {
