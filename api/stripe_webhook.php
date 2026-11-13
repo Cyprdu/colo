@@ -30,6 +30,7 @@ global $pdo;
 fin_ensure($pdo);
 mk_ensure($pdo);
 
+$feePI = null; // paiement dont on relève les frais Stripe réels, une fois la transaction validée
 try {
     $pdo->beginTransaction();
 
@@ -79,6 +80,7 @@ try {
 
                 // Ventilation brut / commission / net par inscription + crédit du solde de l'organisme
                 $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total);
+                if ($pi && $n) $feePI = (string)$pi;
                 fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
             } else {
                 error_log('WEBHOOK: checkout.session.completed sans type reconnu (' . $obj->id . ')');
@@ -101,7 +103,11 @@ try {
             break;
 
         case 'charge.dispute.created':
-            if (!empty($obj->payment_intent)) fin_dispute($pdo, (string)$obj->payment_intent, 'created');
+            if (!empty($obj->payment_intent)) {
+                $fee = 0; // frais de litige : portés par les écritures de solde de la contestation
+                foreach (($obj->balance_transactions ?? []) as $bt) $fee += max(0, (int)($bt->fee ?? 0));
+                fin_dispute($pdo, (string)$obj->payment_intent, 'created', null, $fee);
+            }
             break;
 
         case 'charge.dispute.closed':
@@ -132,6 +138,8 @@ try {
     $pdo->commit();
     http_response_code(200);
     echo 'ok';
+    // Frais Stripe réels du paiement (hors transaction : un échec n'annule rien, le cron et la page Comptabilité rattrapent)
+    if ($feePI) { try { fin_sync_fees($pdo, $feePI); } catch (Throwable $e) { error_log('webhook frais Stripe: ' . $e->getMessage()); } }
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('WEBHOOK ERROR (' . ($event->type ?? '?') . '): ' . $e->getMessage());

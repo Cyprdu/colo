@@ -10,7 +10,7 @@ $orgaId = (int)($_GET['organisateur_id'] ?? 0);
 $userId = (int)$_SESSION['user']['id'];
 $error = isset($_GET['error']) ? mb_substr(strip_tags((string)$_GET['error']), 0, 300) : null;
 $success = isset($_GET['success']) ? mb_substr(strip_tags((string)$_GET['success']), 0, 300) : null;
-$orga = null; $camps = []; $fin = null; $acc = null; $transferts = []; $legacy = []; $mkStats = [];
+$orga = null; $recent = []; $camps = []; $fin = null; $acc = null; $transferts = []; $legacy = []; $mkStats = [];
 
 try {
     fin_ensure($pdo); mk_ensure($pdo);
@@ -35,6 +35,7 @@ try {
             $st->execute([$orgaId]);
             $legacy = $st->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) { $legacy = []; }
+        $recent = fin_recent_payments($pdo, $orgaId, 15);
         $mkStats = mk_camp_stats($pdo, $orgaId, 30);
     }
 } catch (Throwable $e) {
@@ -94,7 +95,7 @@ require_once 'partials/mk_icons.php';
                 </div>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <?php if (!$ready): ?><a class="ds-btn" href="api/connect_onboarding.php?organisateur_id=<?= $orgaId ?>"><?= $hasAccount ? 'Continuer mon inscription' : 'Activer mes versements' ?> <?= mk_icon('arrow', 16) ?></a>
+                <?php if (!$ready): ?><a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= fin_orga_tok($orgaId) ?>"><?= $hasAccount ? 'Continuer mon inscription' : 'Activer mes versements' ?> <?= mk_icon('arrow', 16) ?></a>
                 <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light" href="api/connect_dashboard.php?organisateur_id=<?= $orgaId ?>" target="_blank" rel="noopener">Mon espace Stripe</a><?php endif; ?>
             </div>
         </div>
@@ -105,10 +106,38 @@ require_once 'partials/mk_icons.php';
             <div class="mk-stat dark"><div class="k">À recevoir</div><div class="v"><?= fin_eur(max(0, $fin['solde_cents'])) ?></div><div class="s">net de commission, hors sommes déjà versées</div></div>
             <div class="mk-stat"><div class="k">Prêt à être versé</div><div class="v"><?= fin_eur($fin['deblocable_cents']) ?></div><div class="s"><?= $ready ? 'versé au prochain passage (toutes les heures)' : 'en attente de l\'activation des versements' ?></div></div>
             <div class="mk-stat"><div class="k">Déjà versé</div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div><div class="s"><?= count($transferts) ?> versement<?= count($transferts) > 1 ? 's' : '' ?> récent<?= count($transferts) > 1 ? 's' : '' ?></div></div>
-            <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %</div><div class="s">prélevée sur chaque inscription payée en ligne : <?= fin_eur($fin['commission_total_cents']) ?> au total</div></div>
+            <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?></div><div class="s">tout compris, par inscription : <?= fin_eur($fin['commission_nette_cents']) ?> au total</div></div>
         </div>
         <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Votre solde est négatif de <?= fin_eur(-$fin['solde_cents']) ?> (remboursements après versement). Il sera déduit de vos prochains versements.</div><?php endif; ?>
         <?php if ($fin['historique_cents'] > 0): ?><div class="mk-tip" style="margin-top:14px"><?= mk_icon('info', 20) ?><div>Un solde de <b><?= fin_eur($fin['historique_cents']) ?></b> provient de l'ancien système de virement. L'équipe ColoMap le règle manuellement : <a class="underline" href="contact.php">contactez-nous</a> si vous souhaitez le recevoir.</div></div><?php endif; ?>
+    </section>
+
+    <!-- Comprendre mes versements et la commission -->
+    <section class="mk-section" style="margin-top:20px">
+        <div class="ds-card" style="padding:24px">
+            <h2 style="margin:0 0 4px">Comment je suis payé, et où est la commission ?</h2>
+            <p class="mk-note" style="margin:0 0 16px;font-size:14px">Un seul prélèvement, affiché ligne par ligne : vous voyez toujours le montant payé par la famille, la commission, puis ce qui vous revient.</p>
+            <?php [$exC, $exP, $exF] = fin_commission_split(10000); ?>
+            <div class="mk-grid mk-g3">
+                <div><b class="text-[#26343b]">1. La famille paie ColoMap</b><p class="mk-note" style="margin-top:4px">Le paiement par carte est encaissé par ColoMap (via Stripe) au moment de l'inscription. La place est réservée aussitôt.</p></div>
+                <div><b class="text-[#26343b]">2. La commission est retenue sur chaque inscription</b><p class="mk-note" style="margin-top:4px"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?> du montant payé. Elle inclut <b>les frais bancaires de paiement par carte</b> : vous n'avez aucun autre frais à payer. Exemple : pour <?= fin_eur(10000) ?> payés, commission <?= fin_eur($exC) ?>, vous recevez <b><?= fin_eur(10000 - $exC) ?></b>.</p></div>
+                <div><b class="text-[#26343b]">3. Vous êtes versé après le départ</b><p class="mk-note" style="margin-top:4px">Le net est transféré <?= $delay === 0 ? 'le jour du départ' : ($delay === 1 ? 'le lendemain du départ' : $delay . ' jours après le départ') ?> sur votre compte Stripe, puis Stripe le verse sur votre compte bancaire (en général 2 à 3 jours ouvrés). En cas de remboursement d'une famille, la commission correspondante vous est aussi restituée au prorata.</p></div>
+            </div>
+            <?php if ($fin['prochain']): ?><div class="mk-tip" style="margin-top:16px"><?= mk_icon('clock', 20) ?><div><b>Prochain versement : <?= fin_eur((int)$fin['prochain']['net']) ?></b> prévu à partir du <b><?= date('d/m/Y', strtotime($fin['prochain']['d'])) ?></b> (<?= (int)$fin['prochain']['n'] ?> inscription<?= $fin['prochain']['n'] > 1 ? 's' : '' ?>)<?= $ready ? '' : ' : activez vos versements ci-dessus pour le recevoir' ?>.</div></div><?php endif; ?>
+        </div>
+    </section>
+
+    <!-- Derniers paiements -->
+    <section class="mk-section">
+        <h2>Derniers paiements reçus</h2>
+        <p class="lead">Détail de la commission, inscription par inscription.</p>
+        <?php if (!$recent): ?><p class="mk-note" style="margin-top:14px">Aucun paiement pour le moment.</p><?php else: ?>
+        <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:640px">
+            <thead><tr><th>Date</th><th>Séjour</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Net pour vous</th><th>Versement</th></tr></thead><tbody>
+            <?php foreach ($recent as $p): $sl = ['attente' => 'prévu ' . date('d/m/Y', strtotime($p['date_deblocage'])), 'bloque' => 'suspendu', 'litige' => 'litige', 'en_cours' => 'en cours', 'verse' => 'versé', 'rembourse' => 'remboursé'][$p['statut']] ?? $p['statut']; ?>
+                <tr><td><?= date('d/m/Y', strtotime($p['created_at'])) ?></td><td><b><?= htmlspecialchars($p['camp']) ?></b></td><td class="num"><?= fin_eur((int)$p['brut_cents']) ?></td><td class="num">- <?= fin_eur((int)$p['commission_cents']) ?></td><td class="num"><b><?= fin_eur((int)$p['net_cents'] - (int)$p['net_rembourse_cents']) ?></b><?= $p['rembourse_cents'] ? '<div class="mk-note">remboursé : ' . fin_eur((int)$p['rembourse_cents']) . '</div>' : '' ?></td><td><?= htmlspecialchars($sl) ?></td></tr>
+            <?php endforeach; ?></tbody></table></div>
+        <?php endif; ?>
     </section>
 
     <!-- Marketing -->
