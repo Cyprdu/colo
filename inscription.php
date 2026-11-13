@@ -22,6 +22,8 @@ try {
     require_once 'api/attente.php';
     require_once 'api/tarifs.php';
     attente_ensure($pdo);
+    require_once 'api/enfants.php';
+    enfants_ensure($pdo);
     tarifs_ensure($pdo);
     $stmtCamp = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmtCamp->execute([$camp_token]);
@@ -473,7 +475,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                     <div class="w-10 h-10 rounded-full bg-[#2f3d45] text-white flex items-center justify-center font-bold text-lg">${c.prenom.charAt(0)}</div>
                     <div><h3 class="font-bold text-gray-800 text-lg">${c.prenom} ${c.nom}</h3><p class="text-xs text-gray-500">Né(e) le ${new Date(c.date_naissance).toLocaleDateString()}</p></div>
                 </div>
-                <a href="modif_child.php?id=${c.id}" target="_blank" class="text-[#3d6a8e] border border-[#d3dbe0] bg-white px-3 py-1 rounded hover:bg-[#f1f5f9] transition">Modifier</a>
+                <a href="modif_child?id=${encodeURIComponent(c.public_id)}" class="text-[#3d6a8e] border border-[#d3dbe0] bg-white px-3 py-1 rounded hover:bg-[#f1f5f9] transition">Modifier</a>
             </div>
             
             <div class="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-8">
