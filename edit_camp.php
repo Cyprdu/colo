@@ -217,6 +217,21 @@ include 'partials/header.php';
                         </div>
                         <div id="tarifsContainer" class="space-y-2"></div>
                         <input type="hidden" name="tarifs" id="hiddenTarifsInput">
+                        <details class="mt-4 bg-white border rounded p-3">
+                            <summary class="cursor-pointer font-bold text-sm text-blue-700">+ Créer un nouveau tarif</summary>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                                <input type="text" id="nt-nom" maxlength="120" placeholder="Nom du tarif (ex : Tarif solidaire)" class="<?= $inputClass ?>">
+                                <input type="number" id="nt-prix" min="0" step="0.01" placeholder="Prix en €" class="<?= $inputClass ?>">
+                                <label class="flex items-center gap-2 text-sm font-semibold md:col-span-2"><input type="checkbox" id="nt-libre"> Montant libre (le parent choisit la somme)</label>
+                                <div id="nt-min-box" class="hidden md:col-span-2">
+                                    <label class="<?= $labelClass ?>">Montant minimum (€)</label>
+                                    <input type="number" id="nt-min" min="0" step="0.01" placeholder="Laisser vide : le prix du tarif sert de minimum" class="<?= $inputClass ?>">
+                                    <p class="text-xs text-gray-500 mt-1">Le parent ne pourra pas payer moins que ce montant.</p>
+                                </div>
+                            </div>
+                            <button type="button" id="nt-save" class="mt-3 bg-blue-600 text-white font-bold px-4 py-2 rounded">Créer et ajouter</button>
+                            <span id="nt-msg" class="ml-3 text-sm font-semibold" role="status"></span>
+                        </details>
                     </div>
 
                     <div class="grid grid-cols-2 gap-6">
@@ -449,7 +464,7 @@ document.addEventListener('DOMContentLoaded', function() {
         selectedTarifs.forEach(t => {
             const div = document.createElement('div');
             div.className = "flex justify-between items-center bg-white p-2 border rounded shadow-sm";
-            const prix = (t.montant_libre == 1) ? "Libre" : t.prix + " €";
+            const prix = (t.montant_libre == 1) ? (parseFloat(t.montant_min) > 0 ? "Libre, min. " + t.montant_min + " €" : "Libre") : t.prix + " €";
             div.innerHTML = `
                 <span class="font-bold">${t.nom} <small class="font-normal text-gray-500">(${prix})</small></span>
                 <button type="button" class="text-red-500 font-bold px-2" onclick="removeTarif(${t.id})">&times;</button>
@@ -458,6 +473,27 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         document.getElementById('hiddenTarifsInput').value = JSON.stringify(selectedTarifs);
     }
+
+    // --- Création d'un tarif (avec montant minimum pour les tarifs libres) ---
+    document.getElementById('nt-libre').addEventListener('change', e => document.getElementById('nt-min-box').classList.toggle('hidden', !e.target.checked));
+    document.getElementById('nt-save').addEventListener('click', async function() {
+        const msg = document.getElementById('nt-msg');
+        const nom = document.getElementById('nt-nom').value.trim();
+        const libre = document.getElementById('nt-libre').checked;
+        if (!nom) { msg.className = 'ml-3 text-sm font-semibold text-red-600'; msg.textContent = 'Donnez un nom au tarif.'; return; }
+        try {
+            const r = await fetch('api/create_tarif.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                nom, prix: document.getElementById('nt-prix').value || 0, montant_libre: libre ? 1 : 0,
+                montant_min: libre ? (document.getElementById('nt-min').value || 0) : 0, organisateur_id: orgaSelect.value }) });
+            const t = await r.json();
+            if (!r.ok) throw new Error(t.error || 'Erreur');
+            selectedTarifs.push({ id: parseInt(t.id), nom: t.nom, prix: t.prix, montant_libre: t.montant_libre, montant_min: t.montant_min });
+            renderSelectedTarifs();
+            ['nt-nom', 'nt-prix', 'nt-min'].forEach(i => document.getElementById(i).value = '');
+            msg.className = 'ml-3 text-sm font-semibold text-green-700'; msg.textContent = 'Tarif créé et ajouté ✓ (pensez à enregistrer le séjour)';
+            loadTarifsOptions(orgaSelect.value);
+        } catch (e) { msg.className = 'ml-3 text-sm font-semibold text-red-600'; msg.textContent = e.message; }
+    });
 
 });
 </script>

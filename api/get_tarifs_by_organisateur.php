@@ -6,6 +6,8 @@ if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Non connecté'], 40
 $organisateurId = $_GET['organisateur_id'] ?? null;
 
 try {
+    require_once 'tarifs.php';
+    tarifs_ensure($pdo);
     // Si un ID est fourni, on filtre directement en SQL (plus performant)
     if ($organisateurId) {
         $sql = "SELECT * FROM tarifs WHERE organisateur_id = ?";

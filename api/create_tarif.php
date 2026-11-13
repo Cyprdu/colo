@@ -12,11 +12,20 @@ if (empty($input['nom']) || empty($input['organisateur_id'])) {
 }
 
 try {
-    $stmt = $pdo->prepare("INSERT INTO tarifs (nom, prix, montant_libre, organisateur_id) VALUES (?, ?, ?, ?)");
+    require_once 'tarifs.php';
+    tarifs_ensure($pdo);
+    // l'organisateur doit appartenir à l'utilisateur connecté
+    $own = $pdo->prepare("SELECT id FROM organisateurs WHERE id = ? AND user_id = ?");
+    $own->execute([$input['organisateur_id'], $_SESSION['user']['id']]);
+    if (!$own->fetch()) sendJson(['error' => 'Organisme introuvable.'], 403);
+    $libre = !empty($input['montant_libre']) ? 1 : 0;
+    $min = $libre && (float)($input['montant_min'] ?? 0) > 0 ? round((float)$input['montant_min'], 2) : null;
+    $stmt = $pdo->prepare("INSERT INTO tarifs (nom, prix, montant_libre, montant_min, organisateur_id) VALUES (?, ?, ?, ?, ?)");
     $stmt->execute([
-        $input['nom'],
-        $input['prix'] ?? 0,
-        !empty($input['montant_libre']) ? 1 : 0,
+        mb_substr(trim((string)$input['nom']), 0, 120),
+        max(0, (float)($input['prix'] ?? 0)),
+        $libre,
+        $min,
         $input['organisateur_id']
     ]);
     
@@ -27,7 +36,8 @@ try {
         'id' => $newId,
         'nom' => $input['nom'],
         'prix' => $input['prix'] ?? 0,
-        'montant_libre' => !empty($input['montant_libre']) ? 1 : 0,
+        'montant_libre' => $libre,
+        'montant_min' => $min,
         'organisateur_id' => $input['organisateur_id']
     ], 201);
 

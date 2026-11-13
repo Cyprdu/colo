@@ -20,7 +20,9 @@ if (empty($camp_token)) {
 try {
     // 1. Infos Camp
     require_once 'api/attente.php';
+    require_once 'api/tarifs.php';
     attente_ensure($pdo);
+    tarifs_ensure($pdo);
     $stmtCamp = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmtCamp->execute([$camp_token]);
     $camp = $stmtCamp->fetch(PDO::FETCH_ASSOC);
@@ -55,6 +57,8 @@ try {
     require_once 'api/champs.php';
     $champs = champs_du_camp($pdo, (int)$camp['id']);
 
+    foreach ($tarifs as &$t) $t['plancher'] = tarif_plancher($t);
+    unset($t);
     $enfantsJson = json_encode($enfants);
     $tarifsJson = json_encode($tarifs);
 
@@ -275,7 +279,8 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 form.appendChild(i);
             };
             add(`tarifs[${childId}]`, sel.tariffId);
-            if (sel.customPrice > 0) add(`custom_prices[${childId}]`, sel.customPrice);
+            const tt = tariffs.find(x => x.id == sel.tariffId);
+            if (tt && tt.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == sel.tariffId) add(`custom_prices[${childId}]`, sel.customPrice);
         });
     }
     document.addEventListener('DOMContentLoaded', () => {
@@ -292,7 +297,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         }
         if (step === 3) { initStep3(); showCustomFields(); }
         if (step === 4) {
-            if (!validateCustomFields()) return;
+            if (!validateFreeAmounts() || !validateCustomFields()) return;
             updateSummary(); syncHiddenInputs();
         }
 
@@ -358,8 +363,10 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 
                 let inputHtml = '';
                 if(t.montant_libre == 1) {
-                    const val = selections[childId].customPrice > 0 ? selections[childId].customPrice : parseFloat(t.prix);
-                    inputHtml = `<div class="mt-2 pl-6 flex items-center text-sm"><span class="mr-2 text-gray-600">Montant libre :</span><input type="number" step="0.01" value="${val}" class="w-24 border rounded p-1 text-right" data-custom="${childId}" oninput="updateSelection('${childId}', '${t.id}', this.value, true)" onclick="event.stopPropagation()"> €</div>`;
+                    const fl = parseFloat(t.plancher) || 0;
+                    const mine = selections[childId].customFor == t.id && selections[childId].customPrice > 0;
+                    const val = mine ? selections[childId].customPrice : Math.max(parseFloat(t.prix) || 0, fl);
+                    inputHtml = `<div class="mt-2 pl-6 flex flex-wrap items-center gap-2 text-sm"><span class="text-gray-600">Montant libre :</span><input type="number" step="0.01" min="${fl}" value="${val}" class="w-24 border rounded p-1 text-right" data-custom="${childId}-${t.id}" oninput="updateSelection('${childId}', '${t.id}', this.value, true)" onclick="event.stopPropagation()"> € <span class="text-xs text-gray-500">(minimum ${fl.toFixed(2).replace('.', ',')} €)</span></div>`;
                 }
 
                 options += `<div class="border rounded-lg p-3 mb-2 cursor-pointer ${borderClass}" onclick="updateSelection('${childId}', '${t.id}', null)">
@@ -383,6 +390,16 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             fs.classList.toggle('hidden', !on);
         });
     }
+    // Un montant libre ne peut pas être inférieur au minimum du directeur
+    function validateFreeAmounts() {
+        for (const id of selectedChildIds) {
+            const sel = selections[id]; const t = sel && tariffs.find(x => x.id == sel.tariffId);
+            if (!t || t.montant_libre != 1 || !(sel.customPrice > 0) || sel.customFor != t.id) continue;
+            const fl = parseFloat(t.plancher) || 0;
+            if (sel.customPrice < fl) { alert('Le montant minimum pour « ' + t.nom + ' » est de ' + fl.toFixed(2).replace('.', ',') + ' €.'); return false; }
+        }
+        return true;
+    }
     function validateCustomFields() {
         for (const fs of document.querySelectorAll('#custom-fields fieldset:not([disabled])')) {
             for (const el of fs.querySelectorAll('[data-required]')) {
@@ -402,13 +419,13 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         if (!selections[childId]) selections[childId] = {};
         const changed = selections[childId].tariffId != tariffId;
         selections[childId].tariffId = tariffId;
-        if (customPrice !== null) selections[childId].customPrice = parseFloat(customPrice) || 0;
+        if (customPrice !== null) { selections[childId].customPrice = parseFloat(customPrice) || 0; selections[childId].customFor = tariffId; }
         else if (tariffs.find(t => t.id == tariffId).montant_libre != 1) selections[childId].customPrice = 0;
         // En cours de saisie on ne reconstruit pas la liste (sinon le champ perd le focus à chaque chiffre)
         if (typing && !changed) return;
         initStep3();
         if (typing) {
-            const el = document.querySelector(`input[data-custom="${childId}"]`);
+            const el = document.querySelector(`input[data-custom="${childId}-${tariffId}"]`);
             if (el) el.focus();
         }
     }
@@ -424,7 +441,8 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             const sel = selections[childId];
             const t = tariffs.find(x => x.id == sel.tariffId);
             
-            let price = (t.montant_libre == 1 && sel.customPrice > 0) ? sel.customPrice : parseFloat(t.prix);
+            const fl = parseFloat(t.plancher) || 0;
+            let price = (t.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == t.id) ? Math.max(sel.customPrice, fl) : parseFloat(t.prix);
             let detail = `(${t.nom})`;
 
             if (index > 0 && remisePercent > 0) {

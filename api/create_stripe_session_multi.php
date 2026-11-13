@@ -12,6 +12,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/sessions.php';
 require_once __DIR__ . '/attente.php';
+require_once __DIR__ . '/tarifs.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -43,6 +44,7 @@ $createdIds = []; // inscriptions créées, supprimées si le paiement ne peut p
 try {
     // 1. Le séjour : validé, visible, inscriptions en ligne ouvertes
     attente_ensure($pdo);
+    tarifs_ensure($pdo);
     $stmt = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmt->execute([$campToken]);
     $camp = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -128,7 +130,9 @@ try {
             $base = (float)$t['prix'];
             if (!empty($t['montant_libre'])) {
                 $libre = (float)str_replace(',', '.', (string)($customPrices[$cid] ?? 0));
-                if ($libre > 0) $base = min(10000.0, max($libre, $base));   // plancher : prix du tarif
+                // montant libre : jamais sous le minimum fixé par le directeur (à défaut, le prix du tarif)
+                if ($libre > 0) $base = min(10000.0, max($libre, tarif_plancher($t)));
+                else $base = max($base, tarif_plancher($t));
             }
         } else {
             $base = (float)$camp['prix'];
