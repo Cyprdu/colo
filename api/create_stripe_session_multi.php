@@ -11,6 +11,7 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/sessions.php';
+require_once __DIR__ . '/attente.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -41,6 +42,7 @@ $customPrices   = (array)($_POST['custom_prices'] ?? []); // [id enfant => monta
 $createdIds = []; // inscriptions créées, supprimées si le paiement ne peut pas démarrer
 try {
     // 1. Le séjour : validé, visible, inscriptions en ligne ouvertes
+    attente_ensure($pdo);
     $stmt = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmt->execute([$campToken]);
     $camp = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -62,7 +64,7 @@ try {
     if (!$ordered) backWithError('Aucun enfant valide sélectionné.', $campToken, $site);
 
     // 3. Places : une inscription « active » est payée, confirmée, ou en cours de paiement depuis moins de 30 min
-    $active = "(COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule') AND (statut_paiement <> 'EN_ATTENTE' OR date_inscription > (NOW() - INTERVAL 30 MINUTE)))";
+    $active = attente_clause($camp);
     $stmt = $pdo->prepare("SELECT i.enfant_id, e.sexe FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.camp_id = ? AND $active");
     $stmt->execute([$camp['id']]);
     $already = $stmt->fetchAll(PDO::FETCH_ASSOC);

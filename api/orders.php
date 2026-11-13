@@ -4,12 +4,13 @@
 // Les adresses utilisent le JETON de réservation (secret), jamais un identifiant numérique.
 
 require_once __DIR__ . '/sessions.php';
+require_once __DIR__ . '/attente.php';
 
 const ORDER_SELECT = "SELECT i.id AS inscription_id, i.reservation_token, i.stripe_session_id, i.stripe_payment_intent_id,
         i.statut, i.statut_paiement, i.mode_paiement, i.prix_final, i.montant_paye, i.date_inscription,
         t.nom AS tarif_nom, t.prix AS tarif_prix, t.montant_libre AS tarif_libre,
         c.id AS camp_id, c.token AS camp_token, c.nom AS camp_nom, c.ville, c.adresse, c.code_postal, c.image_url,
-        c.date_debut, c.date_fin, c.inscription_en_ligne, c.valide, c.refuse, c.supprime, c.remise_fratrie,
+        c.date_debut, c.date_fin, c.inscription_en_ligne, c.valide, c.refuse, c.supprime, c.remise_fratrie, c.attente_paiement, c.attente_jours,
         o.nom AS orga_nom, o.logo_url AS orga_logo, o.user_id AS orga_user_id, o.email AS orga_email, o.tel AS orga_tel,
         e.id AS enfant_id, e.prenom AS enfant_prenom, e.nom AS enfant_nom, e.date_naissance
     FROM inscriptions i
@@ -28,6 +29,7 @@ function isCancelled(array $r): bool { return in_array($r['statut'], ['Annulé',
 
 /** Toutes les inscriptions du parent, enrichies des dates corrigées */
 function loadParentRows(PDO $pdo, int $userId): array {
+    attente_ensure($pdo);
     $st = $pdo->prepare(ORDER_SELECT . " WHERE e.parent_id = ? ORDER BY c.date_debut ASC, i.date_inscription ASC, e.prenom ASC");
     $st->execute([$userId]);
     return array_map('enrichOrderRow', $st->fetchAll(PDO::FETCH_ASSOC));
@@ -42,6 +44,7 @@ function enrichOrderRow(array $r): array {
 
 /** Les membres de la commande qui contient ce jeton (uniquement si elle appartient au parent) */
 function loadOrderByToken(PDO $pdo, string $token, int $userId): array {
+    attente_ensure($pdo);
     if (!preg_match('/^[A-Za-z0-9]{16,64}$/', $token)) return [];
     $st = $pdo->prepare(ORDER_SELECT . " WHERE i.reservation_token = ? AND e.parent_id = ?");
     $st->execute([$token, $userId]);
@@ -71,6 +74,12 @@ function orderStatus(array $members): array {
         $paid += (float)$m['montant_paye'];
         if ($m['statut_paiement'] !== 'PAYE') $allPaid = false;
     }
+    // Rien de payé et le délai d'attente du directeur est dépassé : la place a été libérée
+    $unpaidLive = array_filter($live, function ($m) { return $m['statut_paiement'] !== 'PAYE'; });
+    $now = new DateTime();
+    $allExpired = $unpaidLive && $paid <= 0.0;
+    foreach ($unpaidLive as $m) { $l = attente_limite($m); if (!$l || $l > $now) { $allExpired = false; break; } }
+    if ($allExpired) return ['expired', 'Expirée', 'bg-gray-100 text-gray-600'];
     if ($allPaid) return ['paid', 'Confirmée', 'bg-emerald-50 text-emerald-700'];
     if ($paid > 0.0 && $paid < $total) return ['partial', 'Paiement partiel', 'bg-amber-50 text-amber-700'];
     return ['pending', 'À régler', 'bg-amber-50 text-amber-700'];

@@ -1,347 +1,370 @@
 <?php
+// messagerie.php : discussions avec les organisateurs. Une seule page : on change de conversation sans recharger.
 require_once 'api/config.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user'])) {
     header('Location: login.php?next=messagerie');
     exit;
 }
+$activeConvId = (int)($_GET['conv_id'] ?? 0);
+$myId = (int)$_SESSION['user']['id'];
+$isDirecteur = !empty($_SESSION['user']['is_directeur']);
+$body_class = 'bg-white';
 require_once 'partials/header.php';
-
-$activeConvId = $_GET['conv_id'] ?? 0;
-$myId = $_SESSION['user']['id'];
 ?>
-
-<title>Mes discussions - ColoMap</title>
-
+<title>Messagerie - ColoMap</title>
 <style>
-    /* Scrollbar personnalisée pour un look plus net */
-    .custom-scroll::-webkit-scrollbar { width: 6px; }
-    .custom-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
-    .custom-scroll::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #26343b; }
+    .msg-scroll::-webkit-scrollbar { width: 8px; }
+    .msg-scroll::-webkit-scrollbar-thumb { background: #d3dbe0; border-radius: 8px; }
+    .msg-scroll::-webkit-scrollbar-thumb:hover { background: #a9b8c6; }
+    .conv-item { display:flex; gap:12px; padding:12px 14px; border-radius:16px; border:1px solid transparent; transition:background .15s ease, border-color .15s ease; cursor:pointer; }
+    .conv-item:hover { background:#f1f5f9; }
+    .conv-item.is-active { background:#eef2f4; border-color:#d3dbe0; }
+    .bubble { padding:10px 14px; font-size:15px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .bubble-me { background:#2f3d45; color:#fff; border-radius:18px 18px 4px 18px; }
+    .bubble-them { background:#fff; color:#26343b; border:1px solid #e5e7eb; border-radius:18px 18px 18px 4px; }
+    .msg-row .msg-actions { opacity:0; transition:opacity .15s ease; }
+    .msg-row:hover .msg-actions, .msg-row:focus-within .msg-actions { opacity:1; }
+    @media (hover:none) { .msg-row .msg-actions { opacity:1; } }
+    .msg-pending { opacity:.6; }
+    @keyframes msgin { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    .msg-new { animation: msgin .18s ease-out; }
+    @media (prefers-reduced-motion: reduce) { .msg-new { animation:none; } }
+    .chip { font-size:13px; font-weight:600; padding:8px 14px; border-radius:9999px; border:1.5px solid #d3dbe0; background:#fff; color:#3b4a54; transition:background .15s ease; }
+    .chip:hover { background:#f1f5f9; }
 </style>
 
-<div id="context-menu" class="fixed hidden bg-white shadow-2xl rounded-lg w-48 py-2 z-[100] border border-gray-200 text-sm font-medium transform transition-all duration-100 scale-95 origin-top-left">
-    <div class="px-4 py-2 text-xs text-gray-400 uppercase tracking-wider font-bold border-b border-gray-100 mb-1">Actions</div>
-    <button id="ctx-edit" class="w-full text-left px-4 py-2.5 hover:bg-[#f1f5f9] text-[#26343b] flex items-center gap-3 transition-colors">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-        Modifier le message
-    </button>
-    <button id="ctx-delete" class="w-full text-left px-4 py-2.5 hover:bg-red-50 text-red-600 flex items-center gap-3 transition-colors">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        Supprimer
-    </button>
-</div>
+<div class="flex bg-white overflow-hidden" style="height:calc(100dvh - 68px)">
 
-<div class="flex h-[calc(100vh-68px)] bg-gray-100 font-sans overflow-hidden">
-    
-    <div id="sidebar" class="w-full md:w-[380px] bg-white border-r-2 border-gray-200 flex flex-col flex-shrink-0 z-10 <?= $activeConvId ? 'hidden md:flex' : 'flex' ?>">
-        
-        <div class="p-6 border-b border-gray-200 flex justify-between items-center bg-white shadow-sm z-10">
-            <div>
-                <h2 class="text-2xl font-extrabold text-[#26343b] tracking-tight">Discussions</h2>
-                <p class="text-xs text-gray-500 mt-1">Vos échanges récents</p>
+    <!-- Liste des conversations -->
+    <aside id="sidebar" class="w-full md:w-[360px] flex-none border-r border-[#e5e7eb] flex flex-col bg-white <?= $activeConvId ? 'hidden md:flex' : 'flex' ?>" aria-label="Conversations">
+        <div class="px-5 pt-5 pb-3">
+            <h1 class="text-[24px] font-extrabold text-[#26343b] leading-tight">Messagerie</h1>
+            <div class="relative mt-3">
+                <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9aa3ab]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>
+                <input id="conv-search" type="search" placeholder="Rechercher un séjour ou une personne" class="w-full rounded-full bg-[#f1f3f5] pl-10 pr-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#2f3d45] focus:bg-white" aria-label="Rechercher une conversation">
             </div>
         </div>
-
-        <div id="conv-list" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll bg-gray-50">
-            <div class="p-10 text-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#26343b] mx-auto"></div>
-            </div>
+        <div id="conv-list" class="flex-1 overflow-y-auto msg-scroll px-3 pb-4 space-y-1" role="list">
+            <div class="p-10 text-center"><div class="animate-spin rounded-full h-7 w-7 border-b-2 border-[#26343b] mx-auto"></div></div>
         </div>
-    </div>
+    </aside>
 
-    <div id="chat-area" class="flex-1 flex flex-col bg-[#eef0f2] relative <?= $activeConvId ? 'flex' : 'hidden md:flex' ?>">
-        
-        <?php if (!$activeConvId): ?>
-            <div class="flex-1 flex flex-col items-center justify-center text-center p-8">
-                <div class="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-md">
-                    <svg class="w-16 h-16 text-[#26343b] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-                </div>
-                <h3 class="text-2xl font-bold text-[#26343b]">Vos Messages</h3>
-                <p class="text-gray-500 mt-2 max-w-sm">Sélectionnez une conversation à gauche pour afficher l'historique.</p>
+    <!-- Conversation ouverte -->
+    <section id="chat-area" class="flex-1 min-w-0 flex-col bg-[#f6f7f8] <?= $activeConvId ? 'flex' : 'hidden md:flex' ?>" aria-label="Conversation">
+        <div id="chat-empty" class="flex-1 flex flex-col items-center justify-center text-center p-8 <?= $activeConvId ? 'hidden' : '' ?>">
+            <div class="w-20 h-20 rounded-full bg-white border border-[#e5e7eb] flex items-center justify-center mb-5">
+                <svg class="w-9 h-9 text-[#3d6a8e]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
             </div>
-        <?php else: ?>
-            
-            <div class="bg-white px-6 py-3 border-b border-gray-300 shadow-sm flex items-center justify-between z-20">
-                <div class="flex items-center gap-4">
-                    <a href="messagerie" class="md:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                    </a>
-                    
-                    <div class="relative">
-                        <div class="h-12 w-12 rounded-full bg-[#26343b] text-white flex items-center justify-center font-bold text-xl shadow-md border-2 border-white" id="header-avatar">?</div>
-                    </div>
-                    
-                    <div>
-                        <h3 class="font-bold text-[#26343b] text-lg leading-tight" id="header-camp">...</h3>
-                        <p class="text-sm text-gray-500 font-medium" id="header-contact">...</p>
-                    </div>
+            <h2 id="empty-title" class="text-[20px] font-extrabold text-[#26343b]">Choisissez une conversation</h2>
+            <p id="empty-text" class="mt-2 text-[#6b7780] max-w-sm text-[15px]">Vos échanges avec les organisateurs apparaissent ici.</p>
+            <a id="empty-cta" href="recherche" class="hidden mt-5 inline-flex px-5 py-3 rounded-xl bg-[#2f3d45] text-white font-bold text-[14px] hover:bg-[#1f2a30] transition">Trouver un séjour</a>
+        </div>
+
+        <div id="chat-pane" class="relative flex-1 min-h-0 flex-col <?= $activeConvId ? 'flex' : 'hidden' ?>">
+            <header class="bg-white border-b border-[#e5e7eb] px-4 md:px-6 py-3 flex items-center gap-3">
+                <button type="button" id="btn-back" class="md:hidden -ml-1 w-10 h-10 rounded-full hover:bg-[#f1f3f5] flex items-center justify-center" aria-label="Retour aux conversations">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <div id="h-avatar" class="w-11 h-11 flex-none rounded-full bg-[#3a4852] text-white font-bold text-[17px] flex items-center justify-center">?</div>
+                <div class="min-w-0 flex-1">
+                    <h2 id="h-contact" class="font-extrabold text-[#26343b] text-[16px] leading-tight truncate">…</h2>
+                    <p id="h-camp" class="text-[13px] text-[#6b7780] truncate">…</p>
                 </div>
-            </div>
+                <a id="h-link" href="#" class="hidden flex-none text-[13px] font-bold px-3.5 py-2 rounded-lg border border-[#e5e7eb] text-[#26343b] hover:bg-[#f1f3f5] transition">Voir le séjour</a>
+            </header>
 
-            <div id="messages-container" class="flex-1 overflow-y-auto p-6 space-y-4 custom-scroll scroll-smooth">
-                </div>
+            <div id="messages" class="flex-1 min-h-0 overflow-y-auto msg-scroll px-4 md:px-8 py-5" aria-live="polite"></div>
 
-            <div class="bg-white p-4 border-t border-gray-300 z-20">
-                <form id="msg-form" class="max-w-5xl mx-auto relative flex items-center gap-3">
-                    <input type="text" id="msg-input" 
-                           class="w-full bg-gray-100 text-gray-900 border border-gray-200 rounded-full py-4 pl-6 pr-14 focus:outline-none focus:ring-2 focus:ring-[#26343b] focus:bg-white transition-all shadow-inner placeholder-gray-500 font-medium" 
-                           placeholder="Écrivez votre message..." autocomplete="off">
-                    
-                    <button type="submit" class="absolute right-2 top-2 p-2 bg-[#26343b] text-white rounded-full hover:bg-[#1f2a30] transition-all active:scale-95 shadow-lg flex items-center justify-center h-10 w-10 group">
-                        <svg class="w-5 h-5 group-hover:translate-x-0.5 transition-transform transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                        </svg>
-                    </button>
-                </form>
-            </div>
+            <button type="button" id="btn-newmsg" class="hidden absolute left-1/2 -translate-x-1/2 bottom-28 px-4 py-2 rounded-full bg-[#2f3d45] text-white text-[13px] font-bold shadow-lg">↓ Nouveaux messages</button>
 
-        <?php endif; ?>
-    </div>
+            <div id="suggest" class="hidden px-4 md:px-8 pb-2 flex flex-wrap gap-2"></div>
+
+            <form id="msg-form" class="bg-white border-t border-[#e5e7eb] px-3 md:px-6 py-3 flex items-end gap-2">
+                <textarea id="msg-input" rows="1" maxlength="4000" placeholder="Écrivez votre message…" aria-label="Votre message"
+                          class="flex-1 resize-none rounded-2xl bg-[#f1f3f5] px-4 py-3 text-[15px] leading-snug max-h-40 focus:outline-none focus:ring-2 focus:ring-[#2f3d45] focus:bg-white"></textarea>
+                <button type="submit" id="btn-send" class="w-12 h-12 flex-none rounded-full bg-[#2f3d45] text-white flex items-center justify-center hover:bg-[#1f2a30] active:scale-95 transition disabled:opacity-40" aria-label="Envoyer">
+                    <svg class="w-5 h-5 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                </button>
+            </form>
+            <p class="hidden md:block text-[11.5px] text-[#9aa3ab] bg-white px-6 pb-2 -mt-1">Entrée pour envoyer · Maj + Entrée pour aller à la ligne</p>
+        </div>
+    </section>
 </div>
 
 <script>
-const myId = <?= $myId ?>;
-const activeConvId = <?= $activeConvId ?>;
-let pollingInterval = null;
-let contextMessageId = null;
+(function () {
+    'use strict';
+    var MY_ID = <?= $myId ?>;
+    var IS_DIR = <?= $isDirecteur ? 'true' : 'false' ?>;
+    var activeId = <?= $activeConvId ?>;
+    var convs = [];
+    var shown = {};          // id message -> { el, content }
+    var lastDay = '';
+    var $ = function (id) { return document.getElementById(id); };
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadConversations();
-    
-    if (activeConvId) {
-        loadMessages();
-        pollingInterval = setInterval(loadMessages, 3000);
+    function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+    function parseDate(s) { return new Date(String(s).replace(' ', 'T')); }
+    function hhmm(d) { return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+    function dayKey(d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+    function dayLabel(d) {
+        var t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
+        if (dayKey(d) === dayKey(t)) return "Aujourd'hui";
+        if (dayKey(d) === dayKey(y)) return 'Hier';
+        return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     }
+    function listTime(s) {
+        if (!s) return '';
+        var d = parseDate(s), t = new Date();
+        if (dayKey(d) === dayKey(t)) return hhmm(d);
+        var y = new Date(); y.setDate(t.getDate() - 1);
+        if (dayKey(d) === dayKey(y)) return 'Hier';
+        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    }
+    function api(url, body) {
+        return fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+    }
+    function initial(c) { return ((c.contact_prenom || c.camp_nom || '?').trim().charAt(0) || '?').toUpperCase(); }
 
-    // Gestion Envoi
-    const form = document.getElementById('msg-form');
-    if(form) {
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const input = document.getElementById('msg-input');
-            const content = input.value.trim();
-            if(!content) return;
-
-            // Ajout visuel immédiat
-            appendMessage({
-                id: 'temp-' + Date.now(),
-                content: content,
-                sender_id: myId,
-                created_at: new Date().toISOString()
-            }, true);
-            
-            input.value = '';
-
-            try {
-                await fetch('api/send_message.php', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ conv_id: activeConvId, content: content })
-                });
-                loadConversations(); 
-            } catch(e) { console.error(e); }
+    // ---------- Liste ----------
+    function renderList() {
+        var q = $('conv-search').value.trim().toLowerCase();
+        var list = $('conv-list');
+        list.textContent = '';
+        var items = convs.filter(function (c) {
+            return !q || ((c.camp_nom || '') + ' ' + c.contact_prenom + ' ' + c.contact_nom).toLowerCase().indexOf(q) !== -1;
         });
-    }
-
-    // CLIC DROIT
-    const menu = document.getElementById('context-menu');
-    const deleteBtn = document.getElementById('ctx-delete');
-    const editBtn = document.getElementById('ctx-edit');
-
-    document.addEventListener('click', () => {
-        menu.classList.add('hidden');
-        menu.classList.remove('scale-100');
-        menu.classList.add('scale-95');
-    });
-
-    // Supprimer
-    deleteBtn.addEventListener('click', async () => {
-        if(!contextMessageId) return;
-        if(confirm('Voulez-vous vraiment supprimer ce message ?')) {
-            try {
-                await fetch('api/delete_message.php', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ message_id: contextMessageId })
-                });
-                // Suppression visuelle immédiate
-                const el = document.getElementById(`msg-${contextMessageId}`);
-                if(el) {
-                    el.style.opacity = '0';
-                    setTimeout(() => el.remove(), 300);
-                }
-            } catch(e) {}
-        }
-    });
-
-    // Modifier
-    editBtn.addEventListener('click', async () => {
-        if(!contextMessageId) return;
-        const msgDiv = document.querySelector(`#msg-${contextMessageId} .msg-content`);
-        const oldText = msgDiv.innerText;
-        const newText = prompt("Modifier votre message :", oldText);
-        
-        if(newText && newText !== oldText) {
-            try {
-                await fetch('api/edit_message.php', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ message_id: contextMessageId, content: newText })
-                });
-                msgDiv.innerText = newText;
-                // Petit effet visuel
-                msgDiv.classList.add('bg-[#1f2a30]');
-                setTimeout(() => msgDiv.classList.remove('bg-[#1f2a30]'), 500);
-            } catch(e) {}
-        }
-    });
-});
-
-// 1. LISTE CONVERSATIONS (STYLE CARTES HAUTE VISIBILITÉ)
-async function loadConversations() {
-    try {
-        const res = await fetch('api/get_conversations.php');
-        const convs = await res.json();
-        const list = document.getElementById('conv-list');
-        list.innerHTML = '';
-
-        if(!convs || convs.length === 0) {
-            list.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">Aucune discussion.</div>';
+        if (!items.length) {
+            list.appendChild(el('p', 'p-8 text-center text-[14px] text-[#9aa3ab]', convs.length ? 'Aucun résultat.' : 'Aucune discussion.'));
             return;
         }
-
-        convs.forEach(c => {
-            const isActive = (c.conversation_id == activeConvId);
-            
-            if(isActive) {
-                document.getElementById('header-camp').textContent = c.camp_nom || 'Discussion';
-                document.getElementById('header-contact').textContent = `${c.contact_prenom} ${c.contact_nom}`;
-                document.getElementById('header-avatar').textContent = (c.contact_prenom || '?').charAt(0).toUpperCase();
-            }
-
-            const div = document.createElement('a');
-            div.href = `messagerie?conv_id=${c.conversation_id}`;
-            
-            // STYLE ACTIF : Fond #26343b, Texte Blanc
-            // STYLE INACTIF : Fond Blanc, Bordure, Ombre légère
-            if (isActive) {
-                div.className = "block p-4 mb-2 rounded-xl bg-[#26343b] text-white shadow-lg border-l-4 border-blue-400 transform scale-[1.02] transition-all duration-200";
-            } else {
-                div.className = "block p-4 mb-2 rounded-xl bg-white text-gray-700 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200";
-            }
-            
-            const isUnread = (c.last_sender_id != myId && c.last_is_read == 0);
-            const titleColor = isActive ? 'text-white' : 'text-[#26343b]';
-            const subColor = isActive ? 'text-blue-200' : 'text-gray-500';
-            const msgColor = isActive ? 'text-gray-300' : (isUnread ? 'text-gray-900 font-bold' : 'text-gray-500');
-
-            div.innerHTML = `
-                <div class="flex justify-between items-start mb-1">
-                    <span class="font-bold ${titleColor} text-sm truncate pr-2 uppercase tracking-wide">${c.camp_nom}</span>
-                    ${isUnread ? '<span class="h-2.5 w-2.5 bg-red-600 rounded-full border border-white animate-pulse"></span>' : ''}
-                </div>
-                <div class="text-xs ${subColor} font-medium mb-2">${c.contact_prenom} ${c.contact_nom}</div>
-                <p class="text-sm truncate ${msgColor} flex items-center gap-1">
-                    ${c.last_sender_id == myId ? '<svg class="w-3 h-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>' : ''}
-                    ${c.last_message || '...'}
-                </p>
-            `;
-            list.appendChild(div);
-        });
-    } catch(e) {}
-}
-
-// 2. MESSAGES
-async function loadMessages() {
-    try {
-        const res = await fetch(`api/get_messages.php?conv_id=${activeConvId}`);
-        if(res.status === 403) { window.location.href='messagerie.php'; return; }
-        const msgs = await res.json();
-        
-        const container = document.getElementById('messages-container');
-        if(container.childElementCount === msgs.length) return; 
-
-        container.innerHTML = '';
-        msgs.forEach(m => appendMessage(m, false));
-        container.scrollTop = container.scrollHeight;
-        
-        await fetch('api/mark_messages_read.php', { method: 'POST', body: JSON.stringify({ conv_id: activeConvId }) });
-    } catch(e) {}
-}
-
-// 3. RENDU MESSAGE (AVEC CORRECTION DU MENU CLIC DROIT)
-function appendMessage(m, forceScroll) {
-    const container = document.getElementById('messages-container');
-    const isMe = (m.sender_id == myId);
-    
-    const wrapper = document.createElement('div');
-    wrapper.id = `msg-${m.id}`;
-    wrapper.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'} group mb-2`;
-    
-    // EVENEMENT CLIC DROIT CORRIGÉ
-    if(isMe) {
-        wrapper.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            contextMessageId = m.id;
-            const menu = document.getElementById('context-menu');
-            
-            // 1. On affiche le menu (mais transparent) pour pouvoir calculer sa taille réelle
-            menu.style.opacity = '0';
-            menu.classList.remove('hidden');
-            
-            // 2. Récupération des dimensions
-            const menuWidth = menu.offsetWidth;
-            const windowWidth = window.innerWidth;
-            
-            // 3. Calcul intelligent de la position X
-            let x = e.clientX;
-            
-            // Si la souris est trop à droite (souris + menu > largeur écran), on affiche à GAUCHE
-            if (x + menuWidth > windowWidth) {
-                x = x - menuWidth; 
-            }
-            
-            // 4. Calcul intelligent de la position Y (optionnel, pour ne pas sortir en bas)
-            const menuHeight = menu.offsetHeight;
-            const windowHeight = window.innerHeight;
-            let y = e.clientY;
-            
-            if (y + menuHeight > windowHeight) {
-                y = y - menuHeight;
-            }
-
-            // 5. Application
-            menu.style.top = `${y}px`;
-            menu.style.left = `${x}px`;
-            
-            // 6. Animation d'apparition
-            setTimeout(() => {
-                menu.style.opacity = '1';
-                menu.classList.remove('scale-95');
-                menu.classList.add('scale-100');
-            }, 10);
+        items.forEach(function (c) {
+            var a = el('a', 'conv-item' + (c.conversation_id == activeId ? ' is-active' : ''));
+            a.href = 'messagerie?conv_id=' + c.conversation_id;
+            a.setAttribute('role', 'listitem');
+            a.addEventListener('click', function (e) { if (e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); openConv(c.conversation_id, true); });
+            var unread = parseInt(c.unread_count, 10) || 0;
+            a.appendChild(el('div', 'w-11 h-11 flex-none rounded-full bg-[#3a4852] text-white font-bold flex items-center justify-center', initial(c)));
+            var body = el('div', 'min-w-0 flex-1');
+            var top = el('div', 'flex items-baseline justify-between gap-2');
+            top.appendChild(el('span', 'text-[14.5px] truncate ' + (unread ? 'font-extrabold text-[#26343b]' : 'font-bold text-[#26343b]'), c.contact_prenom + ' ' + c.contact_nom));
+            top.appendChild(el('span', 'text-[11.5px] flex-none ' + (unread ? 'text-[#3d6a8e] font-bold' : 'text-[#9aa3ab]'), listTime(c.last_message_at)));
+            body.appendChild(top);
+            body.appendChild(el('p', 'text-[12px] text-[#3d6a8e] font-semibold truncate', c.camp_nom || 'Discussion'));
+            var bottom = el('div', 'flex items-center gap-2 mt-0.5');
+            var prev = (c.last_sender_id == MY_ID ? 'Vous : ' : '') + (c.last_message || '');
+            bottom.appendChild(el('p', 'text-[13px] truncate flex-1 ' + (unread ? 'text-[#26343b] font-semibold' : 'text-[#6b7780]'), prev.replace(/\s+/g, ' ')));
+            if (unread) bottom.appendChild(el('span', 'flex-none min-w-[20px] h-5 px-1.5 rounded-full bg-[#2f3d45] text-white text-[11px] font-bold flex items-center justify-center', unread > 99 ? '99+' : String(unread)));
+            body.appendChild(bottom);
+            a.appendChild(body);
+            list.appendChild(a);
         });
     }
 
-    // DESIGN BULLES (Inchangé)
-    const bubbleClass = isMe 
-        ? 'bg-[#26343b] text-white rounded-2xl rounded-tr-sm shadow-md' 
-        : 'bg-white text-gray-800 border border-gray-300 rounded-2xl rounded-tl-sm shadow-sm';
+    function loadConvs() {
+        return api('api/get_conversations.php').then(function (r) { return r.json(); }).then(function (d) {
+            if (!Array.isArray(d)) return;
+            convs = d;
+            renderList();
+            updateHeader();
+            if (!convs.length) {
+                $('empty-title').textContent = "Pas encore de discussion";
+                $('empty-text').textContent = IS_DIR ? "Les messages des parents apparaîtront ici." : "Pour poser une question à un organisme, ouvrez la page d'un séjour et cliquez sur « Contacter l'organisateur ».";
+                $('empty-cta').classList.toggle('hidden', IS_DIR);
+            }
+        }).catch(function () {
+            $('conv-list').textContent = '';
+            $('conv-list').appendChild(el('p', 'p-8 text-center text-[14px] text-red-600', 'Impossible de charger vos discussions.'));
+        });
+    }
 
-    const time = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    function current() { return convs.filter(function (c) { return c.conversation_id == activeId; })[0]; }
+    function updateHeader() {
+        var c = current(); if (!c) return;
+        $('h-avatar').textContent = initial(c);
+        $('h-contact').textContent = c.contact_prenom + ' ' + c.contact_nom;
+        $('h-camp').textContent = c.camp_nom ? 'Séjour : ' + c.camp_nom : 'Discussion';
+        var link = $('h-link');
+        if (c.camp_token) { link.href = 'camp_details?t=' + encodeURIComponent(c.camp_token); link.classList.remove('hidden'); } else link.classList.add('hidden');
+    }
 
-    wrapper.innerHTML = `
-        <div class="max-w-[75%] md:max-w-[65%] flex flex-col ${isMe ? 'items-end' : 'items-start'}">
-            <div class="${bubbleClass} px-5 py-3 relative text-[15px] leading-relaxed msg-content break-words">
-                ${m.content}
-            </div>
-            <span class="text-[10px] text-gray-500 mt-1 px-1 font-medium select-none">
-                ${time}
-            </span>
-        </div>
-    `;
-    container.appendChild(wrapper);
-    if(forceScroll) container.scrollTop = container.scrollHeight;
-}
+    // ---------- Ouverture ----------
+    function openConv(id, push) {
+        activeId = id;
+        shown = {}; lastDay = '';
+        $('messages').textContent = '';
+        $('suggest').classList.add('hidden');
+        if (push) history.pushState({ c: id }, '', 'messagerie?conv_id=' + id);
+        $('sidebar').classList.add('hidden', 'md:flex'); $('sidebar').classList.remove('flex');
+        $('chat-area').classList.remove('hidden'); $('chat-area').classList.add('flex');
+        $('chat-empty').classList.add('hidden');
+        $('chat-pane').classList.remove('hidden'); $('chat-pane').classList.add('flex');
+        renderList(); updateHeader();
+        loadMessages(true);
+        $('msg-input').focus();
+    }
+    function closeConv(push) {
+        activeId = 0;
+        if (push) history.pushState({ c: 0 }, '', 'messagerie');
+        $('sidebar').classList.remove('hidden'); $('sidebar').classList.add('flex');
+        $('chat-area').classList.add('hidden', 'md:flex'); $('chat-area').classList.remove('flex');
+        $('chat-empty').classList.remove('hidden');
+        $('chat-pane').classList.add('hidden'); $('chat-pane').classList.remove('flex');
+        renderList();
+    }
+    window.addEventListener('popstate', function () {
+        var id = parseInt(new URLSearchParams(location.search).get('conv_id'), 10) || 0;
+        id ? openConv(id, false) : closeConv(false);
+    });
+    $('btn-back').addEventListener('click', function () { closeConv(true); });
+
+    // ---------- Messages ----------
+    function nearBottom() { var m = $('messages'); return m.scrollHeight - m.scrollTop - m.clientHeight < 120; }
+    function scrollDown() { var m = $('messages'); m.scrollTop = m.scrollHeight; $('btn-newmsg').classList.add('hidden'); }
+    $('btn-newmsg').addEventListener('click', scrollDown);
+    $('messages').addEventListener('scroll', function () { if (nearBottom()) $('btn-newmsg').classList.add('hidden'); });
+
+    function addDaySep(d) {
+        var k = dayKey(d);
+        if (k === lastDay) return;
+        lastDay = k;
+        var s = el('div', 'flex justify-center my-4');
+        s.appendChild(el('span', 'text-[12px] font-semibold text-[#6b7780] bg-[#e9edf0] rounded-full px-3 py-1 capitalize', dayLabel(d)));
+        $('messages').appendChild(s);
+    }
+
+    function buildRow(m, pending) {
+        var mine = m.sender_id == MY_ID;
+        var row = el('div', 'msg-row flex mb-1.5 ' + (mine ? 'justify-end' : 'justify-start') + (pending ? ' msg-pending' : ' msg-new'));
+        var col = el('div', 'max-w-[82%] md:max-w-[62%] flex flex-col ' + (mine ? 'items-end' : 'items-start'));
+        var wrap = el('div', 'flex items-end gap-1.5 ' + (mine ? 'flex-row-reverse' : ''));
+        var b = el('div', 'bubble ' + (mine ? 'bubble-me' : 'bubble-them'), m.content);
+        wrap.appendChild(b);
+        if (mine && !pending && String(m.id).indexOf('tmp') !== 0) {
+            var act = el('div', 'msg-actions flex gap-0.5 pb-1');
+            var ed = el('button', 'w-7 h-7 rounded-full hover:bg-[#e9edf0] text-[#6b7780] flex items-center justify-center', '✎'); ed.type = 'button'; ed.title = 'Modifier'; ed.setAttribute('aria-label', 'Modifier le message');
+            var de = el('button', 'w-7 h-7 rounded-full hover:bg-red-50 text-red-600 flex items-center justify-center', '🗑'); de.type = 'button'; de.title = 'Supprimer'; de.setAttribute('aria-label', 'Supprimer le message');
+            ed.addEventListener('click', function () { editMsg(m.id); });
+            de.addEventListener('click', function () { delMsg(m.id); });
+            act.appendChild(ed); act.appendChild(de); wrap.appendChild(act);
+        }
+        col.appendChild(wrap);
+        var meta = el('span', 'text-[11px] text-[#9aa3ab] mt-0.5 px-1 select-none', pending ? 'Envoi…' : hhmm(parseDate(m.created_at)) + (mine && m.is_read == 1 ? ' · Lu' : ''));
+        col.appendChild(meta);
+        row.appendChild(col);
+        row._bubble = b; row._meta = meta;
+        return row;
+    }
+
+    function loadMessages(first) {
+        var id = activeId; if (!id) return Promise.resolve();
+        return api('api/get_messages.php?conv_id=' + id).then(function (r) {
+            if (r.status === 403) { closeConv(true); return null; }
+            return r.json();
+        }).then(function (msgs) {
+            if (!msgs || id !== activeId || !Array.isArray(msgs)) return;
+            var stick = first || nearBottom(), added = 0, ids = {};
+            msgs.forEach(function (m) {
+                ids[m.id] = 1;
+                var s = shown[m.id];
+                if (s) {
+                    if (s.content !== m.content) { s.row._bubble.textContent = m.content; s.content = m.content; }   // message modifié
+                    return;
+                }
+                // On remplace un message « en cours d'envoi » identique par la version enregistrée
+                var d = parseDate(m.created_at);
+                addDaySep(d);
+                var row = buildRow(m, false);
+                $('messages').appendChild(row);
+                shown[m.id] = { row: row, content: m.content };
+                if (m.sender_id != MY_ID) added++;
+            });
+            // messages supprimés ailleurs
+            Object.keys(shown).forEach(function (k) { if (!ids[k] && String(k).indexOf('tmp') !== 0) { shown[k].row.remove(); delete shown[k]; } });
+            if (stick) scrollDown(); else if (added) $('btn-newmsg').classList.remove('hidden');
+            showSuggestions(msgs);
+            if (msgs.some(function (m) { return m.sender_id != MY_ID && m.is_read == 0; })) {
+                api('api/mark_messages_read.php', { conv_id: id }).then(loadConvs);
+            }
+        }).catch(function () {});
+    }
+
+    // Aide à la première question (parent qui contacte un organisme)
+    var SUGGESTIONS = ["Quelles sont les dates et les horaires d'arrivée ?", "Mon enfant a une allergie, comment est-ce géré ?", "Reste-t-il des places disponibles ?", "Peut-on payer en plusieurs fois ?"];
+    function showSuggestions(msgs) {
+        var box = $('suggest');
+        if (IS_DIR || msgs.length > 1 || box.childElementCount) { if (msgs.length > 1) box.classList.add('hidden'); return; }
+        SUGGESTIONS.forEach(function (t) {
+            var b = el('button', 'chip', t); b.type = 'button';
+            b.addEventListener('click', function () { $('msg-input').value = t; autosize(); $('msg-input').focus(); });
+            box.appendChild(b);
+        });
+        box.classList.remove('hidden');
+    }
+
+    // ---------- Envoi ----------
+    function autosize() { var i = $('msg-input'); i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 160) + 'px'; }
+    $('msg-input').addEventListener('input', autosize);
+    $('msg-input').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('msg-form').requestSubmit(); }
+    });
+    $('msg-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var input = $('msg-input'), text = input.value.trim();
+        if (!text || !activeId) return;
+        var id = activeId, tmpId = 'tmp' + Date.now();
+        var now = new Date();
+        addDaySep(now);
+        var row = buildRow({ id: tmpId, content: text, sender_id: MY_ID, created_at: now.toISOString() }, true);
+        $('messages').appendChild(row); scrollDown();
+        input.value = ''; autosize(); $('suggest').classList.add('hidden');
+        api('api/send_message.php', { conv_id: id, content: text }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); }).then(function (x) {
+            if (!x.ok) throw new Error(x.d.error || 'Erreur');
+            row.remove();                       // la version enregistrée arrive par loadMessages
+            if (id === activeId) loadMessages(false);
+            loadConvs();
+        }).catch(function (err) {
+            row.classList.remove('msg-pending');
+            row._bubble.className = 'bubble bubble-me';
+            row._bubble.style.background = '#b42318';
+            row._meta.textContent = 'Non envoyé : ' + (err.message || 'erreur réseau') + ' — cliquez pour réessayer';
+            row._meta.style.cursor = 'pointer'; row._meta.style.color = '#b42318';
+            row._meta.addEventListener('click', function () { row.remove(); input.value = text; autosize(); input.focus(); });
+        });
+    });
+
+    // ---------- Modifier / supprimer ----------
+    function editMsg(mid) {
+        var s = shown[mid]; if (!s) return;
+        var b = s.row._bubble, old = s.content;
+        var ta = el('textarea', 'w-full min-w-[220px] rounded-xl bg-white text-[#26343b] p-2 text-[15px] border border-[#d3dbe0]'); ta.value = old; ta.rows = 2;
+        b.textContent = ''; b.appendChild(ta); ta.focus();
+        var bar = el('div', 'flex justify-end gap-2 mt-2');
+        var ok = el('button', 'text-[12px] font-bold px-3 py-1 rounded-full bg-white text-[#26343b]', 'Enregistrer'); ok.type = 'button';
+        var no = el('button', 'text-[12px] font-bold px-3 py-1 rounded-full text-white/80', 'Annuler'); no.type = 'button';
+        bar.appendChild(no); bar.appendChild(ok); b.appendChild(bar);
+        no.addEventListener('click', function () { b.textContent = old; });
+        ok.addEventListener('click', function () {
+            var v = ta.value.trim(); if (!v || v === old) { b.textContent = old; return; }
+            api('api/edit_message.php', { message_id: mid, content: v }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d && d.success) { s.content = v; b.textContent = v; } else b.textContent = old;
+            }).catch(function () { b.textContent = old; });
+        });
+    }
+    function delMsg(mid) {
+        if (!confirm('Supprimer ce message ?')) return;
+        api('api/delete_message.php', { message_id: mid }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d && d.success && shown[mid]) { shown[mid].row.remove(); delete shown[mid]; loadConvs(); }
+        });
+    }
+
+    // ---------- Démarrage et actualisation ----------
+    $('conv-search').addEventListener('input', renderList);
+    loadConvs().then(function () { if (activeId) openConv(activeId, false); });
+    setInterval(function () { if (document.visibilityState === 'visible' && activeId) loadMessages(false); }, 4000);
+    setInterval(function () { if (document.visibilityState === 'visible') loadConvs(); }, 12000);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { loadConvs(); if (activeId) loadMessages(false); } });
+})();
 </script>
 </body>
 </html>

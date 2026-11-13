@@ -15,8 +15,9 @@ if ($cancel && $tokens !== '') {
     try {
         $tokenArray = array_values(array_filter(array_map('trim', explode(',', $tokens)), function ($t) { return preg_match('/^[a-f0-9]{16,64}$/i', $t); }));
         if ($tokenArray) {
-            $placeholders = implode(',', array_fill(0, count($tokenArray), '?'));
-            $pdo->prepare("DELETE FROM inscriptions WHERE reservation_token IN ($placeholders) AND statut_paiement = 'EN_ATTENTE'")->execute($tokenArray);
+            require_once 'api/attente.php';
+            // Si le directeur autorise l'attente, la réservation est conservée (à régler depuis « Mes réservations »)
+            $kept = attente_liberer($pdo, $tokenArray) > 0;
         }
     } catch (Exception $e) {
         error_log("Erreur suppression inscription annulée : " . $e->getMessage());
@@ -24,7 +25,7 @@ if ($cancel && $tokens !== '') {
 }
 
 // Destinations en chemins absolus (jamais « // » dans l'adresse), avec jeton et non identifiant
-$backUrl = $camp_t !== '' ? '/camp_details?t=' . $camp_t : '/recherche';
+$backUrl = !empty($kept) ? '/reservations' : ($camp_t !== '' ? '/camp_details?t=' . $camp_t : '/recherche');
 ?>
 <!DOCTYPE html>
 <html lang="fr">

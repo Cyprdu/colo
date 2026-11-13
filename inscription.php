@@ -19,6 +19,8 @@ if (empty($camp_token)) {
 
 try {
     // 1. Infos Camp
+    require_once 'api/attente.php';
+    attente_ensure($pdo);
     $stmtCamp = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmtCamp->execute([$camp_token]);
     $camp = $stmtCamp->fetch(PDO::FETCH_ASSOC);
@@ -31,7 +33,7 @@ try {
     $enfants = $stmtEnfants->fetchAll(PDO::FETCH_ASSOC);
 
     // 3. Enfants déjà inscrits
-    $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule') AND (statut_paiement <> 'EN_ATTENTE' OR date_inscription > (NOW() - INTERVAL 30 MINUTE))");
+    $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND " . attente_clause($camp));
     $stmtDeja->execute([$camp['id']]);
     $dejaInscrits = $stmtDeja->fetchAll(PDO::FETCH_COLUMN);
 

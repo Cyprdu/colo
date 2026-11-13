@@ -180,8 +180,9 @@ if ($event->type === 'checkout.session.expired') {
         $tokens = array_filter(array_map('trim', explode(',', $meta->reservation_token)));
         if ($tokens) {
             try {
-                $in = implode(',', array_fill(0, count($tokens), '?'));
-                $pdo->prepare("DELETE FROM inscriptions WHERE reservation_token IN ($in) AND statut_paiement = 'EN_ATTENTE'")->execute(array_values($tokens));
+                // Le directeur peut autoriser l'attente : dans ce cas la place reste gardée jusqu'à la date limite
+                require_once __DIR__ . '/attente.php';
+                attente_liberer($pdo, array_values($tokens));
             } catch (Exception $e) { error_log('WEBHOOK ERROR (expired): ' . $e->getMessage()); }
         }
     }

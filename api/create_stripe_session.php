@@ -37,13 +37,17 @@ try {
 
     $pending = array_values(array_filter($members, function ($m) { return !isCancelled($m) && $m['statut_paiement'] === 'EN_ATTENTE'; }));
     if (!$pending) { header('Location: ' . $back); exit; }
+    // Délai d'attente fixé par le directeur dépassé : la place n'est plus réservée
+    $now = new DateTime();
+    $pending = array_values(array_filter($pending, function ($m) use ($now) { $l = attente_limite($m); return $l && $l > $now; }));
+    if (!$pending) { header('Location: ' . $back . '&err=expired'); exit; }
 
     // Les places sont-elles toujours disponibles ? (on ne compte pas les inscriptions qu'on règle)
     $quota = (int)($pdo->query("SELECT quota_global FROM camps WHERE id = " . (int)$first['camp_id'])->fetchColumn());
     if ($quota > 0) {
         $ids = array_map(function ($m) { return (int)$m['inscription_id']; }, $pending);
         $in = implode(',', array_fill(0, count($ids), '?'));
-        $active = "(COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule') AND (statut_paiement <> 'EN_ATTENTE' OR date_inscription > (NOW() - INTERVAL 30 MINUTE)))";
+        $active = attente_clause($first);
         $st = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND id NOT IN ($in) AND $active");
         $st->execute(array_merge([$first['camp_id']], $ids));
         if ((int)$st->fetchColumn() + count($pending) > $quota) { header('Location: ' . $back . '&err=full'); exit; }

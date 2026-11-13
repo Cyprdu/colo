@@ -20,6 +20,10 @@ if (!$convId) {
 try {
     // On met à jour SEULEMENT les messages que je n'ai PAS envoyés (ceux que je reçois)
     // Et qui sont dans cette conversation spécifique
+    $chk = $pdo->prepare("SELECT id FROM conversations WHERE id = ? AND (user_1_id = ? OR user_2_id = ?)");
+    $chk->execute([$convId, $myId, $myId]);
+    if (!$chk->fetch()) { http_response_code(403); echo json_encode(['error' => 'Accès interdit']); exit; }
+
     $sql = "UPDATE messages 
             SET is_read = 1 
             WHERE conversation_id = ? 

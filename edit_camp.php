@@ -177,6 +177,23 @@ include 'partials/header.php';
             </div>
 
             <div id="blockInternal" class="<?= $camp['inscription_en_ligne'] ? '' : 'hidden' ?> space-y-8">
+
+                <?php require_once 'api/attente.php'; attente_ensure($pdo);
+                $st = $pdo->prepare("SELECT attente_paiement, attente_jours FROM camps WHERE id = ?"); $st->execute([$camp['id']]);
+                $att = $st->fetch() ?: ['attente_paiement' => 1, 'attente_jours' => ATTENTE_DEFAUT_JOURS]; ?>
+                <div class="border-l-4 border-amber-500 pl-6 py-2">
+                    <h3 class="text-lg font-bold mb-2 text-gray-800">Paiement différé</h3>
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" name="attente_paiement" id="attente-toggle" value="1" <?= !empty($att['attente_paiement']) ? 'checked' : '' ?> class="mt-1 w-5 h-5">
+                        <span class="text-sm text-gray-700"><b>Autoriser les réservations « en attente de paiement »</b><br>Le parent peut réserver et régler plus tard. Sa place est gardée jusqu'à la date limite ci-dessous, puis libérée automatiquement. Décochez pour ne garder la place que 30 minutes (le temps du paiement).</span>
+                    </label>
+                    <div id="attente-jours-box" class="mt-3 flex items-center gap-2 text-sm <?= !empty($att['attente_paiement']) ? '' : 'opacity-40' ?>">
+                        <span>Délai maximum :</span>
+                        <input type="number" name="attente_jours" min="1" max="<?= ATTENTE_MAX_JOURS ?>" value="<?= (int)$att['attente_jours'] ?>" class="w-20 border-2 border-gray-300 rounded p-1.5 text-center">
+                        <span>jour(s) après la réservation</span>
+                    </div>
+                    <script>document.getElementById('attente-toggle').addEventListener('change', e => document.getElementById('attente-jours-box').classList.toggle('opacity-40', !e.target.checked));</script>
+                </div>
                 
                 <div class="border-l-4 border-blue-500 pl-6 py-2">
                     <h3 class="text-lg font-bold mb-4 text-gray-800">Organisation & Tarifs</h3>

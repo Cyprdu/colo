@@ -159,6 +159,12 @@ try {
 
     $stmt->execute($params);
 
+    // Réservations « en attente de paiement » : autorisation et délai maximum (1 à 60 jours)
+    require_once 'attente.php';
+    attente_ensure($pdo);
+    $pdo->prepare("UPDATE camps SET attente_paiement = ?, attente_jours = ? WHERE id = ?")
+        ->execute([isset($_POST['attente_paiement']) ? 1 : 0, max(1, min(ATTENTE_MAX_JOURS, (int)($_POST['attente_jours'] ?? ATTENTE_DEFAUT_JOURS))), $campId]);
+
     // 6. MISE À JOUR DES TARIFS (Suppression anciens -> Ajout nouveaux)
     // On supprime les liens tarifs existants pour ce camp
     $pdo->prepare("DELETE FROM camps_tarifs WHERE camp_id = ?")->execute([$campId]);

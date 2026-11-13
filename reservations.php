@@ -13,16 +13,20 @@ try { $rows = loadParentRows($pdo, $userId); }
 catch (Throwable $e) { $rows = []; $loadError = true; error_log('reservations: ' . $e->getMessage()); }
 
 $today = new DateTime('today');
-$upcoming = []; $past = []; $cancelled = []; $toPay = 0;
+$upcoming = []; $waiting = []; $past = []; $cancelled = []; $toPay = 0;
 foreach (groupOrders($rows) as $members) {
     $status = orderStatus($members);
-    if ($status[0] === 'cancelled') { $cancelled[] = $members; continue; }
+    if (in_array($status[0], ['cancelled', 'expired'], true)) { $cancelled[] = $members; continue; }
     $end = $members[0]['_end'];
     foreach ($members as $m) if ($m['_end'] > $end) $end = $m['_end'];
-    if ($end >= $today) $upcoming[] = $members; else $past[] = $members;
-    if (in_array($status[0], ['pending', 'partial'], true)) $toPay++;
+    $unpaid = in_array($status[0], ['pending', 'partial'], true);
+    if ($end < $today) $past[] = $members;
+    elseif ($unpaid) $waiting[] = $members;
+    else $upcoming[] = $members;
+    if ($unpaid) $toPay++;
 }
 usort($upcoming, function ($a, $b) { return $a[0]['_start'] <=> $b[0]['_start']; });
+usort($waiting, function ($a, $b) { return $a[0]['_start'] <=> $b[0]['_start']; });
 usort($past, function ($a, $b) { return $b[0]['_start'] <=> $a[0]['_start']; });
 
 $body_class = 'bg-white';
@@ -30,10 +34,11 @@ require_once 'partials/header.php';
 
 $sections = [
     'upcoming'  => ['label' => 'À venir',   'list' => $upcoming],
+    'waiting'   => ['label' => 'En attente', 'list' => $waiting],
     'past'      => ['label' => 'Passées',   'list' => $past],
-    'cancelled' => ['label' => 'Annulées',  'list' => $cancelled],
+    'cancelled' => ['label' => 'Annulées / expirées', 'list' => $cancelled],
 ];
-$firstTab = $upcoming ? 'upcoming' : ($past ? 'past' : ($cancelled ? 'cancelled' : 'upcoming'));
+$firstTab = $waiting ? 'waiting' : ($upcoming ? 'upcoming' : ($past ? 'past' : ($cancelled ? 'cancelled' : 'upcoming')));
 
 function resaImg($url) {
     $url = trim((string)$url);
@@ -80,7 +85,7 @@ function resaImg($url) {
         </div>
     <?php else: ?>
         <div class="flex flex-wrap gap-2 mb-6" role="tablist">
-            <?php foreach ($sections as $key => $sec): if ($key === 'cancelled' && !$sec['list']) continue; ?>
+            <?php foreach ($sections as $key => $sec): if (in_array($key, ['cancelled', 'waiting'], true) && !$sec['list']) continue; ?>
                 <button type="button" role="tab" class="rs-tab<?= $key === $firstTab ? ' is-active' : '' ?>" data-tab="<?= $key ?>"><?= $sec['label'] ?> (<?= count($sec['list']) ?>)</button>
             <?php endforeach; ?>
         </div>
@@ -120,6 +125,10 @@ function resaImg($url) {
                         </div>
                     </div>
 
+                    <?php if ($key === 'waiting'):
+                        $lim = null; foreach ($members as $m) { $l = attente_limite($m); if ($l && (!$lim || $l < $lim)) $lim = $l; } ?>
+                        <?php if ($lim): ?><p class="mt-3 inline-flex items-center gap-2 text-[13px] font-semibold text-[#5b4a1c] bg-[#f8f5ea] rounded-lg px-3 py-1.5">À régler avant le <?= htmlspecialchars(fmtJour($lim) . ' à ' . $lim->format('H\hi')) ?> — passé ce délai, la place est libérée.</p><?php endif; ?>
+                    <?php endif; ?>
                     <div class="mt-4 flex flex-wrap gap-2">
                         <?php foreach ($live as $m): ?>
                             <span class="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-[#f1f3f5] text-[13px] font-semibold text-[#3b4a54]">
