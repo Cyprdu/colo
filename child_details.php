@@ -125,6 +125,11 @@ $tokenCamp = $_GET['t'] ?? '';
                     </ul>
                 </section>
 
+                <section id="reponses-section" class="hidden">
+                    <h3 class="text-lg font-bold text-gray-700 uppercase border-b border-gray-200 pb-1 mb-3">Réponses au formulaire</h3>
+                    <dl id="reponses-list" class="space-y-2 text-sm"></dl>
+                </section>
+
                 <section class="bg-gray-50 p-4 rounded border border-gray-200">
                     <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">Commentaires Parents</h3>
                     <p class="text-sm italic text-gray-600" id="comments">Aucun commentaire.</p>
@@ -209,6 +214,18 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Autorisations
         const imgOk = data.droit_image == 1 ? '<span class="text-green-600 font-bold">OUI</span>' : '<span class="text-red-600 font-bold">NON</span>';
         document.getElementById('auth-img').innerHTML = imgOk;
+
+        // Réponses aux questions personnalisées du directeur
+        if (data.reponses && data.reponses.length) {
+            const list = document.getElementById('reponses-list');
+            data.reponses.forEach(r => {
+                const row = document.createElement('div');
+                const dt = document.createElement('dt'); dt.className = 'font-bold'; dt.textContent = r.libelle;
+                const dd = document.createElement('dd'); dd.className = 'text-gray-700'; dd.textContent = r.valeur;
+                row.append(dt, dd); list.appendChild(row);
+            });
+            document.getElementById('reponses-section').classList.remove('hidden');
+        }
 
         // Commentaires
         if(data.commentaires) document.getElementById('comments').textContent = data.commentaires;

@@ -31,6 +31,9 @@ try {
         sendJson(['error' => 'Dossier introuvable ou accès refusé.'], 404);
     }
 
+    require_once __DIR__ . '/champs.php';
+    $data['reponses'] = champs_reponses($pdo, (int)$inscriptionId);   // réponses aux questions du directeur
+
     sendJson($data);
 
 } catch (Exception $e) {

@@ -49,6 +49,10 @@ try {
         $tarifs[] = ['id' => 'default', 'nom' => 'Tarif Standard', 'prix' => $camp['prix'], 'montant_libre' => 0];
     }
 
+    // 5. Questions personnalisées du directeur
+    require_once 'api/champs.php';
+    $champs = champs_du_camp($pdo, (int)$camp['id']);
+
     $enfantsJson = json_encode($enfants);
     $tarifsJson = json_encode($tarifs);
 
@@ -155,6 +159,44 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
 
                 <div id="tariffs-container" class="space-y-8"></div>
 
+                <?php if ($champs): ?>
+                <div id="custom-fields" class="mt-8 space-y-6">
+                    <?php foreach ($enfants as $enfant): ?>
+                    <fieldset class="bg-white border rounded-xl p-5 shadow-sm hidden" data-child="<?= (int)$enfant['id'] ?>" disabled>
+                        <legend class="sr-only">Questions de l'organisateur pour <?= htmlspecialchars($enfant['prenom']) ?></legend>
+                        <h3 class="font-bold text-lg mb-1">Questions de l'organisateur pour <?= htmlspecialchars($enfant['prenom']) ?></h3>
+                        <p class="text-xs text-gray-500 mb-4">Les champs marqués d'une étoile sont obligatoires.</p>
+                        <div class="space-y-4">
+                        <?php foreach ($champs as $c):
+                            $name = 'reponses[' . (int)$enfant['id'] . '][' . $c['id'] . ']';
+                            $fid = 'rep-' . (int)$enfant['id'] . '-' . $c['id'];
+                            $star = $c['obligatoire'] ? ' <span class="text-red-600" aria-hidden="true">*</span>' : '';
+                            $cls = 'w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:border-[#2f3d45] focus:outline-none';
+                            $req = $c['obligatoire'] ? ' data-required="1"' : '';
+                        ?>
+                            <div>
+                            <?php if ($c['type'] === 'case'): ?>
+                                <label class="flex items-start gap-3 cursor-pointer text-sm"><input type="checkbox" name="<?= $name ?>" value="1" class="mt-0.5 w-4 h-4"<?= $req ?>><span class="font-medium"><?= htmlspecialchars($c['libelle']) . $star ?></span></label>
+                            <?php else: ?>
+                                <label for="<?= $fid ?>" class="block text-sm font-semibold mb-1"><?= htmlspecialchars($c['libelle']) . $star ?></label>
+                                <?php if ($c['type'] === 'paragraphe'): ?>
+                                    <textarea id="<?= $fid ?>" name="<?= $name ?>" rows="3" maxlength="2000" class="<?= $cls ?>"<?= $req ?>></textarea>
+                                <?php elseif ($c['type'] === 'liste'): ?>
+                                    <select id="<?= $fid ?>" name="<?= $name ?>" class="<?= $cls ?> bg-white"<?= $req ?>><option value="">— Choisir —</option>
+                                        <?php foreach ($c['choix'] as $o): ?><option><?= htmlspecialchars($o) ?></option><?php endforeach; ?>
+                                    </select>
+                                <?php else: ?>
+                                    <input id="<?= $fid ?>" name="<?= $name ?>" type="<?= $c['type'] === 'nombre' ? 'number' : ($c['type'] === 'date' ? 'date' : 'text') ?>"<?= $c['type'] === 'nombre' ? ' step="any"' : '' ?> maxlength="255" class="<?= $cls ?>"<?= $req ?>>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                        </div>
+                    </fieldset>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
                 <div class="mt-8 pt-6 border-t flex justify-between items-center">
                     <button type="button" onclick="goToStep(2)" class="text-gray-500 hover:text-gray-800">← Retour</button>
                     <button type="button" onclick="goToStep(4)" class="px-6 py-3 bg-[#2f3d45] text-white font-bold rounded-lg hover:bg-[#1f2a30] transition">
@@ -189,11 +231,12 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                             <svg class="w-3 h-3 mr-1 text-[#3b4a54]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
                             Paiement 100% sécurisé via Stripe
                         </p>
-                        <div class="flex justify-center items-center space-x-3 opacity-60 grayscale hover:grayscale-0 transition duration-300">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" class="h-5">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard" class="h-5">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" class="h-5">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg" alt="Amex" class="h-5">
+                        <?php /* logos en SVG intégré : plus de dépendance à un hébergeur externe */ ?>
+                        <div class="flex justify-center items-center gap-2">
+                            <svg role="img" aria-label="Visa" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#fff" stroke="#d3dbe0"/><text x="24" y="21" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="900" font-style="italic" fill="#1a1f71">VISA</text></svg>
+                            <svg role="img" aria-label="Mastercard" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#fff" stroke="#d3dbe0"/><circle cx="19" cy="15" r="8" fill="#eb001b"/><circle cx="29" cy="15" r="8" fill="#f79e1b" fill-opacity=".9"/></svg>
+                            <svg role="img" aria-label="American Express" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#2e77bb"/><text x="24" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="800" fill="#fff">AMEX</text></svg>
+                            <svg role="img" aria-label="Carte Bancaire" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#fff" stroke="#d3dbe0"/><rect x="6" y="8" width="36" height="14" rx="3" fill="#2f3d45"/><text x="24" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="800" fill="#fff">CB</text></svg>
                         </div>
                     </div>
                 </div>
@@ -245,8 +288,11 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             selectedChildIds = Array.from(checkboxes).map(cb => cb.value);
             initStep2();
         }
-        if (step === 3) initStep3();
-        if (step === 4) { updateSummary(); syncHiddenInputs(); }
+        if (step === 3) { initStep3(); showCustomFields(); }
+        if (step === 4) {
+            if (!validateCustomFields()) return;
+            updateSummary(); syncHiddenInputs();
+        }
 
         // UI
         [1, 2, 3, 4].forEach(i => {
@@ -311,7 +357,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 let inputHtml = '';
                 if(t.montant_libre == 1) {
                     const val = selections[childId].customPrice > 0 ? selections[childId].customPrice : parseFloat(t.prix);
-                    inputHtml = `<div class="mt-2 pl-6 flex items-center text-sm"><span class="mr-2 text-gray-600">Montant libre :</span><input type="number" step="0.01" value="${val}" class="w-24 border rounded p-1 text-right" oninput="updateSelection('${childId}', '${t.id}', this.value)" onclick="event.stopPropagation()"> €</div>`;
+                    inputHtml = `<div class="mt-2 pl-6 flex items-center text-sm"><span class="mr-2 text-gray-600">Montant libre :</span><input type="number" step="0.01" value="${val}" class="w-24 border rounded p-1 text-right" data-custom="${childId}" oninput="updateSelection('${childId}', '${t.id}', this.value, true)" onclick="event.stopPropagation()"> €</div>`;
                 }
 
                 options += `<div class="border rounded-lg p-3 mb-2 cursor-pointer ${borderClass}" onclick="updateSelection('${childId}', '${t.id}', null)">
@@ -327,12 +373,42 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         });
     }
 
-    function updateSelection(childId, tariffId, customPrice) {
+    // Questions du directeur : seuls les enfants sélectionnés sont affichés (les autres sont désactivés, donc non envoyés)
+    function showCustomFields() {
+        document.querySelectorAll('#custom-fields fieldset').forEach(fs => {
+            const on = selectedChildIds.includes(fs.dataset.child);
+            fs.disabled = !on;
+            fs.classList.toggle('hidden', !on);
+        });
+    }
+    function validateCustomFields() {
+        for (const fs of document.querySelectorAll('#custom-fields fieldset:not([disabled])')) {
+            for (const el of fs.querySelectorAll('[data-required]')) {
+                const empty = el.type === 'checkbox' ? !el.checked : el.value.trim() === '';
+                if (empty) {
+                    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    el.focus();
+                    alert('Merci de répondre à toutes les questions obligatoires (*).');
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    function updateSelection(childId, tariffId, customPrice, typing) {
         if (!selections[childId]) selections[childId] = {};
+        const changed = selections[childId].tariffId != tariffId;
         selections[childId].tariffId = tariffId;
-        if (customPrice !== null) selections[childId].customPrice = parseFloat(customPrice);
+        if (customPrice !== null) selections[childId].customPrice = parseFloat(customPrice) || 0;
         else if (tariffs.find(t => t.id == tariffId).montant_libre != 1) selections[childId].customPrice = 0;
+        // En cours de saisie on ne reconstruit pas la liste (sinon le champ perd le focus à chaque chiffre)
+        if (typing && !changed) return;
         initStep3();
+        if (typing) {
+            const el = document.querySelector(`input[data-custom="${childId}"]`);
+            if (el) el.focus();
+        }
     }
 
     // --- ÉTAPE 4 : RÉSUMÉ ---

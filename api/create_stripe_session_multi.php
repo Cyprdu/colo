@@ -99,6 +99,19 @@ try {
     $fmt = function (DateTime $d) use ($mois) { return $d->format('j') . ' ' . $mois[(int)$d->format('n') - 1]; };
     $sessionLabel = 'Du ' . $fmt($s1) . ' au ' . $fmt($s2) . ' ' . $s2->format('Y');
 
+    // 5 bis. Questions personnalisées du directeur : validées côté serveur pour chaque enfant
+    require_once __DIR__ . '/champs.php';
+    $champs = champs_du_camp($pdo, (int)$camp['id']);
+    $reponses = []; // [id enfant => [[champ_id, libelle, valeur]]]
+    if ($champs) {
+        $posted = (array)($_POST['reponses'] ?? []);
+        foreach ($ordered as $child) {
+            [$ok, $err] = champs_valider($champs, (array)($posted[$child['id']] ?? []), $child['prenom']);
+            if ($err) backWithError($err, $campToken, $site);
+            $reponses[(int)$child['id']] = $ok;
+        }
+    }
+
     // 6. Prix de chaque enfant, calculé uniquement avec la base
     $remise = max(0.0, min(100.0, (float)($camp['remise_fratrie'] ?? 0)));
     $orders = []; // ['child','cents','tarif_id','desc']
@@ -155,7 +168,12 @@ try {
                 'quantity' => 1,
             ];
         }
-        $createdIds[] = (int)$pdo->lastInsertId();
+        $insId = (int)$pdo->lastInsertId();
+        $createdIds[] = $insId;
+        foreach ($reponses[(int)$o['child']['id']] ?? [] as $r) {
+            $pdo->prepare("INSERT INTO inscription_reponses (inscription_id, champ_id, libelle, valeur) VALUES (?, ?, ?, ?)")
+                ->execute([$insId, $r['champ_id'], $r['libelle'], $r['valeur']]);
+        }
     }
     $pdo->commit();
 

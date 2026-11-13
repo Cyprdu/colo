@@ -278,7 +278,67 @@ include 'partials/header.php';
 
         </form>
     </div>
+
+    <?php
+    require_once 'api/champs.php';
+    $champsActuels = champs_du_camp($pdo, (int)$camp['id']);
+    ?>
+    <div class="bg-white p-8 rounded-lg shadow-xl border border-gray-200 mt-8" id="champs-builder">
+        <h2 class="text-xl font-bold mb-1 text-blue-700">Questions du formulaire d'inscription</h2>
+        <p class="text-sm text-gray-500 mb-5">Ajoutez vos propres questions : elles sont posées pour chaque enfant lors de l'inscription, et les réponses apparaissent dans la fiche de l'inscrit. Cette section s'enregistre à part.</p>
+        <div id="champs-list" class="space-y-3"></div>
+        <div class="flex flex-wrap items-center gap-3 mt-4">
+            <button type="button" onclick="champAdd()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-lg">+ Ajouter une question</button>
+            <button type="button" onclick="champsSave()" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">Enregistrer les questions</button>
+            <span id="champs-msg" class="text-sm font-semibold" role="status"></span>
+        </div>
+    </div>
 </div>
+
+<script>
+// --- Questions personnalisées d'inscription ---
+const CHAMP_TYPES = <?= json_encode(CHAMPS_TYPES, JSON_UNESCAPED_UNICODE) ?>;
+let champs = <?= json_encode(array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], $champsActuels), JSON_UNESCAPED_UNICODE) ?>;
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function champsRender() {
+    const box = document.getElementById('champs-list');
+    if (!champs.length) { box.innerHTML = '<p class="text-sm text-gray-400 italic">Aucune question pour le moment.</p>'; return; }
+    box.innerHTML = champs.map((c, i) => `
+      <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div class="md:col-span-6"><label class="block text-xs font-bold text-gray-600 mb-1">Question</label>
+            <input class="w-full border-2 border-gray-300 rounded p-2" maxlength="255" value="${esc(c.libelle)}" oninput="champs[${i}].libelle=this.value" placeholder="ex : Sait-il nager ?"></div>
+          <div class="md:col-span-3"><label class="block text-xs font-bold text-gray-600 mb-1">Type de réponse</label>
+            <select class="w-full border-2 border-gray-300 rounded p-2 bg-white" onchange="champs[${i}].type=this.value;champsRender()">
+              ${Object.entries(CHAMP_TYPES).map(([k, v]) => `<option value="${k}" ${c.type === k ? 'selected' : ''}>${v}</option>`).join('')}
+            </select></div>
+          <label class="md:col-span-2 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" ${c.obligatoire ? 'checked' : ''} onchange="champs[${i}].obligatoire=this.checked?1:0"> Obligatoire</label>
+          <div class="md:col-span-1 flex justify-end gap-1">
+            <button type="button" title="Monter" class="px-2 py-1 rounded hover:bg-gray-200" onclick="champMove(${i},-1)">↑</button>
+            <button type="button" title="Descendre" class="px-2 py-1 rounded hover:bg-gray-200" onclick="champMove(${i},1)">↓</button>
+            <button type="button" title="Supprimer" class="px-2 py-1 rounded text-red-600 hover:bg-red-50" onclick="champs.splice(${i},1);champsRender()">✕</button>
+          </div>
+        </div>
+        ${c.type === 'liste' ? `<div class="mt-3"><label class="block text-xs font-bold text-gray-600 mb-1">Choix proposés (un par ligne)</label>
+          <textarea rows="3" class="w-full border-2 border-gray-300 rounded p-2" oninput="champs[${i}].options=this.value" placeholder="Débutant&#10;Confirmé">${esc(c.options)}</textarea></div>` : ''}
+      </div>`).join('');
+}
+function champAdd() { champs.push({ id: 0, libelle: '', type: 'texte', options: '', obligatoire: 0 }); champsRender(); }
+function champMove(i, d) { const j = i + d; if (j < 0 || j >= champs.length) return; [champs[i], champs[j]] = [champs[j], champs[i]]; champsRender(); }
+async function champsSave() {
+    const msg = document.getElementById('champs-msg');
+    msg.className = 'text-sm font-semibold text-gray-500'; msg.textContent = 'Enregistrement…';
+    try {
+        const r = await fetch('api/save_champs.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ camp_id: <?= (int)$camp['id'] ?>, champs }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Erreur');
+        champs = d.champs.map(c => ({ id: c.id, libelle: c.libelle, type: c.type, options: c.options || '', obligatoire: c.obligatoire }));
+        champsRender();
+        msg.className = 'text-sm font-semibold text-green-700'; msg.textContent = 'Questions enregistrées ✓';
+    } catch (e) { msg.className = 'text-sm font-semibold text-red-600'; msg.textContent = e.message; }
+}
+champsRender();
+</script>
 
 <script>
 // Données injectées depuis PHP
