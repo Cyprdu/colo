@@ -16,6 +16,13 @@ if (!isset($_SESSION['user'])) {
 $camp_id = $_GET['camp_id'] ?? '';
 $child_id = $_GET['child_id'] ?? '';
 
+// Adresse à jeton (?r=<jeton de réservation>) : l'inscription doit appartenir à un enfant du parent connecté
+if (!empty($_GET['r']) && preg_match('/^[A-Za-z0-9]{16,64}$/', (string)$_GET['r'])) {
+    $stR = $pdo->prepare("SELECT i.camp_id, i.enfant_id FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.reservation_token = ? AND e.parent_id = ?");
+    $stR->execute([$_GET['r'], $_SESSION['user']['id']]);
+    if ($rr = $stR->fetch(PDO::FETCH_ASSOC)) { $camp_id = $rr['camp_id']; $child_id = $rr['enfant_id']; }
+}
+
 if (empty($camp_id) || empty($child_id)) {
     header('Location: reservations');
     exit;
@@ -25,7 +32,7 @@ if (empty($camp_id) || empty($child_id)) {
 try {
     $sql = "
         SELECT 
-            i.id AS inscription_id, i.statut AS statut_inscription, i.statut_paiement, i.date_inscription, i.prix_final,
+            i.id AS inscription_id, i.reservation_token, i.statut AS statut_inscription, i.statut_paiement, i.date_inscription, i.prix_final,
             c.id AS camp_real_id, c.nom AS camp_nom, c.description, c.ville, c.adresse, c.code_postal, c.date_debut, c.date_fin, c.image_url,
             e.id AS enfant_real_id, e.prenom AS enfant_prenom, e.nom AS enfant_nom, e.date_naissance, e.infos_sante, e.taille, e.poids,
             o.id AS orga_id, o.nom AS orga_nom, o.email AS orga_email, o.tel AS orga_tel, o.user_id AS orga_user_id, o.logo_url
@@ -251,7 +258,7 @@ if ($is_paid) $progress_step = 3;
                         
                         <?php if(!$is_paid): ?>
                             <form action="api/create_stripe_session.php" method="POST" class="mt-3">
-                                <input type="hidden" name="inscription_id" value="<?= $data['inscription_id'] ?>">
+                                <input type="hidden" name="r" value="<?= htmlspecialchars($data['reservation_token']) ?>">
                                 <button type="submit" class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg text-sm font-bold shadow hover:shadow-lg transition">
                                     Payer maintenant
                                 </button>
@@ -260,7 +267,7 @@ if ($is_paid) $progress_step = 3;
                     </div>
 
                     <div class="space-y-3">
-                        <a href="generate_pdf_certificat.php?inscription_id=<?= $data['inscription_id'] ?>" target="_blank" class="flex items-center p-3 rounded-lg border border-gray-200 hover:border-red-300 hover:bg-red-50 transition group">
+                        <a href="generate_pdf_certificat.php?r=<?= urlencode($data['reservation_token']) ?>" target="_blank" class="flex items-center p-3 rounded-lg border border-gray-200 hover:border-red-300 hover:bg-red-50 transition group">
                             <div class="bg-red-100 p-2 rounded-lg text-red-600 group-hover:text-red-700">
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                             </div>

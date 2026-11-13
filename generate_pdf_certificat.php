@@ -1,148 +1,137 @@
 <?php
-// Fichier : generate_pdf_certificat.php
+// generate_pdf_certificat.php?r=<jeton> : reçu de paiement et confirmation d'inscription d'une COMMANDE
+// (un séjour + une session, un ou plusieurs enfants). Toutes les valeurs viennent de la base ; la commande
+// doit appartenir au parent connecté. Aucun identifiant numérique dans l'adresse.
 
-// 1. Initialisation et Sécurité
-require('libs/fpdf/fpdf.php'); 
-require_once 'api/config.php'; 
+require_once 'api/config.php';
+require_once 'api/orders.php';
+require 'libs/fpdf/fpdf.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+if (empty($_SESSION['user']['id'])) { header('Location: login.php?redirect=' . urlencode('reservations')); exit; }
+$userId = (int)$_SESSION['user']['id'];
+
+// Anciens liens (?inscription_id=N) : on retrouve le jeton de l'inscription si elle appartient au parent
+$r = (string)($_GET['r'] ?? '');
+if ($r === '' && isset($_GET['inscription_id'])) {
+    $st = $pdo->prepare("SELECT i.reservation_token FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.id = ? AND e.parent_id = ?");
+    $st->execute([(int)$_GET['inscription_id'], $userId]);
+    $r = (string)$st->fetchColumn();
 }
+$members = [];
+try { $members = loadOrderByToken($pdo, $r, $userId); } catch (Throwable $e) { error_log('pdf: ' . $e->getMessage()); }
+if (!$members) { http_response_code(404); exit('Réservation introuvable.'); }
 
-// Vérification que l'utilisateur est connecté
-if (!isset($_SESSION['user'])) {
-    // Redirection vers le login si pas connecté, ou arrêt du script
-    die("Erreur : Vous devez être connecté pour télécharger ce certificat.");
-}
+$first = $members[0];
+$status = orderStatus($members);
+$tot = orderTotals($members);
+$ref = orderRef($members);
+$live = array_values(array_filter($members, function ($m) { return !isCancelled($m); }));
+if (!$live) $live = $members;
+$isPaid = $status[0] === 'paid';
+$lieu = trim(implode(', ', array_filter([trim((string)$first['adresse']), trim($first['code_postal'] . ' ' . $first['ville'])])));
+$mode = ['CARTE' => 'Carte bancaire', 'GRATUIT' => 'Gratuit'][$first['mode_paiement']] ?? 'Non précisé';
 
-// Récupération de l'ID utilisateur correct (C'est ici que ça bloquait avant)
-$user_id = $_SESSION['user']['id'];
+/** Texte UTF-8 -> Windows-1252 (accents, œ et € corrects dans les polices FPDF) */
+function enc($s): string { return (string)iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', (string)$s); }
+function eur(float $v): string { return number_format($v, 2, ',', ' ') . ' €'; }   // UTF-8 : passe par enc() avant d'être écrit
 
-// Vérification de l'ID inscription
-if (!isset($_GET['inscription_id']) || empty($_GET['inscription_id'])) {
-    die("Erreur : ID d'inscription manquant.");
-}
-$inscription_id = $_GET['inscription_id'];
-
-// 2. Récupération des données réelles en BDD
-try {
-    // On joint les tables pour avoir toutes les infos en une requête
-    // Le "AND e.parent_id = ?" assure la sécurité : on ne trouve rien si ce n'est pas le bon parent
-    $sql = "
-        SELECT 
-            i.date_inscription, i.prix_final, i.montant_paye, i.statut_paiement,
-            c.nom AS camp_nom, c.date_debut, c.date_fin, c.ville, c.adresse, c.code_postal,
-            e.nom AS enfant_nom, e.prenom AS enfant_prenom, e.date_naissance,
-            o.nom AS organisateur_nom, o.email AS organisateur_email, o.tel AS organisateur_tel
-        FROM inscriptions i
-        JOIN camps c ON i.camp_id = c.id
-        JOIN enfants e ON i.enfant_id = e.id
-        JOIN organisateurs o ON c.organisateur_id = o.id
-        WHERE i.id = ? AND e.parent_id = ?
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$inscription_id, $user_id]);
-    $details = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$details) {
-        die("Accès refusé : Inscription introuvable ou vous n'êtes pas le parent responsable.");
-    }
-
-} catch (Exception $e) {
-    die("Erreur technique : " . $e->getMessage());
-}
-
-// 3. Génération du PDF
-class PDF extends FPDF {
+class RecuPDF extends FPDF {
+    public $ref = '';
     function Header() {
-        // En-tête simple si vous n'avez pas de logo spécifique défini
-        $this->SetFont('Arial', 'B', 15);
-        $this->Cell(0, 10, utf8_decode('ColoMap - Certificat d\'inscription'), 0, 1, 'C');
-        $this->Ln(10);
+        $this->SetFillColor(38, 52, 59);
+        $this->Rect(0, 0, 210, 30, 'F');
+        $this->SetTextColor(255, 255, 255);
+        $this->SetFont('Arial', 'B', 20);
+        $this->SetXY(15, 9);
+        $this->Cell(80, 10, 'ColoMap', 0, 0, 'L');
+        $this->SetFont('Arial', '', 10);
+        $this->SetXY(95, 11);
+        $this->Cell(100, 8, enc('Réf. ' . $this->ref), 0, 0, 'R');
+        $this->SetTextColor(38, 52, 59);
+        $this->SetY(40);
     }
-
     function Footer() {
-        $this->SetY(-15);
+        $this->SetY(-14);
         $this->SetFont('Arial', 'I', 8);
-        $this->Cell(0, 10, utf8_decode('Page ' . $this->PageNo()), 0, 0, 'C');
+        $this->SetTextColor(120, 130, 138);
+        $this->Cell(0, 8, enc('ColoMap · moncamp.fr · Page ' . $this->PageNo()), 0, 0, 'C');
+    }
+    function Section(string $title) {
+        $this->Ln(4);
+        $this->SetFont('Arial', 'B', 11);
+        $this->SetTextColor(107, 119, 128);
+        $this->Cell(0, 7, enc(mb_strtoupper($title)), 0, 1, 'L');
+        $this->SetDrawColor(229, 231, 235);
+        $this->Line(15, $this->GetY(), 195, $this->GetY());
+        $this->Ln(3);
+        $this->SetTextColor(38, 52, 59);
+    }
+    function Row(string $label, string $value, bool $bold = true) {
+        $this->SetFont('Arial', '', 10.5);
+        $this->SetTextColor(107, 119, 128);
+        $this->Cell(48, 7, enc($label), 0, 0);
+        $this->SetFont('Arial', $bold ? 'B' : '', 10.5);
+        $this->SetTextColor(38, 52, 59);
+        $this->MultiCell(0, 7, enc($value), 0, 'L');
     }
 }
 
-$pdf = new PDF();
+$pdf = new RecuPDF('P', 'mm', 'A4');
+$pdf->ref = $ref;
+$pdf->SetMargins(15, 15, 15);
+$pdf->SetAutoPageBreak(true, 20);
+$pdf->SetTitle(enc(($isPaid ? 'Reçu de paiement ' : 'Confirmation d\'inscription ') . $ref));
 $pdf->AddPage();
-$pdf->SetTitle(utf8_decode("Certificat - " . $details['enfant_prenom']));
 
-// Titre principal
-$pdf->SetFont('Arial', 'B', 16);
-$pdf->Cell(0, 10, utf8_decode('CERTIFICAT D\'INSCRIPTION'), 0, 1, 'C');
-$pdf->SetFont('Arial', '', 12);
-$pdf->Cell(0, 5, utf8_decode('Organisé par : ' . $details['organisateur_nom']), 0, 1, 'C');
-$pdf->Ln(15);
+// Titre
+$pdf->SetFont('Arial', 'B', 18);
+$pdf->Cell(0, 10, enc($isPaid ? 'Reçu de paiement' : 'Confirmation d\'inscription'), 0, 1, 'L');
+$pdf->SetFont('Arial', '', 10.5);
+$pdf->SetTextColor(107, 119, 128);
+$pdf->Cell(0, 6, enc('Émis le ' . date('d/m/Y') . ' · Réservation du ' . (new DateTime($first['date_inscription']))->format('d/m/Y')), 0, 1, 'L');
+$pdf->SetTextColor(38, 52, 59);
 
-// Bloc Détails du Camp
-$pdf->SetFillColor(230, 240, 255); // Bleu clair
-$pdf->SetFont('Arial', 'B', 14);
-$pdf->Cell(0, 10, utf8_decode('  Détails du Séjour'), 0, 1, 'L', true);
-$pdf->Ln(2);
+// Séjour
+$pdf->Section('Le séjour');
+$pdf->Row('Séjour', $first['camp_nom']);
+$pdf->Row('Dates', 'Du ' . $first['_start']->format('d/m/Y') . ' au ' . $first['_end']->format('d/m/Y') . ' (' . ($first['_nights'] + 1) . ' jours, ' . $first['_nights'] . ' nuit' . ($first['_nights'] > 1 ? 's' : '') . ')');
+if ($lieu !== '') $pdf->Row('Lieu', $lieu);
+$pdf->Row('Organisateur', (string)$first['orga_nom']);
+if (!empty($first['orga_email'])) $pdf->Row('Contact', $first['orga_email'] . (!empty($first['orga_tel']) ? ' · ' . $first['orga_tel'] : ''), false);
 
-$pdf->SetFont('Arial', '', 12);
-$pdf->Cell(50, 8, 'Camp :', 0);
-$pdf->SetFont('Arial', 'B', 12);
-$pdf->Cell(0, 8, utf8_decode($details['camp_nom']), 0, 1);
-
-$pdf->SetFont('Arial', '', 12);
-$pdf->Cell(50, 8, utf8_decode('Dates :'), 0);
-$pdf->Cell(0, 8, 'Du ' . date('d/m/Y', strtotime($details['date_debut'])) . ' au ' . date('d/m/Y', strtotime($details['date_fin'])), 0, 1);
-
-$pdf->Cell(50, 8, 'Lieu :', 0);
-$pdf->MultiCell(0, 8, utf8_decode($details['adresse'] . ', ' . $details['code_postal'] . ' ' . $details['ville']), 0, 1);
-$pdf->Ln(5);
-
-// Bloc Détails de l'Enfant
-$pdf->SetFont('Arial', 'B', 14);
-$pdf->Cell(0, 10, utf8_decode('  Participant'), 0, 1, 'L', true);
-$pdf->Ln(2);
-
-$pdf->SetFont('Arial', '', 12);
-$pdf->Cell(50, 8, utf8_decode('Nom Prénom :'), 0);
-$pdf->SetFont('Arial', 'B', 12);
-$pdf->Cell(0, 8, utf8_decode($details['enfant_nom'] . ' ' . $details['enfant_prenom']), 0, 1);
-
-$pdf->SetFont('Arial', '', 12);
-$pdf->Cell(50, 8, utf8_decode('Date de naissance :'), 0);
-$pdf->Cell(0, 8, date('d/m/Y', strtotime($details['date_naissance'])), 0, 1);
-$pdf->Ln(5);
-
-// Bloc Paiement
-$pdf->SetFont('Arial', 'B', 14);
-$pdf->Cell(0, 10, utf8_decode('  Statut Financier'), 0, 1, 'L', true);
-$pdf->Ln(2);
-
-$pdf->SetFont('Arial', '', 12);
-$statut_texte = ($details['statut_paiement'] === 'PAYE' || $details['montant_paye'] >= $details['prix_final']) ? 'PAYÉ' : 'EN ATTENTE / PARTIEL';
-
-$pdf->Cell(50, 8, utf8_decode('Montant total :'), 0);
-$pdf->Cell(0, 8, number_format($details['prix_final'], 2, ',', ' ') . ' EUR', 0, 1);
-
-$pdf->Cell(50, 8, utf8_decode('Montant réglé :'), 0);
-$pdf->Cell(0, 8, number_format($details['montant_paye'], 2, ',', ' ') . ' EUR', 0, 1);
-
-$pdf->Cell(50, 8, utf8_decode('Statut :'), 0);
-$pdf->SetFont('Arial', 'B', 12);
-$pdf->Cell(0, 8, utf8_decode($statut_texte), 0, 1);
-$pdf->Ln(15);
-
-// Mention de bas de page
-$pdf->SetFont('Arial', 'I', 10);
-$pdf->SetTextColor(100, 100, 100);
-$texte_legal = "Ce document certifie l'inscription de l'enfant susmentionné. Il a été généré automatiquement le " . date('d/m/Y') . " sur la plateforme ColoMap.";
-if (!empty($details['organisateur_email'])) {
-    $texte_legal .= "\nPour toute question, contactez l'organisateur : " . $details['organisateur_email'];
+// Participants et formules
+$pdf->Section('Participants');
+$pdf->SetFillColor(241, 243, 245);
+$pdf->SetFont('Arial', 'B', 10);
+$pdf->Cell(70, 8, enc('Participant'), 0, 0, 'L', true);
+$pdf->Cell(65, 8, enc('Formule'), 0, 0, 'L', true);
+$pdf->Cell(45, 8, enc('Montant'), 0, 1, 'R', true);
+$pdf->SetFont('Arial', '', 10.5);
+foreach ($live as $m) {
+    $pdf->Cell(70, 9, enc($m['enfant_prenom'] . ' ' . $m['enfant_nom']), 'B', 0, 'L');
+    $pdf->Cell(65, 9, enc($m['tarif_nom'] ?: 'Tarif standard'), 'B', 0, 'L');
+    $pdf->Cell(45, 9, enc(eur((float)$m['prix_final'])), 'B', 1, 'R');
 }
-$pdf->MultiCell(0, 5, utf8_decode($texte_legal), 0, 'C');
 
-// Sortie du fichier
-$nom_fichier = "Certificat_" . str_replace(' ', '_', $details['enfant_nom']) . "_" . date('Ymd') . ".pdf";
-$pdf->Output('I', $nom_fichier);
-?>
+// Paiement
+$pdf->Section('Paiement');
+$pdf->Row('Total de la commande', eur($tot['due']));
+if ($isPaid && $tot['discount'] > 0.005) $pdf->Row('Réduction (code promo)', '- ' . eur($tot['discount']));
+$pdf->Row($isPaid ? 'Montant réglé' : 'Déjà réglé', eur($tot['paid']));
+if (!$isPaid) $pdf->Row('Reste à payer', eur(max(0, $tot['due'] - $tot['paid'])));
+$pdf->Row('Moyen de paiement', $mode, false);
+$pdf->Ln(3);
+$pdf->SetFont('Arial', 'B', 12);
+if ($isPaid) $pdf->SetFillColor(220, 245, 232); else $pdf->SetFillColor(253, 240, 214);
+$pdf->Cell(0, 11, enc('  Statut : ' . ($isPaid ? 'PAYÉ' : mb_strtoupper($status[1]))), 0, 1, 'L', true);
+
+// Mention
+$pdf->Ln(10);
+$pdf->SetFont('Arial', 'I', 9);
+$pdf->SetTextColor(120, 130, 138);
+$pdf->MultiCell(0, 5, enc("Ce document a été généré automatiquement par ColoMap et fait foi de l'inscription des participants ci-dessus"
+    . ($isPaid ? ' et du paiement enregistré.' : '. Le paiement n\'est pas encore finalisé.')
+    . " Pour toute question, contactez l'organisateur du séjour ou ColoMap."), 0, 'L');
+
+$pdf->Output('I', 'Recu_' . $ref . '.pdf');

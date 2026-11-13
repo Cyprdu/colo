@@ -1,102 +1,162 @@
 <?php
+// reservations.php : mes réservations, regroupées par commande (un séjour + une session = une carte,
+// même quand plusieurs enfants sont inscrits ensemble). Rendu côté serveur : une seule requête SQL.
+require_once 'api/config.php';
+require_once 'api/orders.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+if (empty($_SESSION['user']['id'])) { header('Location: login.php?next=reservations'); exit; }
+$userId = (int)$_SESSION['user']['id'];
+
+$loadError = false;
+try { $rows = loadParentRows($pdo, $userId); }
+catch (Throwable $e) { $rows = []; $loadError = true; error_log('reservations: ' . $e->getMessage()); }
+
+$today = new DateTime('today');
+$upcoming = []; $past = []; $cancelled = []; $toPay = 0;
+foreach (groupOrders($rows) as $members) {
+    $status = orderStatus($members);
+    if ($status[0] === 'cancelled') { $cancelled[] = $members; continue; }
+    $end = $members[0]['_end'];
+    foreach ($members as $m) if ($m['_end'] > $end) $end = $m['_end'];
+    if ($end >= $today) $upcoming[] = $members; else $past[] = $members;
+    if (in_array($status[0], ['pending', 'partial'], true)) $toPay++;
+}
+usort($upcoming, function ($a, $b) { return $a[0]['_start'] <=> $b[0]['_start']; });
+usort($past, function ($a, $b) { return $b[0]['_start'] <=> $a[0]['_start']; });
+
+$body_class = 'bg-white';
 require_once 'partials/header.php';
 
-// Sécurité : l'utilisateur doit être connecté pour voir cette page.
-if (!isset($_SESSION['user'])) {
-    header('Location: login');
-    exit;
+$sections = [
+    'upcoming'  => ['label' => 'À venir',   'list' => $upcoming],
+    'past'      => ['label' => 'Passées',   'list' => $past],
+    'cancelled' => ['label' => 'Annulées',  'list' => $cancelled],
+];
+$firstTab = $upcoming ? 'upcoming' : ($past ? 'past' : ($cancelled ? 'cancelled' : 'upcoming'));
+
+function resaImg($url) {
+    $url = trim((string)$url);
+    if ($url === '') return '';
+    $url = str_replace('\\', '/', $url);
+    return (preg_match('#^(https?:)?//#', $url) || strpos($url, 'uploads/') === 0) ? $url : 'uploads/camps/' . ltrim($url, '/');
 }
 ?>
+<title>Mes réservations - ColoMap</title>
+<style>
+    .rs-tab { padding:10px 18px; border-radius:9999px; font-size:14px; font-weight:700; color:#3b4a54; border:1.5px solid #e5e7eb; background:#fff; transition:all .15s ease; }
+    .rs-tab:hover { background:#f1f3f5; }
+    .rs-tab.is-active { background:#2f3d45; color:#fff; border-color:#2f3d45; }
+    .rs-card { background:#fff; border:1px solid #e5e7eb; border-radius:24px; overflow:hidden; transition:box-shadow .2s ease; }
+    .rs-card:hover { box-shadow:0 10px 32px rgba(38,52,59,.10); }
+    .rs-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 18px; border-radius:12px; font-size:14px; font-weight:700; background:#2f3d45; color:#fff; transition:background .2s ease; white-space:nowrap; }
+    .rs-btn:hover { background:#1f2a30; }
+    .rs-btn-light { background:#fff; color:#26343b; border:1.5px solid #e5e7eb; }
+    .rs-btn-light:hover { background:#f1f3f5; }
+</style>
 
-<title>Mes Réservations - ColoMap</title>
-
-<main class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-    <div class="text-center mb-12">
-        <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900">
-            Mes <span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">Réservations</span>
-        </h1>
-        <p class="mt-4 max-w-2xl mx-auto text-lg text-gray-500">
-            Retrouvez ici un récapitulatif de toutes les inscriptions de vos enfants.
-        </p>
+<main class="flex-1 w-full max-w-[1100px] mx-auto px-5 sm:px-8 pt-10 pb-16">
+    <div class="mb-8">
+        <h1 class="text-[30px] md:text-[38px] font-extrabold text-[#26343b] leading-tight">Mes réservations</h1>
+        <p class="mt-2 text-[#6b7780]">Retrouvez les séjours de vos enfants, gérez chaque réservation et téléchargez vos reçus.</p>
     </div>
 
-    <div id="loader" class="text-center py-10">
-        <div class="loader inline-block"></div>
-        <p class="mt-4 text-gray-600">Chargement de vos réservations...</p>
-    </div>
-    
-    <div id="reservations-list" class="hidden space-y-6 max-w-4xl mx-auto">
+    <?php if ($loadError): ?>
+        <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700 mb-6">Impossible de charger vos réservations pour le moment. Réessayez dans un instant.</div>
+    <?php endif; ?>
+
+    <?php if ($toPay > 0): ?>
+        <div class="mb-6 flex items-center gap-3 rounded-2xl bg-[#f8f5ea] px-5 py-4 text-[#26343b]">
+            <span class="w-9 h-9 flex-none rounded-full bg-white flex items-center justify-center font-extrabold"><?= $toPay ?></span>
+            <p class="text-[15px] font-semibold"><?= $toPay > 1 ? 'réservations sont en attente de paiement' : 'réservation est en attente de paiement' ?>. Ouvrez-la pour finaliser le règlement.</p>
         </div>
+    <?php endif; ?>
+
+    <?php if (!$rows): ?>
+        <div class="text-center py-16 rounded-3xl border border-[#e5e7eb] bg-[#f8f5ea]/50">
+            <p class="text-xl font-bold text-[#26343b]">Aucune réservation pour le moment</p>
+            <p class="mt-2 text-[#6b7780]">Trouvez le séjour idéal pour vos enfants.</p>
+            <a href="recherche" class="rs-btn mt-6">Trouver un séjour</a>
+        </div>
+    <?php else: ?>
+        <div class="flex flex-wrap gap-2 mb-6" role="tablist">
+            <?php foreach ($sections as $key => $sec): if ($key === 'cancelled' && !$sec['list']) continue; ?>
+                <button type="button" role="tab" class="rs-tab<?= $key === $firstTab ? ' is-active' : '' ?>" data-tab="<?= $key ?>"><?= $sec['label'] ?> (<?= count($sec['list']) ?>)</button>
+            <?php endforeach; ?>
+        </div>
+
+        <?php foreach ($sections as $key => $sec): ?>
+        <div class="space-y-5 <?= $key === $firstTab ? '' : 'hidden' ?>" data-panel="<?= $key ?>">
+            <?php if (!$sec['list']): ?>
+                <p class="py-10 text-center text-[#6b7780]">Aucune réservation dans cette catégorie.</p>
+            <?php endif; ?>
+
+            <?php foreach ($sec['list'] as $members):
+                $first = $members[0];
+                $status = orderStatus($members);
+                $tot = orderTotals($members);
+                $live = array_values(array_filter($members, function ($m) { return !isCancelled($m); }));
+                if (!$live) $live = $members;
+                $token = $first['reservation_token'];
+                $img = resaImg($first['image_url']);
+                $canPay = in_array($status[0], ['pending', 'partial'], true) && !empty($first['inscription_en_ligne']);
+                $hasPaid = false; foreach ($members as $m) if ($m['statut_paiement'] === 'PAYE') $hasPaid = true;
+            ?>
+            <article class="rs-card flex flex-col md:flex-row">
+                <a href="reservation?r=<?= urlencode($token) ?>" class="relative block md:w-[260px] h-[190px] md:h-auto flex-none bg-[#e5e7eb] overflow-hidden" aria-label="Gérer la réservation">
+                    <?php if ($img): ?><img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()"><?php endif; ?>
+                    <span class="absolute top-3 left-3 text-[12px] font-bold px-3 py-1.5 rounded-full <?= $status[2] ?>"><?= $status[1] ?></span>
+                </a>
+                <div class="flex-1 min-w-0 p-5 md:p-6 flex flex-col">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <h2 class="text-[20px] font-extrabold text-[#26343b] leading-snug"><?= htmlspecialchars($first['camp_nom']) ?></h2>
+                            <p class="mt-1 text-[14px] text-[#6b7780]"><?= htmlspecialchars(fmtPlage($first['_start'], $first['_end'])) ?> · <?= htmlspecialchars($first['ville'] ?? '') ?></p>
+                            <?php if (!empty($first['orga_nom'])): ?><p class="text-[13px] text-[#6b7780] mt-0.5">par <?= htmlspecialchars($first['orga_nom']) ?></p><?php endif; ?>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[22px] font-extrabold text-[#26343b] leading-none"><?= htmlspecialchars(fmtEuro($tot['due'])) ?></p>
+                            <p class="mt-1 text-[12px] text-[#6b7780]">Réf. <?= htmlspecialchars(orderRef($members)) ?></p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <?php foreach ($live as $m): ?>
+                            <span class="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-[#f1f3f5] text-[13px] font-semibold text-[#3b4a54]">
+                                <span class="w-6 h-6 rounded-full bg-[#3a4852] text-white text-[12px] font-bold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr($m['enfant_prenom'], 0, 1))) ?></span>
+                                <?= htmlspecialchars($m['enfant_prenom']) ?>
+                            </span>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="mt-auto pt-5 flex flex-wrap items-center gap-2">
+                        <a href="reservation?r=<?= urlencode($token) ?>" class="rs-btn">Gérer la réservation</a>
+                        <?php if ($hasPaid): ?>
+                            <a href="generate_pdf_certificat.php?r=<?= urlencode($token) ?>" target="_blank" rel="noopener" class="rs-btn rs-btn-light">Reçu PDF</a>
+                        <?php endif; ?>
+                        <?php if ($canPay): ?>
+                            <form action="api/create_stripe_session.php" method="POST" class="inline">
+                                <input type="hidden" name="r" value="<?= htmlspecialchars($token) ?>">
+                                <button type="submit" class="rs-btn rs-btn-light">Payer <?= htmlspecialchars(fmtEuro(max(0, $tot['due'] - $tot['paid']))) ?></button>
+                            </form>
+                        <?php endif; ?>
+                        <a href="camp_details?t=<?= urlencode($first['camp_token']) ?>" class="ml-auto text-[14px] font-semibold text-[#3d6a8e] hover:text-[#2d5170] underline-offset-4 hover:underline">Voir le séjour</a>
+                    </div>
+                </div>
+            </article>
+            <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
 </main>
 
 <script>
-document.addEventListener('DOMContentLoaded', async function() {
-    const listContainer = document.getElementById('reservations-list');
-    const loader = document.getElementById('loader');
-
-    try {
-        // --- NOUVELLE LOGIQUE DE FILTRAGE CÔTÉ CLIENT ---
-
-        // 1. On lance les deux appels à l'API en même temps
-        const [reservationsResponse, childrenResponse] = await Promise.all([
-            fetch('api/get_my_reservations.php?t=' + new Date().getTime()), // On garde l'anti-cache
-            fetch('api/get_children.php?t=' + new Date().getTime())
-        ]);
-
-        if (!reservationsResponse.ok || !childrenResponse.ok) {
-            throw new Error('Erreur réseau lors de la récupération des données.');
-        }
-        
-        // 2. On récupère les résultats des deux appels
-        const allReservations = await reservationsResponse.json(); // Contient TOUTES les réservations
-        const myChildren = await childrenResponse.json();         // Ne contient que VOS enfants
-
-        // 3. On crée une liste des IDs de VOS enfants pour une recherche rapide
-        const myChildrenIds = new Set(myChildren.map(child => child.id));
-
-        // 4. On filtre la liste complète des réservations
-        const myReservations = allReservations.filter(reservation => 
-            myChildrenIds.has(reservation.enfant_id)
-        );
-
-        // 5. On affiche le résultat filtré
-        loader.classList.add('hidden');
-        listContainer.classList.remove('hidden');
-
-        if (myReservations.length === 0) {
-            listContainer.innerHTML = `
-                <div class="text-center py-10 bg-white rounded-lg shadow-md border">
-                    <p class="text-gray-500">Vous n'avez aucune réservation pour le moment.</p>
-                    <a href="index" class="mt-4 inline-block bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Trouver un camp</a>
-                </div>`;
-            return;
-        }
-        
-        let htmlContent = '';
-        myReservations.forEach(res => {
-            const startDate = res.date_debut ? new Date(res.date_debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Date non définie';
-            htmlContent += `
-                <div class="bg-white rounded-xl shadow-lg border p-4 flex flex-col sm:flex-row items-center gap-6 transition-all hover:shadow-xl">
-                    <img src="${res.camp_image_url}" alt="Image du camp" class="w-full sm:w-32 h-32 object-cover rounded-lg">
-                    <div class="flex-grow text-center sm:text-left">
-                        <p class="text-xs text-blue-600 font-semibold">INSCRIPTION CONFIRMÉE</p>
-                        <h3 class="text-xl font-bold text-gray-800">${res.camp_nom}</h3>
-                        <p class="text-gray-600 mt-1">Pour : <strong class="font-medium text-gray-900">${res.enfant_nom}</strong></p>
-                        <p class="text-sm text-gray-500">Date de début : ${startDate}</p>
-                    </div>
-                    <a href="info_inscrit?camp_id=${res.camp_id}&child_id=${res.enfant_id}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg text-sm w-full sm:w-auto">
-                        Voir les détails
-                    </a>
-                </div>
-            `;
-        });
-        listContainer.innerHTML = htmlContent;
-
-    } catch (error) {
-        loader.innerHTML = `<p class="text-red-500 font-bold col-span-full text-center py-10">Erreur: ${error.message}</p>`;
-    }
+document.querySelectorAll('.rs-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+        document.querySelectorAll('.rs-tab').forEach(function (t) { t.classList.toggle('is-active', t === tab); });
+        document.querySelectorAll('[data-panel]').forEach(function (p) { p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab); });
+    });
 });
 </script>
 
-</body>
-</html>
+<?php require_once 'partials/footer.php'; ?>
