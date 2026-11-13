@@ -25,6 +25,8 @@ try { $members = loadOrderByToken($pdo, $token, $userId); } catch (Throwable $e)
 foreach ($members as $x) if ($x['reservation_token'] === $token) $m = $x;
 if (!$m) { header('Location: reservations'); exit; }
 
+require_once 'api/enfants.php';
+$enfantJeton = enfant_jeton($pdo, (int)$m['enfant_id']);   // $m appartient au parent connecté (vérifié par loadOrderByToken)
 $child = $pdo->prepare("SELECT infos_sante, allergies, regime_alimentaire, taille, poids, fiche_sanitaire_token, carnet_sante_token FROM enfants WHERE id = ? AND parent_id = ?");
 $child->execute([(int)$m['enfant_id'], $userId]);
 $child = $child->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -134,7 +136,7 @@ require_once 'partials/header.php';
             <section class="ii-card p-6" aria-labelledby="h-enfant">
                 <div class="flex items-start justify-between gap-4">
                     <h2 id="h-enfant" class="ii-label">Fiche de l'enfant</h2>
-                    <a href="modif_child?id=<?= (int)$m['enfant_id'] ?>" class="text-[13px] font-bold px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-[#26343b] hover:bg-[#f1f3f5] transition">Modifier</a>
+                    <a href="modif_child?id=<?= urlencode($enfantJeton) ?>" class="text-[13px] font-bold px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-[#26343b] hover:bg-[#f1f3f5] transition">Modifier</a>
                 </div>
                 <div class="mt-4 flex items-center gap-4">
                     <span class="w-14 h-14 flex-none rounded-full bg-[#3a4852] text-white text-[22px] font-bold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr($m['enfant_prenom'], 0, 1))) ?></span>
@@ -168,7 +170,7 @@ require_once 'partials/header.php';
                         <?php else: ?>
                             <div class="ii-doc bg-[#f8f5ea] border-[#f8f5ea]">
                                 <span><span class="block text-[15px] font-bold text-[#26343b]"><?= $name ?></span><span class="block text-[12.5px] text-[#6b7780]">Pas encore ajouté(e). À joindre avant le départ.</span></span>
-                                <a href="modif_child?id=<?= (int)$m['enfant_id'] ?>" class="text-[#3d6a8e] font-bold text-[14px] whitespace-nowrap">Ajouter</a>
+                                <a href="modif_child?id=<?= urlencode($enfantJeton) ?>" class="text-[#3d6a8e] font-bold text-[14px] whitespace-nowrap">Ajouter</a>
                             </div>
                         <?php endif; ?>
                     <?php endforeach; ?>

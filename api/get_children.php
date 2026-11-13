@@ -1,12 +1,14 @@
 <?php
 // Fichier: /api/get_children.php
 require_once 'config.php';
+require_once __DIR__ . '/enfants.php';
 
 if (!isset($_SESSION['user']['id'])) {
     sendJson(['error' => 'Accès non autorisé.'], 403);
 }
 
 try {
+    enfants_ensure($pdo);
     $userId = $_SESSION['user']['id'];
 
     // On récupère les enfants liés au parent connecté
@@ -33,6 +35,7 @@ try {
 
         $output[] = [
             'id' => $child['id'],
+            'public_id' => $child['public_id'] ?? null,
             'prenom' => $child['prenom'],
             'nom' => $child['nom'],
             'age' => $age,

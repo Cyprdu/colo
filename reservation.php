@@ -3,6 +3,7 @@
 // Partie « générale » (séjour, paiement, reçu, organisateur) + une ligne par enfant (formule, prix, fiche).
 require_once 'api/config.php';
 require_once 'api/orders.php';
+require_once 'api/enfants.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 if (empty($_SESSION['user']['id'])) { header('Location: login.php?redirect=' . urlencode('reservation?r=' . ($_GET['r'] ?? ''))); exit; }
@@ -109,7 +110,7 @@ require_once 'partials/header.php';
                         <p class="text-[18px] font-extrabold text-[#26343b] sm:text-right"><?= htmlspecialchars(fmtEuro((float)$m['prix_final'])) ?></p>
                         <div class="flex flex-wrap gap-2">
                             <a href="info_inscrit?r=<?= urlencode($m['reservation_token']) ?>" class="rv-btn rv-btn-light" style="width:auto;padding:10px 14px;font-size:14px">Fiche &amp; documents</a>
-                            <a href="modif_child.php?id=<?= (int)$m['enfant_id'] ?>" class="rv-btn rv-btn-light" style="width:auto;padding:10px 14px;font-size:14px">Modifier ses infos</a>
+                            <a href="modif_child?id=<?= urlencode(enfant_jeton($pdo, (int)$m['enfant_id'])) ?>" class="rv-btn rv-btn-light" style="width:auto;padding:10px 14px;font-size:14px">Modifier ses infos</a>
                         </div>
                     </article>
                     <?php endforeach; ?>

@@ -1,6 +1,7 @@
 <?php
 // Fichier: api/add_child.php
 require_once 'config.php';
+require_once __DIR__ . '/enfants.php';
 
 // Verification Librairie FPDF
 $fpdfPath = '../libs/fpdf/fpdf.php';
@@ -19,6 +20,7 @@ function cleanInput($key) { return !empty($_POST[$key]) ? trim($_POST[$key]) : n
 function generateToken($ext) { return bin2hex(random_bytes(32)) . '.' . $ext; }
 
 try {
+    enfants_ensure($pdo);
     // 1. CARNET DE SANTÉ (Obligatoire)
     $carnetToken = null;
     if (isset($_FILES['carnet_sante']) && $_FILES['carnet_sante']['error'] === 0) {
@@ -282,7 +284,7 @@ try {
         resp2_civilite, resp2_nom, resp2_prenom, resp2_email, resp2_tel, resp2_statut, resp2_profession,
         
         droit_image, autorisation_contact, accord_parental, cgv_accepte, newsletter_accepte, commentaires,
-        date_creation
+        date_creation, public_id
     ) VALUES (
         ?, ?, ?, ?, ?, ?, 
         ?, ?, ?, ?, ?, ?, ?,
@@ -294,7 +296,7 @@ try {
         ?, ?, ?, ?, ?, ?, ?, 
         
         ?, ?, ?, ?, ?, ?, 
-        NOW()
+        NOW(), ?
     )";
 
     $stmt = $pdo->prepare($sql);
@@ -314,7 +316,8 @@ try {
         isset($_POST['accord_parental'])?1:0, 
         isset($_POST['cgv_accepte'])?1:0, 
         isset($_POST['newsletter_accepte'])?1:0, 
-        cleanInput('commentaires')
+        cleanInput('commentaires'),
+        enfant_new_public_id()
     ]);
 
     header('Location: ../' . cleanInput('redirect_url') . '?success=child_added');

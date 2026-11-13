@@ -5,21 +5,30 @@
  */
 
 require_once 'api/config.php';
+require_once 'api/enfants.php';
 
 if (!isset($_SESSION['user'])) {
     header('Location: login.php');
     exit;
 }
 
-$child_id = $_GET['id'] ?? null;
-$parent_id = $_SESSION['user']['id'];
+$token = (string)($_GET['id'] ?? '');
+$parent_id = (int)$_SESSION['user']['id'];
 $message = '';
 $message_type = ''; // 'success' ou 'error'
 
-if (!$child_id) {
-    header('Location: reservations.php');
+// Anciens liens à id numérique : convertis en jeton (uniquement si l'enfant est bien à ce parent)
+if (ctype_digit($token)) {
+    $j = '';
+    $c = $pdo->prepare("SELECT id FROM enfants WHERE id = ? AND parent_id = ?");
+    $c->execute([(int)$token, $parent_id]);
+    if ($c->fetchColumn()) $j = enfant_jeton($pdo, (int)$token);
+    header('Location: ' . ($j ? 'modif_child?id=' . $j : 'children'));
     exit;
 }
+$enfant = enfant_par_jeton($pdo, $token, $parent_id);
+if (!$enfant) { header('Location: children'); exit; }
+$child_id = (int)$enfant['id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Liste blanche : jamais de nom de colonne venant du formulaire
@@ -55,17 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-try {
-    $stmt = $pdo->prepare("SELECT * FROM enfants WHERE id = ? AND parent_id = ?");
-    $stmt->execute([$child_id, $parent_id]);
-    $enfant = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$enfant) {
-        die('<div class="container mx-auto py-12 text-center text-red-600 font-bold">Enfant introuvable ou accès refusé.</div>');
-    }
-} catch (Exception $e) {
-    die("Erreur de chargement.");
-}
+// Données fraîches (après un enregistrement)
+$st = $pdo->prepare("SELECT * FROM enfants WHERE id = ? AND parent_id = ?");
+$st->execute([$child_id, $parent_id]);
+$enfant = $st->fetch(PDO::FETCH_ASSOC) ?: $enfant;
 
 $e = fn($k) => htmlspecialchars((string)($enfant[$k] ?? ''));
 $vac = json_decode($enfant['vaccins_data'] ?? '', true) ?: [];
@@ -87,9 +89,9 @@ require_once 'partials/header.php';
 <title>Modifier la fiche de <?= htmlspecialchars($enfant['prenom']) ?> - ColoMap</title>
 
 <main class="ds-page" style="max-width:860px">
-    <a href="javascript:history.back()" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+    <a href="children" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Retour
+        Mes enfants
     </a>
 
     <div class="mt-5 flex items-center gap-4">
@@ -178,7 +180,7 @@ require_once 'partials/header.php';
         </section>
 
         <div class="flex flex-wrap justify-end gap-3 pt-2">
-            <a href="javascript:history.back()" class="ds-btn ds-btn-light">Annuler</a>
+            <a href="children" class="ds-btn ds-btn-light">Annuler</a>
             <button type="submit" class="ds-btn">Enregistrer les modifications</button>
         </div>
     </form>
