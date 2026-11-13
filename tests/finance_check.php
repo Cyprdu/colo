@@ -26,9 +26,14 @@ require __DIR__ . '/../api/compta_lib.php';
 ok(compta_cell('=2+2') === "\"'=2+2\"", 'CSV : formule neutralisee');
 ok(compta_cell('-12,50') === '"-12,50"', 'CSV : montant négatif intact');
 ok(compta_eur(1234) === '12,34', 'CSV : virgule décimale');
-// Date de déblocage : après le début du séjour, jamais dans le passé
-ok(strtotime(fin_release_date(date('Y-m-d', strtotime('+10 day')))) > strtotime('+10 day'), 'déblocage après le début du séjour');
-ok(strtotime(fin_release_date('2020-01-01')) > time(), 'séjour déjà passé : déblocage dans le futur proche');
+// Calendrier : versable après le délai de sécurité (7 jours par défaut) SANS attendre le séjour
+ok(strtotime(fin_release_date('2030-01-01')) < strtotime('+8 day') && strtotime(fin_release_date('2030-01-01')) > strtotime('+6 day'), 'déblocage = paiement + 7 jours, indépendant du début du séjour');
+$row = ['net_cents' => 9000, 'net_rembourse_cents' => 0, 'verse_cents' => 0, 'date_deblocage' => '2026-01-01 00:00:00', 'date_debut' => '2026-03-01', 'jm' => 15];
+ok(fin_row_parts($row, 20.0, '2026-01-10 10:00:00') === ['left' => 9000, 'ok' => 7200, 'held' => 1800, 'wait' => 0], 'réserve 20 % tant qu une annulation est possible');
+ok(fin_row_parts($row, 20.0, '2026-02-20 10:00:00')['held'] === 0, 'réserve libérée quand la fenêtre de remboursement est fermée');
+ok(fin_row_parts(['verse_cents' => 7200] + $row, 20.0, '2026-01-10 10:00:00')['ok'] === 0, 'réserve non reversée deux fois');
+ok(fin_row_parts(['date_deblocage' => '2026-01-20 00:00:00'] + $row, 20.0, '2026-01-10 10:00:00')['wait'] === 9000, 'délai de sécurité non écoulé : rien de versable');
+ok(fin_reserve_release_day('2026-03-01', 15) === '2026-02-15', 'réserve libérée le lendemain de la fin de la fenêtre 50 %');
 
 // Score : un boost augmente le score, une remontée s'estompe, un séjour complet chute
 $now = '2026-11-13 12:00:00';

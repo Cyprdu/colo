@@ -45,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $orgs = $pdo->query("SELECT o.id, o.nom, o.portefeuille, o.stripe_account_id,
-        COALESCE(SUM(CASE WHEN p.statut IN ('attente','bloque','litige','en_cours') THEN p.net_cents - p.net_rembourse_cents END), 0) a_recevoir,
-        COALESCE(SUM(CASE WHEN p.statut = 'attente' AND p.date_deblocage <= NOW() THEN p.net_cents - p.net_rembourse_cents END), 0) deblocable,
+        COALESCE(SUM(CASE WHEN p.statut IN ('attente','bloque','litige','en_cours') THEN GREATEST(0, p.net_cents - p.net_rembourse_cents - p.verse_cents) END), 0) a_recevoir,
+        COALESCE(SUM(CASE WHEN p.statut = 'attente' AND p.date_deblocage <= NOW() THEN GREATEST(0, p.net_cents - p.net_rembourse_cents - p.verse_cents) END), 0) deblocable,
         COALESCE(SUM(CASE WHEN p.statut = 'bloque' THEN 1 END), 0) nb_bloques, COALESCE(SUM(CASE WHEN p.statut = 'litige' THEN 1 END), 0) nb_litiges,
         MIN(CASE WHEN p.statut = 'attente' THEN p.date_deblocage END) prochaine
     FROM organisateurs o LEFT JOIN fin_paiements p ON p.organisateur_id = o.id
@@ -77,7 +77,7 @@ function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) 
 <main class="mk-wrap" style="max-width:1200px">
     <a href="admin.php" class="mk-back"><?= mk_icon('back', 16) ?> Administration</a>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap">
-        <div><p class="ds-eyebrow">Finances</p><h1 class="ds-h1">Versements aux organismes</h1><p class="ds-lead">Automatiques : le net de chaque inscription est transféré après le début du séjour (J+<?= fin_release_delay_days() ?>). Commission : <?= number_format(fin_commission_pct(), 2, ',', ' ') ?> %.</p></div>
+        <div><p class="ds-eyebrow">Finances</p><h1 class="ds-h1">Versements aux organismes</h1><p class="ds-lead">Automatiques : chaque organisme est versé un jour fixe par semaine, <?= fin_release_delay_days() ?> jours après le paiement, avec une réserve de <?= number_format(fin_reserve_pct(), 0, ',', ' ') ?> % tant qu'une annulation est possible (réglages : Comptabilité &gt; Versements). Commission : <?= number_format(fin_commission_pct(), 2, ',', ' ') ?> %.</p></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="ds-btn ds-btn-light" href="admin_commission_stats.php">Commissions</a><?= postbtn('Lancer les déblocages maintenant', 'release_now', 0, $csrf, 'Transférer maintenant tous les fonds dont la date est passée ?', false) ?></div>
     </div>
 
@@ -86,7 +86,7 @@ function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) 
 
     <div class="mk-grid mk-g4" style="margin-top:22px">
         <div class="mk-stat dark"><div class="k">Dû aux organismes</div><div class="v"><?= fin_eur($tot['a_recevoir']) ?></div><div class="s">net, non encore transféré</div></div>
-        <div class="mk-stat"><div class="k">Déblocable maintenant</div><div class="v"><?= fin_eur($tot['deblocable']) ?></div><div class="s">date de déblocage passée</div></div>
+        <div class="mk-stat"><div class="k">Déblocable maintenant</div><div class="v"><?= fin_eur($tot['deblocable']) ?></div><div class="s">délai de sécurité passé, avant réserve et jour de versement</div></div>
         <div class="mk-stat"><div class="k">Transferts en échec</div><div class="v"><?= $nbEchec ?></div><div class="s">sur les 30 derniers</div></div>
         <div class="mk-stat"><div class="k">En cours d'envoi</div><div class="v"><?= $nbCours ?></div><div class="s">rejoués automatiquement</div></div>
     </div>
