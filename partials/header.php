@@ -108,7 +108,7 @@ if ('serviceWorker' in navigator) {
                     <div id="history-dropdown" class="hidden absolute top-12 left-0 w-full bg-white shadow-xl rounded-2xl border border-gray-100 z-10 overflow-hidden">
                         <div class="px-4 py-2 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                             <span class="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Recherches récentes</span>
-                            <button id="clear-all-history" type="button" class="text-[10px] text-red-400 hover:text-red-600 font-medium hover:underline">Tout effacer</button>
+                            <button id="clear-all-history" type="button" class="text-[10px] text-gray-400 hover:text-red-600 font-medium hover:underline">Tout effacer</button>
                         </div>
                         <div id="history-list" class="max-h-64 overflow-y-auto"></div>
                     </div>
@@ -186,28 +186,28 @@ if ('serviceWorker' in navigator) {
                                 <?php if ($is_director): ?>
                                 <div class="border-t border-gray-100 py-1">
                                     <div class="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Espace Organisateur</div>
-                                    <a href="public_infos" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700">
-                                        <i class="fa-solid fa-building w-6 text-center mr-2 text-purple-400"></i> Mes organismes
+                                    <a href="public_infos" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
+                                        <i class="fa-solid fa-building w-6 text-center mr-2 text-[#64748b]"></i> Mes organismes
                                     </a>
-                                    <a href="mes_camps" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700">
-                                        <i class="fa-solid fa-campground w-6 text-center mr-2 text-purple-400"></i> Gérer mes camps
+                                    <a href="mes_camps" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
+                                        <i class="fa-solid fa-campground w-6 text-center mr-2 text-[#64748b]"></i> Gérer mes camps
                                     </a>
-                                    <a href="create_camp" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700">
-                                        <i class="fa-solid fa-plus-circle w-6 text-center mr-2 text-purple-400"></i> Créer un camp
+                                    <a href="create_camp" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
+                                        <i class="fa-solid fa-plus-circle w-6 text-center mr-2 text-[#64748b]"></i> Créer un camp
                                     </a>
-                                    <a href="demandes-animation" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-700">
-                                        <i class="fa-solid fa-users-gear w-6 text-center mr-2 text-purple-400"></i> Gestion des animateurs
+                                    <a href="demandes-animation" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
+                                        <i class="fa-solid fa-users-gear w-6 text-center mr-2 text-[#64748b]"></i> Gestion des animateurs
                                     </a>
                                 </div>
                                 <?php endif; ?>
 
                                 <?php if ($is_admin): ?>
                                 <div class="border-t border-gray-100 py-1">
-                                    <div class="px-4 py-1 text-xs font-bold text-red-400 uppercase tracking-wider">Administration</div>
-                                    <a href="admin.php" class="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-bold">
+                                    <div class="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Administration</div>
+                                    <a href="admin.php" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
                                         <i class="fa-solid fa-gauge-high w-6 text-center mr-2"></i> Dashboard Admin
                                     </a>
-                                    <a href="admin_messages" class="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-bold">
+                                    <a href="admin_messages" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
                                         <i class="fa-solid fa-envelope-open-text w-6 text-center mr-2"></i> Réponse Contact
                                     </a>
                                 </div>
@@ -217,7 +217,7 @@ if ('serviceWorker' in navigator) {
                                     <a href="aide" class="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
                                         <i class="fa-regular fa-circle-question w-6 text-center mr-2"></i> Aide
                                     </a>
-                                    <a href="api/logout" class="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-bold">
+                                    <a href="api/logout" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
                                         <i class="fa-solid fa-arrow-right-from-bracket w-6 text-center mr-2"></i> Déconnexion
                                     </a>
                                 </div>
@@ -286,8 +286,8 @@ if ('serviceWorker' in navigator) {
 
                 <?php if ($is_admin): ?>
                     <div class="px-3 pt-4 pb-1 text-xs font-bold text-gray-400 uppercase">Administration</div>
-                    <a href="admin" class="text-red-600 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Dashboard Admin</a>
-                    <a href="admin_messages" class="text-red-600 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Réponse Contact</a>
+                    <a href="admin" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Dashboard Admin</a>
+                    <a href="admin_messages" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Réponse Contact</a>
                 <?php endif; ?>
                 
                 <?php if ($is_logged_in): ?>
@@ -380,7 +380,7 @@ if ('serviceWorker' in navigator) {
                 <div class="relative group">
                     <a href="recherche?name=${encodeURIComponent(item.term)}" class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer">
                         <div class="flex items-center gap-3 overflow-hidden">
-                            <i class="fa-solid fa-clock-rotate-left text-gray-300 group-hover:text-blue-500 transition-colors text-sm"></i>
+                            <i class="fa-solid fa-clock-rotate-left text-gray-300 group-hover:text-[#3d6a8e] transition-colors text-sm"></i>
                             <span class="text-sm text-gray-700 font-medium truncate">${item.term}</span>
                         </div>
                         <button class="delete-history-btn w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-300 hover:text-red-500 transition-all z-20" data-term="${item.term.replace(/"/g, '&quot;')}">
