@@ -10,12 +10,14 @@ use Stripe\Transfer;
 use Stripe\Payout;
 use Stripe\Exception\ApiErrorException;
 
-// Fonction de redirection vers la page de DEBUG
+// Redirection : succès -> page du virement, erreur -> formulaire
 function redirectDebug($status, $message, $organisateurId, $token = '') {
-    $url = "../virement_result_debug.php?status=" . urlencode($status) . 
-           "&message=" . urlencode($message) . 
-           "&organisateur_id=" . $organisateurId .
-           "&token=" . $token;
+    if ($status === 'success' && $token !== '') {
+        $url = "../virement.php?t=" . urlencode($token);
+    } else {
+        $url = "../demande_de_virement_info2.php?organisateur_id=" . (int)$organisateurId .
+               "&error=" . urlencode($message);
+    }
     header('Location: ' . $url);
     exit;
 }

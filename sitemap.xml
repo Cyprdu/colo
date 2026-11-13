@@ -169,24 +169,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://moncamp.fr/debug_final.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://moncamp.fr/debug_messagerie.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://moncamp.fr/debug_tarif.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://moncamp.fr/default.php</loc>
     <lastmod>2025-12-19</lastmod>
     <changefreq>weekly</changefreq>
@@ -242,24 +224,6 @@
   </url>
   <url>
     <loc>https://moncamp.fr/favorites.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://moncamp.fr/fix_db.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://moncamp.fr/fix_db_boost.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://moncamp.fr/fix_db_final.php</loc>
     <lastmod>2025-12-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -440,12 +404,6 @@
   </url>
   <url>
     <loc>https://moncamp.fr/virement.php</loc>
-    <lastmod>2025-12-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://moncamp.fr/virement_result_debug.php</loc>
     <lastmod>2025-12-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
