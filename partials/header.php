@@ -5,6 +5,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Journal des erreurs (aussi chargé par api/config.php quand la ligne y a été ajoutée)
+if (is_file(__DIR__ . '/../api/errors.php')) require_once __DIR__ . '/../api/errors.php';
 $body_class = $body_class ?? 'bg-gray-100';
 // Publicité : à activer page par page ($ads_enabled = true avant l'inclusion), jamais sur les pages de compte, paiement ou messagerie
 $ads_enabled = $ads_enabled ?? false;
