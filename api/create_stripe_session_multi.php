@@ -14,6 +14,7 @@ require_once __DIR__ . '/sessions.php';
 require_once __DIR__ . '/attente.php';
 require_once __DIR__ . '/tarifs.php';
 require_once __DIR__ . '/options.php';
+require_once __DIR__ . '/annulation_lib.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -199,6 +200,17 @@ try {
     }
     $pdo->commit();
 
+    // Garantie annulation (service facultatif, réglage admin) : supplément calculé ICI, ligne Stripe séparée, jamais dans le prix des inscriptions
+    $garantieCents = 0;
+    if ($lineItems && fin_garantie_active() && !empty($_POST['garantie'])) {
+        $garantieCents = fin_garantie_cents($totalCents);
+        if ($garantieCents > 0) {
+            $lineItems[] = ['price_data' => ['currency' => 'eur',
+                'product_data' => ['name' => 'Garantie annulation (service ColoMap)', 'description' => 'Frais de service facultatifs : prise en charge de la part non remboursable en cas d\'annulation pour motif couvert'],
+                'unit_amount' => $garantieCents], 'quantity' => 1];
+        }
+    }
+
     // Tout est gratuit : rien à payer
     if (!$lineItems) {
         header('Location: ' . $site . '/inscription_confirmation.php?success=1&camp_t=' . urlencode($campToken));
@@ -222,6 +234,7 @@ try {
             'camp_id' => (string)$camp['id'],
             'user_id' => (string)$userId,
             'type' => 'multi_inscription',
+            'garantie_cents' => (string)$garantieCents,
         ],
         'payment_intent_data' => [
             'description' => 'ColoMap · ' . mb_substr($camp['nom'], 0, 120) . ' · ' . $sessionLabel,

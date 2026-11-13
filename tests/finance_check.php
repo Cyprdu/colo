@@ -2,6 +2,7 @@
 // Contrôle rapide des calculs (sans base ni Stripe) :  php tests/finance_check.php
 require __DIR__ . '/../api/marketing_lib.php';
 require __DIR__ . '/../api/finance_lib.php';
+require __DIR__ . '/../api/annulation_lib.php';
 
 function ok($cond, $msg) { if (!$cond) { fwrite(STDERR, "ECHEC : $msg\n"); exit(1); } echo "ok  $msg\n"; }
 

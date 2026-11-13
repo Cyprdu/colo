@@ -5,6 +5,7 @@
 // Le réglage de la commission et le déverrouillage des exports exigent le mot de passe administrateur (adm_reauth).
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
+require_once __DIR__ . '/api/annulation_lib.php';
 adm_guard();
 fin_ensure($pdo);
 
@@ -38,6 +39,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             fin_set_commission($pdo, $pct, $fixe, 'admin:' . $uid);
             adm_audit('commission_modifiee', 'fin_reglages', number_format($pct, 2, '.', '') . ' % + ' . $fixe . ' c');
             flash_go('ok', 'Commission enregistrée : ' . number_format($pct, 2, ',', ' ') . ' % + ' . compta_eur($fixe) . ' €. Elle s\'applique aux prochains paiements uniquement.', 'admin_compta.php?v=reglages');
+        }
+        if ($act === 'garantie') {
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=reglages');
+            $pct = (float)str_replace(',', '.', (string)($_POST['gpct'] ?? ''));
+            if (!is_numeric(str_replace(',', '.', (string)($_POST['gpct'] ?? ''))) || $pct < 0 || $pct > 10)
+                flash_go('err', 'Pourcentage invalide : entre 0 et 10.', 'admin_compta.php?v=reglages');
+            $actif = !empty($_POST['gactive']);
+            fin_set_garantie($pdo, $actif, $pct, (string)($_POST['gpartenaire'] ?? ''), 'admin:' . $uid);
+            adm_audit('garantie_modifiee', 'fin_reglages', ($actif ? 'active ' : 'desactivee ') . number_format($pct, 2, '.', '') . ' %');
+            flash_go('ok', 'Garantie annulation ' . ($actif ? 'activée à ' . number_format($pct, 2, ',', ' ') . ' %' : 'désactivée') . '. Elle ne s\'applique qu\'aux prochaines inscriptions.', 'admin_compta.php?v=reglages');
         }
         if ($act === 'unlock') {
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
@@ -100,6 +112,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'rapprochem
   <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions ColoMap</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($sum['frais'] + $sum['litige']) ?></b><span>Frais Stripe réels</span><small>dont litiges : <?= $e($sum['litige']) ?></small></div></div>
   <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette ColoMap</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('check') ?></span><div><b><?= $e($sum['garantie_net']) ?></b><span>Garantie annulation (CA ColoMap)</span><small>encaissé <?= $e($sum['garantie']) ?> − pris en charge <?= $e($sum['garantie_pec']) ?> · hors CA organismes et commissions</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('building') ?></span><div><b><?= $e($sum['du_total']) ?></b><span>Dû aux organismes</span><small>net total de la période</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('check') ?></span><div><b><?= $e($sum['verse']) ?></b><span>Déjà versé</span><small>transferts exécutés</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('clock') ?></span><div><b><?= $e($sum['attente']) ?></b><span>En attente de versement</span><small>avant la date de déblocage, suspendu ou en litige</small></div></div>
@@ -151,6 +164,8 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'rapprochem
 <div class="cols">
   <section class="card"><h2 class="sec"><?= ic('database') ?> D'après la base (théorique)</h2>
     <div class="kv"><span>Encaissements d'inscriptions (nets des remboursements)</span><b><?= $e($rc['ca']) ?></b></div>
+    <div class="kv"><span>+ Garantie annulation encaissée</span><b><?= $e($rc['garantie']) ?></b></div>
+    <div class="kv"><span>− Parts de remboursement prises en charge par ColoMap</span><b><?= $e($rc['pec']) ?></b></div>
     <div class="kv"><span>+ Achats de points par carte</span><b><?= $e($rc['points']) ?></b></div>
     <div class="kv"><span>− Frais Stripe relevés</span><b><?= $e($rc['frais']) ?></b></div>
     <div class="kv"><span>− Frais de litige</span><b><?= $e($rc['litige']) ?></b></div>
@@ -216,6 +231,17 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'rapprochem
       <input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="commission">
       <label class="fld"><span class="fl">Pourcentage du montant payé <small>(0 à 30 %)</small></span><input class="in" name="pct" inputmode="decimal" value="<?= h(number_format($rg['commission_pct'], 2, ',', '')) ?>" required></label>
       <label class="fld"><span class="fl">Part fixe par inscription, en centimes <small>(0 à 500)</small></span><input class="in" name="fixe" type="number" min="0" max="500" step="1" value="<?= (int)$rg['commission_fixe_cents'] ?>" required></label>
+      <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div>
+    </form>
+  </section>
+  <section class="card"><h2 class="sec"><?= ic('check') ?> Garantie annulation (service facultatif)</h2>
+    <p class="muted">Case à cocher à l'inscription : supplément en % du total, ligne Stripe séparée, <b>jamais</b> comprise dans le brut, la commission ou le net de l'organisme. Avec un motif couvert (maladie, accident, décès), ColoMap prend en charge la part que l'organisme ne rembourse pas. Elle est présentée comme un <b>service de ColoMap</b>, pas comme une assurance : tant que ColoMap n'est pas intermédiaire d'assurance (ORIAS) ou n'a pas de contrat avec un assureur, ne la qualifiez pas d'assurance.</p>
+    <form method="post" action="admin_compta.php">
+      <input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="garantie">
+      <label class="fld"><span class="fl"><input type="checkbox" name="gactive" value="1"<?= $rg['garantie_active'] ? ' checked' : '' ?>> Proposer la garantie à l'inscription</span></label>
+      <label class="fld"><span class="fl">Supplément, en % du total <small>(0 à 10)</small></span><input class="in" name="gpct" inputmode="decimal" value="<?= h(number_format($rg['garantie_pct'], 2, ',', '')) ?>" required></label>
+      <label class="fld"><span class="fl">Partenaire assureur <small>(facultatif, à renseigner une fois le contrat signé)</small></span><input class="in" name="gpartenaire" maxlength="90" value="<?= h($rg['garantie_partenaire']) ?>"></label>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div>
     </form>
