@@ -1,10 +1,11 @@
 <?php
-require_once 'partials/header.php';
-
+require_once 'api/config.php';
+if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user'])) {
-    header('Location: login.php');
+    header('Location: login.php?next=messagerie');
     exit;
 }
+require_once 'partials/header.php';
 
 $activeConvId = $_GET['conv_id'] ?? 0;
 $myId = $_SESSION['user']['id'];
@@ -17,12 +18,12 @@ $myId = $_SESSION['user']['id'];
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
     .custom-scroll::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0A112F; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #26343b; }
 </style>
 
 <div id="context-menu" class="fixed hidden bg-white shadow-2xl rounded-lg w-48 py-2 z-[100] border border-gray-200 text-sm font-medium transform transition-all duration-100 scale-95 origin-top-left">
     <div class="px-4 py-2 text-xs text-gray-400 uppercase tracking-wider font-bold border-b border-gray-100 mb-1">Actions</div>
-    <button id="ctx-edit" class="w-full text-left px-4 py-2.5 hover:bg-blue-50 text-[#0A112F] flex items-center gap-3 transition-colors">
+    <button id="ctx-edit" class="w-full text-left px-4 py-2.5 hover:bg-[#f1f5f9] text-[#26343b] flex items-center gap-3 transition-colors">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
         Modifier le message
     </button>
@@ -32,32 +33,32 @@ $myId = $_SESSION['user']['id'];
     </button>
 </div>
 
-<div class="flex h-[calc(100vh-80px)] bg-gray-100 font-sans overflow-hidden">
+<div class="flex h-[calc(100vh-68px)] bg-gray-100 font-sans overflow-hidden">
     
     <div id="sidebar" class="w-full md:w-[380px] bg-white border-r-2 border-gray-200 flex flex-col flex-shrink-0 z-10 <?= $activeConvId ? 'hidden md:flex' : 'flex' ?>">
         
         <div class="p-6 border-b border-gray-200 flex justify-between items-center bg-white shadow-sm z-10">
             <div>
-                <h2 class="text-2xl font-extrabold text-[#0A112F] tracking-tight">Discussions</h2>
+                <h2 class="text-2xl font-extrabold text-[#26343b] tracking-tight">Discussions</h2>
                 <p class="text-xs text-gray-500 mt-1">Vos échanges récents</p>
             </div>
         </div>
 
         <div id="conv-list" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll bg-gray-50">
             <div class="p-10 text-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0A112F] mx-auto"></div>
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#26343b] mx-auto"></div>
             </div>
         </div>
     </div>
 
-    <div id="chat-area" class="flex-1 flex flex-col bg-[#E5E7EB] relative <?= $activeConvId ? 'flex' : 'hidden md:flex' ?>">
+    <div id="chat-area" class="flex-1 flex flex-col bg-[#eef0f2] relative <?= $activeConvId ? 'flex' : 'hidden md:flex' ?>">
         
         <?php if (!$activeConvId): ?>
             <div class="flex-1 flex flex-col items-center justify-center text-center p-8">
                 <div class="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-md">
-                    <svg class="w-16 h-16 text-[#0A112F] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    <svg class="w-16 h-16 text-[#26343b] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                 </div>
-                <h3 class="text-2xl font-bold text-[#0A112F]">Vos Messages</h3>
+                <h3 class="text-2xl font-bold text-[#26343b]">Vos Messages</h3>
                 <p class="text-gray-500 mt-2 max-w-sm">Sélectionnez une conversation à gauche pour afficher l'historique.</p>
             </div>
         <?php else: ?>
@@ -69,11 +70,11 @@ $myId = $_SESSION['user']['id'];
                     </a>
                     
                     <div class="relative">
-                        <div class="h-12 w-12 rounded-full bg-[#0A112F] text-white flex items-center justify-center font-bold text-xl shadow-md border-2 border-white" id="header-avatar">?</div>
+                        <div class="h-12 w-12 rounded-full bg-[#26343b] text-white flex items-center justify-center font-bold text-xl shadow-md border-2 border-white" id="header-avatar">?</div>
                     </div>
                     
                     <div>
-                        <h3 class="font-bold text-[#0A112F] text-lg leading-tight" id="header-camp">...</h3>
+                        <h3 class="font-bold text-[#26343b] text-lg leading-tight" id="header-camp">...</h3>
                         <p class="text-sm text-gray-500 font-medium" id="header-contact">...</p>
                     </div>
                 </div>
@@ -85,10 +86,10 @@ $myId = $_SESSION['user']['id'];
             <div class="bg-white p-4 border-t border-gray-300 z-20">
                 <form id="msg-form" class="max-w-5xl mx-auto relative flex items-center gap-3">
                     <input type="text" id="msg-input" 
-                           class="w-full bg-gray-100 text-gray-900 border border-gray-200 rounded-full py-4 pl-6 pr-14 focus:outline-none focus:ring-2 focus:ring-[#0A112F] focus:bg-white transition-all shadow-inner placeholder-gray-500 font-medium" 
+                           class="w-full bg-gray-100 text-gray-900 border border-gray-200 rounded-full py-4 pl-6 pr-14 focus:outline-none focus:ring-2 focus:ring-[#26343b] focus:bg-white transition-all shadow-inner placeholder-gray-500 font-medium" 
                            placeholder="Écrivez votre message..." autocomplete="off">
                     
-                    <button type="submit" class="absolute right-2 top-2 p-2 bg-[#0A112F] text-white rounded-full hover:bg-blue-900 transition-all active:scale-95 shadow-lg flex items-center justify-center h-10 w-10 group">
+                    <button type="submit" class="absolute right-2 top-2 p-2 bg-[#26343b] text-white rounded-full hover:bg-[#1f2a30] transition-all active:scale-95 shadow-lg flex items-center justify-center h-10 w-10 group">
                         <svg class="w-5 h-5 group-hover:translate-x-0.5 transition-transform transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
                         </svg>
@@ -188,8 +189,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 msgDiv.innerText = newText;
                 // Petit effet visuel
-                msgDiv.classList.add('bg-blue-800');
-                setTimeout(() => msgDiv.classList.remove('bg-blue-800'), 500);
+                msgDiv.classList.add('bg-[#1f2a30]');
+                setTimeout(() => msgDiv.classList.remove('bg-[#1f2a30]'), 500);
             } catch(e) {}
         }
     });
@@ -220,16 +221,16 @@ async function loadConversations() {
             const div = document.createElement('a');
             div.href = `messagerie?conv_id=${c.conversation_id}`;
             
-            // STYLE ACTIF : Fond #0A112F, Texte Blanc
+            // STYLE ACTIF : Fond #26343b, Texte Blanc
             // STYLE INACTIF : Fond Blanc, Bordure, Ombre légère
             if (isActive) {
-                div.className = "block p-4 mb-2 rounded-xl bg-[#0A112F] text-white shadow-lg border-l-4 border-blue-400 transform scale-[1.02] transition-all duration-200";
+                div.className = "block p-4 mb-2 rounded-xl bg-[#26343b] text-white shadow-lg border-l-4 border-blue-400 transform scale-[1.02] transition-all duration-200";
             } else {
                 div.className = "block p-4 mb-2 rounded-xl bg-white text-gray-700 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200";
             }
             
             const isUnread = (c.last_sender_id != myId && c.last_is_read == 0);
-            const titleColor = isActive ? 'text-white' : 'text-[#0A112F]';
+            const titleColor = isActive ? 'text-white' : 'text-[#26343b]';
             const subColor = isActive ? 'text-blue-200' : 'text-gray-500';
             const msgColor = isActive ? 'text-gray-300' : (isUnread ? 'text-gray-900 font-bold' : 'text-gray-500');
 
@@ -323,7 +324,7 @@ function appendMessage(m, forceScroll) {
 
     // DESIGN BULLES (Inchangé)
     const bubbleClass = isMe 
-        ? 'bg-[#0A112F] text-white rounded-2xl rounded-tr-sm shadow-md' 
+        ? 'bg-[#26343b] text-white rounded-2xl rounded-tr-sm shadow-md' 
         : 'bg-white text-gray-800 border border-gray-300 rounded-2xl rounded-tl-sm shadow-sm';
 
     const time = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});

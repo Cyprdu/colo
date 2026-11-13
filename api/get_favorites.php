@@ -7,8 +7,9 @@ if (!isset($_SESSION['user']['id'])) {
 }
 
 try {
-    $sql = "SELECT c.* FROM camps c
+    $sql = "SELECT c.*, o.nom AS organisateur_nom, o.logo_url AS organisateur_logo FROM camps c
             JOIN favoris f ON c.id = f.camp_id
+            LEFT JOIN organisateurs o ON o.id = c.organisateur_id
             WHERE f.user_id = ?";
     
     $stmt = $pdo->prepare($sql);
@@ -25,6 +26,9 @@ try {
             'age_min' => $camp['age_min'],
             'age_max' => $camp['age_max'],
             'date_debut' => $camp['date_debut'],
+            'date_fin' => $camp['date_fin'],
+            'organisateur_nom' => $camp['organisateur_nom'],
+            'organisateur_logo' => $camp['organisateur_logo'],
             'image_url' => $camp['image_url']
         ];
     }, $camps);

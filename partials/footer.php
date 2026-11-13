@@ -11,14 +11,14 @@
                 <a href="./" class="font-display inline-block text-[24px] font-bold text-white leading-none">ColoMap</a>
                 <p class="mt-3 text-[15px] leading-snug text-white/90 max-w-[230px]">Prêt à trouver une nouvelle aventure pour vos enfants ?</p>
                 <div class="mt-5 flex flex-wrap gap-2.5">
-                    <span class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white" title="Bientôt disponible">
+                    <button type="button" data-soon class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white hover:bg-[#161616] hover:border-white/60 transition cursor-pointer" aria-label="Télécharger dans l'App Store (bientôt disponible)">
                         <i class="fa-brands fa-apple text-[20px]"></i>
                         <span class="leading-none text-left"><span class="block text-[8px] text-white/80">Télécharger dans</span><span class="block text-[13px] font-semibold -mt-px">l'App Store</span></span>
-                    </span>
-                    <span class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white" title="Bientôt disponible">
+                    </button>
+                    <button type="button" data-soon class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white hover:bg-[#161616] hover:border-white/60 transition cursor-pointer" aria-label="Télécharger sur Google Play (bientôt disponible)">
                         <i class="fa-brands fa-google-play text-[18px] text-[#34d1a0]"></i>
                         <span class="leading-none text-left"><span class="block text-[8px] text-white/80 uppercase">Télécharger sur</span><span class="block text-[13px] font-semibold -mt-px">Google Play</span></span>
-                    </span>
+                    </button>
                 </div>
             </div>
 
@@ -61,5 +61,18 @@
         <p class="mt-12 pt-6 border-t border-white/15 text-[12px] text-white/60">&copy; <?= date('Y') ?> ColoMap. Tous droits réservés.</p>
     </div>
 </footer>
+<div id="soon-toast" role="status" aria-live="polite" class="fixed left-1/2 bottom-8 z-[100] -translate-x-1/2 translate-y-4 opacity-0 pointer-events-none transition-all duration-300 rounded-full bg-[#26343b] px-6 py-3 text-[14px] font-semibold text-white shadow-2xl">Bientôt disponible ;)</div>
+<script>
+(function () {
+    var toast = document.getElementById('soon-toast'), timer;
+    document.querySelectorAll('[data-soon]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            toast.classList.remove('opacity-0', 'translate-y-4');
+            clearTimeout(timer);
+            timer = setTimeout(function () { toast.classList.add('opacity-0', 'translate-y-4'); }, 2400);
+        });
+    });
+})();
+</script>
 </body>
 </html>

@@ -47,8 +47,11 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
         .body-no-scroll { overflow: hidden; } 
         /* Animation du dropdown */
-        .dropdown-menu { display: none; }
-        .group:hover .dropdown-menu { display: block; animation: fadeIn 0.2s ease-out; }
+        /* Menu du compte : ne se ferme pas quand la souris traverse le petit espace entre le bouton et le menu.
+           - la zone de passage (padding-top du menu) fait partie du menu, donc le survol est continu
+           - la fermeture est retardée de 150 ms : un léger écart de trajectoire est pardonné */
+        .dropdown-menu { visibility: hidden; opacity: 0; transform: translateY(-6px); transition: opacity .16s ease .15s, transform .16s ease .15s, visibility 0s linear .31s; }
+        .nav-dd:hover .dropdown-menu, .nav-dd:focus-within .dropdown-menu { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
             #history-list::-webkit-scrollbar { width: 4px; }
         #history-list::-webkit-scrollbar-track { background: #f1f1f1; }
@@ -74,8 +77,9 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+    <link rel="stylesheet" href="/assets/ds.css?v=1">
 </head>
-<body class="<?php echo htmlspecialchars($body_class); ?> text-gray-800 flex flex-col min-h-screen">
+<body class="<?php echo htmlspecialchars($body_class); ?><?php echo $body_class === 'bg-gray-100' ? ' ds-legacy' : ''; ?> text-gray-800 flex flex-col min-h-screen">
 
     <header class="bg-white border-b border-gray-200 sticky top-0 z-40">
         <nav class="w-full px-4 sm:px-6 lg:px-8">
@@ -144,7 +148,7 @@ if ('serviceWorker' in navigator) {
                             <span id="unread-badge-desktop" class="absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center bg-red-600 text-white text-[10px] font-bold rounded-full hidden"></span>
                         </a>
 
-                        <div class="relative group py-2">
+                        <div class="relative group nav-dd py-2">
                             <a href="profile" class="relative block" aria-label="Mon profil">
                                 <?php if (!empty($_SESSION['user']['photo_url'])): ?>
                                     <img class="h-10 w-10 rounded-full object-cover ring-2 ring-white shadow transition-transform duration-300 transform group-hover:scale-105" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url']); ?>" alt="Profil">
@@ -153,7 +157,8 @@ if ('serviceWorker' in navigator) {
                                 <?php endif; ?>
                             </a>
 
-                            <div class="dropdown-menu absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                            <div class="dropdown-menu absolute right-0 top-full w-72 pt-3 z-50">
+                            <div class="bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden">
                                 
                                 <div class="px-4 py-3 border-b border-gray-50 bg-gray-50">
                                     <p class="text-sm font-bold text-gray-900 truncate"><?php echo htmlspecialchars($_SESSION['user']['prenom'] . ' ' . $_SESSION['user']['nom']); ?></p>
@@ -217,6 +222,7 @@ if ('serviceWorker' in navigator) {
                                     </a>
                                 </div>
                             </div>
+                        </div>
                         </div>
 
                     <?php else: ?>
