@@ -32,18 +32,18 @@ $tokenCamp = $_GET['t'] ?? '';
         </div>
     </div>
 
-    <div id="fiche-enfant" class="bg-white p-10 rounded-xl shadow-2xl border border-gray-200 max-w-4xl mx-auto">
+    <div id="fiche-enfant" class="bg-white p-10 rounded-3xl shadow-sm border border-[#e5e7eb] max-w-4xl mx-auto">
         
         <div class="flex justify-between items-start border-b-2 border-gray-800 pb-6 mb-8">
             <div>
-                <h1 class="text-4xl font-extrabold text-gray-900 uppercase tracking-tight" id="child-name">Chargement...</h1>
-                <p class="text-xl text-gray-600 mt-1" id="child-age"></p>
+                <h1 class="text-4xl font-extrabold text-[#26343b] uppercase tracking-tight" id="child-name">Chargement...</h1>
+                <p class="text-xl text-[#6b7780] mt-1" id="child-age"></p>
                 <div class="mt-3 inline-block bg-[#e5eaef] text-[#26343b] px-3 py-1 rounded-full text-sm font-bold" id="camp-name"></div>
             </div>
             <div class="text-right">
-                <div class="bg-gray-100 p-4 rounded-lg border border-gray-300">
-                    <p class="text-xs text-gray-500 uppercase font-bold">Dossier N°</p>
-                    <p class="text-2xl font-mono font-bold text-gray-800">#<?= htmlspecialchars(strtoupper(substr($resToken !== "" ? $resToken : (string)$inscriptionId, 0, 8))) ?></p>
+                <div class="bg-gray-100 p-4 rounded-lg border border-[#e5e7eb]">
+                    <p class="text-xs text-[#6b7780] uppercase font-bold">Dossier N°</p>
+                    <p class="text-2xl font-mono font-bold text-[#26343b]">#<?= htmlspecialchars(strtoupper(substr($resToken !== "" ? $resToken : (string)$inscriptionId, 0, 8))) ?></p>
                 </div>
             </div>
         </div>
@@ -64,7 +64,7 @@ $tokenCamp = $_GET['t'] ?? '';
 
                 <section class="bg-green-50 p-4 rounded-lg border border-green-100">
                     <h3 class="text-lg font-bold text-green-800 uppercase border-b border-green-200 pb-1 mb-3">Responsable 1 (Principal)</h3>
-                    <ul class="space-y-2 text-sm text-gray-800">
+                    <ul class="space-y-2 text-sm text-[#26343b]">
                         <li><span class="font-bold">Nom:</span> <span id="r1-name"></span> (<span id="r1-statut"></span>)</li>
                         <li><span class="font-bold">Tel:</span> <span id="r1-tel"></span></li>
                         <li><span class="font-bold">Email:</span> <span id="r1-email"></span></li>
@@ -73,7 +73,7 @@ $tokenCamp = $_GET['t'] ?? '';
                 </section>
 
                 <section id="sec-r2" class="hidden">
-                    <h3 class="text-lg font-bold text-gray-600 uppercase border-b border-gray-200 pb-1 mb-3">Responsable 2</h3>
+                    <h3 class="text-lg font-bold text-[#6b7780] uppercase border-b border-[#e5e7eb] pb-1 mb-3">Responsable 2</h3>
                     <ul class="space-y-2 text-sm text-gray-700">
                         <li><span class="font-bold">Nom:</span> <span id="r2-name"></span> (<span id="r2-statut"></span>)</li>
                         <li><span class="font-bold">Tel:</span> <span id="r2-tel"></span></li>
@@ -85,7 +85,7 @@ $tokenCamp = $_GET['t'] ?? '';
 
             <div class="space-y-8">
                 
-                <section class="bg-red-50 p-5 rounded-xl border-l-4 border-red-500">
+                <section class="bg-red-50 p-5 rounded-3xl border-l-4 border-red-500">
                     <h3 class="text-lg font-bold text-red-800 uppercase mb-4 flex items-center gap-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 016.364 0L12 7.5l1.318-1.182a4.5 4.5 0 116.364 6.364L12 21l-7.682-7.682a4.5 4.5 0 010-6.364z"></path></svg>
                         Santé & Alim.
@@ -93,16 +93,16 @@ $tokenCamp = $_GET['t'] ?? '';
                     
                     <div class="mb-4">
                         <p class="text-xs font-bold text-red-600 uppercase">Infos Médicales / Allergies</p>
-                        <p class="text-sm font-medium text-gray-900 mt-1" id="health-infos">RAS</p>
+                        <p class="text-sm font-medium text-[#26343b] mt-1" id="health-infos">RAS</p>
                     </div>
                     
                     <div class="mb-4">
                         <p class="text-xs font-bold text-red-600 uppercase">Régime Alimentaire</p>
-                        <p class="text-sm font-medium text-gray-900 mt-1" id="health-diet">Standard</p>
+                        <p class="text-sm font-medium text-[#26343b] mt-1" id="health-diet">Standard</p>
                     </div>
 
                     <div class="mt-4 pt-4 border-t border-red-200">
-                        <p class="text-xs font-bold text-gray-500">Carnet de santé</p>
+                        <p class="text-xs font-bold text-[#6b7780]">Carnet de santé</p>
                         <p class="text-sm text-[#3d6a8e] underline cursor-pointer" onclick="window.open('api/secure_file.php?file='+window.carnetToken, '_blank')">
                             Consulter le document numérisé
                         </p>
@@ -110,7 +110,7 @@ $tokenCamp = $_GET['t'] ?? '';
                 </section>
 
                 <section>
-                    <h3 class="text-lg font-bold text-gray-700 uppercase border-b border-gray-200 pb-1 mb-3">Autorisations</h3>
+                    <h3 class="text-lg font-bold text-gray-700 uppercase border-b border-[#e5e7eb] pb-1 mb-3">Autorisations</h3>
                     <ul class="space-y-2 text-sm">
                         <li class="flex justify-between">
                             <span>Droit à l'image</span>
@@ -128,26 +128,26 @@ $tokenCamp = $_GET['t'] ?? '';
                 </section>
 
                 <section id="reponses-section" class="hidden">
-                    <h3 class="text-lg font-bold text-gray-700 uppercase border-b border-gray-200 pb-1 mb-3">Réponses au formulaire</h3>
+                    <h3 class="text-lg font-bold text-gray-700 uppercase border-b border-[#e5e7eb] pb-1 mb-3">Réponses au formulaire</h3>
                     <dl id="reponses-list" class="space-y-2 text-sm"></dl>
                 </section>
 
-                <section class="bg-gray-50 p-4 rounded border border-gray-200">
-                    <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">Commentaires Parents</h3>
-                    <p class="text-sm italic text-gray-600" id="comments">Aucun commentaire.</p>
+                <section class="bg-white p-4 rounded border border-[#e5e7eb]">
+                    <h3 class="text-xs font-bold text-[#6b7780] uppercase mb-2">Commentaires Parents</h3>
+                    <p class="text-sm italic text-[#6b7780]" id="comments">Aucun commentaire.</p>
                 </section>
 
             </div>
         </div>
 
-        <div class="mt-10 pt-6 border-t-2 border-gray-200 text-center text-xs text-gray-400">
+        <div class="mt-10 pt-6 border-t-2 border-[#e5e7eb] text-center text-xs text-gray-400">
             Document généré le <?= date('d/m/Y') ?> via ColoMap - Confidentiel
         </div>
     </div>
 
     <div class="mt-8">
-        <h3 class="text-xl font-bold text-gray-800 mb-4">Aperçu du Carnet de Santé</h3>
-        <iframe id="pdf-viewer" class="w-full h-[600px] border-2 border-gray-300 rounded-lg bg-gray-100" src=""></iframe>
+        <h3 class="text-xl font-bold text-[#26343b] mb-4">Aperçu du Carnet de Santé</h3>
+        <iframe id="pdf-viewer" class="w-full h-[600px] border-2 border-[#e5e7eb] rounded-lg bg-gray-100" src=""></iframe>
     </div>
 
 </main>
@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Charger dans l'iframe
             document.getElementById('pdf-viewer').src = `api/secure_file.php?file=${window.carnetToken}`;
         } else {
-            document.getElementById('pdf-viewer').parentElement.innerHTML = '<p class="text-gray-500 italic">Aucun carnet de santé numérisé.</p>';
+            document.getElementById('pdf-viewer').parentElement.innerHTML = '<p class="text-[#6b7780] italic">Aucun carnet de santé numérisé.</p>';
         }
 
         // Autorisations
