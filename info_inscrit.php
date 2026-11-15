@@ -163,7 +163,7 @@ require_once 'partials/header.php';
                     <?php endif; ?>
                     <?php foreach ([['carnet_sante_token', 'sante', 'Carnet de santé'], ['fiche_sanitaire_token', 'sanitaire', 'Fiche sanitaire de liaison']] as [$col, $dir, $name]): ?>
                         <?php if (!empty($child[$col])): ?>
-                            <a href="uploads/<?= $dir ?>/<?= htmlspecialchars($child[$col]) ?>" target="_blank" rel="noopener" class="ii-doc">
+                            <a href="api/secure_file.php?type=<?= $dir ?>&amp;file=<?= urlencode($child[$col]) ?>" target="_blank" rel="noopener" class="ii-doc">
                                 <span><span class="block text-[15px] font-bold text-[#26343b]"><?= $name ?></span><span class="block text-[12.5px] text-[#6b7780]">Document enregistré</span></span>
                                 <span class="text-[#3d6a8e] font-bold text-[14px]">Voir</span>
                             </a>

@@ -132,6 +132,7 @@ require_once 'partials/header.php';
         </div>
         <div class="mt-6 flex justify-end"><button class="ds-btn" type="submit">Changer le mot de passe</button></div>
     </form>
+    <p class="mt-8 text-[13.5px] text-[#6b7780]">Vie privée : <a class="underline font-semibold" href="mes_donnees">télécharger mes données ou supprimer mon compte</a>.</p>
 </main>
 
 <?php require_once 'partials/footer.php'; ?>

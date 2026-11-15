@@ -1,6 +1,7 @@
 <?php
 // api/request_password_reset.php
 require_once 'config.php';
+require_once __DIR__ . '/security.php';
 require_once 'mail_config.php';
 
 header('Content-Type: application/json');
@@ -8,6 +9,9 @@ $input = json_decode(file_get_contents('php://input'), true);
 $email = trim($input['mail'] ?? '');
 
 if (empty($email)) { echo json_encode(['error' => 'Email requis.']); exit; }
+// Anti-abus : peu de demandes par adresse IP et par e-mail ; réponse identique pour ne rien révéler (même texte que le succès)
+if (sec_blocked($pdo, 'reset', sec_ip(), 6, 60) || sec_blocked($pdo, 'reset', $email, 3, 60)) { echo json_encode(['success' => 'Si cet email existe, un lien a été envoyé.']); exit; }
+sec_hit($pdo, 'reset', sec_ip()); sec_hit($pdo, 'reset', $email);
 
 try {
     // 1. Vérifier si l'user existe

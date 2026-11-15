@@ -1,6 +1,7 @@
 <?php
 // api/user_login.php
 require_once 'config.php';
+require_once __DIR__ . '/security.php';
 
 header('Content-Type: application/json');
 
@@ -45,11 +46,14 @@ try {
 
         // Connexion OK
         if (session_status() === PHP_SESSION_NONE) session_start();
-        unset($user['password']); // Sécurité
+        unset($user['password'], $user['remember_token'], $user['verification_token']); // Sécurité
+        session_regenerate_id(true);
         $_SESSION['user'] = $user;
+        sec_clear($pdo, 'login', (string)$email);
 
         echo json_encode(['success' => true]);
     } else {
+        sec_hit($pdo, 'login', sec_ip()); sec_hit($pdo, 'login', (string)$email);
         echo json_encode(['error' => 'Email ou mot de passe incorrect.']);
     }
 

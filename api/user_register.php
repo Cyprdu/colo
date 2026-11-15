@@ -1,6 +1,7 @@
 <?php
 // api/user_register.php
 require_once 'config.php';
+require_once __DIR__ . '/security.php';
 require_once 'mail_config.php';
 
 header('Content-Type: application/json');
@@ -20,6 +21,10 @@ $role = $input['role'] ?? 'parent';
 $bafa = !empty($input['bafa']) ? 1 : 0;
 $is_animateur = ($role === 'animateur') ? 1 : 0;
 
+if (sec_blocked($pdo, 'register', sec_ip(), 8, 60)) { echo json_encode(['error' => 'Trop de créations de compte depuis cette adresse. Réessayez plus tard.']); exit; }
+if (!sec_turnstile_ok((string)($input['cf-turnstile-response'] ?? ''))) { echo json_encode(['error' => 'Vérification anti-robot échouée. Réessayez.']); exit; }
+if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190) { echo json_encode(['error' => 'Adresse e-mail invalide.']); exit; }
+if (mb_strlen((string)$password) < 8) { echo json_encode(['error' => 'Le mot de passe doit contenir au moins 8 caractères.']); exit; }
 if (empty($nom) || empty($prenom) || empty($email) || empty($password)) {
     echo json_encode(['error' => 'Tous les champs sont requis.']);
     exit;
@@ -38,7 +43,7 @@ try {
     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
     
     // Génération des codes
-    $verificationCode = rand(100000, 999999);
+    $verificationCode = random_int(100000, 999999);
     $urlToken = substr(bin2hex(random_bytes(13)), 0, 25);
 
     // Insertion
@@ -52,6 +57,8 @@ try {
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$nom, $prenom, $email, $passwordHash, $verificationCode, $urlToken, $is_animateur, $bafa]);
+    sec_hit($pdo, 'register', sec_ip());
+    consent_log($pdo, (int)$pdo->lastInsertId(), 'cgu_confidentialite');   // preuve de l'acceptation des CGU / politique de confidentialité
 
     // --- CONSTRUCTION DE L'EMAIL (Design Corrigé) ---
     $subject = "Activez votre compte ColoMap";

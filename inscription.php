@@ -488,7 +488,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         const b = (val) => val == 1 ? '<span class="text-[#3b4a54] font-bold">OUI</span>' : '<span class="text-red-500">NON</span>';
         
         // Liens documents
-        const docLink = (token, label) => token ? `<a href="uploads/${label == 'Carnet' ? 'sante' : 'sanitaire'}/${token}" target="_blank" class="text-[#3d6a8e] underline">Voir ${label}</a>` : '<span class="text-red-500">Manquant</span>';
+        const docLink = (token, label) => token ? `<a href="api/secure_file.php?type=${label == 'Carnet' ? 'sante' : 'sanitaire'}&file=${encodeURIComponent(token)}" target="_blank" class="text-[#3d6a8e] underline">Voir ${label}</a>` : '<span class="text-red-500">Manquant</span>';
 
         return `
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-sm">

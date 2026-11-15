@@ -49,6 +49,7 @@ require_once 'partials/auth_start.php';
         </div>
 
         <button type="submit" class="auth-btn" id="register-btn"><span>Rejoindre l'aventure</span><i class="fa-solid fa-arrow-right arrow"></i><span class="spin"></span></button>
+    <?php require_once __DIR__ . "/api/security.php"; echo sec_turnstile_widget(); ?>
     </form>
 </div>
 
@@ -93,7 +94,8 @@ require_once 'partials/auth_start.php';
         const formData = {
             nom: $('nom').value, prenom: $('prenom').value, mail: $('mail').value, naissance: $('naissance').value,
             sexe: $('sexe').value, password: $('password').value,
-            role: document.querySelector('input[name="role"]:checked').value, bafa: $('bafa').checked
+            role: document.querySelector('input[name="role"]:checked').value, bafa: $('bafa').checked,
+            'cf-turnstile-response': (document.querySelector('[name="cf-turnstile-response"]') || {}).value || ''
         };
         try {
             const response = await fetch('api/user_register.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });

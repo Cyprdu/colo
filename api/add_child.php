@@ -17,7 +17,12 @@ if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Non connecté'], 40
 
 // --- Helpers ---
 function cleanInput($key) { return !empty($_POST[$key]) ? trim($_POST[$key]) : null; }
-function generateToken($ext) { return bin2hex(random_bytes(32)) . '.' . $ext; }
+function generateToken($ext) {
+    // Liste blanche : jamais l'extension envoyée telle quelle (un .php déposé ici serait exécutable)
+    $ext = strtolower((string)$ext);
+    if (!in_array($ext, ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf'], true)) throw new Exception('Format de fichier non accepté (PDF, JPG ou PNG uniquement).');
+    return bin2hex(random_bytes(32)) . '.' . $ext;
+}
 
 try {
     enfants_ensure($pdo);
@@ -319,6 +324,12 @@ try {
         cleanInput('commentaires'),
         enfant_new_public_id()
     ]);
+
+    // Preuve des consentements donnés à la création de la fiche (date, version du texte, adresse IP hachée)
+    require_once __DIR__ . '/security.php';
+    $uidC = (int)$_SESSION['user']['id'];
+    foreach (['accord_parental', 'droit_image', 'cgv_accepte', 'newsletter_accepte', 'autorisation_contact'] as $c) consent_log($pdo, $uidC, $c, null, isset($_POST[$c]));
+    consent_log($pdo, $uidC, 'donnees_sante_enfant', null, true);   // l'envoi des informations de santé vaut consentement explicite à leur traitement
 
     header('Location: ../' . cleanInput('redirect_url') . '?success=child_added');
 

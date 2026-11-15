@@ -54,6 +54,7 @@
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgu">CGU</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#confidentialite">Politique de confidentialité</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies">Cookies</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="mes_donnees">Mes données</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#accessibilite">Accessibilité</a></li>
                 </ul>
             </nav>

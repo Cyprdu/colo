@@ -2,6 +2,7 @@
 // Fichier: login.php
 session_start();
 require_once 'api/config.php';
+require_once 'api/security.php';
 
 // Page à ouvrir après connexion :
 //   ?next=nom_de_page            (nom simple)
@@ -75,7 +76,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = $_POST['password'];
     $remember = isset($_POST['remember_me']);
 
-    if (!empty($email) && !empty($password)) {
+    $ipKey = sec_ip(); $mailKey = (string)$email;
+    if (sec_blocked($pdo, 'login', $ipKey, 25, 15) || ($mailKey !== '' && sec_blocked($pdo, 'login', $mailKey, 6, 15))) {
+        $error = "Trop de tentatives de connexion. Patientez quelques minutes avant de réessayer.";
+    } elseif (!sec_turnstile_ok()) {
+        $error = "Vérification anti-robot échouée. Réessayez.";
+    } elseif (!empty($email) && !empty($password)) {
         try {
             $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
             $stmt->execute([$email]);
@@ -92,8 +98,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     if (isset($user['is_active']) && $user['is_active'] == 0) {
                         $error = "Votre compte a été désactivé. Contactez le support.";
                     } else {
-                        // Connexion réussie
+                        // Connexion réussie : nouvel identifiant de session (anti-fixation), et le hachage du mot de passe ne reste pas en session
+                        session_regenerate_id(true);
+                        unset($user['password'], $user['remember_token'], $user['verification_token']);
                         $_SESSION['user'] = $user;
+                        sec_clear($pdo, 'login', $mailKey);
 
                         // Si l'utilisateur n'avait pas son email vérifié mais qu'il se connecte (cas rare ici mais possible), 
                         // on peut considérer que le login valide l'accès, ou on laisse tel quel.
@@ -104,7 +113,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $hash = hash('sha256', $token);
                             try {
                                 $pdo->prepare("UPDATE users SET remember_token = ? WHERE id = ?")->execute([$hash, $user['id']]);
-                                setcookie('remember_me', $user['id'] . ':' . $token, time() + (86400 * 30), "/", "", false, true);
+                                setcookie('remember_me', $user['id'] . ':' . $token, ['expires' => time() + (86400 * 30), 'path' => '/', 'secure' => true, 'httponly' => true, 'samesite' => 'Lax']);
                             } catch (Exception $e) {}
                         } else {
                             if(isset($_COOKIE['remember_me'])) {
@@ -120,13 +129,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     }
                 } else {
                     // Mot de passe incorrect (ou pas de mot de passe car compte 100% Google)
+                    sec_hit($pdo, 'login', $ipKey); sec_hit($pdo, 'login', $mailKey);
                     $error = "Email ou mot de passe incorrect.";
                 }
             } else {
+                sec_hit($pdo, 'login', $ipKey); sec_hit($pdo, 'login', $mailKey);
                 $error = "Email ou mot de passe incorrect.";
             }
         } catch (Exception $e) {
-            $error = "Erreur système : " . $e->getMessage();
+            error_log('login: ' . $e->getMessage());
+            $error = "Connexion momentanément indisponible. Réessayez dans un instant.";
         }
     } else {
         $error = "Veuillez remplir tous les champs.";
@@ -187,6 +199,7 @@ require_once 'partials/auth_start.php';
             <a href="forgot_password.php" class="font-semibold text-[#3d6a8e] hover:text-[#2d5170] hover:underline">Mot de passe oublié ?</a>
         </div>
         <button type="submit" class="auth-btn"><span>Entrer dans l'aventure</span><i class="fa-solid fa-arrow-right arrow"></i><span class="spin"></span></button>
+        <?= sec_turnstile_widget() ?>
     </form>
 
     <div class="auth-or">ou</div>

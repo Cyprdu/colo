@@ -1,6 +1,23 @@
 # Activer le moteur de réécriture
 RewriteEngine On
 
+# --- SÉCURITÉ (avant toute autre règle) ---
+# Jamais d'exécution de code dans les dossiers de dépôt de fichiers (envois d'utilisateurs)
+RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar|pl|py|cgi|sh)$ - [F,L,NC]
+# Fichiers techniques qui n'ont pas à être lus depuis Internet
+RewriteRule ^(composer\.(json|lock)|fiche\.bat|tekle|donn.es\.csv)$ - [F,L,NC]
+RewriteRule ^(vendor|tests|out)/ - [F,L,NC]
+# Documents de santé : jamais en accès direct (seul api/secure_file.php les sert, après contrôle des droits)
+RewriteRule ^uploads/(sante|sanitaire|signatures)/ - [F,L,NC]
+
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(self), payment=(self)"
+</IfModule>
+
 # --- RÈGLE 1 : EXCLUSIONS (TRÈS IMPORTANT) ---
 # Ne rien réécrire si la requête est pour un fichier ou un dossier qui existe.
 # Cela protège les fichiers CSS, JS, images, et les scripts d'API/action.

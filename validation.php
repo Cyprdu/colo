@@ -1,5 +1,6 @@
 <?php
 require_once 'api/config.php';
+require_once 'api/security.php';
 
 // 1. Récupération
 $token = $_GET['t'] ?? '';
@@ -40,8 +41,12 @@ try {
 
     // --- TRAITEMENT FORMULAIRE (Téléphone) ---
     if ($_SERVER["REQUEST_METHOD"] == "POST") {
-        $code = $_POST['full_code'] ?? '';
-        if ($code == $user['verification_token']) {
+        $code = (string)($_POST['full_code'] ?? '');
+        // Code à 6 chiffres : on limite les essais (sinon il se devine en quelques minutes)
+        if (sec_blocked($pdo, 'code', (string)$token, 6, 30) || sec_blocked($pdo, 'code', sec_ip(), 30, 30)) {
+            $error = "Trop d'essais. Patientez 30 minutes, puis redemandez un code si besoin.";
+        } elseif (hash_equals((string)$user['verification_token'], $code)) {
+            sec_clear($pdo, 'code', (string)$token);
             
             // VALIDATION : On passe is_verified à 1
             // IMPORTANT : On NE supprime PAS encore le url_token ici
@@ -60,6 +65,7 @@ try {
             // Redirection
             header("refresh:2;url=index.php");
         } else {
+            sec_hit($pdo, 'code', (string)$token); sec_hit($pdo, 'code', sec_ip());
             $error = "Code incorrect.";
         }
     }
