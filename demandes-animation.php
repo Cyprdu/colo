@@ -24,7 +24,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
     <div class="ds-card w-full overflow-y-auto" style="max-width:640px;max-height:90vh"><div id="modal-body" class="p-6 sm:p-8"></div></div>
 </div>
 
-<script src="assets/js/anim.js?v=1"></script>
+<script src="assets/js/anim.js?v=3"></script>
 <script>
 (function () {
     var A = window.ANIM, E = A.esc, $ = function (i) { return document.getElementById(i); };
@@ -98,9 +98,10 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
                 '<div class="mt-5 grid sm:grid-cols-2 gap-3 text-[14px]"><p><span class="text-[#6b7780]">E-mail</span><br><a class="underline" href="mailto:' + E(u.email) + '">' + E(u.email) + '</a></p><p><span class="text-[#6b7780]">Téléphone</span><br>' + E(u.tel || 'Non renseigné') + '</p></div>' +
                 sec('Présentation', p.presentation) + sec('Numéro de BAFA', p.bafa_numero) + sec('Formation / équivalence', p.formation) + sec('Expériences', p.experiences) + sec('Disponibilités', p.disponibilites) + sec('Message pour ce séjour', d.message) +
                 (p.has_cv ? '<p class="mt-5"><a class="ds-btn ds-btn-light" target="_blank" rel="noopener" href="api/anim_cv.php?c=' + encodeURIComponent(c) + '">' + A.icon('file') + ' Ouvrir le CV (' + E(p.cv_nom || 'fichier') + ')</a></p>' : '<p class="mt-5 text-[13px] text-[#6b7780]">Aucun CV joint.</p>') +
-                '<div class="mt-6 border-t border-[#e5e7eb] pt-5"><label class="ds-label" for="note">Message à l’animateur (facultatif, joint à la notification)</label><textarea id="note" rows="2" maxlength="500" class="ds-textarea">' + E(d.note || '') + '</textarea>' +
+                '<p class="mt-5"><button class="ds-btn ds-btn-light" id="ecrire" type="button">Écrire à l\u2019animateur</button></p><div class="mt-6 border-t border-[#e5e7eb] pt-5"><label class="ds-label" for="note">Message à l’animateur (facultatif, joint à la notification)</label><textarea id="note" rows="2" maxlength="500" class="ds-textarea">' + E(d.note || '') + '</textarea>' +
                 '<div class="mt-4 flex flex-wrap gap-2"><button class="ds-btn" data-s="Accepté">Accepter</button><button class="ds-btn ds-btn-light" data-s="Liste d\'attente">Liste d’attente</button><button class="ds-btn ds-btn-light" data-s="Refusé">Refuser</button></div></div>';
             $('close').addEventListener('click', closeM);
+            $('ecrire').addEventListener('click', async function () { try { var r = await A.api('api/anim_contact.php', { json: { c: c } }); location.href = r.url; } catch (e) { A.toast(e.message, true); } });
             [].forEach.call(body.querySelectorAll('[data-s]'), function (b) {
                 b.addEventListener('click', async function () {
                     b.disabled = true;

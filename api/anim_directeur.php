@@ -30,7 +30,7 @@ try {
     if ($a === 'sejours' && !$post) {
         $st = $pdo->prepare("SELECT c.token, c.nom, c.ville, c.date_debut, c.date_fin, c.recrute_animateurs, c.equipe_active, c.anim_remuneration, c.quota_max_anim, c.equipe_quota,
                 (SELECT COUNT(*) FROM equipe_inscriptions WHERE camp_id = c.id AND statut <> 'Annulé' AND (statut_paiement <> 'EN_ATTENTE' OR created_at > (NOW() - INTERVAL 30 MINUTE))) AS equipe_inscrits,
-                (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id) AS total,
+                (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id AND statut <> 'Retirée') AS total,
                 (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id AND statut = 'En attente') AS en_attente,
                 (SELECT COUNT(*) FROM candidatures WHERE camp_id = c.id AND statut = 'Accepté') AS acceptes
             FROM camps c JOIN organisateurs o ON o.id = c.organisateur_id
@@ -59,7 +59,7 @@ try {
                     u.prenom, u.nom, p.bafa_statut, p.cv_fichier IS NOT NULL AS has_cv
                 FROM candidatures cd JOIN camps c ON c.id = cd.camp_id JOIN organisateurs o ON o.id = c.organisateur_id
                 JOIN users u ON u.id = cd.user_id LEFT JOIN animateur_profils p ON p.user_id = cd.user_id
-                WHERE o.user_id = ?";
+                WHERE o.user_id = ? AND cd.statut <> 'Retirée'";
         $args = [$uid];
         if (!empty($_GET['camp'])) { $camp = anim_mon_camp($pdo, (string)$_GET['camp'], $uid); $sql .= " AND c.id = ?"; $args[] = $camp['id']; }
         $st = $pdo->prepare($sql . " ORDER BY FIELD(cd.statut, 'En attente', 'Liste d''attente', 'Accepté', 'Refusé'), cd.created_at DESC");
@@ -75,6 +75,7 @@ try {
         $u = $pdo->prepare("SELECT prenom, nom, email, tel, date_naissance, sexe FROM users WHERE id = ?");
         $u->execute([$cd['user_id']]);
         $user = $u->fetch(PDO::FETCH_ASSOC) ?: [];
+        if ($cd['statut'] === 'En attente' && empty($cd['vue_at'])) $pdo->prepare("UPDATE candidatures SET vue_at = NOW() WHERE id = ?")->execute([$cd['id']]);
         $age = !empty($user['date_naissance']) ? (new DateTime($user['date_naissance']))->diff(new DateTime())->y : null;
         $p = anim_profil($pdo, (int)$cd['user_id']);
         // Autres séjours du même directeur auxquels cet animateur a déjà été accepté (utile pour la vue équipe)
@@ -156,7 +157,8 @@ try {
         $st->execute([$camp['id']]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         $rep = $pdo->prepare("SELECT champ_id, libelle, valeur FROM equipe_reponses WHERE equipe_id = ?");
-        $cell = function ($v) { $v = (string)$v; return preg_match('/^[=+\-@	]/', $v) ? "'" . $v : $v; }; // anti-injection de formule tableur
+        $cell = function ($v) { $v = (string)$v; return preg_match('/^[=+\-@	
+]/', $v) ? "'" . $v : $v; }; // anti-injection de formule tableur
         $head = ['Prénom', 'Nom', 'Date de naissance', 'E-mail', 'Téléphone', 'Diplôme (statut)', 'Diplôme / formation', 'Allergies', 'Régime', 'Urgence (nom)', 'Urgence (tél.)', 'Participation', 'Montant', 'Paiement', 'Inscrit le'];
         foreach ($champs as $c) $head[] = $c['libelle'];
         header('Content-Type: text/csv; charset=utf-8');

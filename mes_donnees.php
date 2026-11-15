@@ -60,7 +60,7 @@ require_once 'partials/header.php';
 
     <section class="ds-card p-6 sm:p-8 mt-6" aria-labelledby="h-export">
         <h2 id="h-export" class="ds-eyebrow mb-2">Télécharger mes données</h2>
-        <p class="text-[14.5px] text-[#4b5964]">Un fichier unique (JSON) avec votre compte, vos enfants, vos inscriptions, vos messages, vos consentements et les accès aux documents de santé de vos enfants.</p>
+        <p class="text-[14.5px] text-[#4b5964]">Un fichier unique (JSON) avec votre compte, vos enfants, vos inscriptions, vos messages, vos consentements, les accès aux documents de santé de vos enfants et, si vous êtes animateur, votre profil de candidature, vos préférences, vos candidatures et vos inscriptions à des équipes d'animation (votre CV est supprimé avec votre compte).</p>
         <form method="POST" action="api/rgpd_export.php" class="mt-4"><?= csrf_field() ?><button class="ds-btn" type="submit">Télécharger mes données</button></form>
     </section>
 

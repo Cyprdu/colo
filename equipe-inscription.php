@@ -12,7 +12,7 @@ if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlenc
     <p class="ds-eyebrow">Équipe d'animation</p>
     <div id="box" class="mt-2"><p class="text-[#6b7780]">Chargement…</p></div>
 </main>
-<script src="assets/js/anim.js?v=2"></script>
+<script src="assets/js/anim.js?v=3"></script>
 <script>
 (function () {
     var A = window.ANIM, E = A.esc, L = <?= json_encode($l) ?>, box = document.getElementById('box'), I;

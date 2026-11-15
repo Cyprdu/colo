@@ -131,7 +131,7 @@ $tk = $tick ?? '';
     }
     async function save(campToken) {
         var body = collect(); body.camp = campToken;
-        var r = await fetch('api/anim_directeur.php?a=config', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        var r = await fetch('api/anim_directeur.php?a=config', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name=csrf]') || {}).content || '' }, body: JSON.stringify(body) });
         var d = {}; try { d = await r.json(); } catch (x) { }
         if (!r.ok) throw new Error(d.error || 'Réglages des animateurs non enregistrés.');
         return d;

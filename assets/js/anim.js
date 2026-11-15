@@ -23,13 +23,27 @@ window.ANIM = (function () {
     }
     function money(n) { n = Number(n); return (Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',')) + ' €'; }
     var BAFA = { bafa: 'BAFA obtenu', en_cours: 'BAFA en cours', equivalent: 'Diplôme équivalent', aucun: 'Sans BAFA' };
-    function statut(s) {
-        var m = { 'En attente': ['#f8f5ea', '#5b4a1c', 'En attente'], 'Accepté': ['#e3efe6', '#1f5a33', 'Accepté'], 'Refusé': ['#f3e6e6', '#7a2b2b', 'Refusé'], "Liste d'attente": ['#e5eaef', '#2d5170', "Liste d'attente"] }[s] || ['#f1f3f5', '#3b4a54', s];
+    // Statut affiché à l'animateur : « Envoyée » tant que le directeur n'a pas ouvert le dossier, puis « Vue »
+    function statut(s, vue) {
+        if (s === 'En attente') s = vue ? 'Vue' : 'Envoyée';
+        var m = { 'Envoyée': ['#f8f5ea', '#5b4a1c', 'Envoyée'], 'Vue': ['#e5eaef', '#2d5170', 'Vue par le directeur'], 'Retirée': ['#f1f3f5', '#6b7780', 'Retirée'], 'En attente': ['#f8f5ea', '#5b4a1c', 'En attente'], 'Accepté': ['#e3efe6', '#1f5a33', 'Accepté'], 'Refusé': ['#f3e6e6', '#7a2b2b', 'Refusé'], "Liste d'attente": ['#e5eaef', '#2d5170', "Liste d'attente"] }[s] || ['#f1f3f5', '#3b4a54', s];
         return '<span class="ds-badge" style="background:' + m[0] + ';color:' + m[1] + '">' + esc(m[2]) + '</span>';
+    }
+    function csrf() { var m = document.querySelector('meta[name=csrf]'); return m ? m.content : ''; }
+    function card(c) {
+        var img = c.image_url ? '<img src="' + esc(c.image_url) + '" alt="" loading="lazy" class="w-full h-full object-cover">' : '';
+        var tags = (c.raisons || []).map(function (t) { return '<span class="ds-badge" style="background:#eef2f4">' + esc(t) + '</span>'; }).join('');
+        return '<a href="info-camp-animateur?t=' + encodeURIComponent(c.token) + '" class="ds-tile ds-fade" style="flex-direction:column;align-items:stretch;padding:0;overflow:hidden">' +
+            '<div style="height:140px;background:#e5eaef">' + img + '</div><div style="padding:16px">' +
+            '<p class="ds-eyebrow">' + esc(c.organisateur || '') + '</p><h3 class="font-extrabold text-[16px] text-[#26343b] mt-1">' + esc(c.nom) + '</h3>' +
+            '<p class="mt-2 text-[13px] text-[#6b7780] flex items-center gap-2">' + icon('pin') + esc(c.ville) + '</p>' +
+            '<p class="mt-1 text-[13px] text-[#6b7780] flex items-center gap-2">' + icon('cal') + esc(range(c.date_debut, c.date_fin)) + '</p>' +
+            '<div class="mt-3 flex flex-wrap gap-2">' + (tags || ('<span class="ds-badge">' + (c.remuneration ? 'Rémunéré · ' + money(c.remuneration) : 'Bénévole') + '</span>')) + '</div></div></a>';
     }
     async function api(url, opts) {
         opts = opts || {};
         if (opts.json) { opts.method = 'POST'; opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(opts.json); }
+        if (opts.method === 'POST') opts.headers = Object.assign({ 'X-CSRF-Token': csrf() }, opts.headers || {});   // protection CSRF (api/security.php)
         var r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts));
         var d = null; try { d = await r.json(); } catch (e) { }
         if (!r.ok) { var err = new Error((d && (d.error || d.message)) || 'Une erreur est survenue.'); err.data = d; throw err; }
@@ -43,5 +57,5 @@ window.ANIM = (function () {
         t.textContent = msg; document.body.appendChild(t);
         setTimeout(function () { t.remove(); }, 2800);
     }
-    return { esc: esc, icon: icon, day: day, range: range, money: money, BAFA: BAFA, statut: statut, api: api, toast: toast };
+    return { csrf: csrf, card: card, esc: esc, icon: icon, day: day, range: range, money: money, BAFA: BAFA, statut: statut, api: api, toast: toast };
 })();

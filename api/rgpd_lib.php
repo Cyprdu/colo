@@ -36,6 +36,15 @@ function rgpd_export(PDO $pdo, int $uid): array {
     $st->execute([$uid]);
     $out['inscriptions'] = $st->fetchAll(PDO::FETCH_ASSOC);
 
+    // Espace animateur : profil de candidature, préférences, candidatures, inscriptions à une équipe d'animation (le CV n'est signalé que par son nom)
+    try {
+        $st = $pdo->prepare("SELECT presentation, bafa_statut, bafa_numero, formation, experiences, disponibilites, cv_nom, updated_at FROM animateur_profils WHERE user_id = ?"); $st->execute([$uid]);
+        $out['animateur_profil'] = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        $st = $pdo->prepare("SELECT * FROM animateur_prefs WHERE user_id = ?"); $st->execute([$uid]); $out['animateur_preferences'] = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        $st = $pdo->prepare("SELECT c.nom AS sejour, cd.motivation, cd.statut, cd.created_at, cd.decided_at FROM candidatures cd LEFT JOIN camps c ON c.id = cd.camp_id WHERE cd.user_id = ? ORDER BY cd.id"); $st->execute([$uid]); $out['animateur_candidatures'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        $st = $pdo->prepare("SELECT c.nom AS sejour, e.prenom, e.nom, e.date_naissance, e.email, e.tel, e.bafa_statut, e.diplome, e.allergies, e.regime, e.urgence_nom, e.urgence_tel, e.tarif_nom, e.prix_final, e.statut, e.statut_paiement, e.created_at
+                             FROM equipe_inscriptions e LEFT JOIN camps c ON c.id = e.camp_id WHERE e.user_id = ? ORDER BY e.id"); $st->execute([$uid]); $out['equipe_animation_inscriptions'] = $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {}
     try { $st = $pdo->prepare("SELECT conversation_id, content, created_at FROM messages WHERE sender_id = ? ORDER BY id"); $st->execute([$uid]); $out['messages_envoyes'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
     try { $st = $pdo->prepare("SELECT type, version, accepte, created_at FROM consentements WHERE user_id = ? ORDER BY id"); $st->execute([$uid]); $out['consentements'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
     try { $st = $pdo->prepare("SELECT enfant_id, type, created_at FROM acces_sante WHERE enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) ORDER BY id DESC LIMIT 500"); $st->execute([$uid]); $out['acces_aux_documents_de_sante'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
@@ -52,6 +61,11 @@ function rgpd_obstacle(PDO $pdo, int $uid): ?string {
                          WHERE e.parent_id = ? AND COALESCE(i.statut, '') NOT IN ('Annulé', 'annule', 'Annule') AND COALESCE(c.date_fin, c.date_debut) >= CURDATE()");
     $st->execute([$uid]);
     if ((int)$st->fetchColumn() > 0) return "Vous avez encore des réservations à venir ou en cours. Annulez-les d'abord (ou attendez la fin des séjours), puis supprimez votre compte.";
+    try {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM equipe_inscriptions e JOIN camps c ON c.id = e.camp_id WHERE e.user_id = ? AND e.statut <> 'Annulé' AND COALESCE(c.date_fin, c.date_debut) >= CURDATE()");
+        $st->execute([$uid]);
+        if ((int)$st->fetchColumn() > 0) return "Vous êtes encore inscrit comme animateur à un séjour à venir ou en cours. Annulez cette inscription (ou attendez la fin du séjour), puis supprimez votre compte.";
+    } catch (Throwable $e) {}
     return null;
 }
 
@@ -84,6 +98,21 @@ function rgpd_delete_account(PDO $pdo, int $uid): void {
         // 3. réponses aux questions personnalisées des séjours
         if (rgpd_table_exists($pdo, 'inscription_reponses'))
             $pdo->prepare("UPDATE inscription_reponses SET valeur = '' WHERE inscription_id IN (SELECT i.id FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE e.parent_id = ?)")->execute([$uid]);
+
+        // 3 bis. espace animateur : profil, CV (fichier), préférences, candidatures, notifications ; inscriptions d'équipe anonymisées (pièces comptables conservées)
+        if (rgpd_table_exists($pdo, 'animateur_profils')) {
+            $q = $pdo->prepare("SELECT cv_fichier FROM animateur_profils WHERE user_id = ?"); $q->execute([$uid]);
+            $cv = (string)$q->fetchColumn();
+            if (preg_match('/^[a-f0-9]{40}\.(pdf|docx?)$/', $cv)) $files[] = $root . 'cv/' . $cv;
+            $pdo->prepare("DELETE FROM animateur_profils WHERE user_id = ?")->execute([$uid]);
+        }
+        foreach (['animateur_prefs', 'animateur_notifs'] as $t) if (rgpd_table_exists($pdo, $t)) $pdo->prepare("DELETE FROM `$t` WHERE user_id = ?")->execute([$uid]);
+        if (rgpd_table_exists($pdo, 'candidatures')) $pdo->prepare("DELETE FROM candidatures WHERE user_id = ?")->execute([$uid]);
+        if (rgpd_table_exists($pdo, 'equipe_inscriptions')) {
+            $pdo->prepare("UPDATE equipe_inscriptions SET prenom = 'Supprimé', nom = '', date_naissance = NULL, email = '', tel = NULL, diplome = NULL, allergies = NULL, regime = NULL, urgence_nom = NULL, urgence_tel = NULL
+                           WHERE user_id = ?")->execute([$uid]);
+            $pdo->prepare("UPDATE equipe_reponses SET valeur = '' WHERE equipe_id IN (SELECT id FROM equipe_inscriptions WHERE user_id = ?)")->execute([$uid]);
+        }
 
         // 4. messages écrits par la personne
         if (rgpd_table_exists($pdo, 'messages')) $pdo->prepare("UPDATE messages SET content = '[message supprimé]' WHERE sender_id = ?")->execute([$uid]);
