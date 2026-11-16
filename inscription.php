@@ -145,7 +145,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                                     <?php if ($blq && $blq['sexe']): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#5b4a1c] bg-[#f8f5ea] px-2 py-0.5 rounded">Séjour réservé aux <?= $camp['reserve_sexe'] === SEXE_FILLE ? 'filles' : 'garçons' ?></span>
                                     <?php elseif($isInscrit): ?>
-                                        <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit</span>
+                                        <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit<?= ($enfant['sexe'] ?? '') === 'Femme' ? 'e' : '' ?></span>
                                     <?php elseif ($blq && $blq['manque']): ?>
                                         <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child.php?id=<?= (int)$enfant['id'] ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
                                     <?php endif; ?>
