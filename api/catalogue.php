@@ -321,3 +321,18 @@ function cat_backfill(PDO $pdo, int $lot = 400): int {
     } catch (Throwable $e) { error_log('cat_backfill: ' . $e->getMessage()); }
     return $n;
 }
+
+/** Catalogue sous la forme envoyée aux navigateurs (formulaire du directeur, page de recherche). */
+function cat_pour_js(array $catalogue): array {
+    $out = [];
+    foreach ($catalogue as $c) {
+        $f = [];
+        foreach ($c['facettes'] as $fa) {
+            $v = [];
+            foreach ($fa['valeurs'] as $k => $l) $v[] = ['cle' => (string)$k, 'libelle' => $l];
+            $f[] = ['cle' => $fa['cle'], 'nom' => $fa['nom'], 'type' => $fa['type'], 'aide' => $fa['aide'], 'valeurs' => $v];
+        }
+        $out[] = ['slug' => $c['slug'], 'nom' => $c['nom'], 'theme' => $c['theme'], 'facettes' => $f];
+    }
+    return $out;
+}

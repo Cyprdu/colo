@@ -1,0 +1,72 @@
+/* ColoMap : champ de mots-clés (pastilles), choix des catégories et précisions, interface de recherche.
+   S'appuie sur les variables du design system (assets/ds.css). */
+
+/* ---------- mots-clés ---------- */
+.mc-box { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 50px; padding: 8px 12px; background: #fff; border: 1.5px solid var(--ds-line, #e5e7eb); border-radius: 12px; cursor: text; transition: border-color .15s ease, box-shadow .15s ease; }
+.mc-box:focus-within { border-color: var(--ds-btn, #2f3d45); box-shadow: 0 0 0 3px rgba(47, 61, 69, .12); }
+.mc-pill { display: inline-flex; align-items: center; gap: 4px; padding: 5px 6px 5px 12px; border-radius: 9999px; background: var(--ds-soft, #f1f3f5); color: #3b4a54; font-size: 13.5px; font-weight: 700; }
+.mc-pill i { font-style: normal; color: #9aa3ab; margin-right: 1px; }
+.mc-pill button { width: 22px; height: 22px; border-radius: 50%; line-height: 1; color: #6b7780; font-size: 16px; }
+.mc-pill button:hover { background: #dfe5ea; color: var(--ds-ink, #26343b); }
+.mc-input { flex: 1 1 140px; min-width: 120px; border: 0; outline: 0; background: transparent; font-size: 15px; padding: 6px 4px; color: var(--ds-ink, #26343b); }
+.mc-msg { min-height: 20px; margin-top: 6px; font-size: 13px; font-weight: 600; color: #8a5a1c; }
+.mc-help { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: var(--ds-cream, #f8f5ea); color: #5b4a1c; font-size: 13.5px; line-height: 1.5; }
+.mc-help b { color: #3f3312; }
+.mc-sugg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; font-size: 12.5px; color: var(--ds-muted, #6b7780); }
+.mc-sugg button { padding: 4px 11px; border-radius: 9999px; border: 1.5px dashed #b8c2ca; background: #fff; font-size: 12.5px; font-weight: 700; color: #3b4a54; }
+.mc-sugg button:hover { border-style: solid; border-color: var(--ds-btn, #2f3d45); }
+.mc-count { margin-left: auto; font-size: 12px; color: var(--ds-muted, #6b7780); }
+
+/* ---------- catégories et précisions ---------- */
+.cp-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-chip { padding: 9px 15px; border-radius: 9999px; border: 1.5px solid var(--ds-line, #e5e7eb); background: #fff; font-size: 14px; font-weight: 700; color: #3b4a54; transition: all .15s ease; }
+.cp-chip:hover:not(:disabled) { border-color: #a9b8c6; background: #f6f8fa; }
+.cp-chip[aria-pressed="true"] { background: var(--ds-btn, #2f3d45); border-color: var(--ds-btn, #2f3d45); color: #fff; }
+.cp-chip:disabled { opacity: .45; cursor: not-allowed; }
+.cp-step { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 12px; }
+.cp-step b { color: var(--ds-ink, #26343b); font-size: 15px; }
+.cp-step span { color: var(--ds-muted, #6b7780); font-size: 13px; }
+.cp-cards { display: grid; gap: 14px; margin-top: 22px; }
+.cp-card { border: 1.5px solid var(--ds-line, #e5e7eb); border-radius: 18px; background: #fbfcfc; overflow: hidden; animation: cpIn .25s ease both; }
+@keyframes cpIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.cp-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: #fff; border-bottom: 1px solid var(--ds-line, #e5e7eb); flex-wrap: wrap; }
+.cp-title { font-weight: 800; color: var(--ds-ink, #26343b); font-size: 15.5px; }
+.cp-badge { font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; background: var(--ds-soft, #f1f3f5); color: #3b4a54; }
+.cp-badge.main { background: var(--ds-btn, #2f3d45); color: #fff; }
+.cp-prog { margin-left: auto; font-size: 12.5px; color: var(--ds-muted, #6b7780); }
+.cp-link { font-size: 12.5px; font-weight: 700; color: var(--ds-accent, #3d6a8e); text-decoration: underline; }
+.cp-body { padding: 16px; display: grid; gap: 18px; }
+.cp-q { font-size: 13.5px; font-weight: 800; color: var(--ds-ink, #26343b); }
+.cp-q small { font-weight: 600; color: var(--ds-muted, #6b7780); margin-left: 6px; }
+.cp-aide { font-size: 12.5px; color: var(--ds-muted, #6b7780); margin-top: 2px; }
+.cp-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.cp-opt { padding: 7px 13px; border-radius: 9999px; border: 1.5px solid var(--ds-line, #e5e7eb); background: #fff; font-size: 13.5px; font-weight: 600; color: #3b4a54; transition: all .15s ease; }
+.cp-opt:hover { border-color: #a9b8c6; }
+.cp-opt[aria-pressed="true"] { border-color: var(--ds-btn, #2f3d45); background: #eef2f4; color: var(--ds-ink, #26343b); box-shadow: 0 0 0 2px rgba(47, 61, 69, .08); }
+.cp-scale { display: flex; flex-wrap: wrap; gap: 0; margin-top: 8px; }
+.cp-scale .cp-opt { border-radius: 0; margin-left: -1.5px; }
+.cp-scale .cp-opt:first-child { border-radius: 9999px 0 0 9999px; margin-left: 0; }
+.cp-scale .cp-opt:last-child { border-radius: 0 9999px 9999px 0; }
+.cp-scale .cp-opt:only-child { border-radius: 9999px; }
+.cp-scale .cp-opt[aria-pressed="true"] { position: relative; z-index: 1; }
+.cp-empty { padding: 14px 16px; border: 1.5px dashed #c9d2d9; border-radius: 14px; color: var(--ds-muted, #6b7780); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .cp-card { animation: none; } }
+
+/* ---------- recherche : aide à la lecture ---------- */
+.rs-insight { margin-top: 14px; padding: 12px 16px; border-radius: 14px; background: #eef2f4; color: #26343b; font-size: 14px; line-height: 1.5; }
+.rs-insight a, .rs-insight button.lnk { font-weight: 800; text-decoration: underline; color: var(--ds-accent-dark, #2d5170); cursor: pointer; }
+.rs-facet-count { margin-left: auto; font-size: 12px; color: #9aa3ab; font-weight: 600; }
+.rs-fgroup { padding: 14px 0; border-top: 1px solid #e5e7eb; }
+.rs-fgroup:first-child { border-top: 0; }
+.rs-fname { font-size: 13px; font-weight: 800; color: #26343b; margin-bottom: 6px; }
+.rs-cats-label { font-size: 12px; font-weight: 700; color: #6b7780; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+.cat .n { margin-left: 6px; font-size: 12px; font-weight: 600; opacity: .65; }
+
+/* ---------- page « comment fonctionne le classement » ---------- */
+.cl-bar { height: 10px; border-radius: 9999px; background: #e5e7eb; overflow: hidden; }
+.cl-bar span { display: block; height: 100%; background: #3d6a8e; border-radius: 9999px; }
+
+/* ---------- remise à zéro locale des boutons (pages sans le preflight Tailwind) ---------- */
+.mc-pill button, .cp-link, .rs-insight button.lnk { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.mc-pill button { padding: 0; }
+.mc-sugg button, .cp-chip, .cp-opt { cursor: pointer; font-family: inherit; }

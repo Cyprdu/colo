@@ -137,3 +137,11 @@ function mc_depuis_legacy(PDO $pdo, int $campId, string $type): void {
     $ins = $pdo->prepare("INSERT IGNORE INTO camp_motscles (camp_id, mot, label) VALUES (?, ?, ?)");
     foreach ($v['ok'] as $m) $ins->execute([$campId, $m['mot'], $m['label']]);
 }
+
+/** Alias d'un organisme reçus d'un formulaire : contrôlés puis enregistrés. Retourne ['motscles' => [étiquettes acceptées], 'motscles_refuses' => [['label', 'raison']]]. */
+function mc_sauver_orga(PDO $pdo, int $orgaId, string $nom, $raw): array {
+    mc_ensure($pdo);
+    $v = mc_valider($pdo, mc_liste($raw), 'orga', $orgaId, $nom);
+    mc_enregistrer($pdo, 'orga', $orgaId, $v['ok']);
+    return ['motscles' => array_column($v['ok'], 'label'), 'motscles_refuses' => $v['refus']];
+}

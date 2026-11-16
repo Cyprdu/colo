@@ -9,15 +9,14 @@
 
 /** Minuscules, sans accents, tout ce qui n'est pas lettre ou chiffre devient un espace. */
 function sq_norm(string $s): string {
-    $s = mb_strtolower($s, 'UTF-8');
-    if (class_exists('Normalizer')) {
+    static $acc = ['à' => 'a', 'â' => 'a', 'ä' => 'a', 'á' => 'a', 'ã' => 'a', 'å' => 'a', 'ç' => 'c', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i', 'ñ' => 'n', 'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o', 'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ý' => 'y', 'ÿ' => 'y',
+        'œ' => 'oe', 'æ' => 'ae', 'ß' => 'ss'];
+    $s = strtr(mb_strtolower($s, 'UTF-8'), $acc);                       // le cas courant (français) : une seule passe rapide
+    if (class_exists('Normalizer') && preg_match('/[^\x00-\x7F]/', $s)) {   // accents rares (polonais, turc...) : décomposition Unicode
         $n = Normalizer::normalize($s, Normalizer::FORM_D);
         if ($n !== false) $s = preg_replace('/\p{Mn}+/u', '', $n);
-    } else {
-        $s = strtr($s, ['à' => 'a', 'â' => 'a', 'ä' => 'a', 'á' => 'a', 'ã' => 'a', 'å' => 'a', 'ç' => 'c', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
-            'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i', 'ñ' => 'n', 'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o', 'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ý' => 'y', 'ÿ' => 'y']);
     }
-    $s = strtr($s, ['œ' => 'oe', 'æ' => 'ae', 'ß' => 'ss']);
     return trim(preg_replace('/[^a-z0-9]+/', ' ', $s));
 }
 
@@ -36,12 +35,11 @@ function sq_stem(string $w): string {
 
 /** Mots utiles d'un texte déjà normalisé (racines, sans petits mots, sans mots d'une seule lettre). $sansGeneriques : retire aussi « colo », « camp »... */
 function sq_tokens(string $norm, bool $sansGeneriques = false): array {
-    static $gen = null;
-    if ($gen === null) $gen = array_fill_keys(array_map('sq_stem', SQ_GENERIC), true);
+    static $gen = null, $stop = null;
+    if ($gen === null) { $gen = array_fill_keys(array_map('sq_stem', SQ_GENERIC), true); $stop = array_flip(SQ_STOP); }
     $out = [];
     foreach (explode(' ', $norm) as $w) {
-        if ($w === '' || in_array($w, SQ_STOP, true)) continue;
-        if (strlen($w) < 2) continue;
+        if (strlen($w) < 2 || isset($stop[$w])) continue;
         $w = sq_stem($w);
         if ($sansGeneriques && isset($gen[$w])) continue;
         $out[$w] = true;

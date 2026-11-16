@@ -116,8 +116,14 @@ function sq_kw_confiance(array $toks, array $contenu, array $freq, string $nom, 
  * Transforme un séjour en document de recherche.
  * $c : id, organisateur_id, nom, organisateur_nom, ville, code_postal, theme, type, description, kw_camp[], kw_orga[], cats[slug], facets[[cat, facette, valeur]]
  */
-function sq_doc(array $c, array $catalogue, array $freq = []): array {
+function sq_doc(array $c, array $catalogue, array $freq = [], bool $avecTexte = true): array {
     $set = function (string $s, bool $generiques = false) { return array_fill_keys(sq_tokens(sq_norm($s), $generiques), 1); };
+    if (!$avecTexte) {   // simple parcours du catalogue : seuls les filtres ont besoin du document
+        $cats = []; $fv = [];
+        foreach ((array)($c['cats'] ?? []) as $i => $slug) if (isset($catalogue[$slug])) $cats[$slug] = $i === 0 ? 1 : 0;
+        foreach ((array)($c['facets'] ?? []) as [$cat, $fac, $val]) if (isset($catalogue[$cat]['facettes'][$fac]['valeurs'][$val])) $fv[$cat . ':' . $fac . ':' . $val] = 1;
+        return ['id' => (int)$c['id'], 'orga' => (int)($c['organisateur_id'] ?? 0), 'grp' => !empty($c['groupe_id']) ? 'g' . (int)$c['groupe_id'] : 'c' . (int)$c['id'], 'f' => [], 'cat' => $cats, 'fv' => $fv];
+    }
     $f = [
         'nom' => $set((string)($c['nom'] ?? '')), 'nom_orga' => $set((string)($c['organisateur_nom'] ?? '')),
         'ville' => $set(trim(($c['ville'] ?? '') . ' ' . ($c['code_postal'] ?? ''))),
@@ -145,7 +151,7 @@ function sq_doc(array $c, array $catalogue, array $freq = []): array {
         foreach ($toks as $t) $f['kw_camp'][$t] = max($f['kw_camp'][$t] ?? 0, $trust);
     }
     foreach ((array)($c['kw_orga'] ?? []) as $label) foreach (sq_tokens(mc_norm((string)$label)) as $t) $f['kw_orga'][$t] = 1.0;
-    return ['id' => (int)$c['id'], 'orga' => (int)($c['organisateur_id'] ?? 0), 'f' => $f, 'cat' => $cats, 'fv' => $fv];
+    return ['id' => (int)$c['id'], 'orga' => (int)($c['organisateur_id'] ?? 0), 'grp' => !empty($c['groupe_id']) ? 'g' . (int)$c['groupe_id'] : 'c' . (int)$c['id'], 'f' => $f, 'cat' => $cats, 'fv' => $fv];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -264,18 +270,41 @@ function sq_passe(array $doc, array $sel, ?array $excl = null): bool {
     return $sel['all'] ? true : $hits > 0;
 }
 
-/** Compteurs : par catégorie (tous les séjours trouvés) et par réponse des catégories choisies (les autres filtres appliqués). */
+/** Compteurs : par catégorie (tous les séjours trouvés) et par réponse des catégories choisies (les autres filtres appliqués). Un camp à plusieurs sessions compte une fois. */
 function sq_comptes(array $docs, array $sel): array {
-    $cats = []; $vals = [];
+    $cats = []; $vals = []; $seen = [];
     foreach ($docs as $d) {
-        foreach ($d['cat'] as $c => $_) $cats[$c] = ($cats[$c] ?? 0) + 1;
+        foreach ($d['cat'] as $c => $_) { if (isset($seen['c:' . $c][$d['grp']])) continue; $seen['c:' . $c][$d['grp']] = 1; $cats[$c] = ($cats[$c] ?? 0) + 1; }
         if (!$sel['cats']) continue;
         foreach ($d['fv'] as $key => $_) {
             $p = explode(':', $key, 3);
-            if (in_array($p[0], $sel['cats'], true) && sq_passe($d, $sel, [$p[0], $p[1]])) $vals[$key] = ($vals[$key] ?? 0) + 1;
+            if (!in_array($p[0], $sel['cats'], true) || isset($seen[$key][$d['grp']])) continue;
+            if (sq_passe($d, $sel, [$p[0], $p[1]])) { $seen[$key][$d['grp']] = 1; $vals[$key] = ($vals[$key] ?? 0) + 1; }
         }
     }
     return ['cats' => $cats, 'vals' => $vals];
+}
+
+/** Les filtres à afficher : catégories avec leur compteur, et pour chaque catégorie choisie ses précisions avec les compteurs. */
+function sq_facettes_reponse(array $catalogue, array $comptes, array $sel): array {
+    $cats = [];
+    foreach ($catalogue as $slug => $c) {
+        $n = (int)($comptes['cats'][$slug] ?? 0);
+        if ($n > 0 || in_array($slug, $sel['cats'], true)) $cats[] = ['slug' => $slug, 'nom' => $c['nom'], 'count' => $n, 'on' => in_array($slug, $sel['cats'], true)];
+    }
+    $groupes = [];
+    foreach ($sel['cats'] as $slug) {
+        foreach ($catalogue[$slug]['facettes'] as $fk => $fa) {
+            $vals = [];
+            foreach ($fa['valeurs'] as $vk => $label) {
+                $on = in_array((string)$vk, array_map('strval', $sel['fv'][$slug][$fk] ?? []), true);
+                $n = (int)($comptes['vals'][$slug . ':' . $fk . ':' . $vk] ?? 0);
+                if ($n > 0 || $on) $vals[] = ['cle' => (string)$vk, 'libelle' => $label, 'count' => $n, 'on' => $on];
+            }
+            if ($vals) $groupes[] = ['cat' => $slug, 'cat_nom' => $catalogue[$slug]['nom'], 'cle' => $fk, 'nom' => $fa['nom'], 'type' => $fa['type'], 'aide' => $fa['aide'], 'valeurs' => $vals];
+        }
+    }
+    return ['categories' => $cats, 'groupes' => $groupes];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -338,17 +367,19 @@ function sq_diversifier(array $items, array $exempt = [], float $decay = SQ_DIVE
  * @param array $opt    catalogue, vocab, now (timestamp), perso, sort (relevance|date|price_asc|price_desc), partiel_auto (bool)
  * @return array items (triés, tous), comptes, partiel (bool), dym (string|null), docs
  */
+// ponytail: les documents sont reconstruits à chaque recherche (~0,15 ms par séjour avec texte : 500 séjours = 75 ms, 2000 = 0,3 s).
+//   Au-delà de ~5000 séjours : garder les documents en cache (fichier ou APCu) invalidé à l'enregistrement d'un séjour.
 function sq_search(array $rows, array $query, array $sel, array $opt): array {
     $catalogue = $opt['catalogue'] ?? []; $now = $opt['now'] ?? time(); $perso = $opt['perso'] ?? [];
     $vocab = $opt['vocab'] ?? [];
+    $hasText = !empty($query['tokens']);
     $docs = [];
-    foreach ($rows as $i => $r) $docs[$i] = sq_doc($r, $catalogue, $vocab['tokens'] ?? []);
-    if (empty($vocab['tokens'])) {   // pas de vocabulaire fourni : on le déduit des séjours eux-mêmes (tests), puis on recalcule la confiance des mots-clés
+    foreach ($rows as $i => $r) $docs[$i] = sq_doc($r, $catalogue, $vocab['tokens'] ?? [], $hasText);
+    if (empty($vocab['tokens']) && $hasText) {   // pas de vocabulaire fourni : on le déduit des séjours eux-mêmes (tests), puis on recalcule la confiance des mots-clés
         $vocab = sq_vocab_des_docs($docs);
         foreach ($rows as $i => $r) $docs[$i] = sq_doc($r, $catalogue, $vocab['tokens']);
     }
 
-    $hasText = !empty($query['tokens']);
     $exp = $hasText ? sq_expand($query['tokens'], $vocab) : [];
     $rel = null; $partiel = false;
     if ($hasText) {
@@ -447,6 +478,19 @@ function sq_candidats(PDO $pdo, array $f): array {
     return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/** Statistiques réelles sur 90 jours : [id => [i => impressions, c => visites]] et [id => inscriptions payées]. */
+function sq_stats_camps(PDO $pdo, array $ids): array {
+    $imp = []; $ins = [];
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (!$ids) return [$imp, $ins];
+    $in = implode(',', $ids);
+    try {
+        foreach ($pdo->query("SELECT camp_id, SUM(impressions) i, SUM(clics) c FROM camp_stats_jour WHERE camp_id IN ($in) AND jour >= DATE_SUB(CURDATE(), INTERVAL 90 DAY) GROUP BY camp_id")->fetchAll(PDO::FETCH_ASSOC) as $r) $imp[(int)$r['camp_id']] = $r;
+        foreach ($pdo->query("SELECT camp_id, COUNT(*) n FROM inscriptions WHERE camp_id IN ($in) AND statut_paiement = 'PAYE' AND statut NOT IN ('Annulé', 'annule', 'Annule') AND date_inscription >= DATE_SUB(NOW(), INTERVAL 90 DAY) GROUP BY camp_id")->fetchAll(PDO::FETCH_ASSOC) as $r) $ins[(int)$r['camp_id']] = (int)$r['n'];
+    } catch (Throwable $e) { error_log('sq_stats_camps: ' . $e->getMessage()); }
+    return [$imp, $ins];
+}
+
 /** Ajoute à chaque séjour ses mots-clés, ceux de l'organisme, ses catégories, ses réponses et ses statistiques (6 requêtes, quel que soit le nombre de séjours). */
 function sq_enrichir(PDO $pdo, array $rows): array {
     if (!$rows) return $rows;
@@ -458,8 +502,7 @@ function sq_enrichir(PDO $pdo, array $rows): array {
     try {
         foreach ($pdo->query("SELECT camp_id, categorie FROM camp_categories WHERE camp_id IN ($in) AND categorie <> '_aucune' ORDER BY principale DESC")->fetchAll(PDO::FETCH_ASSOC) as $r) $cats[(int)$r['camp_id']][] = $r['categorie'];
         foreach ($pdo->query("SELECT camp_id, categorie, facette, valeur FROM camp_facettes WHERE camp_id IN ($in)")->fetchAll(PDO::FETCH_ASSOC) as $r) $facets[(int)$r['camp_id']][] = [$r['categorie'], $r['facette'], $r['valeur']];
-        foreach ($pdo->query("SELECT camp_id, SUM(impressions) i, SUM(clics) c FROM camp_stats_jour WHERE camp_id IN ($in) AND jour >= DATE_SUB(CURDATE(), INTERVAL 90 DAY) GROUP BY camp_id")->fetchAll(PDO::FETCH_ASSOC) as $r) $imp[(int)$r['camp_id']] = $r;
-        foreach ($pdo->query("SELECT camp_id, COUNT(*) n FROM inscriptions WHERE camp_id IN ($in) AND statut_paiement = 'PAYE' AND statut NOT IN ('Annulé', 'annule', 'Annule') AND date_inscription >= DATE_SUB(NOW(), INTERVAL 90 DAY) GROUP BY camp_id")->fetchAll(PDO::FETCH_ASSOC) as $r) $ins[(int)$r['camp_id']] = (int)$r['n'];
+        [$imp, $ins] = sq_stats_camps($pdo, $ids);
     } catch (Throwable $e) { error_log('sq_enrichir: ' . $e->getMessage()); }
     foreach ($rows as &$r) {
         $id = (int)$r['id'];

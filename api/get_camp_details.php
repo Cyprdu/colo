@@ -56,6 +56,8 @@ try {
         $_SESSION[$sessionKey] = true;
         // Clic : une visite = un clic, rattachée à la surface d'où vient le visiteur (recherche, accueil...)
         mk_track($pdo, [$id], 'clic', mk_surface_from_referer());
+        // Visite venue d'une recherche : on l'attribue au terme tapé (compteur anonyme, voir api/search_stats.php)
+        if (!empty($_SESSION['sq_last']) && !mk_is_bot()) { require_once __DIR__ . '/search_stats.php'; sq_clic_terme($pdo, $id, $_SESSION['sq_last']); }
     }
 
     // 2. REQUÊTE CORRIGÉE (o.web au lieu de o.site_web)

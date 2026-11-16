@@ -68,9 +68,9 @@ function sq_journaliser(PDO $pdo, string $terme, int $nbResultats, array $ids, a
     } catch (Throwable $e) { error_log('sq_journaliser: ' . $e->getMessage()); return false; }
 }
 
-/** Une famille ouvre un séjour depuis une recherche : $dernier = ['term', 'ids', 'jour'] gardé en session au moment de la recherche. */
+/** Une famille ouvre un séjour depuis une recherche : $dernier = ['term', 'ids', 'jour', 't'] gardé en session au moment de la recherche (valable 30 minutes, séjour présent dans les résultats montrés). */
 function sq_clic_terme(PDO $pdo, int $campId, ?array $dernier): void {
-    if (!$dernier || empty($dernier['term']) || !in_array($campId, array_map('intval', (array)($dernier['ids'] ?? [])), true)) return;
+    if (!$dernier || empty($dernier['term']) || (isset($dernier['t']) && time() - (int)$dernier['t'] > 1800) || !in_array($campId, array_map('intval', (array)($dernier['ids'] ?? [])), true)) return;
     try {
         sq_stats_ensure($pdo);
         $pdo->prepare("INSERT INTO recherche_termes_camps (jour, terme, camp_id, visites) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE visites = visites + 1")

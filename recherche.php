@@ -97,6 +97,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     @media (min-width:1024px) { #filters .fhead, #filters .ffoot { display:none; } }
 </style>
 
+<link rel="stylesheet" href="assets/css/colomap-search.css">
 <input type="hidden" id="f-name" value="<?= htmlspecialchars($q) ?>">
 
 <main class="max-w-[1280px] mx-auto px-5 sm:px-8 py-8">
@@ -145,9 +146,15 @@ $q = trim((string)($_GET['name'] ?? ''));
                 </div>
 
                 <div class="fsec">
-                    <p class="ftitle">Thématiques</p>
-                    <input id="theme-q" type="search" class="finput mb-2" placeholder="Filtrer les thématiques" aria-label="Filtrer les thématiques">
+                    <p class="ftitle">Catégories</p>
+                    <input id="theme-q" type="search" class="finput mb-2" placeholder="Filtrer les catégories" aria-label="Filtrer les catégories">
                     <div id="themes" class="tlist"><p class="text-[13px] text-[#9aa3ab] py-2">Chargement…</p></div>
+                    <label id="catmode-wrap" class="chk hidden mt-2"><input id="f-catmode" type="checkbox"> Séjours qui cumulent toutes ces catégories</label>
+                </div>
+
+                <div class="fsec hidden" id="facets-sec">
+                    <p class="ftitle">Précisions</p>
+                    <div id="facets"></div>
                 </div>
 
                 <div class="fsec">
@@ -168,6 +175,7 @@ $q = trim((string)($_GET['name'] ?? ''));
                 <div>
                     <h2 id="r-title" class="text-[22px] md:text-[26px] font-extrabold text-[#26343b] leading-tight">Tous les séjours</h2>
                     <p id="r-count" class="mt-1 text-[14px] text-[#6b7780]" aria-live="polite">Chargement…</p>
+                    <p class="mt-1 text-[12.5px] text-[#9aa3ab]"><a href="classement" class="underline hover:text-[#26343b]">Comment sont classés les séjours ?</a></p>
                 </div>
                 <div class="flex items-center gap-2">
                     <button type="button" id="f-open" class="lg:hidden inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-[1.5px] border-[#e5e7eb] font-bold text-[14px] text-[#26343b] bg-white">
@@ -183,6 +191,7 @@ $q = trim((string)($_GET['name'] ?? ''));
                 </div>
             </div>
 
+            <div id="insight" class="rs-insight hidden" aria-live="polite"></div>
             <div id="tags" class="mt-4 flex flex-wrap gap-2"></div>
 
             <div id="fallback" class="hidden mt-6 rounded-2xl bg-[#f8f5ea] px-5 py-4">
@@ -209,8 +218,8 @@ $q = trim((string)($_GET['name'] ?? ''));
     var favs = <?= json_encode(array_map('intval', (array)$user_favorites)) ?>;
     var $ = function (id) { return document.getElementById(id); };
     var GRID = $('grid');
-    var state = { page: 1, themes: [], category: '' };
-    var allThemes = [];
+    var state = { page: 1, themes: [], cats: [], fv: [], noIntents: false };
+    var CATALOGUE = [], LEGACY = {}, FACETS = null;
     var reqId = 0;
 
     var MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -251,6 +260,10 @@ $q = trim((string)($_GET['name'] ?? ''));
         if ((v = $('f-to').value)) p.set('date_to', v);
         if ($('f-online').checked) p.set('online', '1');
         state.themes.forEach(function (t) { p.append('themes[]', t); });
+        state.cats.forEach(function (c) { p.append('cat[]', c); });
+        state.fv.forEach(function (x) { p.append('fv[]', x); });
+        if (state.cats.length > 1 && $('f-catmode').checked) p.set('catmode', 'all');
+        if (state.noIntents) p.set('intents', '0');
         if ($('f-sort').value !== 'relevance') p.set('sort', $('f-sort').value);
         return p;
     }
@@ -265,6 +278,10 @@ $q = trim((string)($_GET['name'] ?? ''));
         if (u.get('online')) $('f-online').checked = true;
         if (u.get('sort')) $('f-sort').value = u.get('sort');
         state.themes = u.getAll('themes[]').concat(u.getAll('themes'));
+        state.cats = u.getAll('cat[]').concat(u.getAll('cat'));
+        state.fv = u.getAll('fv[]');
+        if (u.get('catmode') === 'all') $('f-catmode').checked = true;
+        state.noIntents = u.get('intents') === '0';
         state.page = 1;
     }
     function setAge(a) {
@@ -287,7 +304,9 @@ $q = trim((string)($_GET['name'] ?? ''));
         if ($('f-from').value || $('f-to').value) add(($('f-from').value ? 'du ' + fmtDay($('f-from').value) : '') + ($('f-to').value ? ' au ' + fmtDay($('f-to').value) : ''), function () { $('f-from').value = ''; $('f-to').value = ''; syncPeriods(); });
         if (maxPriceActive()) add('≤ ' + $('f-price').value + ' €', function () { $('f-price').value = $('f-price').max; priceLabel(); });
         if ($('f-online').checked) add('Inscription en ligne', function () { $('f-online').checked = false; });
-        state.themes.forEach(function (t) { add(t, function () { state.themes = state.themes.filter(function (x) { return x !== t; }); renderThemes(); renderCats(); }); });
+        state.themes.forEach(function (t) { add(t, function () { state.themes = state.themes.filter(function (x) { return x !== t; }); renderCats(); }); });
+        state.cats.forEach(function (c) { add(catName(c), function () { toggleCat(c, false); }); });
+        state.fv.forEach(function (x) { add(fvLabel(x), function () { state.fv = state.fv.filter(function (y) { return y !== x; }); renderFacets(); }); });
         var box = $('tags'); box.textContent = '';
         tags.forEach(function (t) {
             var s = document.createElement('span'); s.className = 'tag'; s.appendChild(document.createTextNode(t.label));
@@ -312,32 +331,87 @@ $q = trim((string)($_GET['name'] ?? ''));
         [].forEach.call(document.querySelectorAll('#periods .pill'), function (b) { b.classList.toggle('is-on', b.dataset.from === f && b.dataset.to === t); });
     }
 
-    // ---------------------------------------------------------------- thèmes et catégories
-    var CAT_ORDER = ['Aventure', 'Montagne', 'Mer / Littoral', 'Nature', 'Sport', 'Arts plastiques', 'Musique', 'Sciences', 'Spiritualité / Prière'];
+    // ---------------------------------------------------------------- catégories et précisions
+    function catName(slug) { for (var i = 0; i < CATALOGUE.length; i++) if (CATALOGUE[i].slug === slug) return CATALOGUE[i].nom; return slug; }
+    function fvLabel(x) {
+        var p = x.split(':');
+        for (var i = 0; i < CATALOGUE.length; i++) if (CATALOGUE[i].slug === p[0]) for (var j = 0; j < CATALOGUE[i].facettes.length; j++) { var f = CATALOGUE[i].facettes[j]; if (f.cle === p[1]) for (var k = 0; k < f.valeurs.length; k++) if (f.valeurs[k].cle === p[2]) return f.nom + ' : ' + f.valeurs[k].libelle; }
+        return x;
+    }
+    function counts() { var m = {}; ((FACETS && FACETS.categories) || []).forEach(function (c) { m[c.slug] = c.count; }); return m; }
+    function toggleCat(slug, on) {
+        var has = state.cats.indexOf(slug) !== -1;
+        if (on && !has) state.cats.push(slug);
+        if (!on && has) { state.cats = state.cats.filter(function (c) { return c !== slug; }); state.fv = state.fv.filter(function (x) { return x.split(':')[0] !== slug; }); }
+        renderCats(); renderFacets(); search(true);
+    }
     function renderThemes() {
-        var q = $('theme-q').value.trim().toLowerCase(), box = $('themes'); box.textContent = '';
-        var list = allThemes.filter(function (n) { return !q || n.toLowerCase().indexOf(q) !== -1; });
-        if (!list.length) { box.innerHTML = '<p class="text-[13px] text-[#9aa3ab] py-2">Aucune thématique.</p>'; return; }
-        list.forEach(function (n, i) {
+        var q = $('theme-q').value.trim().toLowerCase(), box = $('themes'), cnt = counts(), has = !!FACETS; box.textContent = '';
+        var list = CATALOGUE.filter(function (c) { return (!q || c.nom.toLowerCase().indexOf(q) !== -1) && (!has || cnt[c.slug] > 0 || state.cats.indexOf(c.slug) !== -1); });
+        if (!list.length) { box.innerHTML = '<p class="text-[13px] text-[#9aa3ab] py-2">Aucune catégorie.</p>'; }
+        list.forEach(function (c) {
             var l = document.createElement('label'); l.className = 'chk';
-            var c = document.createElement('input'); c.type = 'checkbox'; c.checked = state.themes.indexOf(n) !== -1;
-            c.addEventListener('change', function () {
-                state.themes = c.checked ? state.themes.concat(n) : state.themes.filter(function (x) { return x !== n; });
-                renderCats(); search(true);
-            });
-            l.appendChild(c); l.appendChild(document.createTextNode(n)); box.appendChild(l);
+            var i = document.createElement('input'); i.type = 'checkbox'; i.checked = state.cats.indexOf(c.slug) !== -1;
+            i.addEventListener('change', function () { toggleCat(c.slug, i.checked); });
+            l.appendChild(i); l.appendChild(document.createTextNode(c.nom));
+            if (has) { var n = document.createElement('span'); n.className = 'rs-facet-count'; n.textContent = cnt[c.slug] || 0; l.appendChild(n); }
+            box.appendChild(l);
         });
+        $('catmode-wrap').classList.toggle('hidden', state.cats.length < 2);
     }
     function renderCats() {
-        var row = $('catrow'); row.textContent = '';
-        var mk = function (label, on, fn) {
+        var row = $('catrow'), cnt = counts(), has = !!FACETS; row.textContent = '';
+        var mk = function (label, on, fn, n) {
             var b = document.createElement('button'); b.type = 'button'; b.className = 'cat' + (on ? ' is-on' : ''); b.textContent = label; b.setAttribute('aria-pressed', on);
+            if (n != null) { var s = document.createElement('span'); s.className = 'n'; s.textContent = n; b.appendChild(s); }
             b.addEventListener('click', fn); row.appendChild(b);
         };
-        mk('Tous les séjours', !state.themes.length, function () { state.themes = []; renderThemes(); renderCats(); search(true); });
-        CAT_ORDER.filter(function (n) { return allThemes.indexOf(n) !== -1; }).forEach(function (n) {
-            var on = state.themes.length === 1 && state.themes[0] === n;
-            mk(n, on, function () { state.themes = on ? [] : [n]; renderThemes(); renderCats(); search(true); });
+        mk('Tous les séjours', !state.cats.length && !state.themes.length, function () { state.cats = []; state.fv = []; state.themes = []; renderCats(); renderFacets(); search(true); });
+        CATALOGUE.forEach(function (c) {
+            var on = state.cats.indexOf(c.slug) !== -1;
+            if (has && !on && !cnt[c.slug]) return;
+            mk(c.nom, on, function () { toggleCat(c.slug, !on); }, has ? cnt[c.slug] || 0 : null);
+        });
+        renderThemes();
+    }
+    function renderFacets() {
+        var box = $('facets'), g = (FACETS && FACETS.groupes) || []; box.textContent = '';
+        $('facets-sec').classList.toggle('hidden', !state.cats.length || !g.length);
+        var multi = state.cats.length > 1;
+        g.forEach(function (grp) {
+            var d = document.createElement('div'); d.className = 'rs-fgroup';
+            var t = document.createElement('p'); t.className = 'rs-fname'; t.textContent = (multi ? grp.cat_nom + ' : ' : '') + grp.nom; d.appendChild(t);
+            grp.valeurs.forEach(function (v) {
+                var key = grp.cat + ':' + grp.cle + ':' + v.cle;
+                var l = document.createElement('label'); l.className = 'chk';
+                var i = document.createElement('input'); i.type = 'checkbox'; i.checked = state.fv.indexOf(key) !== -1;
+                i.addEventListener('change', function () { state.fv = i.checked ? state.fv.concat(key) : state.fv.filter(function (x) { return x !== key; }); search(true); });
+                l.appendChild(i); l.appendChild(document.createTextNode(v.libelle));
+                var n = document.createElement('span'); n.className = 'rs-facet-count'; n.textContent = v.count; l.appendChild(n);
+                d.appendChild(l);
+            });
+            box.appendChild(d);
+        });
+    }
+    function renderInsight(d) {
+        var el = $('insight'), h = [];
+        if (d.interpretation && d.interpretation.length) h.push('Nous avons compris : <b>' + d.interpretation.map(function (i) { return esc(i.label); }).join(', ') + '</b>. <button type="button" class="lnk" id="no-intents">Ne pas interpréter ma recherche</button>');
+        if (state.noIntents) h.push('Votre phrase est cherchée mot à mot. <button type="button" class="lnk" id="yes-intents">Reconnaître l’âge, le budget et la période</button>');
+        if (d.relaxed) h.push('Aucun séjour ne correspond à tous ces critères : voici les séjours qui correspondent à vos mots.');
+        if (d.partiel) h.push('Aucun séjour ne contient tous vos mots : voici ceux qui en contiennent au moins un.');
+        if (d.did_you_mean) h.push('Vouliez-vous dire <button type="button" class="lnk" id="dym" data-q="' + esc(d.did_you_mean) + '">« ' + esc(d.did_you_mean) + ' »</button> ?');
+        el.innerHTML = h.map(function (x) { return '<p>' + x + '</p>'; }).join('');
+        el.classList.toggle('hidden', !h.length);
+        var a = $('no-intents'); if (a) a.addEventListener('click', function () { state.noIntents = true; search(true); });
+        a = $('yes-intents'); if (a) a.addEventListener('click', function () { state.noIntents = false; search(true); });
+        a = $('dym'); if (a) a.addEventListener('click', function () { $('f-name').value = a.dataset.q; var hs = $('desktop-search-input'); if (hs) hs.value = a.dataset.q; search(true); });
+    }
+    /** Anciens liens (themes[]=Montagne) : on les traduit en catégories quand elles existent, sinon le filtre historique reste actif */
+    function migrateLegacy() {
+        state.themes = state.themes.filter(function (t) {
+            var slug = LEGACY[t]; if (!slug) return true;
+            if (state.cats.indexOf(slug) === -1) state.cats.push(slug);
+            return false;
         });
     }
 
@@ -358,7 +432,7 @@ $q = trim((string)($_GET['name'] ?? ''));
             (age ? '<span class="camp-age">' + age + '</span>' : '') +
             ((IS_LOGGED && !IS_ANIM) ? '<button type="button" class="fav-btn favorite-button' + (isFav ? ' is-fav' : '') + '" data-camp-id="' + esc(c.id) + '" aria-label="Ajouter aux favoris" aria-pressed="' + isFav + '">' + ICON_HEART + '</button>' : '') +
             '</div><a href="' + href + '" class="block"><h3 class="camp-title" title="' + esc(c.nom) + '">' + esc(c.nom) + '</h3>' +
-            '<p class="camp-price">' + p + '</p><p class="camp-meta">' + esc(niceCity(c.ville)) + '</p><p class="camp-meta">' + esc(date) + '</p></a></article>';
+            '<p class="camp-price">' + p + '</p><p class="camp-meta">' + esc(niceCity(c.ville)) + '</p><p class="camp-meta">' + esc(date) + '</p>' + ((c.categories && c.categories.length) ? '<p class="camp-meta">' + esc(c.categories.join(' · ')) + '</p>' : '') + '</a></article>';
     }
     function skeletons(n) {
         var h = ''; for (var i = 0; i < n; i++) h += '<div aria-hidden="true"><div class="skeleton" style="height:24px;width:60%;border-radius:8px"></div><div class="skeleton camp-mediawrap" style="margin-top:8px"></div><div class="skeleton" style="height:14px;width:85%;border-radius:6px;margin-top:14px"></div><div class="skeleton" style="height:14px;width:40%;border-radius:6px;margin-top:10px"></div></div>';
@@ -372,7 +446,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     // ---------------------------------------------------------------- recherche
     function title(total) {
         var nm = $('f-name').value.trim(), city = $('f-city').value.trim();
-        $('r-title').textContent = nm ? 'Résultats pour « ' + nm + ' »' : (state.themes.length === 1 ? state.themes[0] : (city ? 'Séjours autour de ' + city : 'Tous les séjours'));
+        $('r-title').textContent = nm ? 'Résultats pour « ' + nm + ' »' : (state.cats.length === 1 ? catName(state.cats[0]) : (state.themes.length === 1 ? state.themes[0] : (city ? 'Séjours autour de ' + city : 'Tous les séjours')));
         document.title = (nm ? nm + ' – ' : '') + 'Rechercher une colonie de vacances - ColoMap';
     }
     async function search(reset) {
@@ -392,13 +466,14 @@ $q = trim((string)($_GET['name'] ?? ''));
             var base = GRID.children.length;
             GRID.insertAdjacentHTML('beforeend', d.camps.map(function (c, i) { return card(c, base + i); }).join(''));
             title(d.total);
+            FACETS = d.facets || FACETS; renderCats(); renderFacets(); renderInsight(d);
             if (d.is_fallback) {
                 $('fallback').classList.remove('hidden');
                 $('r-count').textContent = 'Aucun résultat exact';
             } else {
                 $('r-count').textContent = d.total + (d.total > 1 ? ' séjours trouvés' : ' séjour trouvé');
             }
-            if (!d.camps.length && !append) GRID.innerHTML = '<div class="col-span-full text-center py-16"><p class="text-[20px] font-extrabold text-[#26343b]">Aucun séjour disponible</p><p class="mt-2 text-[#6b7780]">Essayez d’élargir vos dates, votre budget ou vos thématiques.</p><button type="button" class="mt-5 px-6 py-3 rounded-xl bg-[#2f3d45] text-white font-bold" id="empty-reset">Réinitialiser la recherche</button></div>';
+            if (!d.camps.length && !append) GRID.innerHTML = '<div class="col-span-full text-center py-16"><p class="text-[20px] font-extrabold text-[#26343b]">Aucun séjour disponible</p><p class="mt-2 text-[#6b7780]">Essayez d’élargir vos dates, votre budget ou vos catégories.</p><button type="button" class="mt-5 px-6 py-3 rounded-xl bg-[#2f3d45] text-white font-bold" id="empty-reset">Réinitialiser la recherche</button></div>';
             var er = $('empty-reset'); if (er) er.addEventListener('click', resetAll);
             $('more-wrap').classList.toggle('hidden', !d.has_more);
             rememberTerm(d.is_fallback ? 0 : d.total);
@@ -421,8 +496,8 @@ $q = trim((string)($_GET['name'] ?? ''));
     function resetAll() {
         ['f-name', 'f-city', 'f-from', 'f-to'].forEach(function (i) { $(i).value = ''; });
         $('f-age').value = ''; $('f-price').value = $('f-price').max; $('f-online').checked = false; $('f-sort').value = 'relevance';
-        state.themes = []; $('theme-q').value = '';
-        priceLabel(); syncPeriods(); renderThemes(); renderCats(); search(true);
+        state.themes = []; state.cats = []; state.fv = []; state.noIntents = false; $('f-catmode').checked = false; $('theme-q').value = '';
+        priceLabel(); syncPeriods(); renderCats(); renderFacets(); search(true);
     }
 
     // ---------------------------------------------------------------- évènements
@@ -443,6 +518,7 @@ $q = trim((string)($_GET['name'] ?? ''));
         });
     });
     $('theme-q').addEventListener('input', renderThemes);
+    $('f-catmode').addEventListener('change', function () { search(true); });
     $('more').addEventListener('click', function () { state.page++; search(false); });
     $('fb-reset').addEventListener('click', resetAll);
     $('f-reset-m').addEventListener('click', resetAll);
@@ -473,8 +549,8 @@ $q = trim((string)($_GET['name'] ?? ''));
     // ---------------------------------------------------------------- démarrage
     applyFromUrl(); priceLabel(); syncPeriods();
     var hs = document.getElementById('desktop-search-input'); if (hs && $('f-name').value) hs.value = $('f-name').value;
-    var themesReady = fetch('api/get_themes.php').then(function (r) { return r.json(); }).then(function (t) {
-        if (Array.isArray(t)) allThemes = t.map(function (x) { return x.name; });
+    var themesReady = fetch('api/get_categories.php').then(function (r) { return r.json(); }).then(function (t) {
+        CATALOGUE = t.categories || []; LEGACY = t.legacy || {};
     }).catch(function () {});
     var childrenReady = Promise.resolve();
     if (IS_LOGGED) childrenReady = fetch('api/get_children.php').then(function (r) { return r.json(); }).then(function (cs) {
@@ -482,7 +558,7 @@ $q = trim((string)($_GET['name'] ?? ''));
         cs.forEach(function (c) { if (c.age != null) s.add(new Option(c.prenom + ' (' + c.age + ' ans)', c.age)); });
         var u = new URLSearchParams(location.search).get('age'); if (u) setAge(u);
     }).catch(function () {});
-    Promise.all([themesReady, childrenReady]).then(function () { renderThemes(); renderCats(); search(false); });
+    Promise.all([themesReady, childrenReady]).then(function () { migrateLegacy(); renderCats(); renderFacets(); search(false); });
 })();
 </script>
 

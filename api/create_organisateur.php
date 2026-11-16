@@ -29,12 +29,18 @@ try {
     try { require_once __DIR__ . '/organismes.php'; orga_assign_slug($pdo, (int)$newId); } catch (Throwable $e) { error_log('create_organisateur (adresse): ' . $e->getMessage()); }
     try { require_once __DIR__ . '/finance_lib.php'; fin_ensure($pdo); } catch (Throwable $e) { error_log('create_organisateur (jour de versement): ' . $e->getMessage()); } // attribue le jour de versement hebdomadaire
 
+    // Alias de l'organisme (« PAJE ») : contrôlés et enregistrés à part, un refus n'empêche jamais la création
+    $alias = ['motscles' => [], 'motscles_refuses' => []];
+    if (array_key_exists('motscles', $input)) {
+        try { require_once __DIR__ . '/motscles.php'; $alias = mc_sauver_orga($pdo, (int)$newId, (string)$input['nom'], $input['motscles']); } catch (Throwable $e) { error_log('create_organisateur (alias): ' . $e->getMessage()); }
+    }
+
     // RÉPONSE PROPRE (SQL style)
     sendJson([
         'id' => $newId,
         'nom' => $input['nom'],
         'email' => $email
-    ], 201);
+    ] + $alias, 201);
 
 } catch (Exception $e) {
     sendJson(['error' => $e->getMessage()], 500);

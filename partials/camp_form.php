@@ -3,6 +3,8 @@
 // Attend : $camp (array|null : null = création), $organisateurs, $currentTarifs, $champsActuels, $themesList, $paysList, $att
 require_once __DIR__ . '/../api/options.php';
 require_once __DIR__ . '/../api/champs.php';
+require_once __DIR__ . '/../api/catalogue.php';
+require_once __DIR__ . '/../api/motscles.php';
 
 $att = $att ?? []; $edit = is_array($camp);
 $val = fn($k, $d = '') => htmlspecialchars((string)($edit ? ($camp[$k] ?? $d) : $d), ENT_QUOTES);
@@ -13,7 +15,14 @@ $moyens = $edit ? options_paiements_valides($camp['moyens_paiement'] ?? '') : ['
 $quotasOn = $edit && ((int)($camp['quota_fille'] ?? 0) > 0 || (int)($camp['quota_garcon'] ?? 0) > 0);
 $online = $edit ? !empty($camp['inscription_en_ligne']) : false;
 $tagsInit = $edit ? array_values(array_filter(array_map('trim', explode(',', (string)($camp['type'] ?? ''))))) : [];
-if ($edit && !empty($camp['theme']) && !in_array($camp['theme'], $themesList, true)) $themesList[] = $camp['theme'];
+// Catégories (avec précisions) et mots-clés : lus en base ; un séjour ancien reçoit d'abord la correspondance de son ancien thème
+$catalogue = cat_load($pdo);
+$campId = $edit ? (int)$camp['id'] : 0;
+$catSel = $edit ? cat_selection_du_camp($pdo, $campId) : ['order' => [], 'values' => []];
+if ($edit && !$catSel['order']) $catSel['order'] = cat_legacy_guess($catalogue, (string)($camp['theme'] ?? ''), (string)($camp['type'] ?? ''));
+mc_ensure($pdo);
+$kwInit = $edit ? ((mc_lire($pdo, 'camp', [$campId])[$campId] ?? []) ?: $tagsInit) : [];
+$orgaKw = mc_lire($pdo, 'orga', array_map(function ($o) { return (int)$o['id']; }, $organisateurs));
 
 $ICO = [
     'building' => '<path d="M4 21V5a1 1 0 011-1h9a1 1 0 011 1v16M15 9h4a1 1 0 011 1v11M8 8h3M8 12h3M8 16h3M3 21h18"/>',
@@ -24,6 +33,7 @@ $ICO = [
     'card' => '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h3"/>',
     'file' => '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
     'chat' => '<path d="M4 5h16v11H9l-5 4V5z"/><path d="M8 9h8M8 12h5"/>',
+    'tag' => '<path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
     'whistle' => '<circle cx="9" cy="14" r="5"/><path d="M13 11l8-4v4l-5 2M9 12v2"/>',
     'info' => '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
     'image' => '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
@@ -48,7 +58,7 @@ $tick = $svg('check', 'w-3 h-3');
 
     <div class="grid lg:grid-cols-[210px_1fr] gap-8 items-start">
         <nav class="hidden lg:block sticky top-24 text-sm font-semibold text-[#6b7780]" aria-label="Sections">
-            <?php foreach (['s-orga' => 'Organisme', 's-sejour' => 'Le séjour', 's-lieu' => 'Lieu et dates', 's-public' => 'Public et places', 's-inscription' => 'Inscriptions', 's-paiement' => 'Paiements acceptés', 's-fiche' => 'Fiche enfant', 's-questions' => 'Questions', 's-anim' => 'Animateurs', 's-infos' => 'Infos pratiques', 's-medias' => 'Visuels'] as $a => $t): ?>
+            <?php foreach (['s-orga' => 'Organisme', 's-sejour' => 'Le séjour', 's-categories' => 'Catégories', 's-lieu' => 'Lieu et dates', 's-public' => 'Public et places', 's-inscription' => 'Inscriptions', 's-paiement' => 'Paiements acceptés', 's-fiche' => 'Fiche enfant', 's-questions' => 'Questions', 's-anim' => 'Animateurs', 's-infos' => 'Infos pratiques', 's-medias' => 'Visuels'] as $a => $t): ?>
                 <a href="#<?= $a ?>" class="block px-3 py-2 rounded-lg hover:bg-white hover:text-[#26343b] transition"><?= $t ?></a>
             <?php endforeach; ?>
         </nav>
@@ -72,22 +82,24 @@ $tick = $svg('check', 'w-3 h-3');
             <?= $sec('s-sejour', 'tent', 'Le séjour', 'Ce que les familles voient en premier.') ?>
                 <div class="grid md:grid-cols-2 gap-5">
                     <div class="md:col-span-2"><label class="ds-label" for="f-nom">Nom du séjour *</label><input id="f-nom" name="nom" class="ds-input" required maxlength="200" value="<?= $val('nom') ?>" placeholder="Ex : Aventure dans les Alpes"></div>
-                    <div><label class="ds-label" for="f-theme">Thème principal *</label>
-                        <select id="f-theme" name="theme" class="ds-select" required><option value="">Sélectionner</option>
-                            <?php foreach ($themesList as $t): ?><option <?= $edit && ($camp['theme'] ?? '') === $t ? 'selected' : '' ?>><?= htmlspecialchars($t) ?></option><?php endforeach; ?>
-                        </select></div>
+                    <input type="hidden" name="theme" id="f-theme" value="<?= $val('theme') ?>">
                     <div class="grid grid-cols-2 gap-3">
                         <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="30" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
                         <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="30" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
                     </div>
                     <div class="md:col-span-2">
-                        <label class="ds-label" for="tagInput">Mots-clés (activités, ambiance), 15 maximum</label>
-                        <div class="flex gap-2"><input id="tagInput" class="ds-input" placeholder="Surf, plage… puis Entrée" maxlength="40"><button type="button" class="ds-btn ds-btn-light" id="tagAdd">Ajouter</button></div>
-                        <div id="tagList" class="flex flex-wrap gap-2 mt-3"></div>
-                        <input type="hidden" name="type" id="tagHidden">
+                        <label class="ds-label" for="mcInput">Mots-clés et alias du séjour <span class="font-normal text-[#6b7780]">(12 maximum)</span></label>
+                        <div id="mcCamp"></div>
+                        <div class="mc-help"><b>Ces mots sont ceux que les familles tapent ; ils améliorent la visibilité de votre séjour.</b> Ajoutez le petit nom ou le sigle du séjour (« EPJ »), une activité ou un lieu bien connu. Évitez les mots sans rapport avec le séjour : ils comptent moins, et seul votre meilleur mot-clé compte dans le classement, inutile d'en mettre beaucoup.</div>
+                        <p id="mcOrgaHint" class="ds-hint hidden"></p>
                     </div>
                     <div class="md:col-span-2"><label class="ds-label" for="f-desc">Description complète *</label><textarea id="f-desc" name="description" rows="6" class="ds-textarea" required maxlength="10000" placeholder="Programme, ambiance, journée type…"><?= $val('description') ?></textarea></div>
                 </div>
+            </section>
+
+            <?= $sec('s-categories', 'tag', 'Catégories et précisions', "Les familles filtrent par catégorie, puis par précisions (niveau, confession, discipline…). Un séjour peut avoir plusieurs catégories : par exemple « Spirituel » et « Montagne ».") ?>
+                <div id="catPicker"></div>
+                <input type="hidden" name="categories" id="catHidden">
             </section>
 
             <?= $sec('s-lieu', 'pin', 'Lieu et dates', "Où et quand se déroule le séjour.") ?>
@@ -248,6 +260,9 @@ $tick = $svg('check', 'w-3 h-3');
             <div><label class="ds-label" for="o-nom">Nom *</label><input id="o-nom" class="ds-input" maxlength="150"></div>
             <div><label class="ds-label" for="o-mail">Email *</label><input id="o-mail" type="email" class="ds-input"></div>
             <div class="grid grid-cols-2 gap-3"><div><label class="ds-label" for="o-tel">Téléphone</label><input id="o-tel" class="ds-input" maxlength="30"></div><div><label class="ds-label" for="o-web">Site web</label><input id="o-web" class="ds-input" maxlength="255" placeholder="https://"></div></div>
+            <div><label class="ds-label" for="orgaKwInput">Alias de l'organisme <span class="font-normal text-[#6b7780]">(8 maximum)</span></label>
+                <div id="orgaKw"></div>
+                <p class="ds-hint">Les noms sous lesquels on vous connaît (« PAJE » pour la Pastorale des Jeunes de l'Ain) : <b>ces mots sont ceux que les familles tapent ; ils font remonter tous vos séjours.</b></p></div>
             <p id="orgaErr" class="text-sm font-semibold text-[#5b4a1c]" role="alert"></p>
             <div class="flex gap-3"><button type="button" class="ds-btn ds-btn-light flex-1" onclick="Orga.back()">Retour</button><button type="submit" class="ds-btn flex-1" id="orgaSave">Enregistrer</button></div>
         </form>
@@ -279,17 +294,22 @@ $tick = $svg('check', 'w-3 h-3');
 </div>
 <div id="toast" class="ds-toast" role="status"></div>
 
+<link rel="stylesheet" href="assets/css/colomap-search.css">
+<script src="assets/js/motscles.js"></script>
+<script src="assets/js/categories-picker.js"></script>
 <script>
 const IS_EDIT = <?= $edit ? 'true' : 'false' ?>;
 const CAMP_ID = <?= $edit ? (int)$camp['id'] : 0 ?>;
 const CHAMP_TYPES = <?= json_encode(CHAMPS_TYPES, JSON_UNESCAPED_UNICODE) ?>;
 const ICON = { edit: <?= json_encode($svg('edit')) ?>, trash: <?= json_encode($svg('trash')) ?>, up: <?= json_encode($svg('up')) ?>, down: <?= json_encode($svg('down')) ?>, close: <?= json_encode($svg('close')) ?> };
-let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => (int)$o['id'], 'nom' => $o['nom'], 'email' => $o['email'] ?? '', 'tel' => $o['tel'] ?? '', 'web' => $o['web'] ?? ''], $organisateurs), JSON_UNESCAPED_UNICODE) ?>;
+let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => (int)$o['id'], 'nom' => $o['nom'], 'email' => $o['email'] ?? '', 'tel' => $o['tel'] ?? '', 'web' => $o['web'] ?? '', 'motscles' => $orgaKw[(int)$o['id']] ?? []], $organisateurs), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 let SELECTED = <?= json_encode(array_map(fn($t) => (int)$t['id'], $currentTarifs ?? [])) ?>;
 let TARIFS = <?= json_encode(array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'montant_libre' => (int)$t['montant_libre'], 'montant_min' => $t['montant_min'] ?? null, 'organisateur_id' => (int)($t['organisateur_id'] ?? 0)], $currentTarifs ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let CHAMPS = <?= json_encode(array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], $champsActuels ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'lieu' => $e['lieu'], 'description' => (string)$e['description']], $etapesActuelles ?? []), JSON_UNESCAPED_UNICODE) ?>;
-let TAGS = <?= json_encode($tagsInit, JSON_UNESCAPED_UNICODE) ?>;
+const CATALOGUE = <?= json_encode(cat_pour_js($catalogue), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+const CAT_SEL = <?= json_encode($catSel, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+const KW_INIT = <?= json_encode(array_values($kwInit), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -308,23 +328,24 @@ function modal(id, open) {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.ds-modal.open').forEach(m => m.classList.remove('open')); });
 document.querySelectorAll('.ds-modal').forEach(m => m.addEventListener('mousedown', e => { if (e.target === m) m.classList.remove('open'); }));
 
-// ------------------------------------------------ mots-clés
-function renderTags() {
-    $('tagList').innerHTML = TAGS.map((t, i) => `<span class="ds-tag">${esc(t)}<button type="button" aria-label="Retirer ${esc(t)}" onclick="TAGS.splice(${i},1);renderTags()">×</button></span>`).join('');
-    $('tagHidden').value = TAGS.join(', ');
+// ------------------------------------------------ mots-clés et catégories
+const KW_STOP = ['de', 'du', 'des', 'la', 'le', 'les', 'l', 'd', 'un', 'une', 'et', 'ou', 'en', 'au', 'aux', 'a', 'sur', 'pour', 'dans', 'avec', 'par'];
+function kwSuggestions() {
+    const out = [], mots = $('f-nom').value.split(/[\s'’\-&]+/).filter(w => w.length > 1 && !KW_STOP.includes(MotsCles.norm(w)));
+    if (mots.length >= 2 && mots.length <= 5) out.push(mots.map(w => w[0]).join('').toUpperCase());   // sigle du nom : « École de prière » -> EP
+    mots.filter(w => w.length >= 6).slice(0, 2).forEach(w => out.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()));
+    if ($('villeInput').value.trim()) out.push($('villeInput').value.trim());
+    return out;
 }
-function addTag() {
-    const v = $('tagInput').value.trim();
-    if (v) {
-        const t = v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
-        if (TAGS.length >= 15) toast('15 mots-clés maximum.'); else if (!TAGS.includes(t)) TAGS.push(t);
-        $('tagInput').value = ''; renderTags();
-    }
-    $('tagInput').focus();
+const MC = MotsCles.mount($('mcCamp'), { initial: KW_INIT, max: 12, suggest: kwSuggestions, inputId: 'mcInput', placeholder: 'Ex : EPJ, bivouac… puis Entrée' });
+const CP = CategoriesPicker.mount($('catPicker'), { catalogue: CATALOGUE, value: CAT_SEL, max: <?= (int)CAT_MAX_PAR_SEJOUR ?> });
+['f-nom', 'villeInput'].forEach(i => $(i).addEventListener('input', () => { clearTimeout(MC.t); MC.t = setTimeout(MC.refresh, 300); }));
+function orgaKwHint() {
+    const o = ORGAS.find(x => String(x.id) === $('orga-select').value), h = $('mcOrgaHint');
+    h.classList.toggle('hidden', !(o && o.motscles && o.motscles.length));
+    if (o && o.motscles && o.motscles.length) h.textContent = 'Votre organisme est déjà trouvé avec : ' + o.motscles.map(x => '#' + x).join(', ') + '. Inutile de les répéter ici.';
 }
-$('tagAdd').addEventListener('click', addTag);
-$('tagInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
-renderTags();
+$('orga-select').addEventListener('change', orgaKwHint); orgaKwHint();
 
 // ------------------------------------------------ adresse (OpenStreetMap)
 (function () {
@@ -372,6 +393,7 @@ document.querySelectorAll('input[name=reserve_sexe]').forEach(r => r.addEventLis
 refreshToggles();
 
 // ------------------------------------------------ organismes
+const ORGKW = MotsCles.mount($('orgaKw'), { max: 8, inputId: 'orgaKwInput', placeholder: 'Ex : PAJE, puis Entrée' });
 const Orga = {
     editing: null,
     open() { this.back(); this.render(); modal('modalOrga', true); },
@@ -387,7 +409,8 @@ const Orga = {
     pick(id) { $('orga-select').value = id; $('orga-select').dispatchEvent(new Event('change')); this.close(); toast('Organisme sélectionné.'); },
     form(id) {
         this.editing = id || null;
-        const o = ORGAS.find(x => x.id === id) || { nom: '', email: '', tel: '', web: '' };
+        const o = ORGAS.find(x => x.id === id) || { nom: '', email: '', tel: '', web: '', motscles: [] };
+        ORGKW.set(o.motscles || []);
         $('orgaFormTitle').textContent = id ? "Modifier l'organisme" : 'Nouvel organisme';
         $('o-nom').value = o.nom; $('o-mail').value = o.email; $('o-tel').value = o.tel; $('o-web').value = o.web; $('orgaErr').textContent = '';
         $('orgaList').classList.add('hidden'); $('orgaForm').classList.remove('hidden'); $('o-nom').focus();
@@ -396,19 +419,19 @@ const Orga = {
 $('orgaForm').addEventListener('submit', async e => {
     e.preventDefault();
     const b = $('orgaSave'); b.disabled = true; $('orgaErr').textContent = '';
-    const body = { nom: $('o-nom').value.trim(), email: $('o-mail').value.trim(), tel: $('o-tel').value.trim(), web: $('o-web').value.trim() };
+    const body = { nom: $('o-nom').value.trim(), email: $('o-mail').value.trim(), tel: $('o-tel').value.trim(), web: $('o-web').value.trim(), motscles: ORGKW.get() };
     try {
         if (!body.nom || !body.email) throw new Error('Le nom et l\'email sont obligatoires.');
-        let o;
-        if (Orga.editing) o = (await api('api/gerer_orga_tarifs.php', { action: 'orga_update', id: Orga.editing, ...body })).organisme;
-        else { const d = await api('api/create_organisateur.php', body); o = { id: parseInt(d.id), nom: body.nom, email: body.email, tel: body.tel, web: body.web }; }
+        let o, refus = [];
+        if (Orga.editing) { const d = await api('api/gerer_orga_tarifs.php', { action: 'orga_update', id: Orga.editing, ...body }); o = d.organisme; o.motscles = d.motscles || []; refus = d.motscles_refuses || []; }
+        else { const d = await api('api/create_organisateur.php', body); o = { id: parseInt(d.id), nom: body.nom, email: body.email, tel: body.tel, web: body.web, motscles: d.motscles || [] }; refus = d.motscles_refuses || []; }
         o.id = parseInt(o.id);
         const i = ORGAS.findIndex(x => x.id === o.id);
         if (i >= 0) ORGAS[i] = o; else ORGAS.push(o);
         const sel = $('orga-select'), opt = [...sel.options].find(x => x.value == o.id);
         if (opt) opt.textContent = o.nom; else sel.add(new Option(o.nom, o.id));
         if (!Orga.editing) { sel.value = o.id; sel.dispatchEvent(new Event('change')); }
-        toast(Orga.editing ? 'Organisme mis à jour.' : 'Organisme créé et sélectionné.');
+        toast(refus.length ? 'Organisme enregistré. Alias refusé : « ' + refus[0].label + ' » (' + refus[0].raison + ')' : (Orga.editing ? 'Organisme mis à jour.' : 'Organisme créé et sélectionné.')); orgaKwHint();
         Orga.back(); Orga.render();
     } catch (err) { $('orgaErr').textContent = err.message; }
     b.disabled = false;
@@ -540,10 +563,11 @@ $('campForm').addEventListener('submit', async e => {
     if (bad) { bad.scrollIntoView({ block: 'center', behavior: 'smooth' }); bad.reportValidity(); return; }
     if ($('toggleOnline').checked && !IS_EDIT && !$('acceptToS').checked) { msg.textContent = 'Acceptez les conditions de commission pour ouvrir les inscriptions en ligne.'; $('tosBox').scrollIntoView({ block: 'center' }); return; }
     if ($('toggleOnline').checked && !SELECTED.length) { msg.textContent = 'Ajoutez au moins un tarif pour ouvrir les inscriptions en ligne.'; $('tarifsSelected').scrollIntoView({ block: 'center' }); return; }
+    if (!CP.value().order.length) { msg.textContent = 'Choisissez au moins une catégorie pour votre séjour.'; $('s-categories').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     btn.disabled = true; const label = btn.textContent; btn.textContent = 'Enregistrement…';
     try {
         const fd = new FormData(form);
-        fd.set('type', TAGS.join(', ')); fd.set('tarifs', JSON.stringify(SELECTED)); fd.set('etapes', JSON.stringify(ETAPES.filter(x => x.lieu.trim() !== '')));
+        fd.set('type', MC.get().join(', ')); fd.set('motscles', JSON.stringify(MC.get())); fd.set('categories', JSON.stringify(CP.value())); fd.set('tarifs', JSON.stringify(SELECTED)); fd.set('etapes', JSON.stringify(ETAPES.filter(x => x.lieu.trim() !== '')));
         const r = await fetch(IS_EDIT ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
@@ -552,7 +576,8 @@ $('campForm').addEventListener('submit', async e => {
         if (window.AnimModes) { try { await AnimModes.save(IS_EDIT ? form.querySelector('[name=token]').value : d.token); } catch (animErr) { alert(animErr.message + ' Vous pouvez les régler dans « Gestion des animateurs ».'); } }
         const questions = CHAMPS.filter(c => c.libelle.trim() !== '');
         if (cid && (questions.length || IS_EDIT)) await api('api/save_champs.php', { camp_id: cid, champs: questions });
-        location.href = 'mes_camps.php?ok=' + (IS_EDIT ? 'updated' : 'created');
+        const go = () => { location.href = 'mes_camps.php?ok=' + (IS_EDIT ? 'updated' : 'created'); };
+        if ((d.motscles_refuses || []).length) { msg.textContent = 'Séjour enregistré. Mots-clés refusés : ' + d.motscles_refuses.map(r => '« ' + r.label + ' » (' + r.raison + ')').join(' ; '); setTimeout(go, 4500); } else go();
     } catch (err) {
         msg.textContent = err.message; btn.disabled = false; btn.textContent = label;
     }

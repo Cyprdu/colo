@@ -256,6 +256,27 @@ $v = mc_valider($pdo, ['ski', 'jazz club'], 'orga', 2, 'Aventure Nature');
 ok(array_column($v['ok'], 'mot') === ['jazz club'], 'alias d\'organisme : un thème (« ski ») n\'est pas un nom, refusé');
 sq_vocab_invalider();
 
+
+// Formulaire du directeur : catégories, précisions et mots-clés lus, contrôlés puis enregistrés avec le séjour
+require __DIR__ . '/../api/camp_save.php';
+$pdo->exec("UPDATE organisateurs SET user_id = 7 WHERE id IN (1, 3)");
+$pdo->exec("INSERT INTO camps (id, token, nom, organisateur_id, prive, date_debut, date_fin) VALUES (99, 'prive', 'Séjour privé du test', 3, 1, '2027-07-10', '2027-07-20')");   // privé : invisible dans la recherche
+$in = ['organisateur_id' => 3, 'nom' => 'Camp formulaire', 'date_debut' => '2027-07-10', 'date_fin' => '2027-07-20', 'age_min' => 8, 'age_max' => 14, 'ville' => 'Lyon', 'adresse' => '1 rue', 'description' => 'x', 'theme' => '',
+       'categories' => json_encode(['order' => ['montagne', 'spirituel'], 'values' => ['montagne' => ['niveau' => ['debutant']]]]), 'motscles' => json_encode(['#Sigle', 'Bivouac', 'colo', 'PAJE', 'Les Amis du Verbe'])];
+[$d, $t, $e, $cl] = camp_lire_formulaire($pdo, 7, $in);
+ok($e === null && $d['theme'] === 'Montagne' && $d['type'] === 'Sigle, Bivouac, Les Amis du Verbe', 'formulaire : thème historique dérivé de la catégorie principale, type = mots-clés acceptés');
+ok(array_column($cl['motscles']['refus'], 'label') === ['colo', 'PAJE'], "formulaire : « colo » (trop général) et « PAJE » (alias d'un autre organisme) refusés et expliqués");
+$pdo->beginTransaction();
+camp_enregistrer_classement($pdo, 99, $cl);
+$pdo->commit();
+ok(cat_selection_du_camp($pdo, 99)['order'] === ['montagne', 'spirituel'] && mc_lire($pdo, 'camp', [99])[99] === ['Bivouac', 'Les Amis du Verbe', 'Sigle'], 'formulaire : catégories et mots-clés enregistrés avec le séjour');
+$in2 = $in; $in2['categories'] = '[]';
+[, , $e3] = camp_lire_formulaire($pdo, 7, $in2);
+ok($e3 === 'Choisissez au moins une catégorie pour votre séjour.', 'formulaire : au moins une catégorie (ou un ancien thème) est exigée');
+$in3 = $in; unset($in3['categories'], $in3['motscles']); $in3['theme'] = 'Cheval';
+[$d3, , $e4, $cl3] = camp_lire_formulaire($pdo, 7, $in3);
+ok($e4 === null && $d3['theme'] === 'Cheval' && $cl3['cats'] === null && $cl3['motscles'] === null, "ancien formulaire (sans catégories) : accepté, rien n'est effacé");
+
 // Recherche complète
 $r = sq_run($pdo, ['name' => 'PAJE'], ['now' => time()]);
 ok(array_map('intval', array_column(array_column($r['items'], 'row'), 'id')) == [1, 2] || (function ($a) { sort($a); return $a === [1, 2]; })(array_map('intval', array_column(array_column($r['items'], 'row'), 'id'))), 'base : « PAJE » -> les séjours de la Pastorale des Jeunes de l\'Ain');
