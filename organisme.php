@@ -50,10 +50,10 @@ $desc = $orga ? trim((string)($orga['description'] ?? '')) : '';
 
 $ads_enabled = false;
 $body_class = 'bg-white';
+$page_title = $nom . ' : séjours et colonies de vacances - ColoMap';
 $base_href = '/';   // la page est servie sous /organisme/… : les liens relatifs de l'en-tête restent valides
 require_once 'partials/header.php';
 ?>
-<title><?= htmlspecialchars($nom) ?> : séjours et colonies de vacances - ColoMap</title>
 <?php if ($orga): ?>
 <meta name="description" content="<?= htmlspecialchars('Tous les séjours de ' . $nom . ' sur ColoMap : dates, tarifs et réservation en ligne.') ?>">
 <link rel="canonical" href="https://moncamp.fr/organisme/<?= htmlspecialchars($orga['slug']) ?>">

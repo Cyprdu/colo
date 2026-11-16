@@ -57,7 +57,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <?php if (!empty($base_href)) echo '<base href="' . htmlspecialchars($base_href) . '">'; /* pages dans un sous-dossier d'adresse (/organisme/xxx) */ ?>
     <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
 
-    <title>ColoMap - Trouvez le camp parfait</title>
+    <title><?= htmlspecialchars($page_title ?? 'ColoMap - Trouvez le camp parfait') ?></title>
     
     <?php if ($ads_enabled): ?>
     <?php /* Publicité : uniquement sur les pages de contenu. Consentement refusé par défaut (Consent Mode v2) AVANT le script, le message de consentement certifié est géré par AdSense. */ ?>
