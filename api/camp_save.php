@@ -3,10 +3,14 @@
 require_once __DIR__ . '/options.php';
 require_once __DIR__ . '/attente.php';
 require_once __DIR__ . '/etapes.php';
+require_once __DIR__ . '/catalogue.php';
+require_once __DIR__ . '/motscles.php';
 
 /**
  * Valide $in (le POST du formulaire) pour le directeur $uid.
- * Retourne [colonnes camps => valeurs, liste d'identifiants de tarifs, message d'erreur|null].
+ * Retourne [colonnes camps => valeurs, liste d'identifiants de tarifs, message d'erreur|null, classement] où classement =
+ * ['cats' => sélection de catégories|null, 'motscles' => ['ok' => [...], 'refus' => [...]]|null] (null = le formulaire ne les envoyait pas : on ne touche à rien).
+ * Catégories et mots-clés sont enregistrés par camp_enregistrer_classement(), dans la transaction du séjour.
  */
 function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     $s = fn($k, $n = 255) => mb_substr(trim((string)($in[$k] ?? '')), 0, $n);
@@ -14,20 +18,29 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     $day = function ($v) { $d = DateTime::createFromFormat('Y-m-d', (string)$v); return ($d && $d->format('Y-m-d') === $v) ? $v : null; };
 
     // L'organisme doit appartenir au directeur
-    $st = $pdo->prepare("SELECT id FROM organisateurs WHERE id = ? AND user_id = ?");
+    $st = $pdo->prepare("SELECT id, nom FROM organisateurs WHERE id = ? AND user_id = ?");
     $st->execute([(int)($in['organisateur_id'] ?? 0), $uid]);
-    $orgaId = (int)$st->fetchColumn();
-    if (!$orgaId) return [[], [], 'Choisissez un organisme.'];
+    $orga = $st->fetch(PDO::FETCH_ASSOC);
+    $orgaId = (int)($orga['id'] ?? 0);
+    if (!$orgaId) return [[], [], 'Choisissez un organisme.', null];
+
+    // Catégories (avec leurs précisions) et mots-clés : tables créées ici, AVANT toute transaction (un CREATE TABLE valide la transaction en cours)
+    cat_ensure($pdo); mc_ensure($pdo);
+    $catalogue = cat_load($pdo);
+    $sel = cat_valider_selection($catalogue, $in['categories'] ?? '');
+    $motsPostes = array_key_exists('motscles', $in) || array_key_exists('type', $in);
+    $mc = $motsPostes ? mc_valider($pdo, mc_liste($in['motscles'] ?? ($in['type'] ?? '')), 'camp', $orgaId, (string)$orga['nom']) : null;
+    $classement = ['cats' => array_key_exists('categories', $in) ? $sel : null, 'motscles' => $mc];
 
     $nom = $s('nom', 200);
     $debut = $day($s('date_debut')); $fin = $day($s('date_fin'));
-    if ($nom === '') return [[], [], 'Le nom du séjour est obligatoire.'];
-    if (!$debut || !$fin) return [[], [], 'Les dates du séjour sont obligatoires.'];
-    if ($fin < $debut) return [[], [], 'La date de fin doit suivre la date de début.'];
+    if ($nom === '') return [[], [], 'Le nom du séjour est obligatoire.', null];
+    if (!$debut || !$fin) return [[], [], 'Les dates du séjour sont obligatoires.', null];
+    if ($fin < $debut) return [[], [], 'La date de fin doit suivre la date de début.', null];
     $ageMin = $i('age_min'); $ageMax = $i('age_max');
-    if ($ageMax < $ageMin) return [[], [], "L'âge maximum doit être supérieur ou égal à l'âge minimum."];
+    if ($ageMax < $ageMin) return [[], [], "L'âge maximum doit être supérieur ou égal à l'âge minimum.", null];
     $limite = $day($s('date_limite_inscription'));
-    if ($limite && $limite > $debut) return [[], [], "La date limite d'inscription doit précéder le début du séjour."];
+    if ($limite && $limite > $debut) return [[], [], "La date limite d'inscription doit précéder le début du séjour.", null];
 
     $enLigne = !empty($in['inscription_en_ligne']) ? 1 : 0;
     $tarifIds = []; $prix = 0.0;
@@ -45,8 +58,8 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
             $tous = array_map(fn($r) => (float)$r['prix'], $rows);
             $prix = $fixes ? min($fixes) : ($tous ? min($tous) : 0.0);
         }
-        if (!$tarifIds) return [[], [], 'Ajoutez au moins un tarif pour ouvrir les inscriptions en ligne.'];
-        if ($i('quota_global') < 1) return [[], [], 'Indiquez le nombre total de places.'];
+        if (!$tarifIds) return [[], [], 'Ajoutez au moins un tarif pour ouvrir les inscriptions en ligne.', null];
+        if ($i('quota_global') < 1) return [[], [], 'Indiquez le nombre total de places.', null];
     } else {
         $prix = max(0.0, (float)str_replace(',', '.', (string)($in['prix_simple'] ?? 0)));
     }
@@ -55,7 +68,7 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     $qGlobal = $i('quota_global'); $qF = 0; $qG = 0;
     if (!empty($in['quotas_sexe_actifs'])) {
         $qF = $i('quota_fille'); $qG = $i('quota_garcon');
-        if ($qGlobal > 0 && ($qF > $qGlobal || $qG > $qGlobal)) return [[], [], 'Un quota filles ou garçons ne peut pas dépasser le nombre total de places.'];
+        if ($qGlobal > 0 && ($qF > $qGlobal || $qG > $qGlobal)) return [[], [], 'Un quota filles ou garçons ne peut pas dépasser le nombre total de places.', null];
     }
     $reserve = in_array($in['reserve_sexe'] ?? '', [SEXE_GARCON, SEXE_FILLE], true) ? $in['reserve_sexe'] : '';
     if ($reserve === SEXE_GARCON) $qF = 0;
@@ -65,11 +78,12 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     $lien = $s('lien_externe', 500);
     if ($lien !== '' && !preg_match('#^https?://#i', $lien)) $lien = 'https://' . $lien;
     $video = $s('video_url', 500);
-    if ($video !== '' && !preg_match('#^https?://#i', $video)) return [[], [], "Le lien de la vidéo doit commencer par http(s)://"];
+    if ($video !== '' && !preg_match('#^https?://#i', $video)) return [[], [], "Le lien de la vidéo doit commencer par http(s)://", null];
 
     $data = [
         'organisateur_id' => $orgaId, 'nom' => $nom, 'description' => $s('description', 10000),
-        'theme' => $s('theme', 100), 'type' => $s('type', 500), 'pays' => $s('pays', 80) ?: 'France',
+        'theme' => cat_theme_pour($catalogue, $sel, $s('theme', 100)),
+        'type' => $mc !== null ? mb_substr(implode(', ', array_column($mc['ok'], 'label')), 0, 500) : $s('type', 500), 'pays' => $s('pays', 80) ?: 'France',
         'itinerant' => !empty($in['itinerant']) ? 1 : 0, 'video_url' => $video,
         'ville' => $s('ville', 120), 'adresse' => $s('adresse', 255), 'code_postal' => $s('cp', 20),
         'age_min' => $ageMin, 'age_max' => $ageMax, 'date_debut' => $debut, 'date_fin' => $fin,
@@ -84,9 +98,16 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
         'remuneration_anim' => $anim && !empty($in['remuneration_anim']) ? 1 : 0, 'anim_doit_payer' => $anim && !empty($in['anim_doit_payer']) ? 1 : 0,
         'prix_anim' => $anim ? max(0, (float)($in['prix_anim'] ?? 0)) : 0,
     ];
-    if ($data['theme'] === '') return [[], [], 'Choisissez un thème principal.'];
-    if ($data['ville'] === '' || $data['adresse'] === '') return [[], [], "L'adresse et la ville sont obligatoires."];
-    return [$data, $tarifIds, null];
+    if ($data['theme'] === '') return [[], [], 'Choisissez au moins une catégorie pour votre séjour.', null];
+    if ($data['ville'] === '' || $data['adresse'] === '') return [[], [], "L'adresse et la ville sont obligatoires.", null];
+    return [$data, $tarifIds, null, $classement];
+}
+
+/** Enregistre catégories, précisions et mots-clés d'un séjour (dans la transaction du séjour). */
+function camp_enregistrer_classement(PDO $pdo, int $campId, ?array $classement): void {
+    if (!$classement) return;
+    if ($classement['cats'] !== null) cat_enregistrer_camp($pdo, $campId, $classement['cats']);
+    if ($classement['motscles'] !== null) mc_enregistrer($pdo, 'camp', $campId, $classement['motscles']['ok']);
 }
 
 /** Réservations « en attente de paiement » : autorisation et délai (1 à 60 jours) */

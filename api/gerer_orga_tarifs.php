@@ -27,7 +27,11 @@ try {
         $chk->execute([$id, $uid]);
         $o = $chk->fetch(PDO::FETCH_ASSOC);
         if (!$o) out(['error' => 'Organisme introuvable.'], 404);
-        out(['ok' => true, 'organisme' => $o]);
+        $alias = ['motscles' => [], 'motscles_refuses' => []];
+        require_once __DIR__ . '/motscles.php';
+        if (array_key_exists('motscles', $in)) $alias = mc_sauver_orga($pdo, $id, $nom, $in['motscles']);
+        else { mc_ensure($pdo); $alias['motscles'] = mc_lire($pdo, 'orga', [$id])[$id] ?? []; }
+        out(['ok' => true, 'organisme' => $o] + $alias);
     }
 
     // Un tarif n'est modifiable que s'il appartient à un organisme du directeur

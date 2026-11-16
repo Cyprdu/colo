@@ -1,6 +1,7 @@
 <?php
 // 1. CONFIG
 require_once 'api/config.php';
+require_once 'api/motscles.php';
 
 // 2. SÉCURITÉ
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
@@ -116,6 +117,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $organisateur && $organisateurId) {
             ]);
 
             $message['success'] = "Les informations de l'organisme ont été mises à jour avec succès.";
+            // Alias (« PAJE ») : contrôlés à part ; un alias refusé n'empêche pas l'enregistrement du reste
+            if (isset($_POST['motscles'])) {
+                $alias = mc_sauver_orga($pdo, (int)$organisateurId, $nom, (string)$_POST['motscles']);
+                if ($alias['motscles_refuses']) $message['success'] .= ' Alias refusés : ' . implode(' ; ', array_map(function ($r) { return '« ' . $r['label'] . ' » (' . $r['raison'] . ')'; }, $alias['motscles_refuses']));
+            }
             
             // Recharger les données pour afficher les nouvelles valeurs
             $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
@@ -135,6 +141,8 @@ require_once 'partials/header.php';
 
 <title>Modifier l'organisme - ColoMap</title>
 
+<?php mc_ensure($pdo); $aliasInit = $organisateur ? (mc_lire($pdo, 'orga', [(int)$organisateurId])[(int)$organisateurId] ?? []) : []; ?>
+<link rel="stylesheet" href="assets/css/colomap-search.css">
 <main class="ds-page" style="max-width:860px">
     <a href="dashboard_organisme.php?organisateur_id=<?= (int)$organisateurId ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -172,6 +180,14 @@ require_once 'partials/header.php';
             </section>
 
             <section class="ds-card ds-sec">
+                <div class="ds-sec-head"><span class="ds-sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg></span><div><h2 class="ds-sec-title">Alias et mots-clés de l'organisme</h2><p class="ds-sec-desc">Les noms sous lesquels on vous connaît. Tous vos séjours remontent quand une famille les tape.</p></div></div>
+                <label class="ds-label" for="orgaKwInput">Alias <span class="font-normal text-[#6b7780]">(8 maximum)</span></label>
+                <div id="orgaKw"></div>
+                <input type="hidden" name="motscles" id="orgaKwHidden" value="<?= htmlspecialchars(json_encode($aliasInit, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>">
+                <div class="mc-help"><b>Ces mots sont ceux que les familles tapent ; ils améliorent la visibilité de vos séjours.</b> Exemple : « PAJE » pour la Pastorale des Jeunes de l'Ain. Mettez des noms, des sigles, des orthographes courantes : pas de thèmes (« ski », « cheval »), ils se règlent dans les catégories de chaque séjour. Le nom d'un autre organisme ou son alias sera refusé.</div>
+            </section>
+
+            <section class="ds-card ds-sec">
                 <div class="ds-sec-head"><span class="ds-sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M3 10h18"/></svg></span><div><h2 class="ds-sec-title">Coordonnées bancaires</h2><p class="ds-sec-desc">Utilisées pour le versement des fonds collectés pour vos séjours.</p></div></div>
                 <div class="grid gap-4 sm:grid-cols-2">
                 <div><label class="ds-label" for="iban">IBAN</label><input class="ds-input" type="text" name="iban" id="iban" value="<?= htmlspecialchars($organisateur['iban'] ?? '') ?>" maxlength="34" autocomplete="off"></div>
@@ -194,4 +210,13 @@ require_once 'partials/header.php';
     <?php endif; ?>
 </main>
 
+<script src="assets/js/motscles.js"></script>
+<script>
+(function () {
+    var h = document.getElementById('orgaKwHidden'), root = document.getElementById('orgaKw');
+    if (!h || !root) return;
+    var init = []; try { init = JSON.parse(h.value) || []; } catch (e) {}
+    MotsCles.mount(root, { initial: init, max: 8, inputId: 'orgaKwInput', placeholder: 'Ex : PAJE, puis Entrée', onChange: function (l) { h.value = JSON.stringify(l); } });
+})();
+</script>
 <?php require_once 'partials/footer.php'; ?>

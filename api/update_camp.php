@@ -19,7 +19,7 @@ try {
     if (!$cur) fin(['success' => false, 'message' => "Ce séjour n'existe pas ou ne vous appartient pas."], 404);
     $campId = (int)$cur['id'];
 
-    [$data, $tarifIds, $err] = camp_lire_formulaire($pdo, $uid, $_POST);
+    [$data, $tarifIds, $err, $classement] = camp_lire_formulaire($pdo, $uid, $_POST);
     if ($err) fin(['success' => false, 'message' => $err], 422);
 
     $data['image_url'] = camp_enregistrer_image() ?: $cur['image_url'];
@@ -32,9 +32,10 @@ try {
     camp_enregistrer_attente($pdo, $campId, $_POST);
     options_enregistrer($pdo, $campId, $_POST);
     etapes_enregistrer($pdo, $campId, !empty($data['itinerant']), $_POST['etapes'] ?? '[]');
+    camp_enregistrer_classement($pdo, $campId, $classement);
     $pdo->commit();
 
-    fin(['success' => true]);
+    fin(['success' => true, 'motscles_refuses' => $classement['motscles']['refus'] ?? []]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('update_camp: ' . $e->getMessage());

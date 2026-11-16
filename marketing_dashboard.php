@@ -3,6 +3,7 @@
 // (impressions, visites, inscriptions, coût par inscription) + évolution quotidienne + conseils.
 require_once 'api/config.php';
 require_once 'api/marketing_lib.php';
+require_once 'api/search_stats.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) { header('Location: login.php'); exit; }
 
@@ -15,6 +16,8 @@ $orga = $st->fetch(PDO::FETCH_ASSOC);
 if (!$orga) { header('Location: marketing.php'); exit; }
 
 $camps = mk_camp_stats($pdo, $orgaId, $jours);
+$termes = sq_termes_organisme($pdo, $orgaId, $jours);          // termes tapés par les familles qui ont mené à vos séjours (anonymes, 3 recherches minimum)
+$sansResultat = sq_termes_sans_resultat($pdo, $jours, SQ_TERME_MIN, 6);
 $ids = array_map(function ($c) { return (int)$c['id']; }, $camps);
 
 // Évolution quotidienne (tous séjours confondus)
@@ -98,6 +101,23 @@ function pct($v) { return $v === null ? '-' : number_format($v * 100, 1, ',', ' 
         <div style="display:grid;gap:10px;margin-top:12px"><?php foreach ($tips as $t): ?><div class="mk-tip"><?= mk_icon('info', 20) ?><div><?= $t ?></div></div><?php endforeach; ?></div>
     </section>
     <?php endif; ?>
+
+    <section class="mk-section" style="margin-top:28px">
+        <h2 class="text-[18px] font-extrabold text-[#26343b]">Ce que les familles ont tapé pour vous trouver</h2>
+        <div class="mk-table-wrap" style="margin-top:12px">
+            <table class="mk-table" style="min-width:420px">
+                <thead><tr><th>Terme recherché</th><th class="num">Affichages de vos séjours</th><th class="num">Visites</th><th class="num">Taux</th></tr></thead>
+                <tbody>
+                <?php foreach ($termes as $t): ?>
+                    <tr><td><b><?= htmlspecialchars($t['terme']) ?></b></td><td class="num"><?= (int)$t['affichages'] ?></td><td class="num"><?= (int)$t['visites'] ?></td><td class="num"><?= $t['affichages'] > 0 ? pct($t['visites'] / $t['affichages']) : '-' ?></td></tr>
+                <?php endforeach; ?>
+                <?php if (!$termes): ?><tr><td colspan="4" class="mk-note" style="text-align:center;padding:24px">Pas encore assez de recherches pour afficher des termes (un terme n'est montré que s'il a été tapé par au moins <?= SQ_TERME_MIN ?> recherches).</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <p class="mk-note" style="margin-top:12px">Les termes sont agrégés et anonymes : aucun visiteur n'est identifiable. Un terme fréquent qui ne vous amène personne peut devenir un <b>mot-clé</b> de votre séjour (dans « Modifier le séjour »).
+            <?php if ($sansResultat): ?> Termes souvent tapés sur ColoMap sans résultat : <?= htmlspecialchars(implode(', ', array_column($sansResultat, 'terme'))) ?>.<?php endif; ?></p>
+    </section>
 
     <section class="mk-section" style="margin-top:28px">
         <h2 class="text-[18px] font-extrabold text-[#26343b]">Par séjour</h2>

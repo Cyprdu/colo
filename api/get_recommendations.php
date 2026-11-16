@@ -15,6 +15,7 @@ orga_ensure($pdo);
 require_once 'options.php';
 require_once 'attente.php';
 require_once 'marketing_lib.php';
+require_once 'search_lib.php';
 
 function normalizeMedia($path, $defaultDir = '') {
     $path = trim((string)$path);
@@ -40,7 +41,8 @@ try {
     // ------------------------------------------------------------------
     // 1. Profil de l'utilisateur
     // ------------------------------------------------------------------
-    $ages = []; $sexes = []; $depts = []; $favIds = []; $registered = []; $prefOrgs = []; $prefThemes = [];
+    $ages = []; $sexes = []; $depts = []; $favIds = []; $registered = []; $prefOrgs = []; $prefThemes = []; $prefCats = [];
+    cat_ensure($pdo); cat_backfill($pdo);   // catégories des séjours (créées et rattachées aux anciens thèmes au premier usage)
 
     if ($userId) {
         $stmt = $pdo->prepare("SELECT id, date_naissance, code_postal, sexe FROM enfants WHERE parent_id = ?");
@@ -74,6 +76,8 @@ try {
                 if (!empty($r['organisateur_id'])) $prefOrgs[(int)$r['organisateur_id']] = true;
                 foreach (['theme', 'type'] as $k) if (!empty($r[$k])) $prefThemes[lc($r[$k])] = true;
             }
+            // Catégories des séjours que le parent a mis en favori ou réservés : ses goûts, au niveau des catégories
+            try { $stmt = $pdo->prepare("SELECT DISTINCT categorie FROM camp_categories WHERE camp_id IN ($in) AND categorie <> '_aucune'"); $stmt->execute($seen); foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $cs) $prefCats[$cs] = true; } catch (Throwable $e) {}
         }
     }
     if ($explicitAge !== null) $ages = [$explicitAge];
@@ -111,6 +115,14 @@ try {
     $stmt->execute([':today' => $today]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Catégories et qualité réelle (clics et inscriptions) de tous les candidats : deux requêtes pour l'ensemble
+    $candIds = array_map(function ($r) { return (int)$r['id']; }, $rows);
+    $catsByCamp = []; $statsImp = []; $statsIns = [];
+    if ($candIds) {
+        try { foreach ($pdo->query("SELECT camp_id, categorie FROM camp_categories WHERE camp_id IN (" . implode(',', $candIds) . ") AND categorie <> '_aucune'")->fetchAll(PDO::FETCH_ASSOC) as $r) $catsByCamp[(int)$r['camp_id']][] = $r['categorie']; } catch (Throwable $e) {}
+        [$statsImp, $statsIns] = sq_stats_camps($pdo, $candIds);
+    }
+
     // ------------------------------------------------------------------
     // 3. Score de pertinence + étiquette par camp
     // ------------------------------------------------------------------
@@ -140,7 +152,9 @@ try {
         $isUrgent  = !empty($c['boost_urgence_fin']) && $c['boost_urgence_fin'] > $nowDt;
         $isNew     = !empty($c['date_creation']) && strtotime($c['date_creation']) > strtotime('-21 days');
         $sameOrg   = !empty($c['organisateur_id']) && isset($prefOrgs[(int)$c['organisateur_id']]);
-        $sameTheme = (!empty($c['theme']) && isset($prefThemes[lc($c['theme'])])) || (!empty($c['type']) && isset($prefThemes[lc($c['type'])]));
+        $c['_cats'] = $catsByCamp[$id] ?? [];
+        $sameCat   = (bool)array_intersect($c['_cats'], array_keys($prefCats));
+        $sameTheme = $sameCat || (!empty($c['theme']) && isset($prefThemes[lc($c['theme'])])) || (!empty($c['type']) && isset($prefThemes[lc($c['type'])]));
         $nearby    = !empty($c['code_postal']) && isset($depts[substr($c['code_postal'], 0, 2)]);
 
         $score = 0;
@@ -149,6 +163,8 @@ try {
         if ($sameTheme) $score += 2;
         if ($nearby)    $score += 2;
         if (in_array($id, $favIds, true)) $score += 1;
+        // Qualité constatée (taux de clic et d'inscription, lissés) : -3 à +3, comme dans la recherche
+        $score += 3 * (sq_qualite((float)($statsImp[$id]['i'] ?? 0), (float)($statsImp[$id]['c'] ?? 0), (float)($statsIns[$id] ?? 0)) - 50) / 50;
         // Effet mesurable des boosts : multiplicateur (mise à la une, dernière minute, remontée qui s'estompe), jamais un simple tri
         $mk = mk_score($c, $nowDt);
         $score = ($score + 6) * $mk['boost_factor'];
@@ -196,7 +212,9 @@ try {
     $filter = function ($fn) use ($pool, $byScore) {
         $l = array_values(array_filter($pool, $fn));
         usort($l, $byScore);
-        return $l;
+        // Diversité : pas une rangée entière du même organisme (même ré-ordonnancement que la recherche)
+        $items = array_map(function ($c) { return ['score' => max(0.01, $c['_score']), 'orga' => (int)($c['organisateur_id'] ?? 0), 'c' => $c]; }, $l);
+        return array_map(function ($i) { return $i['c']; }, sq_diversifier($items, [], SQ_DIVERSITE, 40));
     };
 
     // ---- a) Périodes de vacances (fournies par la page) ----
@@ -244,18 +262,20 @@ try {
     $add('petits-prix', 'Petits prix', 'Des séjours à moins de 300 €', 'recherche?max_price=300', $cheap);
 
     // Thématiques
+    // (la catégorie du séjour, ou à défaut son ancien thème / ses mots)
     $themes = [
-        ['montagne', 'Montagne', ['montagne', 'neige', 'ski']],
-        ['mer', 'Mer et littoral', ['mer', 'littoral', 'plage', 'voile']],
-        ['nature', 'Nature et aventure', ['nature', 'aventure', 'campagne', 'survie', 'bushcraft']],
-        ['sport', 'Sport', ['sport']],
+        ['montagne', 'Montagne', ['montagne', 'neige', 'ski'], ['montagne', 'ski']],
+        ['mer', 'Mer et littoral', ['mer', 'littoral', 'plage', 'voile'], ['mer']],
+        ['nature', 'Nature et aventure', ['nature', 'aventure', 'campagne', 'survie', 'bushcraft'], ['nature']],
+        ['sport', 'Sport', ['sport'], ['sport', 'velo']],
     ];
-    foreach ($themes as [$slug, $title, $words]) {
-        $list = $filter(function ($c) use ($words) {
+    foreach ($themes as [$slug, $title, $words, $cats]) {
+        $list = $filter(function ($c) use ($words, $cats) {
+            if (array_intersect($c['_cats'], $cats)) return true;
             foreach ($words as $w) if (mb_strpos($c['_text'], $w) !== false) return true;
             return false;
         });
-        $add('theme-' . $slug, $title, 'Une sélection thématique', 'recherche?themes[]=' . urlencode($title === 'Mer et littoral' ? 'Mer / Littoral' : $title), $list);
+        $add('theme-' . $slug, $title, 'Une sélection thématique', 'recherche?cat[]=' . urlencode($cats[0]), $list);
     }
 
     // Rien du tout ? on propose simplement les prochains séjours

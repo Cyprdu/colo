@@ -43,6 +43,7 @@
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#parents">Comment inscrire mon enfant ?</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#organisateurs">Comment puis-je devenir organisateur ?</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#paiements">Quels sont les coûts de ColoMap ?</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="classement">Comment sont classés les séjours ?</a></li>
                 </ul>
             </nav>
 
