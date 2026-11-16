@@ -266,6 +266,11 @@ document.addEventListener('DOMContentLoaded', async function () {
     // ------------------------------------------------------------
     const cache = new Map();          // jeton -> séjour
     const inflight = new Map();       // jeton -> promesse
+    // Tranche d'âge et public propres à chaque session (« · 14–16 ans · filles »)
+    function sessionMeta(s) {
+        const a = s.age_min != null && s.age_max != null ? ` · ${s.age_min}–${s.age_max} ans` : '';
+        return a + (s.reserve_sexe ? (s.reserve_sexe === 'Femme' ? ' · filles' : ' · garçons') : '');
+    }
     function fetchCamp(tok) {
         if (cache.has(tok)) return Promise.resolve(cache.get(tok));
         if (inflight.has(tok)) return inflight.get(tok);
@@ -435,7 +440,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         $('sessions-dates').innerHTML = groups.map(g => {
             const sel = g === curGroup;
             const allFull = g.items.every(s => s.places_restantes === 0);
-            const sub = g.items.length > 1 ? `${g.items.length} formules` : nightsLabel(g.items[0].r.nights);
+            const sub = (g.items.length > 1 ? `${g.items.length} formules` : nightsLabel(g.items[0].r.nights)) + sessionMeta(g.items[0]);
             const min = Math.min(...g.items.map(s => Number(s.prix)));
             return `<button type="button" role="radio" aria-checked="${sel}" data-token="${g.items[0].token}" data-key="${g.key}" data-nights="${curItem.r.nights}"
                         class="opt${sel ? ' is-selected' : ''}${allFull ? ' is-full' : ''}">
@@ -456,7 +461,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 return `<button type="button" role="radio" aria-checked="${sel}" data-token="${s.token}" class="opt${sel ? ' is-selected' : ''}${full ? ' is-full' : ''}">
                         <span class="flex items-center gap-3 min-w-0"><span class="dot"></span>
                             <span class="min-w-0"><span class="opt-title">${esc(nightsLabel(s.r.nights))}</span>
-                            <span class="opt-sub">${esc(fmtRange(s.r))}${places ? ' · ' + esc(places) : ''}</span></span></span>
+                            <span class="opt-sub">${esc(fmtRange(s.r))}${esc(sessionMeta(s))}${places ? ' · ' + esc(places) : ''}</span></span></span>
                         <span class="text-[14px] font-bold text-[#26343b] flex-none">${fmtPrice(s.prix)} €</span>
                     </button>`;
             }).join('');
@@ -571,17 +576,17 @@ document.addEventListener('DOMContentLoaded', async function () {
 });
 
 async function contactOrganisateur(targetUserId, campId) {
-    if (!targetUserId || !campId) return alert('Erreur données.');
+    if (!targetUserId || !campId) return ColoUI.error('Les informations de la page sont incomplètes. Rechargez la page puis réessayez.');
     document.body.style.cursor = 'wait';
     try {
         const res = await fetch('api/start_conversation.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organisateurId: targetUserId, campId: campId }) });
         const data = await res.json();
         document.body.style.cursor = 'default';
         if (data.conversationId) window.location.href = `messagerie?conv_id=${data.conversationId}`;
-        else alert(data.error || 'Erreur');
+        else ColoUI.error(data.error);
     } catch (e) {
         document.body.style.cursor = 'default';
-        alert('Erreur réseau');
+        ColoUI.error('Failed to fetch');
     }
 }
 </script>

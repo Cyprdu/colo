@@ -93,7 +93,7 @@ try {
         // Autres sessions du même camp (même groupe), pour le choix de session
         $camp['sessions'] = [];
         if (campsHaveGroupColumn($pdo) && !empty($camp['groupe_id'])) {
-            $stS = $pdo->prepare("SELECT c.id, c.token, c.date_debut, c.date_fin, c.prix, c.quota_global, c.inscription_en_ligne,
+            $stS = $pdo->prepare("SELECT c.id, c.token, c.date_debut, c.date_fin, c.prix, c.quota_global, c.inscription_en_ligne, c.age_min, c.age_max, c.reserve_sexe,
                     (SELECT COUNT(*) FROM inscriptions i WHERE i.camp_id = c.id) AS nb_inscrits
                 FROM camps c
                 WHERE c.groupe_id = ? AND ((c.valide = 1 AND c.refuse = 0 AND COALESCE(c.supprime,0) = 0 AND COALESCE(c.prive,0) = 0
@@ -106,6 +106,7 @@ try {
                     'id' => (int)$r['id'], 'token' => $r['token'],
                     'date_debut' => $r['date_debut'], 'date_fin' => $r['date_fin'],
                     'prix' => (float)$r['prix'],
+                    'age_min' => $r['age_min'] !== null ? (int)$r['age_min'] : null, 'age_max' => $r['age_max'] !== null ? (int)$r['age_max'] : null, 'reserve_sexe' => $r['reserve_sexe'] ?? null,
                     'places_restantes' => ($q > 0 && (int)$r['inscription_en_ligne'] === 1) ? max(0, $q - (int)$r['nb_inscrits']) : null,
                     'is_current' => (int)$r['id'] === (int)$camp['id'],
                 ];
@@ -121,6 +122,6 @@ try {
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Erreur : ' . $e->getMessage()]);
+    echo json_encode(['error' => 'Ce séjour est momentanément indisponible.']);
 }
 ?>

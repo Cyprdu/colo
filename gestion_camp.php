@@ -92,7 +92,7 @@ function render() {
 
 function csvCell(v) { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
 $('btnCsv').addEventListener('click', () => {
-    if (!DATA.liste_inscrits.length) return alert('Rien à exporter.');
+    if (!DATA.liste_inscrits.length) return ColoUI.alert('Aucun inscrit à exporter pour le moment.');
     const head = ['Date', 'Prénom enfant', 'Nom enfant', 'Sexe', 'Naissance', 'Infos santé', 'Allergies', 'Régime', 'Parent', 'Email', 'Téléphone', 'Tarif', 'Montant payé', 'Statut'];
     const rows = DATA.liste_inscrits.map(r => [r.date_inscription, r.prenom, r.nom, r.sexe === 'Femme' ? 'Fille' : 'Garçon', r.date_naissance, r.infos_sante, r.allergies, r.regime_alimentaire,
         (r.parent_prenom || '') + ' ' + (r.parent_nom_famille || ''), r.parent_email, r.parent_tel, r.tarif_nom, r.montant_paye, status(r).t]);
@@ -102,7 +102,7 @@ $('btnCsv').addEventListener('click', () => {
 $('btnShare').addEventListener('click', async () => {
     const url = location.origin + '/camp_details.php?t=' + DATA.camp.token;
     try { if (navigator.share) { await navigator.share({ title: DATA.camp.nom, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
-    try { await navigator.clipboard.writeText(url); $('btnShare').textContent = 'Lien copié'; setTimeout(() => $('btnShare').textContent = 'Partager', 2000); } catch (e) { prompt('Copiez le lien :', url); }
+    ColoUI.copy(url);
 });
 document.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => {
     filt = b.dataset.s;

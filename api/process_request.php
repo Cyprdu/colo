@@ -15,6 +15,6 @@ try {
     $pdo->prepare($sql)->execute([$userId]);
     sendJson(['success' => true]);
 } catch (Exception $e) {
-    sendJson(['error' => $e->getMessage()], 500);
+    error_log(basename(__FILE__) . ': ' . $e->getMessage()); sendJson(['error' => 'Une erreur est survenue. Réessayez dans un instant.'], 500);
 }
 ?>

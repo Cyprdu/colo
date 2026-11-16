@@ -306,7 +306,7 @@ function submitForm() {
     
     if (mode === 'create') {
         if (signaturePad.isEmpty()) {
-            alert("Merci de signer la fiche sanitaire dans le cadre prévu.");
+            ColoUI.alert("Merci de signer la fiche sanitaire dans le cadre prévu.");
             return;
         }
         document.getElementById('signature_data').value = signaturePad.toDataURL('image/png');

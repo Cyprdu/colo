@@ -233,7 +233,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if(data.commentaires) document.getElementById('comments').textContent = data.commentaires;
 
     } catch (e) {
-        alert("Erreur : " + e.message);
+        ColoUI.error(e);
     }
 });
 
@@ -250,7 +250,7 @@ function generatePDF() {
     // On génère le PDF
     html2pdf().set(opt).from(element).save().then(() => {
         // Optionnel : Message pour prévenir que le carnet de santé est à part
-        alert("La fiche récapitulative a été téléchargée.\n\nLe carnet de santé est un document séparé (pour des raisons de format), vous pouvez le télécharger via le bouton rouge 'Voir Carnet'.");
+        ColoUI.alert("La fiche récapitulative a été téléchargée.\n\nLe carnet de santé est un document séparé (pour des raisons de format), vous pouvez le télécharger via le bouton rouge 'Voir Carnet'.");
     });
 }
 </script>

@@ -72,7 +72,7 @@ require_once 'partials/header.php';
             <?= csrf_field() ?><input type="hidden" name="action" value="supprimer">
             <div><label class="ds-label" for="mdp-suppr">Votre mot de passe</label><input id="mdp-suppr" class="ds-input" type="password" name="mdp" autocomplete="current-password" required></div>
             <div><label class="ds-label" for="conf-suppr">Tapez SUPPRIMER pour confirmer</label><input id="conf-suppr" class="ds-input" type="text" name="confirmation" autocomplete="off" required></div>
-            <button class="ds-btn" type="submit" style="background:#9a3b2e;border-color:#9a3b2e" onclick="return confirm('Supprimer définitivement votre compte et les données de vos enfants ?')">Supprimer définitivement mon compte</button>
+            <button class="ds-btn" type="submit" style="background:#9a3b2e;border-color:#9a3b2e" data-confirm="Supprimer définitivement votre compte et les données de vos enfants ?" data-danger data-confirm-label="Supprimer mon compte">Supprimer définitivement mon compte</button>
         </form>
     </section>
 </main>

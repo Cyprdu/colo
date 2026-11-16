@@ -48,6 +48,6 @@ try {
     }
 
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Erreur technique : ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Suppression impossible pour le moment. Réessayez dans un instant.']);
 }
 ?>

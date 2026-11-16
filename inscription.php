@@ -317,7 +317,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
     function goToStep(step) {
         if (step === 2) {
             const checkboxes = document.querySelectorAll('.child-check:checked');
-            if (checkboxes.length === 0) { alert("Sélectionnez au moins un enfant."); return; }
+            if (checkboxes.length === 0) { ColoUI.alert("Sélectionnez au moins un enfant pour continuer."); return; }
             selectedChildIds = Array.from(checkboxes).map(cb => cb.value);
             initStep2();
         }
@@ -422,7 +422,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             const sel = selections[id]; const t = sel && tariffs.find(x => x.id == sel.tariffId);
             if (!t || t.montant_libre != 1 || !(sel.customPrice > 0) || sel.customFor != t.id) continue;
             const fl = parseFloat(t.plancher) || 0;
-            if (sel.customPrice < fl) { alert('Le montant minimum pour « ' + t.nom + ' » est de ' + fl.toFixed(2).replace('.', ',') + ' €.'); return false; }
+            if (sel.customPrice < fl) { ColoUI.alert('Le montant minimum pour « ' + t.nom + ' » est de ' + fl.toFixed(2).replace('.', ',') + ' €.'); return false; }
         }
         return true;
     }
@@ -433,7 +433,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 if (empty) {
                     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
                     el.focus();
-                    alert('Merci de répondre à toutes les questions obligatoires (*).');
+                    ColoUI.alert('Merci de répondre à toutes les questions obligatoires (*).');
                     return false;
                 }
             }

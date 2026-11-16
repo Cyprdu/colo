@@ -95,6 +95,6 @@ try {
 
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Erreur lors de la récupération des camps: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'Les séjours sont momentanément indisponibles.']);
 }
 ?>

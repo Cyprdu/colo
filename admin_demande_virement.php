@@ -69,7 +69,7 @@ require_once 'partials/header.php';
 require_once 'partials/mk_icons.php';
 $csrf = fin_csrf();
 function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) {
-    return '<form method="post" style="display:inline"' . ($confirm ? ' onsubmit="return confirm(\'' . htmlspecialchars($confirm, ENT_QUOTES) . '\')"' : '') . '><input type="hidden" name="csrf" value="' . $csrf . '"><input type="hidden" name="action" value="' . $action . '"><input type="hidden" name="organisateur_id" value="' . (int)$orgaId . '"><button class="ds-btn ' . ($light ? 'ds-btn-light ' : '') . 'mk-btn-sm" type="submit">' . $label . '</button></form>';
+    return '<form method="post" style="display:inline"' . ($confirm ? ' data-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"' : '') . '><input type="hidden" name="csrf" value="' . $csrf . '"><input type="hidden" name="action" value="' . $action . '"><input type="hidden" name="organisateur_id" value="' . (int)$orgaId . '"><button class="ds-btn ' . ($light ? 'ds-btn-light ' : '') . 'mk-btn-sm" type="submit">' . $label . '</button></form>';
 }
 ?>
 <title>Admin - Versements aux organismes</title>
@@ -128,7 +128,7 @@ function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) 
         <p class="lead">Demandes faites avant la mise en place des versements automatiques : à régler à la main puis à marquer comme effectuées.</p>
         <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table"><thead><tr><th>Demande du</th><th>Organisme</th><th class="num">Net</th><th>IBAN</th><th></th></tr></thead><tbody>
             <?php foreach ($anciens as $v): ?><tr><td><?= date('d/m/Y', strtotime($v['date_demande'])) ?></td><td><?= htmlspecialchars($v['organisateur_nom']) ?></td><td class="num"><b><?= number_format($v['montant_apres_commission'], 2, ',', ' ') ?> €</b></td><td class="mk-note" style="font-family:monospace;overflow-wrap:anywhere"><?= htmlspecialchars($v['iban']) ?></td>
-                <td class="num"><form method="post" style="display:inline" onsubmit="return confirm('Confirmer que ce virement a bien été effectué ?')"><input type="hidden" name="csrf" value="<?= $csrf ?>"><input type="hidden" name="action" value="valider_virement"><input type="hidden" name="token" value="<?= htmlspecialchars($v['token']) ?>"><button class="ds-btn mk-btn-sm" type="submit">Marquer effectué</button></form></td></tr><?php endforeach; ?>
+                <td class="num"><form method="post" style="display:inline" data-confirm="Confirmer que ce virement a bien été effectué ?"><input type="hidden" name="csrf" value="<?= $csrf ?>"><input type="hidden" name="action" value="valider_virement"><input type="hidden" name="token" value="<?= htmlspecialchars($v['token']) ?>"><button class="ds-btn mk-btn-sm" type="submit">Marquer effectué</button></form></td></tr><?php endforeach; ?>
         </tbody></table></div>
     </section>
     <?php endif; ?>

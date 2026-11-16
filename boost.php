@@ -116,10 +116,10 @@ require_once 'partials/mk_icons.php';
 </main>
 
 <script>
-function mkBoost(type, cost, btn) {
+async function mkBoost(type, cost, btn) {
     var solde = <?= $solde ?>;
     if (solde < cost) { mkToast('Solde insuffisant : rechargez vos points.', true); mkOpen(); return; }
-    if (!confirm('Dépenser ' + cost + ' points (' + (cost / 10).toFixed(2).replace('.', ',') + ' €) pour ce boost ?')) return;
+    if (!(await ColoUI.confirm('Dépenser ' + cost + ' points (' + (cost / 10).toFixed(2).replace('.', ',') + ' €) pour ce boost ?', { confirmLabel: 'Dépenser' }))) return;
     btn.disabled = true;
     mkPost('api/apply_boost.php', { token: <?= json_encode($token) ?>, type: type }).then(function (d) {
         if (d.success) { mkToast('Boost activé.'); setTimeout(function () { location.reload(); }, 800); }

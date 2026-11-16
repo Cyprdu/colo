@@ -336,7 +336,7 @@ document.querySelectorAll('.ds-modal').forEach(m => m.addEventListener('mousedow
 async function share(token, nom) {
     const url = location.origin + '/camp_details.php?t=' + token;
     try { if (navigator.share) { await navigator.share({ title: nom, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
-    try { await navigator.clipboard.writeText(url); toast('Lien copié.'); } catch (e) { prompt('Copiez le lien :', url); }
+    ColoUI.copy(url);
 }
 
 // ---- visibilité d'une session

@@ -132,7 +132,7 @@ function resaImg($url) {
                 try {
                     var r = await fetch('api/equipe_inscrire.php?a=payer', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name=csrf]') || {}).content || '' }, body: JSON.stringify({ t: b.dataset.t }) });
                     var d = await r.json(); if (!r.ok) throw new Error(d.error || 'Paiement impossible.'); location.href = d.url;
-                } catch (e) { alert(e.message); b.disabled = false; }
+                } catch (e) { ColoUI.error(e); b.disabled = false; }
             });
         });
         </script>
