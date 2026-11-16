@@ -10,7 +10,8 @@
 // Tables/colonnes créées automatiquement au premier usage (idempotent), comme api/champs.php.
 // Aucun identifiant numérique n'est exposé : séjours = camps.token, candidatures = candidatures.token, liens = jeton.
 
-const ANIM_STATUTS = ['En attente', 'Accepté', 'Refusé', "Liste d'attente"];
+const ANIM_STATUTS = ['En attente', 'Accepté', 'Refusé', "Liste d'attente"];   // décisions du directeur (« Retirée » : choix de l'animateur)
+require_once __DIR__ . '/security.php';
 const ANIM_CV_MAX = 5 * 1024 * 1024;
 
 function anim_ensure(PDO $pdo): void {
@@ -64,6 +65,7 @@ function anim_ensure(PDO $pdo): void {
         if (!in_array('token', $cc, true)) $pdo->exec("ALTER TABLE candidatures ADD COLUMN token CHAR(32) NULL");
         if (!in_array('lien_id', $cc, true)) $pdo->exec("ALTER TABLE candidatures ADD COLUMN lien_id INT NULL");
         if (!in_array('decided_at', $cc, true)) $pdo->exec("ALTER TABLE candidatures ADD COLUMN decided_at DATETIME NULL");
+        if (!in_array('vue_at', $cc, true)) $pdo->exec("ALTER TABLE candidatures ADD COLUMN vue_at DATETIME NULL");
         if (!in_array('note_directeur', $cc, true)) $pdo->exec("ALTER TABLE candidatures ADD COLUMN note_directeur VARCHAR(500) NULL");
         $st = $pdo->query("SHOW COLUMNS FROM candidatures LIKE 'statut'")->fetch(PDO::FETCH_ASSOC);
         if ($st && stripos((string)$st['Type'], 'enum') === 0) $pdo->exec("ALTER TABLE candidatures MODIFY statut VARCHAR(20) NOT NULL DEFAULT 'En attente'");
@@ -98,7 +100,13 @@ function anim_require_directeur(): int {
     return anim_user_id();
 }
 
+/** Jeton CSRF (en-tête X-CSRF-Token) exigé pour toute écriture ; voir api/security.php */
+function anim_csrf(): void {
+    if (!csrf_check()) anim_json(['error' => 'Session expirée : rechargez la page.'], 403);
+}
+
 function anim_body(): array {
+    anim_csrf();
     // Les requêtes d'écriture viennent de fetch() en JSON : un formulaire d'un autre site ne peut pas envoyer ce type de contenu (protection CSRF)
     if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) anim_json(['error' => 'Requête invalide.'], 400);
     $in = json_decode(file_get_contents('php://input'), true);

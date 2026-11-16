@@ -10,7 +10,7 @@ $is_anim = !empty($_SESSION['user']['is_animateur']);
 ?>
 <title>Séjour - Espace animateur - ColoMap</title>
 <main class="ds-page" style="max-width:860px">
-    <a href="animateur" class="text-[14px] font-semibold text-[#6b7780] hover:text-[#26343b]">&larr; Séjours qui recrutent</a>
+    <a href="missions" class="text-[14px] font-semibold text-[#6b7780] hover:text-[#26343b]">&larr; Missions</a>
 <?php if (!$is_anim): ?>
     <div class="ds-card mt-6 p-8"><h1 class="ds-h1">Compte animateur requis</h1>
         <p class="ds-lead">Ce lien est destiné aux animateurs. Créez un compte animateur pour postuler.</p>
@@ -20,7 +20,7 @@ $is_anim = !empty($_SESSION['user']['is_animateur']);
 <?php endif; ?>
 </main>
 <?php if ($is_anim): ?>
-<script src="assets/js/anim.js?v=1"></script>
+<script src="assets/js/anim.js?v=3"></script>
 <script>
 (function () {
     var A = window.ANIM, T = <?= json_encode($t) ?>, SELF = <?= json_encode($self) ?>, box = document.getElementById('box');

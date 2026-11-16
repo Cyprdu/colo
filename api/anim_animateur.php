@@ -41,6 +41,7 @@ try {
     }
 
     if ($a === 'profil' && $post) {
+        anim_csrf();
         $cur = anim_profil($pdo, $uid);
         $statut = $_POST['bafa_statut'] ?? 'aucun';
         if (!in_array($statut, ['bafa', 'en_cours', 'equivalent', 'aucun'], true)) $statut = 'aucun';
@@ -102,15 +103,21 @@ try {
             $d = $pdo->prepare("SELECT date_naissance FROM users WHERE id = ?"); $d->execute([$uid]); $dn = $d->fetchColumn();
             if ($dn && (new DateTime($dn))->diff(new DateTime())->y < 18) anim_json(['error' => 'Ce séjour est réservé aux animateurs majeurs.'], 403);
         }
-        $dup = $pdo->prepare("SELECT 1 FROM candidatures WHERE camp_id = ? AND user_id = ?"); $dup->execute([$camp['id'], $uid]);
-        if ($dup->fetch()) anim_json(['error' => 'Vous avez déjà postulé à ce séjour.'], 409);
-        $pdo->prepare("INSERT INTO candidatures (user_id, camp_id, motivation, statut, token, lien_id) VALUES (?,?,?,'En attente',?,?)")
-            ->execute([$uid, $camp['id'], anim_txt($in['message'] ?? '', 1500), bin2hex(random_bytes(16)), $lienId]);
+        $dup = $pdo->prepare("SELECT id, statut FROM candidatures WHERE camp_id = ? AND user_id = ?"); $dup->execute([$camp['id'], $uid]);
+        $old = $dup->fetch(PDO::FETCH_ASSOC);
+        if ($old && $old['statut'] !== 'Retirée') anim_json(['error' => 'Vous avez déjà postulé à ce séjour.'], 409);
+        if ($old) {   // candidature retirée puis renvoyée : on la remet à zéro
+            $pdo->prepare("UPDATE candidatures SET statut = 'En attente', motivation = ?, vue_at = NULL, decided_at = NULL, note_directeur = NULL, created_at = NOW() WHERE id = ?")
+                ->execute([anim_txt($in['message'] ?? '', 1500), $old['id']]);
+        } else {
+            $pdo->prepare("INSERT INTO candidatures (user_id, camp_id, motivation, statut, token, lien_id) VALUES (?,?,?,'En attente',?,?)")
+                ->execute([$uid, $camp['id'], anim_txt($in['message'] ?? '', 1500), bin2hex(random_bytes(16)), $lienId]);
+        }
         anim_json(['success' => true], 201);
     }
 
     if ($a === 'mes' && !$post) {
-        $st = $pdo->prepare("SELECT cd.token, cd.statut, cd.created_at, cd.decided_at, cd.note_directeur, c.token AS camp_token, c.nom, c.ville, c.image_url,
+        $st = $pdo->prepare("SELECT cd.token, cd.statut, cd.created_at, cd.decided_at, cd.vue_at, cd.note_directeur, cd.motivation, c.token AS camp_token, c.nom, c.ville, c.image_url,
                 c.date_debut, c.date_fin, o.nom AS organisateur, c.anim_remuneration
             FROM candidatures cd JOIN camps c ON c.id = cd.camp_id LEFT JOIN organisateurs o ON o.id = c.organisateur_id
             WHERE cd.user_id = ? ORDER BY cd.created_at DESC");
@@ -128,7 +135,7 @@ try {
 
     if ($a === 'retirer' && $post) {
         $t = (string)(anim_body()['c'] ?? '');
-        $pdo->prepare("DELETE FROM candidatures WHERE token = ? AND user_id = ? AND statut IN (?, ?)")->execute([$t, $uid, 'En attente', "Liste d'attente"]);
+        $pdo->prepare("UPDATE candidatures SET statut = 'Retirée', decided_at = NOW() WHERE token = ? AND user_id = ? AND statut IN (?, ?)")->execute([$t, $uid, 'En attente', "Liste d'attente"]);
         anim_json(['success' => true]);
     }
 

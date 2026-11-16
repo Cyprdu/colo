@@ -1,80 +1,52 @@
 <?php
-// animateur.php : catalogue des séjours qui recrutent des animateurs (réservé aux comptes animateurs).
-// Les données viennent de api/anim_catalogue.php (même moteur de filtres que la recherche).
+// animateur.php : accueil du compte animateur : tâches utiles + suggestions de missions classées par correspondance avec le profil et les préférences.
+// Données : api/anim_accueil.php. Le catalogue complet (avec filtres) est dans missions.php.
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redirect=' . urlencode('animateur.php')); exit; }
 ?>
-<title>Séjours qui recrutent - Espace animateur - ColoMap</title>
+<title>Accueil animateur - ColoMap</title>
 <main class="ds-page">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-        <div>
-            <p class="ds-eyebrow">Espace animateur</p>
-            <h1 class="ds-h1">Les séjours qui recrutent</h1>
-            <p class="ds-lead">Postulez auprès des directeurs qui cherchent des animateurs, avec ou sans BAFA.</p>
-        </div>
-        <div class="flex gap-3">
-            <a href="profil-animateur" class="ds-btn ds-btn-light">Mon profil</a>
-            <a href="espace-animation" class="ds-btn">Mes candidatures</a>
-        </div>
-    </div>
+    <header>
+        <p class="ds-eyebrow">Espace animateur</p>
+        <h1 class="ds-h1" id="hello">Bonjour <?= htmlspecialchars((string)($_SESSION['user']['prenom'] ?? '')) ?></h1>
+        <p class="ds-lead">Vos prochaines missions d'animation, choisies pour vous.</p>
+    </header>
 
-    <form id="f" class="ds-card mt-8 p-5 grid gap-4 md:grid-cols-[1.4fr_1fr_auto] items-end">
-        <div><label class="ds-label" for="q">Séjour, thème, organisateur</label><input id="q" class="ds-input" placeholder="Rechercher…" autocomplete="off"></div>
-        <div><label class="ds-label" for="city">Ville ou code postal</label><input id="city" class="ds-input" autocomplete="off"></div>
-        <button class="ds-btn" type="submit">Rechercher</button>
-        <div class="md:col-span-3 flex flex-wrap gap-5 text-[14px] text-[#3b4a54]">
-            <label class="flex items-center gap-2"><input type="checkbox" id="remunere" style="accent-color:#26343b"> Rémunéré</label>
-            <label class="flex items-center gap-2"><input type="checkbox" id="sans_bafa" style="accent-color:#26343b"> Ouvert sans BAFA</label>
-            <label class="flex items-center gap-2">Période
-                <input type="date" id="from" class="ds-input" style="width:auto;padding:6px 10px"> <span>au</span> <input type="date" id="to" class="ds-input" style="width:auto;padding:6px 10px"></label>
-        </div>
-    </form>
-
-    <p id="count" class="mt-6 text-[14px] text-[#6b7780]" aria-live="polite"></p>
-    <div id="grid" class="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"></div>
-    <div id="more" class="mt-8 text-center hidden"><button type="button" class="ds-btn ds-btn-light" id="more-b">Voir plus de séjours</button></div>
+    <section id="taches" class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="À faire"></section>
+    <div id="sections" class="mt-10 space-y-12"><div class="ds-card p-10 text-center text-[#6b7780]">Chargement…</div></div>
 </main>
-<script src="assets/js/anim.js?v=1"></script>
+<script src="assets/js/anim.js?v=3"></script>
 <script>
 (function () {
-    var A = window.ANIM, $ = function (i) { return document.getElementById(i); }, page = 1;
-    function card(c) {
-        var tags = [];
-        tags.push(c.remuneration ? 'Rémunéré · ' + A.money(c.remuneration) : 'Bénévole / non rémunéré');
-        tags.push(c.bafa_obligatoire ? 'BAFA requis' : 'Sans BAFA accepté');
-        if (c.majeur) tags.push('Majeurs');
-        var img = c.image_url ? '<img src="' + A.esc(c.image_url) + '" alt="" loading="lazy" class="w-full h-full object-cover">' : '';
-        return '<a href="info-camp-animateur?t=' + encodeURIComponent(c.token) + '" class="ds-tile ds-fade" style="flex-direction:column;align-items:stretch;padding:0;overflow:hidden">' +
-            '<div style="height:150px;background:#e5eaef">' + img + '</div><div style="padding:18px">' +
-            '<p class="ds-eyebrow">' + A.esc(c.organisateur_nom || '') + '</p><h3 class="font-extrabold text-[17px] text-[#26343b] mt-1">' + A.esc(c.nom) + '</h3>' +
-            '<p class="mt-2 text-[13px] text-[#6b7780] flex items-center gap-2">' + A.icon('pin') + A.esc(c.ville) + '</p>' +
-            '<p class="mt-1 text-[13px] text-[#6b7780] flex items-center gap-2">' + A.icon('cal') + A.esc(A.range(c.date_debut, c.date_fin)) + '</p>' +
-            '<div class="mt-3 flex flex-wrap gap-2">' + tags.map(function (t) { return '<span class="ds-badge">' + A.esc(t) + '</span>'; }).join('') + '</div>' +
-            (c.ma_candidature ? '<div class="mt-3">' + A.statut(c.ma_candidature) + '</div>' : '') + '</div></a>';
+    var A = window.ANIM, E = A.esc, $ = function (i) { return document.getElementById(i); };
+    function tache(href, ico, titre, sub, strong) {
+        return '<a href="' + href + '" class="ds-tile" style="' + (strong ? 'border-color:#26343b' : '') + '"><span class="ds-tile-ico">' + A.icon(ico, 'w-5 h-5') + '</span><span class="min-w-0"><span class="block font-extrabold text-[15px] text-[#26343b]">' + titre + '</span><span class="block text-[13px] text-[#6b7780]">' + sub + '</span></span></a>';
     }
-    async function load(reset) {
-        if (reset) { page = 1; $('grid').innerHTML = ''; }
-        var p = new URLSearchParams({ page: page, limit: 12 });
-        if ($('q').value.trim()) p.set('name', $('q').value.trim());
-        if ($('city').value.trim()) p.set('city', $('city').value.trim());
-        if ($('from').value) p.set('date_from', $('from').value);
-        if ($('to').value) p.set('date_to', $('to').value);
-        if ($('remunere').checked) p.set('remunere', '1');
-        if ($('sans_bafa').checked) p.set('sans_bafa', '1');
-        $('count').textContent = 'Recherche en cours…';
-        try {
-            var d = await A.api('api/anim_catalogue.php?' + p);
-            $('grid').insertAdjacentHTML('beforeend', d.camps.map(card).join(''));
-            $('count').textContent = d.total ? d.total + ' séjour' + (d.total > 1 ? 's' : '') + ' qui recrute' + (d.total > 1 ? 'nt' : '') : '';
-            if (!d.total && reset) $('grid').innerHTML = '<div class="col-span-full ds-card p-10 text-center"><p class="font-extrabold text-[18px] text-[#26343b]">Aucun séjour ne recrute avec ces critères</p><p class="mt-2 text-[#6b7780]">Élargissez vos dates ou votre zone, de nouveaux séjours sont ajoutés régulièrement.</p></div>';
-            $('more').classList.toggle('hidden', !d.has_more);
-        } catch (e) { $('count').textContent = ''; $('grid').innerHTML = '<div class="col-span-full ds-alert-err">' + A.esc(e.message) + '</div>'; }
+    function section(titre, sous, list, more) {
+        if (!list.length) return '';
+        return '<section><div class="flex flex-wrap items-end justify-between gap-2 mb-4"><div><h2 class="font-extrabold text-[22px] text-[#26343b]">' + titre + '</h2><p class="text-[14px] text-[#6b7780]">' + sous + '</p></div>' +
+            (more ? '<a href="missions" class="text-[14px] font-semibold text-[#3d6a8e] underline-offset-4 hover:underline">Toutes les missions</a>' : '') + '</div>' +
+            '<div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">' + list.map(A.card).join('') + '</div></section>';
     }
-    $('f').addEventListener('submit', function (e) { e.preventDefault(); load(true); });
-    ['remunere', 'sans_bafa', 'from', 'to'].forEach(function (i) { $(i).addEventListener('change', function () { load(true); }); });
-    $('more-b').addEventListener('click', function () { page++; load(false); });
-    load(true);
+    A.api('api/anim_accueil.php').then(function (d) {
+        var t = d.taches, p = d.profil, h = '';
+        h += tache('profil-animateur', 'user', 'Profil complété à ' + p.pct + ' %', p.manque.length ? E(p.manque[0].label) : 'Votre dossier est complet', p.pct < 100);
+        h += tache('espace-animation', 'file', t.candidatures_attente + ' candidature' + (t.candidatures_attente > 1 ? 's' : '') + ' en attente', t.acceptees ? t.acceptees + ' acceptée' + (t.acceptees > 1 ? 's' : '') : 'Suivre mes candidatures', t.candidatures_attente > 0);
+        h += tache('messagerie', 'bell', t.messages ? t.messages + ' nouveau' + (t.messages > 1 ? 'x' : '') + ' message' + (t.messages > 1 ? 's' : '') : 'Aucun nouveau message', 'Échanger avec les directeurs', t.messages > 0);
+        h += tache('preferences-animateur', 'check', t.prefs_configurees ? 'Mes préférences' : 'Régler mes préférences', t.prefs_configurees ? 'Qualification, zone, disponibilités, alertes' : 'Pour des suggestions vraiment adaptées', !t.prefs_configurees);
+        $('taches').innerHTML = h;
+
+        var s = section('Pour vous', 'Les missions qui correspondent le mieux à votre profil et à vos préférences.', d.pour_vous, true) +
+            section('Près de chez vous', 'Dans votre département ou votre région.', d.pres, false) +
+            section('Dernières missions publiées', 'Les séjours qui viennent de lancer leur recrutement.', d.recents, false) +
+            section('Séjours qui paient', 'Missions rémunérées, de la mieux payée à la moins bien payée.', d.paient, false);
+        if (!s) {
+            s = d.ouverts ? '<div class="ds-card p-10 text-center"><p class="font-extrabold text-[20px] text-[#26343b]">Aucune mission ne correspond à vos critères</p><p class="mt-2 text-[#6b7780]">Élargissez votre zone, vos périodes ou votre rémunération minimale pour voir davantage de séjours.</p><div class="mt-5 flex justify-center gap-3"><a class="ds-btn" href="preferences-animateur">Modifier mes préférences</a><a class="ds-btn ds-btn-light" href="missions">Voir toutes les missions</a></div></div>' :
+                '<div class="ds-card p-10 text-center"><p class="font-extrabold text-[20px] text-[#26343b]">Aucun séjour ne recrute pour le moment</p><p class="mt-2 text-[#6b7780]">Complétez votre profil : dès qu’un directeur publie une mission, vous la retrouverez ici. Vous pouvez aussi activer une alerte e-mail.</p><div class="mt-5 flex justify-center gap-3"><a class="ds-btn" href="profil-animateur">Compléter mon profil</a><a class="ds-btn ds-btn-light" href="preferences-animateur">Activer une alerte</a></div></div>';
+        }
+        $('sections').innerHTML = s;
+    }).catch(function (e) { $('sections').innerHTML = '<div class="ds-alert-err">' + E(e.message) + '</div>'; });
 })();
 </script>
 <?php require_once 'partials/footer.php'; ?>

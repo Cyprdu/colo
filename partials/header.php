@@ -21,6 +21,26 @@ $is_director = $is_logged_in && ($_SESSION['user']['is_directeur'] ?? false);
 $is_admin = $is_logged_in && ($_SESSION['user']['is_admin'] ?? false);
 $is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
 
+// Compte animateur : expérience dédiée (onglets Missions, Candidatures, Profil, Préférences). Un compte animateur qui est AUSSI parent
+// (a au moins une fiche enfant) choisit son mode dans le menu du compte ; le choix est gardé en session (api/anim_mode.php).
+$anim_ui = false; $anim_parent_too = false;
+if ($is_animateur) {
+    if (!isset($_SESSION['anim_parent_too'])) {
+        $_SESSION['anim_parent_too'] = false;
+        try {
+            require_once __DIR__ . '/../api/config.php';
+            global $pdo;
+            if (isset($pdo)) { $q = $pdo->prepare("SELECT 1 FROM enfants WHERE parent_id = ? LIMIT 1"); $q->execute([(int)$_SESSION['user']['id']]); $_SESSION['anim_parent_too'] = (bool)$q->fetchColumn(); }
+        } catch (Throwable $e) {}
+    }
+    $anim_parent_too = (bool)$_SESSION['anim_parent_too'];
+    $anim_ui = !($anim_parent_too && ($_SESSION['mode_compte'] ?? 'animateur') === 'parent');
+}
+$home_url = $anim_ui ? 'animateur' : clean_url('../');
+$csrf_value = '';
+if ($is_logged_in) { require_once __DIR__ . '/../api/security.php'; $csrf_value = csrf_token(); }
+
+
 // Avatar
 $initial = 'U';
 if ($is_logged_in && !empty($_SESSION['user']['prenom'])) {
@@ -33,7 +53,9 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
+
     <title>ColoMap - Trouvez le camp parfait</title>
     
     <?php if ($ads_enabled): ?>
@@ -111,7 +133,7 @@ if ('serviceWorker' in navigator) {
             <div class="flex items-center h-[68px] gap-4 lg:gap-6">
 
                 <!-- Logo -->
-                <a href="<?php echo clean_url('../'); ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="ColoMap, accueil">
+                <a href="<?php echo $home_url; ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="ColoMap, accueil">
                     <svg width="26" height="28" viewBox="0 0 26 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                         <path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#26343b"/>
                         <rect x="9" y="22.5" width="2" height="3.2" fill="#26343b"/>
@@ -144,17 +166,21 @@ if ('serviceWorker' in navigator) {
 
                 <!-- Navigation -->
                 <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
-                    <a href="<?php echo clean_url('../'); ?>" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
+                                        <a href="<?php echo $home_url; ?>" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
 
-                    <?php if ($is_animateur): ?>
-                        <a href="espace-animation" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Animation</a>
+                    <?php if ($anim_ui): ?>
+                        <a href="missions" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Missions</a>
+                        <a href="espace-animation" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Mes candidatures</a>
+                        <a href="profil-animateur" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Mon profil</a>
+                        <a href="preferences-animateur" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Mes préférences</a>
                     <?php endif; ?>
+
 
                     <?php if ($is_director): ?>
                         <a href="organisateurs" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Organisateurs</a>
                     <?php endif; ?>
 
-                    <?php if ($is_logged_in && !$is_animateur): ?>
+                                        <?php if ($is_logged_in && !$anim_ui): ?>
                         <a href="favorites" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Favoris</a>
                         <a href="reservations" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Réservations</a>
                     <?php endif; ?>
@@ -191,19 +217,33 @@ if ('serviceWorker' in navigator) {
                                     <a href="edit_profile" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-user-pen w-6 text-center mr-2 text-gray-400"></i> Modifier mes informations
                                     </a>
+                                                                        <?php if (!$anim_ui): ?>
                                     <a href="children" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-children w-6 text-center mr-2 text-gray-400"></i> Gérer mes enfants
                                     </a>
                                     <a href="favorites" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-heart w-6 text-center mr-2 text-gray-400"></i> Favoris
                                     </a>
+                                    <?php endif; ?>
                                     <a href="reservations" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
-                                        <i class="fa-solid fa-file-invoice w-6 text-center mr-2 text-gray-400"></i> Réservations
+                                        <i class="fa-solid fa-file-invoice w-6 text-center mr-2 text-gray-400"></i> <?php echo $anim_ui ? 'Mes inscriptions (équipe)' : 'Réservations'; ?>
                                     </a>
+
                                     <a href="messagerie" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-regular fa-envelope w-6 text-center mr-2 text-gray-400"></i> Messagerie
                                     </a>
                                 </div>
+
+                                                                <?php if ($anim_parent_too): ?>
+                                <form action="api/anim_mode.php" method="POST" class="border-t border-gray-100 px-4 py-3" aria-label="Changer de mode">
+                                    <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf_value); ?>">
+                                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Mode</p>
+                                    <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 text-sm font-semibold">
+                                        <button type="submit" name="m" value="parent" class="rounded-md py-1.5 <?php echo !$anim_ui ? 'bg-white shadow text-[#26343b]' : 'text-gray-500'; ?>" <?php echo !$anim_ui ? 'aria-current="true"' : ''; ?>>Parent</button>
+                                        <button type="submit" name="m" value="animateur" class="rounded-md py-1.5 <?php echo $anim_ui ? 'bg-white shadow text-[#26343b]' : 'text-gray-500'; ?>" <?php echo $anim_ui ? 'aria-current="true"' : ''; ?>>Animateur</button>
+                                    </div>
+                                </form>
+                                <?php endif; ?>
 
                                 <?php if ($is_director): ?>
                                 <div class="border-t border-gray-100 py-1">
@@ -288,17 +328,28 @@ if ('serviceWorker' in navigator) {
                     </a>
                 <?php endif; ?>
                 
-                <a href="<?php echo clean_url('../'); ?>" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Accueil</a>
-                
-                <?php if ($is_animateur): ?>
-                    <a href="espace-animation" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Espace Animation</a>
+                                <a href="<?php echo $home_url; ?>" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Accueil</a>
+
+                <?php if ($anim_ui): ?>
+                    <a href="missions" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Missions</a>
+                    <a href="espace-animation" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes candidatures</a>
+                    <a href="profil-animateur" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mon profil</a>
+                    <a href="preferences-animateur" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes préférences</a>
+                    <a href="reservations" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes inscriptions (équipe)</a>
                 <?php endif; ?>
+                <?php if ($anim_parent_too): ?>
+                    <form action="api/anim_mode.php" method="POST" class="px-3 py-2">
+                        <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf_value); ?>">
+                        <button type="submit" name="m" value="<?php echo $anim_ui ? 'parent' : 'animateur'; ?>" class="w-full rounded-md bg-gray-100 py-2.5 text-sm font-semibold text-[#26343b]">Passer en mode <?php echo $anim_ui ? 'Parent' : 'Animateur'; ?></button>
+                    </form>
+                <?php endif; ?>
+
 
                 <?php if ($is_director): ?>
                     <a href="organisateurs" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Organisateurs</a>
                 <?php endif; ?>
                 
-                <?php if ($is_logged_in && !$is_animateur): ?>
+                                <?php if ($is_logged_in && !$anim_ui): ?>
                     <a href="favorites" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes Favoris</a>
                     <a href="reservations" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Réservations</a>
                 <?php endif; ?>

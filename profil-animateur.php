@@ -11,7 +11,16 @@ $back = (isset($_GET['retour']) && preg_match('/^[a-z0-9_.\-?=&]{1,200}$/i', $_G
     <h1 class="ds-h1">Mon profil de candidature</h1>
     <p class="ds-lead">Ces informations sont transmises aux directeurs des séjours auxquels vous postulez. Rien n'est visible publiquement.</p>
 
-    <form id="f" class="ds-card mt-8 p-6 sm:p-8 space-y-6" enctype="multipart/form-data" novalidate>
+    <?php $u = $_SESSION['user']; ?>
+    <section class="ds-card mt-8 p-5 flex flex-wrap items-center gap-4" aria-label="Identité et contact">
+        <?php if (!empty($u['photo_url'])): ?><img src="<?= htmlspecialchars($u['photo_url']) ?>" alt="" class="w-16 h-16 rounded-full object-cover">
+        <?php else: ?><span class="w-16 h-16 rounded-full bg-[#3a4852] text-white text-[24px] font-extrabold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)($u['prenom'] ?? 'A'), 0, 1))) ?></span><?php endif; ?>
+        <div class="min-w-0 flex-1"><p class="font-extrabold text-[#26343b]"><?= htmlspecialchars(trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? ''))) ?></p>
+            <p class="text-[14px] text-[#6b7780] truncate"><?= htmlspecialchars((string)($u['email'] ?? '')) ?></p></div>
+        <a href="edit_profile" class="ds-btn ds-btn-light">Modifier ma photo, mon identité et mes coordonnées</a>
+    </section>
+
+    <form id="f" class="ds-card mt-6 p-6 sm:p-8 space-y-6" enctype="multipart/form-data" novalidate>
         <div>
             <label class="ds-label" for="presentation">Présentation</label>
             <textarea id="presentation" name="presentation" rows="5" maxlength="2000" class="ds-textarea" placeholder="Qui êtes-vous, pourquoi animer, votre approche avec les enfants…"></textarea>
@@ -46,7 +55,7 @@ $back = (isset($_GET['retour']) && preg_match('/^[a-z0-9_.\-?=&]{1,200}$/i', $_G
         </div>
     </form>
 </main>
-<script src="assets/js/anim.js?v=1"></script>
+<script src="assets/js/anim.js?v=3"></script>
 <script>
 (function () {
     var A = window.ANIM, $ = function (i) { return document.getElementById(i); };
