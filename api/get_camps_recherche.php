@@ -4,6 +4,8 @@
 // Ne renvoie que les champs utiles à l'affichage d'une carte (aucune donnée interne du séjour).
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'organismes.php';
+orga_ensure($pdo);
 require_once 'options.php';
 require_once 'attente.php';
 require_once 'marketing_lib.php';
@@ -52,7 +54,7 @@ try {
             c.type, c.theme, c.groupe_id, c.inscription_en_ligne, c.date_bump, c.date_creation, c.quota_global,
             c.boost_vedette_fin, c.boost_urgence_fin,
             (c.quota_global - (SELECT COUNT(*) FROM inscriptions i WHERE i.camp_id = c.id AND i.statut NOT IN ('Annulé', 'annule', 'Annule'))) AS nb_places_restantes,
-            o.nom AS organisateur_nom, o.logo_url AS organisateur_logo,
+            o.nom AS organisateur_nom, o.logo_url AS organisateur_logo, o.slug AS organisateur_slug,
             $priceExpr AS prix_affiche,
             (c.boost_vedette_fin > NOW()) AS is_vedette, (c.boost_urgence_fin > NOW()) AS is_urgence,
             {REL}
@@ -136,7 +138,7 @@ try {
             'age_min' => $c['age_min'] !== null ? (int)$c['age_min'] : null, 'age_max' => $c['age_max'] !== null ? (int)$c['age_max'] : null,
             'type_name' => clean($c['type'] ?? ''), 'theme' => clean($c['theme'] ?? ''),
             'prix' => $c['prix_affiche'] !== null ? (float)$c['prix_affiche'] : null,
-            'organisateur_nom' => clean($c['organisateur_nom']), 'organisateur_logo' => media($c['organisateur_logo']),
+            'organisateur_slug' => $c['organisateur_slug'] ?? null, 'organisateur_nom' => clean($c['organisateur_nom']), 'organisateur_logo' => media($c['organisateur_logo']),
             'badge' => $badge, 'sponsorise' => $badge === 'Sponsorisé', 'online' => (bool)$c['inscription_en_ligne'],
             'sessions_count' => (int)($c['sessions_count'] ?? 1),
         ];

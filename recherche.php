@@ -352,7 +352,7 @@ $q = trim((string)($_GET['name'] ?? ''));
         var date = n > 1 ? n + ' sessions · dès le ' + shortDate(c.date_debut, c.date_fin) : range(c.date_debut, c.date_fin);
         var age = (c.age_min != null && c.age_max != null) ? c.age_min + '–' + c.age_max + ' ans' : '';
         return '<article class="camp-card fade-in-anim" style="animation-delay:' + Math.min(i, 11) * 25 + 'ms">' +
-            '<div class="camp-org"><span class="camp-avatar">' + logo + '</span><span class="camp-org-name">' + esc(c.organisateur_nom || 'ColoMap') + '</span></div>' +
+            (c.organisateur_slug ? '<a href="organisme/' + esc(c.organisateur_slug) + '" class="camp-org" aria-label="Voir les séjours de ' + esc(c.organisateur_nom) + '">' : '<div class="camp-org">') + '<span class="camp-avatar">' + logo + '</span><span class="camp-org-name">' + esc(c.organisateur_nom || 'ColoMap') + '</span>' + (c.organisateur_slug ? '</a>' : '</div>') +
             '<div class="camp-mediawrap"><a href="' + href + '" class="camp-media" aria-label="' + esc(c.nom) + '"><img src="' + esc(img) + '" alt="' + esc(c.nom) + '" loading="lazy" decoding="async"></a>' +
             (c.badge ? '<span class="camp-badge">' + esc(c.badge) + '</span>' : '') +
             (age ? '<span class="camp-age">' + age + '</span>' : '') +

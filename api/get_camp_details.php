@@ -8,6 +8,8 @@ error_reporting(E_ALL);
 header('Content-Type: application/json');
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'organismes.php';
+orga_ensure($pdo);
 require_once 'marketing_lib.php';
 
 $tokenParam = (string)($_GET['t'] ?? '');
@@ -60,7 +62,7 @@ try {
     $sql = "
         SELECT 
             c.*, 
-            o.nom as orga_nom, 
+            o.nom as orga_nom, o.slug as orga_slug, 
             o.email as orga_email,
             o.web as orga_website,  /* <-- C'est ici que c'était bloqué */
             o.user_id as organisateur_user_id,

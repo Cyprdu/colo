@@ -385,6 +385,10 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Organisateur
         $('orga-name').textContent = camp.orga_nom || '';
+        if (camp.orga_slug) {   // le nom de l'organisme mène à sa page publique
+            const a = document.createElement('a'); a.href = 'organisme/' + encodeURIComponent(camp.orga_slug); a.className = 'underline-offset-4 hover:underline';
+            a.textContent = camp.orga_nom || ''; $('orga-name').textContent = ''; $('orga-name').appendChild(a);
+        }
         $('orga-initial').textContent = camp.orga_nom ? camp.orga_nom.charAt(0).toUpperCase() : '?';
         const contact = $('contact-container');
         contact.innerHTML = '';

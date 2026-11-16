@@ -10,6 +10,8 @@
 
 require_once 'config.php';
 require_once 'sessions.php';
+require_once 'organismes.php';
+orga_ensure($pdo);
 require_once 'options.php';
 require_once 'attente.php';
 require_once 'marketing_lib.php';
@@ -94,7 +96,7 @@ try {
                    c.boost_points, c.boost_vedette_fin, c.boost_urgence_fin, c.date_bump,
                    c.reserve_sexe, c.quota_fille, c.quota_garcon,
                    $nbF AS inscrits_f, $nbG AS inscrits_g,
-                   o.nom AS organisateur_nom, o.logo_url AS organisateur_logo
+                   o.nom AS organisateur_nom, o.logo_url AS organisateur_logo, o.slug AS organisateur_slug
             FROM camps c
             LEFT JOIN organisateurs o ON o.id = c.organisateur_id
             WHERE c.valide = 1 AND c.refuse = 0
@@ -175,6 +177,7 @@ try {
                 'image_url'        => normalizeMedia($c['image_url'], 'uploads/camps/'),
                 'date_debut'       => $c['date_debut'],
                 'date_fin'         => $c['date_fin'],
+                'organisateur_slug' => $c['organisateur_slug'] ?? null,
                 'organisateur_nom' => $c['organisateur_nom'],
                 'organisateur_logo'=> normalizeMedia($c['organisateur_logo']),
                 'badge'            => $badge,

@@ -420,10 +420,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         return `
         <article class="camp-card fade-in-anim">
-            <div class="camp-org">
+            ${camp.organisateur_slug ? `<a href="organisme/${esc(camp.organisateur_slug)}" class="camp-org" aria-label="Voir les séjours de ${esc(camp.organisateur_nom)}">` : '<div class="camp-org">'}
                 <span class="camp-avatar">${logo}</span>
                 <span class="camp-org-name">${esc(camp.organisateur_nom || 'ColoMap')}</span>
-            </div>
+            ${camp.organisateur_slug ? '</a>' : '</div>'}
             <div class="camp-mediawrap">
                 <a href="${href}" class="camp-media" aria-label="${esc(camp.nom)}"><img src="${esc(img)}" alt="${esc(camp.nom)}" loading="lazy" decoding="async"></a>
                 ${camp.badge ? `<span class="camp-badge">${esc(camp.badge)}</span>` : ''}
