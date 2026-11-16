@@ -42,6 +42,9 @@ function options_ensure(PDO $pdo): void {
             'inclus' => "TEXT NULL",
             'a_prevoir' => "TEXT NULL",
             'instructions_paiement' => "TEXT NULL",
+            // colonnes que le formulaire de séjour écrit : créées si une ancienne base ne les a pas
+            'itinerant' => "TINYINT(1) NOT NULL DEFAULT 0", 'theme' => "VARCHAR(100) NULL", 'type' => "VARCHAR(500) NULL",
+            'pays' => "VARCHAR(80) NULL", 'video_url' => "VARCHAR(500) NULL",
         ];
         foreach ($add as $c => $def) if (!in_array($c, $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN $c $def");
     } catch (Throwable $e) { error_log('options_ensure: ' . $e->getMessage()); }
@@ -107,6 +110,20 @@ function options_enfant_manquants(array $camp, array $enfant): array {
         }
     }
     return $out;
+}
+
+/**
+ * Âge de l'enfant incompatible avec la tranche d'âge de CETTE session (chaque session du séjour a la sienne) ?
+ * L'âge est calculé au premier jour de la session. Retourne un message, ou null si tout va bien.
+ */
+function options_age_probleme(array $camp, array $enfant): ?string {
+    if (empty($enfant['date_naissance']) || !isset($camp['age_min'], $camp['age_max'])) return null;
+    try {
+        $ref = new DateTime(!empty($camp['date_debut']) ? $camp['date_debut'] : 'now');
+        $age = (new DateTime($enfant['date_naissance']))->diff($ref)->y;
+    } catch (Throwable $e) { return null; }
+    if ($age >= (int)$camp['age_min'] && $age <= (int)$camp['age_max']) return null;
+    return 'Cette session accueille les ' . (int)$camp['age_min'] . ' à ' . (int)$camp['age_max'] . ' ans (' . $enfant['prenom'] . ' aura ' . $age . ' an' . ($age > 1 ? 's' : '') . ' au départ).';
 }
 
 /** Le séjour est-il ouvert à ce sexe ? (réservé aux filles / aux garçons) */

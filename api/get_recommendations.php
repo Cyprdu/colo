@@ -90,7 +90,7 @@ try {
     // 2. Camps candidats : visibles, à venir (une seule requête)
     // ------------------------------------------------------------------
     $groupCol = campsHaveGroupColumn($pdo) ? 'c.groupe_id' : 'NULL';
-    $sql = "SELECT c.id, $groupCol AS groupe_id, c.token, c.nom, c.prix, c.ville, c.code_postal, c.image_url,
+    $sql = "SELECT c.id, $groupCol AS groupe_id, c.token, c.nom, COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix) AS prix, c.ville, c.code_postal, c.image_url,
                    c.date_debut, c.date_fin, c.age_min, c.age_max, c.organisateur_id,
                    c.theme, c.type, c.date_creation,
                    c.boost_points, c.boost_vedette_fin, c.boost_urgence_fin, c.date_bump,
@@ -172,7 +172,7 @@ try {
                 'id'               => (int)$c['id'],
                 'token'            => $c['token'],
                 'nom'              => $c['nom'],
-                'prix'             => $c['prix'] !== null ? (float)$c['prix'] : null,
+                'prix'             => ($c['prix_min'] ?? $c['prix']) !== null ? (float)($c['prix_min'] ?? $c['prix']) : null,
                 'ville'            => $c['ville'],
                 'image_url'        => normalizeMedia($c['image_url'], 'uploads/camps/'),
                 'date_debut'       => $c['date_debut'],

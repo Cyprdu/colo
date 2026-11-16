@@ -18,10 +18,13 @@ try {
     if (!$image) fin(['success' => false, 'message' => 'Ajoutez une image de couverture (JPG, PNG ou WebP, 8 Mo maximum).'], 422);
 
     $data['image_url'] = $image;
+    // Circuit de validation : le séjour est créé EN ATTENTE ; il devient public quand l'équipe l'approuve (admin_camp_requests)
+    $data += ['valide' => 0, 'en_attente' => 1, 'refuse' => 0, 'supprime' => 0];
+    $data = camp_filtrer_colonnes($pdo, $data);
     $data['token'] = bin2hex(random_bytes(16));
     $cols = array_keys($data);
     $pdo->beginTransaction();
-    $pdo->prepare("INSERT INTO camps (" . implode(',', $cols) . ", valide, date_creation, date_bump) VALUES (" . implode(',', array_fill(0, count($cols), '?')) . ", 1, NOW(), NOW())")
+    $pdo->prepare("INSERT INTO camps (" . implode(',', array_map(fn($c) => "`$c`", $cols)) . ", date_creation, date_bump) VALUES (" . implode(',', array_fill(0, count($cols), '?')) . ", NOW(), NOW())")
         ->execute(array_values($data));
     $campId = (int)$pdo->lastInsertId();
     camp_enregistrer_tarifs($pdo, $campId, $tarifIds);

@@ -122,7 +122,7 @@ require_once 'partials/header.php';
                 </a>
                 <a href="<?= htmlspecialchars($url) ?>" class="block">
                     <h3 class="og-title" title="<?= htmlspecialchars($c['nom']) ?>"><?= htmlspecialchars($c['nom']) ?></h3>
-                    <?php if ((float)$c['prix_affiche'] > 0): ?><p class="mt-1 text-[16px] text-[#26343b]">Dès <b class="font-extrabold"><?= rtrim(rtrim(number_format((float)$c['prix_affiche'], 2, ',', ''), '0'), ',') ?> €</b></p><?php endif; ?>
+                    <?php $des = (float)($c['prix_min'] ?? $c['prix_affiche']); if ($des > 0): ?><p class="mt-1 text-[16px] text-[#26343b]">Dès <b class="font-extrabold"><?= rtrim(rtrim(number_format($des, 2, ',', ''), '0'), ',') ?> €</b></p><?php endif; ?>
                     <p class="og-meta"><?= htmlspecialchars((string)$c['ville']) ?></p>
                     <p class="og-meta"><?= htmlspecialchars($dates) ?></p>
                 </a>

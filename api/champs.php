@@ -89,3 +89,21 @@ function champs_reponses(PDO $pdo, int $inscriptionId): array {
         return $st->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) { return []; }
 }
+
+/** Copie les questions de la session $camp vers les autres sessions de son groupe (même séjour). À appeler dans la transaction de l'appelant. */
+function champs_propager(PDO $pdo, array $camp): void {
+    if (empty($camp['groupe_id'])) return;
+    $sib = $pdo->prepare("SELECT id FROM camps WHERE groupe_id = ? AND id <> ? AND COALESCE(supprime, 0) = 0");
+    $sib->execute([$camp['groupe_id'], $camp['id']]);
+    $ids = $sib->fetchAll(PDO::FETCH_COLUMN);
+    if (!$ids) return;
+    $src = $pdo->prepare("SELECT libelle, type, options, obligatoire, position FROM camp_champs WHERE camp_id = ? ORDER BY position, id");
+    $src->execute([$camp['id']]);
+    $rows = $src->fetchAll(PDO::FETCH_NUM);
+    $del = $pdo->prepare("DELETE FROM camp_champs WHERE camp_id = ?");
+    $ins = $pdo->prepare("INSERT INTO camp_champs (camp_id, libelle, type, options, obligatoire, position) VALUES (?, ?, ?, ?, ?, ?)");
+    foreach ($ids as $id) {
+        $del->execute([$id]);
+        foreach ($rows as $r) $ins->execute(array_merge([$id], $r));
+    }
+}

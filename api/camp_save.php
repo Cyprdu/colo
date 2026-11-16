@@ -89,6 +89,20 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     return [$data, $tarifIds, null];
 }
 
+/**
+ * Ne garde que les colonnes qui existent vraiment dans `camps` (une base plus ancienne ou différente ne doit pas faire échouer l'enregistrement).
+ * `itinerant` est aussi recopié dans la colonne accentuée `Itinérance` quand elle existe.
+ */
+function camp_filtrer_colonnes(PDO $pdo, array $data): array {
+    $cols = $pdo->query("SHOW COLUMNS FROM camps")->fetchAll(PDO::FETCH_COLUMN);
+    if (isset($data['itinerant']) && in_array('Itinérance', $cols, true)) $data['Itinérance'] = $data['itinerant'];
+    $out = [];
+    foreach ($data as $k => $v) {
+        if (in_array($k, $cols, true)) $out[$k] = $v; else error_log("camp_save : colonne absente ignorée : $k");
+    }
+    return $out;
+}
+
 /** Réservations « en attente de paiement » : autorisation et délai (1 à 60 jours) */
 function camp_enregistrer_attente(PDO $pdo, int $campId, array $in): void {
     attente_ensure($pdo);

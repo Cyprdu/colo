@@ -547,11 +547,11 @@ $('campForm').addEventListener('submit', async e => {
         const r = await fetch(IS_EDIT ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
-        const cid = IS_EDIT ? CAMP_ID : d.camp_id;
+        const cTok = IS_EDIT ? form.querySelector('[name=token]').value : d.token;
         // Réglages animateurs (A : recrutement ColoMap, B : inscription de l'équipe) : enregistrés une fois le séjour créé
         if (window.AnimModes) { try { await AnimModes.save(IS_EDIT ? form.querySelector('[name=token]').value : d.token); } catch (animErr) { alert(animErr.message + ' Vous pouvez les régler dans « Gestion des animateurs ».'); } }
         const questions = CHAMPS.filter(c => c.libelle.trim() !== '');
-        if (cid && (questions.length || IS_EDIT)) await api('api/save_champs.php', { camp_id: cid, champs: questions });
+        if (cTok && (questions.length || IS_EDIT)) await api('api/save_champs.php', { token: cTok, champs: questions });
         location.href = 'mes_camps.php?ok=' + (IS_EDIT ? 'updated' : 'created');
     } catch (err) {
         msg.textContent = err.message; btn.disabled = false; btn.textContent = label;

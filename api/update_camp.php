@@ -23,9 +23,10 @@ try {
     if ($err) fin(['success' => false, 'message' => $err], 422);
 
     $data['image_url'] = camp_enregistrer_image() ?: $cur['image_url'];
+    $data = camp_filtrer_colonnes($pdo, $data);
     // Un séjour DÉJÀ VALIDÉ reste en ligne quand on le modifie (sinon il disparaissait du site à chaque correction).
     // Un séjour en attente ou refusé repasse en validation avec ses nouvelles informations.
-    $sets = implode(', ', array_map(fn($c) => "$c = ?", array_keys($data)));
+    $sets = implode(', ', array_map(fn($c) => "`$c` = ?", array_keys($data)));
     $pdo->beginTransaction();
     $pdo->prepare("UPDATE camps SET $sets" . (!empty($cur['valide']) ? "" : ", valide = 0, en_attente = 1, refuse = 0") . " WHERE id = ?")->execute([...array_values($data), $campId]);
     camp_enregistrer_tarifs($pdo, $campId, $tarifIds);

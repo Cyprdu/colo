@@ -11,14 +11,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') out(['error' => 'Méthode non autoris
 
 $in = json_decode(file_get_contents('php://input'), true);
 $campId = (int)($in['camp_id'] ?? 0);
+$campToken = (string)($in['token'] ?? '');   // l'adresse à jeton est préférée à l'identifiant numérique
 $champs = $in['champs'] ?? null;
-if (!$campId || !is_array($champs)) out(['error' => 'Données invalides.'], 400);
+if ((!$campId && $campToken === '') || !is_array($champs)) out(['error' => 'Données invalides.'], 400);
 if (count($champs) > 30) out(['error' => '30 champs maximum.'], 400);
 
 // Le séjour doit appartenir à un organisateur de l'utilisateur
-$st = $pdo->prepare("SELECT c.id FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE c.id = ? AND o.user_id = ?");
-$st->execute([$campId, $_SESSION['user']['id']]);
-if (!$st->fetch()) out(['error' => 'Séjour introuvable.'], 404);
+$st = $pdo->prepare("SELECT c.* FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE " . ($campToken !== '' ? "c.token = ?" : "c.id = ?") . " AND o.user_id = ?");
+$st->execute([$campToken !== '' ? $campToken : $campId, $_SESSION['user']['id']]);
+$campRow = $st->fetch(PDO::FETCH_ASSOC);
+if (!$campRow) out(['error' => "Ce séjour n'a pas été trouvé dans votre compte."], 404);
+$campId = (int)$campRow['id'];
 
 $clean = [];
 foreach ($champs as $i => $c) {
@@ -59,6 +62,8 @@ try {
         $q = implode(',', array_fill(0, count($del), '?'));
         $pdo->prepare("DELETE FROM camp_champs WHERE camp_id = ? AND id IN ($q)")->execute(array_merge([$campId], array_values($del)));
     }
+    // Toutes les sessions du séjour posent les mêmes questions : on recopie la liste sur les sessions sœurs
+    champs_propager($pdo, $campRow);
     $pdo->commit();
     out(['ok' => true, 'champs' => champs_du_camp($pdo, $campId)]);
 } catch (Throwable $e) {

@@ -72,6 +72,8 @@ try {
         if (!options_sexe_admis($camp, $c['sexe'] ?? null)) {
             backWithError('Ce séjour est réservé aux ' . ($camp['reserve_sexe'] === SEXE_FILLE ? 'filles' : 'garçons') . ' : ' . $c['prenom'] . ' ne peut pas y être inscrit(e).', $campToken, $site);
         }
+        $ageKo = options_age_probleme($camp, $c);
+        if ($ageKo) backWithError($ageKo, $campToken, $site);
         $manque = options_enfant_manquants($camp, $c);
         if ($manque) backWithError('La fiche de ' . $c['prenom'] . ' est incomplète. Champs exigés par l’organisateur : ' . implode(', ', $manque) . '.', $campToken, $site);
     }

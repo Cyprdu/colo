@@ -120,7 +120,7 @@ try {
     }
 
     // Un camp à plusieurs sessions n'apparaît qu'une fois (sa prochaine session)
-    $camps = collapseSessions($camps);
+    $camps = collapseSessions($camps, publicSessionsUniverse($pdo) ?: $camps);
     $total = count($camps);
 
     $limit = max(1, min(48, (int)($_GET['limit'] ?? 24)));
@@ -137,7 +137,7 @@ try {
             'date_debut' => $c['date_debut'], 'date_fin' => $c['date_fin'],
             'age_min' => $c['age_min'] !== null ? (int)$c['age_min'] : null, 'age_max' => $c['age_max'] !== null ? (int)$c['age_max'] : null,
             'type_name' => clean($c['type'] ?? ''), 'theme' => clean($c['theme'] ?? ''),
-            'prix' => $c['prix_affiche'] !== null ? (float)$c['prix_affiche'] : null,
+            'prix' => ($c['prix_min'] ?? $c['prix_affiche']) !== null ? (float)($c['prix_min'] ?? $c['prix_affiche']) : null,
             'organisateur_slug' => $c['organisateur_slug'] ?? null, 'organisateur_nom' => clean($c['organisateur_nom']), 'organisateur_logo' => media($c['organisateur_logo']),
             'badge' => $badge, 'sponsorise' => $badge === 'Sponsorisé', 'online' => (bool)$c['inscription_en_ligne'],
             'sessions_count' => (int)($c['sessions_count'] ?? 1),
