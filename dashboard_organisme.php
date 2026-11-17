@@ -67,36 +67,6 @@ $mkTot = ['i' => 0, 'c' => 0, 'n' => 0];
 foreach ($mkStats as $c) { $mkTot['i'] += $c['impressions']; $mkTot['c'] += $c['clics']; $mkTot['n'] += $c['inscriptions']; }
 
 
-// ---- Données des graphiques (12 derniers mois) ----
-$serie = [];
-for ($i = 11; $i >= 0; $i--) { $k = date('Y-m', strtotime("first day of -$i month")); $serie[$k] = ['ca' => 0, 'ins' => 0]; }
-$nbInscrits = 0; $nbPlaces = 0;
-if ($orga) {
-    try {
-        require_once 'api/compta_lib.php';
-        foreach (compta_by_month($pdo, date('Y-m-01 00:00:00', strtotime('first day of -11 month')), date('Y-m-d 23:59:59'), $orgaId) as $r) {
-            if (isset($serie[$r['m']])) { $serie[$r['m']]['ca'] = round((int)$r['ca'] / 100, 2); }
-        }
-        $q = $pdo->prepare("SELECT DATE_FORMAT(i.date_inscription, '%Y-%m') m, COUNT(*) n FROM inscriptions i JOIN camps c ON c.id = i.camp_id
-                            WHERE c.organisateur_id = ? AND i.statut_paiement = 'PAYE' AND COALESCE(i.statut,'') NOT IN ('Annulé','annule','Annule')
-                              AND i.date_inscription >= ? GROUP BY m");
-        $q->execute([$orgaId, date('Y-m-01', strtotime('first day of -11 month'))]);
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) if (isset($serie[$r['m']])) $serie[$r['m']]['ins'] = (int)$r['n'];
-    } catch (Throwable $e) { error_log('dashboard series: ' . $e->getMessage()); }
-}
-$moisCourt = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-$chart = ['labels' => [], 'ca' => [], 'ins' => []];
-foreach ($serie as $k => $v) { $chart['labels'][] = $moisCourt[(int)substr($k, 5, 2) - 1]; $chart['ca'][] = $v['ca']; $chart['ins'][] = $v['ins']; }
-$sejours = [];
-foreach ($mkStats as $c) {
-    $qt = max(1, (int)$c['quota_global']); $in = (int)$c['inscrits_total'];
-    $nbInscrits += $in; $nbPlaces += $qt;
-    $sejours[] = ['nom' => $c['nom'], 'ins' => $in, 'quota' => $qt, 'pct' => min(100, (int)round($in / $qt * 100))];
-}
-usort($sejours, fn($a, $b) => $b['ins'] <=> $a['ins']);
-$remplissage = $nbPlaces ? (int)round($nbInscrits / $nbPlaces * 100) : 0;
-$caTotal = $fin ? (int)$fin['brut_total_cents'] : 0;
-
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 require_once 'partials/mk_icons.php';
@@ -120,6 +90,12 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
 .db-row span { color: var(--ds-muted); font-weight: 700; font-variant-numeric: tabular-nums; }
 .db-bar { grid-column: 1 / -1; height: 8px; background: var(--ds-soft); border-radius: 9999px; overflow: hidden; }
 .db-bar i { display: block; height: 100%; background: var(--ds-btn); border-radius: 9999px; transition: width .5s ease; }
+.db-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; padding: 16px 20px; margin-top: 12px; }
+.db-filters label span { display: block; font-size: 12px; font-weight: 700; color: var(--ds-muted); margin-bottom: 4px; }
+.db-filters .ds-select, .db-filters .ds-input { width: 100%; padding-top: 9px; padding-bottom: 9px; }
+.db-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.db-presets .ds-chip { padding: 7px 12px; font-size: 13px; }
+.db-legend i { display: inline-block; }
 .db-empty { color: var(--ds-muted); font-size: 13px; padding: 28px 0; text-align: center; }
 .db-tip { fill: var(--ds-muted); font-size: 10px; font-family: Montserrat, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .db-bar i { transition: none; } #dbPop.on { animation: none; } }
@@ -147,6 +123,34 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
         </div>
     </div>
 
+    <!-- Activité : filtres communs aux cartes et aux graphes -->
+    <section class="mk-section" id="activite" style="margin-top:24px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Activité<?= $help("Les filtres ci-dessous s'appliquent aux chiffres et aux graphes de ce bloc. Les montants viennent des inscriptions : carte, chèque, espèces, virement… Les versements (bloc suivant) ne sont pas filtrés.") ?></h2>
+            <button type="button" id="fReset" class="ds-btn ds-btn-light mk-btn-sm" hidden>Réinitialiser</button></div>
+        <div class="db-filters ds-card" role="group" aria-label="Filtres de l'activité">
+            <label><span>Type</span><select id="fType" class="ds-select"><option value="">Tous</option></select></label>
+            <label><span>Séjour</span><select id="fSejour" class="ds-select"><option value="">Tous</option></select></label>
+            <label><span>Session</span><select id="fSession" class="ds-select"><option value="">Toutes</option></select></label>
+            <label><span>Moyen de paiement</span><select id="fMoyen" class="ds-select"><option value="">Tous</option></select></label>
+            <label><span>Du</span><input id="fDu" type="date" class="ds-input"></label>
+            <label><span>Au</span><input id="fAu" type="date" class="ds-input"></label>
+            <div class="db-presets" role="group" aria-label="Périodes rapides"><button type="button" class="ds-chip" data-p="1">30 jours</button><button type="button" class="ds-chip" data-p="3">3 mois</button><button type="button" class="ds-chip" data-p="12">12 mois</button></div>
+        </div>
+        <div class="mk-grid mk-g4" id="kpis" style="margin-top:14px" aria-live="polite">
+            <div class="mk-stat"><div class="k">Chiffre d'affaires<?= $help("Montant payé par les familles sur la période et les séjours choisis, annulations déduites.") ?></div><div class="v" id="kCa">–</div></div>
+            <div class="mk-stat"><div class="k">Inscrits</div><div class="v" id="kIns">–</div></div>
+            <div class="mk-stat"><div class="k">Remplissage<?= $help("Inscrits sur le nombre de places des séjours choisis (toutes périodes).") ?></div><div class="v" id="kRem">–</div></div>
+            <div class="mk-stat"><div class="k">À encaisser<?= $help("Inscriptions réservées avec un règlement hors carte (chèque, espèces…) pas encore marqué comme reçu.") ?></div><div class="v" id="kAr">–</div></div>
+        </div>
+        <div class="mk-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:14px">
+            <div class="ds-card" style="padding:20px"><div class="db-h">Chiffre d'affaires<?= $help("Montant payé par mois d'inscription.") ?></div><svg id="chCa" class="db-chart" role="img" aria-label="Courbe du chiffre d'affaires"></svg></div>
+            <div class="ds-card" style="padding:20px"><div class="db-h">Inscriptions<?= $help("Nombre d'inscriptions (payées, gratuites ou à encaisser) par mois.") ?></div><svg id="chIns" class="db-chart" role="img" aria-label="Courbe des inscriptions"></svg></div>
+            <div class="ds-card" style="padding:20px"><div class="db-h">Remplissage par séjour<?= $help("Inscrits sur places disponibles, session par session.") ?></div><div id="sejList"></div></div>
+            <div class="ds-card" style="padding:20px"><div class="db-h">Moyens de paiement<?= $help("Répartition des inscriptions de la période par moyen de paiement choisi par les familles.") ?></div><div id="payEmpty" class="db-empty" hidden>Aucune inscription sur cette période.</div><div id="payBody" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg id="chPay" viewBox="0 0 190 190" style="width:150px;height:150px;flex:none" role="img" aria-label="Répartition des moyens de paiement"></svg><div id="payLeg" class="db-legend" style="flex-direction:column;gap:6px;margin:0;flex:1;min-width:150px"></div></div></div>
+        </div>
+    </section>
+
+    <h2 style="margin:36px 0 0">Versements et solde</h2>
     <!-- Indicateurs -->
     <section class="mk-section" style="margin-top:24px">
         <div class="mk-grid mk-g4">
@@ -154,9 +158,6 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
             <div class="mk-stat"><div class="k">Réserve<?= $help(number_format($fin['reserve_pct'], 0, ',', ' ') . " % de chaque paiement est gardé de côté tant qu'une famille peut annuler et être remboursée. Il vous est versé automatiquement ensuite : ce n'est pas un frais.") ?></div><div class="v"><?= fin_eur($fin['reserve_cents']) ?></div></div>
             <div class="mk-stat"><div class="k">Déjà versé<?= $help("Total des versements envoyés sur votre compte bancaire via Stripe.") ?></div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div></div>
             <div class="mk-stat"><div class="k">Commission<?= $help("Commission ColoMap : " . number_format(fin_commission_pct(), 1, ',', ' ') . " %" . (fin_commission_fixe_cents() > 0 ? " + " . fin_eur(fin_commission_fixe_cents()) : "") . " du montant payé par inscription, frais bancaires de paiement par carte inclus. Aucun autre frais.") ?></div><div class="v"><?= fin_eur($fin['commission_nette_cents']) ?></div></div>
-            <div class="mk-stat"><div class="k">Chiffre d'affaires</div><div class="v"><?= fin_eur($caTotal) ?></div></div>
-            <div class="mk-stat"><div class="k">Inscrits</div><div class="v"><?= $nbInscrits ?></div></div>
-            <div class="mk-stat"><div class="k">Remplissage<?= $help("Inscrits sur le nombre total de places de tous vos séjours.") ?></div><div class="v"><?= $remplissage ?> %</div></div>
             <div class="mk-stat"><div class="k">Points marketing</div><div class="v"><?= number_format((int)$fin['points'], 0, ',', ' ') ?></div></div>
         </div>
         <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Solde négatif : <?= fin_eur(-$fin['solde_cents']) ?> seront retirés de vos prochains versements. <?= $help("Une famille a été remboursée après que vous avez reçu l'argent.") ?></div><?php endif; ?>
@@ -175,19 +176,6 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
                 <a class="ds-btn ds-btn-light" href="annulations_organisme.php?o=<?= fin_orga_tok($orgaId) ?>">Annulations<?= !empty($nbAnnul) ? ' (' . $nbAnnul . ')' : '' ?></a>
                 <a class="ds-btn ds-btn-light" href="edit_organisateur.php?id=<?= $orgaId ?>">Modifier</a>
             </div>
-        </div>
-    </section>
-
-    <!-- Graphiques -->
-    <section class="mk-section" style="margin-top:16px">
-        <div class="mk-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
-            <div class="ds-card" style="padding:20px"><div class="db-h">Chiffre d'affaires (12 mois)<?= $help("Montant payé par les familles, remboursements déduits, par mois.") ?></div><svg id="chCa" class="db-chart" role="img" aria-label="Courbe du chiffre d'affaires sur 12 mois"></svg></div>
-            <div class="ds-card" style="padding:20px"><div class="db-h">Inscriptions (12 mois)<?= $help("Nombre d'inscriptions payées et non annulées, par mois.") ?></div><svg id="chIns" class="db-chart" role="img" aria-label="Courbe des inscriptions sur 12 mois"></svg></div>
-            <div class="ds-card" style="padding:20px"><div class="db-h">Remplissage par séjour<?= $help("Inscrits sur places disponibles, séjour par séjour.") ?></div>
-                <?php if (!$sejours): ?><p class="db-empty">Aucun séjour. <a class="underline" href="create_camp.php">Créer un séjour</a></p><?php else: foreach (array_slice($sejours, 0, 8) as $s): ?>
-                    <div class="db-row"><b><?= htmlspecialchars($s['nom']) ?></b><span><?= $s['ins'] ?>/<?= $s['quota'] ?></span><div class="db-bar" role="img" aria-label="<?= $s['pct'] ?> % rempli"><i style="width:<?= $s['pct'] ?>%"></i></div></div>
-                <?php endforeach; endif; ?></div>
-            <div class="ds-card" id="payCard" style="padding:20px;display:none"><div class="db-h">Moyens de paiement<?= $help("Répartition des paiements par moyen utilisé (carte, etc.).") ?></div><svg id="chPay" class="db-chart" role="img" aria-label="Répartition des moyens de paiement"></svg><div id="payLeg" class="db-legend"></div></div>
         </div>
     </section>
 
@@ -241,45 +229,79 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
 <?php if ($orga): ?>
 <script>
 (function () {
-    var D = <?= json_encode($chart, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-    var NS = 'http://www.w3.org/2000/svg', INK = '#2f3d45', ACC = '#3d6a8e';
+    var NS = 'http://www.w3.org/2000/svg', INK = '#2f3d45', ACC = '#3d6a8e', COLS = ['#2f3d45', '#3d6a8e', '#8aa4b8', '#c9d3db', '#6b7780', '#b9a96b'];
+    var $ = function (id) { return document.getElementById(id); };
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
+    var eur = function (c) { return (c / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); };
 
     // Courbe SVG légère (aire + ligne + points, axes minimaux)
-    function line(id, vals, color, fmt) {
-        var s = document.getElementById(id), W = 360, H = 190, pl = 8, pr = 8, pt = 14, pb = 24;
+    function line(id, labels, vals, color, fmt) {
+        var s = $(id), W = 360, H = 190, pl = 8, pr = 8, pt = 14, pb = 24, n = vals.length;
         s.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-        var max = Math.max.apply(null, vals.concat([1])), n = vals.length;
-        var x = function (i) { return pl + i * (W - pl - pr) / (n - 1); }, y = function (v) { return H - pb - v / max * (H - pt - pb); };
-        var h = '';
+        if (!n) { s.innerHTML = ''; return; }
+        var max = Math.max.apply(null, vals.concat([1]));
+        var x = function (i) { return n < 2 ? W / 2 : pl + i * (W - pl - pr) / (n - 1); }, y = function (v) { return H - pb - v / max * (H - pt - pb); };
+        var h = '', step = Math.ceil(n / 8);
         [0, .5, 1].forEach(function (t) { var yy = y(max * t); h += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + yy + '" y2="' + yy + '" stroke="#e5e7eb"/>'; });
         var pts = vals.map(function (v, i) { return x(i) + ',' + y(v); }).join(' ');
-        h += '<polygon points="' + pl + ',' + y(0) + ' ' + pts + ' ' + (W - pr) + ',' + y(0) + '" fill="' + color + '" opacity=".1"/>';
+        h += '<polygon points="' + x(0) + ',' + y(0) + ' ' + pts + ' ' + x(n - 1) + ',' + y(0) + '" fill="' + color + '" opacity=".1"/>';
         h += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>';
-        vals.forEach(function (v, i) { h += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3" fill="#fff" stroke="' + color + '" stroke-width="2"><title>' + D.labels[i] + ' : ' + fmt(v) + '</title></circle>'; });
-        D.labels.forEach(function (l, i) { if (i % 2 === (n - 1) % 2) h += '<text class="db-tip" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + l + '</text>'; });
+        vals.forEach(function (v, i) { h += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3" fill="#fff" stroke="' + color + '" stroke-width="2"><title>' + esc(labels[i]) + ' : ' + fmt(v) + '</title></circle>'; });
+        labels.forEach(function (l, i) { if (i % step === (n - 1) % step) h += '<text class="db-tip" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + esc(l) + '</text>'; });
         h += '<text class="db-tip" x="' + pl + '" y="' + (pt - 4) + '">' + fmt(max) + '</text>';
         s.innerHTML = h;
     }
-    line('chCa', D.ca, INK, function (v) { return Math.round(v).toLocaleString('fr-FR') + ' €'; });
-    line('chIns', D.ins, ACC, function (v) { return Math.round(v) + ''; });
-
-    // Moyens de paiement : alimenté par api/moyens_paiement_stats.php (masqué si absent ou vide)
-    fetch('api/moyens_paiement_stats.php?organisateur_id=<?= $orgaId ?>', { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) {
-        var list = (d && (d.moyens || d.data || d)) || [];
-        if (!Array.isArray(list)) list = Object.keys(list).map(function (k) { return { label: k, n: list[k] }; });
-        list = list.map(function (m) { return { l: String(m.label || m.moyen || m.nom || ''), n: Number(m.n != null ? m.n : (m.total != null ? m.total : m.montant)) || 0 }; }).filter(function (m) { return m.n > 0; });
-        if (!list.length) return;
-        var tot = list.reduce(function (a, m) { return a + m.n; }, 0), cols = ['#2f3d45', '#3d6a8e', '#8aa4b8', '#c9d3db', '#6b7780', '#b9a96b'], a0 = -Math.PI / 2, h = '', leg = '';
+    function donut(list) {
+        var tot = list.reduce(function (a, m) { return a + m.n; }, 0), a0 = -Math.PI / 2, h = '', leg = '';
         list.forEach(function (m, i) {
-            var a1 = a0 + m.n / tot * Math.PI * 2, big = a1 - a0 > Math.PI ? 1 : 0, R = 70, r = 42, cx = 95, cy = 95;
+            var a1 = a0 + m.n / tot * Math.PI * 2, big = a1 - a0 > Math.PI ? 1 : 0, R = 80, r = 50, cx = 95, cy = 95, c = COLS[i % COLS.length];
             var p = function (rad, a) { return (cx + rad * Math.cos(a)) + ' ' + (cy + rad * Math.sin(a)); };
-            h += list.length === 1 ? '<circle cx="95" cy="95" r="56" fill="none" stroke="' + cols[0] + '" stroke-width="28"/>' : '<path d="M' + p(R, a0) + ' A' + R + ' ' + R + ' 0 ' + big + ' 1 ' + p(R, a1) + ' L' + p(r, a1) + ' A' + r + ' ' + r + ' 0 ' + big + ' 0 ' + p(r, a0) + 'Z" fill="' + cols[i % cols.length] + '"><title>' + m.l + '</title></path>';
-            leg += '<span><i style="background:' + cols[i % cols.length] + '"></i>' + m.l.replace(/[<&]/g, '') + ' ' + Math.round(m.n / tot * 100) + ' %</span>';
+            h += list.length === 1 ? '<circle cx="95" cy="95" r="65" fill="none" stroke="' + c + '" stroke-width="30"/>' : '<path d="M' + p(R, a0) + ' A' + R + ' ' + R + ' 0 ' + big + ' 1 ' + p(R, a1) + ' L' + p(r, a1) + ' A' + r + ' ' + r + ' 0 ' + big + ' 0 ' + p(r, a0) + 'Z" fill="' + c + '"><title>' + esc(m.l) + '</title></path>';
+            leg += '<span style="display:flex;justify-content:space-between;gap:10px;width:100%"><span><i style="background:' + c + '"></i>' + esc(m.l) + '</span><b style="color:var(--ds-ink)">' + Math.round(m.n / tot * 100) + ' % <span style="font-weight:600;color:var(--ds-muted)">· ' + m.n + '</span></b></span>';
             a0 = a1;
         });
-        document.getElementById('chPay').setAttribute('viewBox', '0 0 190 190'); document.getElementById('chPay').innerHTML = h;
-        document.getElementById('payLeg').innerHTML = leg; document.getElementById('payCard').style.display = '';
-    }).catch(function () {});
+        $('chPay').innerHTML = h; $('payLeg').innerHTML = leg;
+    }
+
+    // Filtres : un seul état pilote cartes et graphes (api/dashboard_stats.php)
+    var F = { type: '', sejour: '', session: '', moyen: '', du: '', au: '' }, first = true, tmr = null, seq = 0, DEF = {};
+    function fill(id, rows, val) { var el = $(id), all = el.options[0].outerHTML; el.innerHTML = all + rows.map(function (r) { return '<option value="' + esc(r[0]) + '"' + (r[0] === val ? ' selected' : '') + '>' + esc(r[1]) + '</option>'; }).join(''); el.value = val; }
+    function dirty() { return ['type', 'sejour', 'session', 'moyen'].some(function (k) { return F[k] !== ''; }) || F.du !== DEF.du || F.au !== DEF.au; }
+    function render(d) {
+        var f = d.filtres, k = d.kpi;
+        if (first) { first = false; DEF = { du: d.periode.du, au: d.periode.au }; F.du = DEF.du; F.au = DEF.au; fill('fType', f.types.map(function (t) { return [t, t]; }), F.type); fill('fSejour', f.sejours.map(function (s) { return [s.t, s.nom]; }), F.sejour); fill('fMoyen', f.moyens.map(function (m) { return [m.k, m.l]; }), F.moyen); $('fDu').value = F.du; $('fAu').value = F.au; }
+        var ss = f.sessions.filter(function (s) { return !F.sejour || s.s === F.sejour; }); fill('fSession', ss.map(function (s) { return [s.t, (ss.length > 1 || F.sejour ? '' : s.n + ' · ') + s.l]; }), ss.some(function (s) { return s.t === F.session; }) ? F.session : '');
+        F.session = $('fSession').value;
+        $('fReset').hidden = !dirty();
+        $('kCa').textContent = eur(k.ca_cents); $('kIns').textContent = k.inscrits; $('kRem').textContent = k.places ? k.remplissage + ' %' : '–'; $('kAr').textContent = eur(k.a_encaisser_cents);
+        line('chCa', d.serie.labels, d.serie.ca, INK, function (v) { return Math.round(v).toLocaleString('fr-FR') + ' €'; });
+        line('chIns', d.serie.labels, d.serie.ins, ACC, function (v) { return Math.round(v) + ''; });
+        $('sejList').innerHTML = d.sejours.length ? d.sejours.map(function (s) { return '<div class="db-row"><b>' + esc(s.nom) + '</b><span>' + s.ins + '/' + s.quota + '</span><div class="db-bar" role="img" aria-label="' + s.pct + ' % rempli"><i style="width:' + s.pct + '%"></i></div></div>'; }).join('') : '<p class="db-empty">Aucun séjour pour ces filtres.</p>';
+        var has = d.moyens.length; $('payBody').hidden = !has; $('payBody').style.display = has ? 'flex' : 'none'; $('payEmpty').hidden = !!has; if (has) donut(d.moyens);
+    }
+    function load() {
+        var my = ++seq, q = new URLSearchParams({ organisateur_id: <?= (int)$orgaId ?> });
+        Object.keys(F).forEach(function (k) { if (F[k]) q.set(k, F[k]); });
+        $('kpis').style.opacity = .55;
+        fetch('api/dashboard_stats.php?' + q, { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) { if (my === seq) { render(d); $('kpis').style.opacity = 1; } })
+            .catch(function () { if (my === seq) { $('kpis').style.opacity = 1; $('sejList').innerHTML = '<p class="db-empty">Statistiques indisponibles pour le moment.</p>'; } });
+    }
+    function sched() { clearTimeout(tmr); tmr = setTimeout(load, 120); }
+    ['fType', 'fSejour', 'fSession', 'fMoyen', 'fDu', 'fAu'].forEach(function (id) {
+        $(id).addEventListener('change', function () {
+            var k = { fType: 'type', fSejour: 'sejour', fSession: 'session', fMoyen: 'moyen', fDu: 'du', fAu: 'au' }[id]; F[k] = $(id).value;
+            if (id === 'fSejour') F.session = '';
+            if ((id === 'fDu' || id === 'fAu') && !F[k]) F[k] = DEF[k];
+            sched();
+        });
+    });
+    document.querySelectorAll('[data-p]').forEach(function (b) { b.addEventListener('click', function () {
+        var m = +b.dataset.p, e = new Date(), s = new Date(e.getFullYear(), e.getMonth() - (m === 1 ? 0 : m - 1), m === 1 ? e.getDate() - 30 : 1), z = function (n) { return ('0' + n).slice(-2); };
+        var f = function (d) { return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
+        F.du = f(s); F.au = f(e); $('fDu').value = F.du; $('fAu').value = F.au; sched();
+    }); });
+    $('fReset').addEventListener('click', function () { F = { type: '', sejour: '', session: '', moyen: '', du: DEF.du, au: DEF.au }; ['fType', 'fSejour', 'fMoyen'].forEach(function (i) { $(i).value = ''; }); $('fDu').value = F.du; $('fAu').value = F.au; sched(); });
+    load();
 
     // Bulles d'aide « ? » (clic)
     var pop = document.getElementById('dbPop'), cur = null;
