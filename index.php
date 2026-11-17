@@ -119,8 +119,12 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 <!-- ================================================================ -->
 <section class="relative isolate z-30 hero-bg">
     <div class="absolute inset-0 -z-10 overflow-hidden">
-        <img src="https://img3.wallspic.com/crops/1/6/1/1/8/181161/181161-weisshorn-les_reliefs_montagneux-gamme_de_montagne-colline-hiver-3840x2160.jpg"
-             alt="" class="w-full h-full object-cover" loading="eager" fetchpriority="high" onerror="this.remove()">
+        <video id="hero-video" class="w-full h-full object-cover" autoplay muted loop playsinline preload="auto" disablepictureinpicture disableremoteplayback
+               poster="/assets/img/hero-montagne.jpg" aria-hidden="true" tabindex="-1">
+            <source src="/assets/video/hero.mp4" type="video/mp4">
+            <source src="/assets/video/hero.webm" type="video/webm">
+        </video>
+        <script>if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { var hv = document.getElementById('hero-video'); hv.removeAttribute('autoplay'); hv.pause(); }</script>
         <div class="absolute inset-0 bg-gradient-to-b from-black/20 via-black/10 to-black/30"></div>
     </div>
 
