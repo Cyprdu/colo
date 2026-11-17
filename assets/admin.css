@@ -141,3 +141,15 @@ textarea.in { resize:vertical; } .sel { width:auto; min-width:190px; }
   .db { grid-template-columns:minmax(0,1fr); } .db-tables { position:static; max-height:220px; }
   .count { margin-left:0; } .sel, .search { max-width:none; width:100%; }
 }
+
+/* Tableau de contrôle */
+.ctl-g { margin: 0 0 22px; } .ctl-g h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+.ctl-row { display: grid; grid-template-columns: 96px 1fr; gap: 4px 14px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 14px; background: #fff; margin-bottom: 8px; align-items: start; }
+.ctl-row .l { font-weight: 700; color: var(--ink); } .ctl-row .d { color: #3b4a54; font-size: 13.5px; grid-column: 2; overflow-wrap: anywhere; }
+.ctl-row .t { grid-column: 2; font-size: 13px; color: #5b4a1c; background: var(--cream); border-radius: 10px; padding: 8px 12px; margin-top: 4px; overflow-wrap: anywhere; }
+.ctl-row .ms { color: var(--muted); font-size: 11.5px; font-weight: 500; margin-left: 8px; }
+.ctl-row[hidden], .ctl-g[hidden], .ctl-row .t[hidden] { display: none; }
+.pill.info { background: #eef2f4; color: #3b4a54; } .pill.run { background: #eef2f4; color: var(--muted); }
+.steps { padding-left: 20px; display: grid; gap: 10px; font-size: 14px; line-height: 1.5; } .steps code, .card code { background: var(--soft); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; overflow-wrap: anywhere; }
+.chk { display: inline-flex; gap: 8px; align-items: center; font-size: 13.5px; margin-left: 14px; }
+@media (max-width: 640px) { .ctl-row { grid-template-columns: 1fr; } .ctl-row .d, .ctl-row .t { grid-column: 1; } }
