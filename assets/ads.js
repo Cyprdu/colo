@@ -6,10 +6,13 @@
     'use strict';
     var CLIENT = 'ca-pub-3659884670016121';
     var boxes = [].slice.call(document.querySelectorAll('.ad-box[data-ad-slot]'));
-    if (!boxes.length) return;
+    var io = null;
+    // emplacements ajoutés dynamiquement (cartes publicitaires des carrousels)
+    window.colomapAds = { observe: function (box) { if (io) io.observe(box); else load(box); } };
 
     function collapse(box) {
         // aucune annonce disponible : on libère l'espace (sans trou blanc)
+        if (box.hasAttribute('data-fallback')) { box.classList.add('ad-fallback'); var i = box.querySelector('ins'); if (i) i.style.display = 'none'; return; } // carte carrée : on garde la place
         var wrap = box.closest('.ad-wrap');
         box.style.minHeight = '0';
         if (wrap) wrap.classList.add('ad-empty');
@@ -40,7 +43,7 @@
     }
 
     if ('IntersectionObserver' in window) {
-        var io = new IntersectionObserver(function (entries) {
+        io = new IntersectionObserver(function (entries) {
             entries.forEach(function (e) { if (e.isIntersecting) { io.unobserve(e.target); load(e.target); } });
         }, { rootMargin: '400px 0px' });   // on commence un peu avant que l'annonce n'entre à l'écran
         boxes.forEach(function (b) { io.observe(b); });

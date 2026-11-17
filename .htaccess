@@ -7,6 +7,8 @@ RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar|pl|py|cgi|sh)$ - [F,L,NC]
 # Fichiers techniques qui n'ont pas à être lus depuis Internet
 RewriteRule ^(composer\.(json|lock)|fiche\.bat|tekle|donn.es\.csv)$ - [F,L,NC]
 RewriteRule ^(vendor|tests|out)/ - [F,L,NC]
+# Annuaire des organismes : /organisme (sans nom)
+RewriteRule ^organisme/?$ organismes_liste.php [L,NC]
 # Page publique d'un organisme : /organisme/<nom-de-l-organisme>
 RewriteRule ^organisme/([a-z0-9-]{1,120})/?$ organisme.php?slug=$1 [L,QSA,NC]
 # Documents de santé : jamais en accès direct (seul api/secure_file.php les sert, après contrôle des droits)
