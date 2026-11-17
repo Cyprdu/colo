@@ -4,13 +4,14 @@
 // Chaque ouverture est enregistrée (table acces_sante). Les dossiers uploads/sante|sanitaire|signatures sont fermés au web (.htaccess).
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/sante.php';
 
 function sf_stop(int $code): void { http_response_code($code); header('Content-Type: text/plain; charset=utf-8'); echo $code === 403 ? 'Accès interdit.' : 'Introuvable.'; exit; }
 
 if (empty($_SESSION['user']['id'])) sf_stop(403);
 $uid = (int)$_SESSION['user']['id'];
 
-$types = ['sante' => 'carnet_sante_token', 'sanitaire' => 'fiche_sanitaire_token', 'signatures' => 'signature_token'];
+$types = SANTE_DIRS;   // sante, sanitaire, signatures, photos
 $type = (string)($_GET['type'] ?? 'sante');
 $name = (string)($_GET['file'] ?? '');
 if (!isset($types[$type]) || !preg_match('/^[a-f0-9]{64}\.(pdf|jpe?g|png|webp|heic)$/i', $name)) sf_stop(404);
@@ -40,8 +41,11 @@ try {
 $path = __DIR__ . '/../uploads/' . $type . '/' . $name;
 if (!is_file($path)) sf_stop(404);
 
+try { $data = sante_decrypt((string)file_get_contents($path)); }   // fichier chiffré au repos : déchiffré à la volée, jamais écrit en clair
+catch (Throwable $e) { error_log('secure_file: ' . $e->getMessage()); sf_stop(404); }
+
 $finfo = finfo_open(FILEINFO_MIME_TYPE);
-$mime = (string)finfo_file($finfo, $path);
+$mime = (string)finfo_buffer($finfo, $data);
 finfo_close($finfo);
 if (!in_array($mime, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic'], true)) sf_stop(403);   // jamais autre chose qu'un PDF ou une image
 
@@ -49,9 +53,12 @@ sante_log($pdo, $uid, (int)$enfant['id'], $type);   // journal : qui a ouvert qu
 
 if (ob_get_level()) ob_end_clean();
 header('Content-Type: ' . $mime);
-header('Content-Disposition: inline; filename="document.' . strtolower(pathinfo($name, PATHINFO_EXTENSION)) . '"');
-header('Content-Length: ' . filesize($path));
-header('Cache-Control: private, no-store');
+header('Content-Disposition: inline; filename="document.' . ($mime === 'application/pdf' ? 'pdf' : 'jpg') . '"');
+header('Content-Length: ' . strlen($data));
+header('Cache-Control: no-store, no-cache, must-revalidate, private');
+header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
-readfile($path);
+header("Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+header('X-Robots-Tag: noindex, noarchive');
+echo $data;
 exit;

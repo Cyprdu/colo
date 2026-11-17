@@ -25,7 +25,9 @@ try {
     options_ensure($pdo);
     attente_ensure($pdo);
     require_once 'api/enfants.php';
+    require_once 'api/sante.php';
     enfants_ensure($pdo);
+    sante_ensure($pdo);
     tarifs_ensure($pdo);
     $stmtCamp = $pdo->prepare("SELECT * FROM camps WHERE token = ?");
     $stmtCamp->execute([$camp_token]);
@@ -149,7 +151,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                                     <?php elseif($isInscrit): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit<?= ($enfant['sexe'] ?? '') === 'Femme' ? 'e' : '' ?></span>
                                     <?php elseif ($blq && $blq['manque']): ?>
-                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child.php?id=<?= (int)$enfant['id'] ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
+                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($blq['manque'][0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
                                     <?php endif; ?>
                                 </div>
                             </label>

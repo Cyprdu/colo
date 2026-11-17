@@ -10,7 +10,7 @@ RewriteRule ^(vendor|tests|out)/ - [F,L,NC]
 # Page publique d'un organisme : /organisme/<nom-de-l-organisme>
 RewriteRule ^organisme/([a-z0-9-]{1,120})/?$ organisme.php?slug=$1 [L,QSA,NC]
 # Documents de santé : jamais en accès direct (seul api/secure_file.php les sert, après contrôle des droits)
-RewriteRule ^uploads/(sante|sanitaire|signatures)/ - [F,L,NC]
+RewriteRule ^uploads/(sante|sanitaire|signatures|photos)/ - [F,L,NC]
 
 <IfModule mod_headers.c>
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
