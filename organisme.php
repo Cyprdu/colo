@@ -83,7 +83,7 @@ require_once 'partials/header.php';
         <a href="recherche" class="mt-6 inline-block px-6 py-3 rounded-xl bg-[#2f3d45] text-white font-bold hover:bg-[#1f2a30] transition">Rechercher un séjour</a>
     </div>
 <?php else: ?>
-    <nav class="text-[13px] text-[#6b7780]" aria-label="Fil d'Ariane"><a class="hover:underline" href="./">Accueil</a> <span aria-hidden="true">/</span> <a class="hover:underline" href="recherche">Séjours</a> <span aria-hidden="true">/</span> <span class="text-[#26343b] font-semibold"><?= htmlspecialchars($nom) ?></span></nav>
+    <nav class="text-[13px] text-[#6b7780]" aria-label="Fil d'Ariane"><a class="hover:underline" href="./">Accueil</a> <span aria-hidden="true">/</span> <a class="hover:underline" href="organisme">Organismes</a> <span aria-hidden="true">/</span> <span class="text-[#26343b] font-semibold"><?= htmlspecialchars($nom) ?></span></nav>
 
     <header class="mt-6 flex flex-col sm:flex-row sm:items-center gap-5">
         <span class="w-24 h-24 flex-none rounded-3xl bg-[#eef2f4] border border-[#e5e7eb] overflow-hidden flex items-center justify-center text-[#3a4852] font-extrabold text-[36px]">
