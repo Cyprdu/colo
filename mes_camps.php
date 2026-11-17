@@ -77,7 +77,10 @@ foreach ($groupsRaw as $list) {
         if ($s['_start']->format('Y-m-d') <= $todayYmd && $s['_end']->format('Y-m-d') >= $todayYmd) $ongoing = true;
         if (empty($s['valide'])) { if (!empty($s['refuse'])) $anyRefused = true; else $anyPending = true; }
     }
+    $eq = null;   // lien d'inscription de l'équipe d'animation (option B), porté par la première session qui l'a activée
+    foreach ($list as $s) { if (!empty($s['equipe_active']) && !empty($s['equipe_lien'])) { $eq = ['t' => $s['token'], 'l' => $s['equipe_lien'], 'pub' => ($s['equipe_visibilite'] ?? '') === 'public']; break; } }
     $cards[] = [
+        'eq' => $eq,
         'ts' => $ongoing ? 'cours' : ($upcoming ? 'avenir' : 'passe'),
         'val' => $anyRefused ? 'refuse' : ($anyPending ? 'attente' : 'ok'),
         'orga' => (int)$rep['organisateur_id'], 'orgaNom' => $orgaNoms[(int)$rep['organisateur_id']] ?? '',
@@ -188,6 +191,7 @@ $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
     </div>
     <div class="flex-1 overflow-y-auto p-6 space-y-6">
         <div class="grid grid-cols-2 gap-3" id="dActions"></div>
+        <div id="dEq"></div>
         <div><p class="ds-eyebrow mb-3">Sessions</p><div id="dSessions" class="space-y-2"></div></div>
     </div>
 </aside>
@@ -306,6 +310,10 @@ function openDrawer(i) {
         act('camp_details.php?t=' + encodeURIComponent(c.token), 'eye', 'Page publique', 'target="_blank" rel="noopener"') +
         act('boost.php?t=' + encodeURIComponent(c.token), 'bolt', 'Booster');
     $('dShare').onclick = () => share(c.token, c.nom);
+    $('dEq').innerHTML = c.eq ? `<div class="rounded-2xl bg-[#f8f5ea] p-4 mt-3"><p class="text-sm font-bold text-[#26343b]">Inscription de votre équipe d'animation</p>
+        <p class="text-[13px] text-[#6b7780] mt-1">${c.eq.pub ? 'Le tarif « Animateur » est affiché sur la page publique du séjour. Ce lien y mène directement.' : 'Page du séjour réservée à vos animateurs : envoyez-leur ce lien, rien ne s’affiche côté public.'}</p>
+        <button type="button" id="dEqCopy" class="ds-btn ds-btn-light ds-btn-sm mt-3">Copier le lien animateurs</button></div>` : '';
+    if (c.eq) $('dEqCopy').onclick = () => ColoUI.copy(location.origin + '/camp_details.php?t=' + c.eq.t + '&l=' + c.eq.l);
     $('dAdd').onclick = () => openSession(c);
     $('dSessions').innerHTML = c.sessions.map((s, k) => {
         const pct = Math.min(100, Math.round(s.inscrits / s.quota * 100));
