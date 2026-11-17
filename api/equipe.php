@@ -59,6 +59,8 @@ function equipe_ensure(PDO $pdo): void {
             id INT AUTO_INCREMENT PRIMARY KEY, equipe_id INT NOT NULL, champ_id INT NULL, libelle VARCHAR(255) NOT NULL, valeur TEXT NULL,
             INDEX idx_eqr (equipe_id)
         ) DEFAULT CHARSET=utf8mb4");
+        // demandes « Me prévenir quand la page est renseignée » (une par inscription d'animateur)
+        $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_alertes (equipe_id INT PRIMARY KEY, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, envoye_at DATETIME NULL) DEFAULT CHARSET=utf8mb4");
     } catch (Throwable $e) { error_log('equipe_ensure: ' . $e->getMessage()); }
     $done = true;
 }
@@ -269,6 +271,30 @@ function equipe_acces(PDO $pdo, string $token, int $userId, bool $isAdmin): ?arr
     if (!$camp) return null;
     $role = (int)$e['user_id'] === $userId ? 'animateur' : ((int)$camp['dir_user'] === $userId ? 'directeur' : ($isAdmin ? 'admin' : null));
     return $role ? [$e, $camp, $role] : null;
+}
+
+/** La page « mon séjour » de l'équipe a-t-elle du contenu (blocs, message ou documents) ? */
+function equipe_infos_vide(array $info): bool { return !$info['blocs'] && $info['message'] === '' && !$info['docs']; }
+
+/** À appeler quand l'organisme enregistre ses infos : prévient (notification + e-mail) les animateurs qui l'avaient demandé, une seule fois chacun. Retourne le nombre d'alertes envoyées. */
+function equipe_prevenir_publication(PDO $pdo, array $camp): int {
+    equipe_ensure($pdo);
+    if (equipe_infos_vide(equipe_infos($pdo, (int)$camp['id']))) return 0;
+    $st = $pdo->prepare("SELECT q.id, q.user_id, q.token, q.prenom, q.email FROM equipe_alertes a JOIN equipe_inscriptions q ON q.id = a.equipe_id
+                         WHERE q.camp_id = ? AND a.envoye_at IS NULL AND q.statut <> 'Annulé'");
+    $st->execute([$camp['id']]);
+    $n = 0; $site = rtrim(defined('BASE_URL') ? BASE_URL : 'https://moncamp.fr', '/'); $nom = html_entity_decode((string)$camp['nom']);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $q) {
+        $pdo->prepare("UPDATE equipe_alertes SET envoye_at = NOW() WHERE equipe_id = ?")->execute([$q['id']]);
+        if (function_exists('anim_notifier')) anim_notifier($pdo, (int)$q['user_id'], 'Les informations de « ' . $nom . ' » sont disponibles.');
+        try {
+            require_once __DIR__ . '/mail_config.php';
+            $lien = $site . '/mon_sejour_animateur.php?t=' . urlencode($q['token']);
+            sendMailGmail($q['email'], $q['prenom'], 'Votre séjour : les informations sont en ligne', '<p>Bonjour ' . htmlspecialchars($q['prenom']) . ',</p><p>L’organisateur de <b>' . htmlspecialchars($nom) . '</b> vient de publier les informations pour son équipe.</p><p><a href="' . htmlspecialchars($lien) . '">Voir ma page séjour</a></p>');
+        } catch (Throwable $e) { error_log('equipe_prevenir: ' . $e->getMessage()); }
+        $n++;
+    }
+    return $n;
 }
 
 function equipe_infos(PDO $pdo, int $campId): array {

@@ -34,6 +34,8 @@ if ($info['montre_equipe'] || $role !== 'animateur') {
     $st->execute([$camp['id'], $e['id']]); $equipe = $st->fetchAll(PDO::FETCH_ASSOC);
 }
 $jt = (int)($camp['annul_jours_total'] ?? 0) ?: FIN_ANNUL_DEFAUT[0]; $jm = (int)($camp['annul_jours_moitie'] ?? 0) ?: FIN_ANNUL_DEFAUT[1];
+$demande = false;
+try { $q = $pdo->prepare("SELECT 1 FROM equipe_alertes WHERE equipe_id = ?"); $q->execute([$e['id']]); $demande = (bool)$q->fetchColumn(); } catch (Throwable $x) {}
 $statutTxt = $annule ? 'Inscription annulée' : ($paid ? 'Inscription confirmée' : 'Paiement en attente');
 ?>
 <title>Mon séjour d'animateur - ColoMap</title>
@@ -64,7 +66,13 @@ $statutTxt = $annule ? 'Inscription annulée' : ($paid ? 'Inscription confirmée
                 <p class="mt-1 text-[15px] text-[#3b4a54] whitespace-pre-line"><?= $h($b['texte']) ?></p>
             </div>
         <?php endforeach; ?>
-        <?php if (!$info['blocs']): ?><p class="mt-4 text-[14px] text-[#6b7780]">L’organisateur n’a pas encore ajouté d’informations pour son équipe (horaires, programme, consignes…). Vous serez prévenu ici dès qu’il le fera.</p><?php endif; ?>
+        <?php if (equipe_infos_vide($info) && !$info['blocs']): ?>
+        <div class="mt-5 border-t border-[#e5e7eb] pt-5 text-center">
+            <p class="font-bold text-[#26343b]">Aucune information pour le moment</p>
+            <p class="text-[13px] text-[#6b7780] mt-1">L’organisateur n’a pas encore renseigné cette page (horaires, programme, consignes…).</p>
+            <?php if ($role === 'animateur' && !$annule): ?><?php if ($demande): ?><p class="mt-3 text-[13px] font-semibold text-[#26343b]">✓ Vous serez prévenu dès sa publication.</p><?php else: ?><button type="button" id="prevenir" class="mt-3 text-[13px] font-bold text-[#3d6a8e] underline hover:text-[#26343b]">Me prévenir quand elle est publiée</button><?php endif; ?><?php endif; ?>
+        </div>
+        <?php endif; ?>
     </section>
 
     <?php if ($info['docs']): ?>
@@ -114,6 +122,8 @@ $statutTxt = $annule ? 'Inscription annulée' : ($paid ? 'Inscription confirmée
         document.getElementById('contact').onclick = function () {
             post('api/start_conversation.php', { campId: CAMP }).then(function (d) { location.href = 'messagerie?conv_id=' + d.conversationId; }).catch(fail);
         };
+        var pv = document.getElementById('prevenir');
+        if (pv) pv.onclick = function () { pv.disabled = true; post('api/equipe_infos.php?a=prevenir', { t: T }).then(function (d) { pv.outerHTML = '<p class="mt-3 text-[13px] font-semibold text-[#26343b]">✓ ' + d.message + '</p>'; }).catch(function (x) { pv.disabled = false; fail(x); }); };
         var a = document.getElementById('annul');
         if (a) a.onclick = async function () {
             if (!(await ColoUI.confirm('Annuler votre inscription ?', { confirmLabel: 'Oui, annuler' }))) return;

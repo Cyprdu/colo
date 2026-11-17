@@ -51,6 +51,15 @@ try {
         anim_json($ok ? ['success' => true, 'message' => $msg] : ['error' => $msg], $ok ? 200 : 409);
     }
 
+    // ---- Demande d'alerte « prévenez-moi quand la page est renseignée » (animateur inscrit)
+    if ($a === 'prevenir' && $post) {
+        $in = anim_body();
+        $acc = equipe_acces($pdo, (string)($in['t'] ?? ''), $uid, false);
+        if (!$acc || $acc[2] !== 'animateur' || $acc[0]['statut'] === 'Annulé') anim_json(['error' => 'Inscription introuvable.'], 404);
+        $pdo->prepare("INSERT IGNORE INTO equipe_alertes (equipe_id) VALUES (?)")->execute([$acc[0]['id']]);
+        anim_json(['success' => true, 'message' => 'C’est noté : vous serez prévenu dès que l’organisateur publiera les informations.']);
+    }
+
     // ---- Édition par le directeur
     if ($a === 'get' && !$post) {
         $camp = eqi_camp($pdo, (string)($_GET['camp'] ?? ''), $uid);
@@ -78,6 +87,7 @@ try {
             foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $u) anim_notifier($pdo, (int)$u, 'Nouveau message de l’équipe pour « ' . html_entity_decode((string)$camp['nom']) . ' ».');
         }
         sec_trace($pdo, $uid, 'equipe_infos', (int)$camp['id']);
+        equipe_prevenir_publication($pdo, $camp);   // alerte les animateurs qui attendaient la publication
         anim_json(['success' => true]);
     }
     if ($a === 'doc_add' && $post) {
@@ -99,6 +109,7 @@ try {
         $nom = mb_substr(preg_replace('/\.pdf$/i', '', preg_replace('/[^\w .\-()]+/u', '_', basename($f['name']))), 0, 200);
         $pdo->prepare("INSERT INTO equipe_docs (camp_id, nom, fichier, taille) VALUES (?,?,?,?)")->execute([$camp['id'], $nom, $name, (int)$f['size']]);
         sec_trace($pdo, $uid, 'equipe_doc_add', (int)$pdo->lastInsertId());
+        equipe_prevenir_publication($pdo, $camp);
         anim_json(['success' => true, 'docs' => equipe_infos($pdo, (int)$camp['id'])['docs']], 201);
     }
     if ($a === 'doc_del' && $post) {
