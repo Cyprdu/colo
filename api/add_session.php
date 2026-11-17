@@ -63,8 +63,19 @@ try {
     $new['groupe_id'] = (int)($src['groupe_id'] ?: $src['id']);
     // La nouvelle session reprend TOUS les réglages de la session principale (modifiables ensuite, section par section, depuis « Modifier »)
     require_once 'camp_groupe.php';
-    $new['heritage'] = json_encode(array_fill_keys(CAMP_HERITAGE_CLES, true));
-    $new['perso_description'] = 0; $new['perso_lieu'] = 0;
+    // Duplication : la copie garde l'héritage de la session copiée (principale -> tout est hérité) ; seules les dates (et le lieu, s'il est donné) changent
+    $srcPrincipal = (int)$src['id'] === (int)($src['groupe_id'] ?: $src['id']);
+    $herit = $srcPrincipal ? CAMP_HERITAGE_CLES : camp_heritage_lire($src, false);
+    $lieu = trim((string)($in['ville'] ?? '')) !== '' || trim((string)($in['adresse'] ?? '')) !== '';
+    if ($lieu) {
+        $new['adresse'] = mb_substr(trim((string)($in['adresse'] ?? $src['adresse'])), 0, 255);
+        $new['ville'] = mb_substr(trim((string)($in['ville'] ?? $src['ville'])), 0, 120);
+        $new['code_postal'] = mb_substr(trim((string)($in['code_postal'] ?? $src['code_postal'])), 0, 20);
+        $herit = array_values(array_diff($herit, ['lieu']));
+        if (array_key_exists('geo_hash', $new)) $new['geo_hash'] = null;   // la position sera recalculée pour la nouvelle adresse
+    }
+    $new['heritage'] = json_encode(array_fill_keys($herit, true) ?: new stdClass());
+    $new['perso_description'] = in_array('description', $herit, true) ? 0 : 1; $new['perso_lieu'] = in_array('lieu', $herit, true) ? 0 : 1;
     if (isset($in['prix']) && is_numeric($in['prix']) && (float)$in['prix'] >= 0) $new['prix'] = (float)$in['prix'];
 
     $pdo->beginTransaction();
