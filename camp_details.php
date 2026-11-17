@@ -258,6 +258,27 @@ require_once 'partials/header3.php';
     </div>
 </main>
 
+<!-- Barre de réservation (mobile) : le tarif et l'accès à la réservation restent visibles tant que la carte n'est pas à l'écran -->
+<div id="m-bar" class="lg:hidden fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur border-t border-[#e5e7eb] px-4 pt-3 flex items-center gap-4 translate-y-full transition-transform duration-200" style="padding-bottom:calc(12px + env(safe-area-inset-bottom))" aria-hidden="true">
+    <div class="min-w-0 leading-tight"><span id="m-bar-price" class="text-[20px] font-extrabold text-[#26343b]"></span> <span class="text-[12px] text-[#6b7780]">par enfant</span></div>
+    <button type="button" id="m-bar-go" class="ds-btn ml-auto" tabindex="-1">Réserver</button>
+</div>
+<script>
+(function () {
+    var bar = document.getElementById('m-bar'), card = document.getElementById('booking-card'), price = document.getElementById('card-price');
+    if (!bar || !card || !window.IntersectionObserver) return;
+    var vis = false, shown = false;
+    function render() {
+        var txt = price ? price.textContent.trim() : '';
+        var on = !!txt && !vis && window.scrollY > 240;
+        document.getElementById('m-bar-price').textContent = txt;
+        if (on !== shown) { shown = on; bar.classList.toggle('translate-y-full', !on); bar.setAttribute('aria-hidden', on ? 'false' : 'true'); document.getElementById('m-bar-go').tabIndex = on ? 0 : -1; }
+    }
+    new IntersectionObserver(function (e) { vis = e[0].isIntersecting; render(); }).observe(card);
+    window.addEventListener('scroll', render, { passive: true });
+    document.getElementById('m-bar-go').addEventListener('click', function () { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+})();
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
     const isLoggedIn = <?= json_encode($is_logged_in); ?>;
