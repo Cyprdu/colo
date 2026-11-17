@@ -128,7 +128,7 @@ function fin_row_parts(array $r, float $reservePct, string $asOf): array {
  * Verse aux organismes ce qui est versable. $respectDay = true (cron) : seuls les organismes dont c'est le jour (ou un jour manqué) sont traités ;
  * false (administrateur) : tous / l'organisme demandé, quel que soit le jour. Verrou global : un seul passage à la fois.
  */
-function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = null, bool $respectDay = false): array {
+function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = null, bool $respectDay = false, bool $force = false): array {   // $force : test administrateur, ignore délai de sécurité et réserve
     fin_ensure($pdo);
     $rep = ['transferts' => 0, 'montant_cents' => 0, 'reportes' => 0, 'erreurs' => 0, 'hors_jour' => 0, 'reversements' => 0];
     if (!(int)$pdo->query("SELECT GET_LOCK('colomap_fin_release', 0)")->fetchColumn()) return $rep + ['verrou' => true];
@@ -137,7 +137,7 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
         fin_process_reversals($pdo, $rep);
         $days = $respectDay ? fin_days_due($pdo) : null;
         $rows = $pdo->query("SELECT DISTINCT p.organisateur_id, o.jour_versement FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id
-                             WHERE p.statut = 'attente' AND p.date_deblocage <= NOW()")->fetchAll(PDO::FETCH_ASSOC);
+                             WHERE p.statut = 'attente'" . ($force ? '' : ' AND p.date_deblocage <= NOW()'))->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $o) {
             $orgaId = (int)$o['organisateur_id'];
             if ($onlyOrga && $orgaId !== $onlyOrga) continue;
@@ -146,7 +146,7 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
                 $acc = fin_account($pdo, $orgaId);
                 if (!$acc || !fin_account_ready($acc)) { try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { $acc = null; } }
                 if (!fin_account_ready($acc)) { $rep['reportes']++; continue; }
-                $tid = fin_prepare_transfer($pdo, $orgaId, $acc['account_id'], 'sejour');
+                $tid = fin_prepare_transfer($pdo, $orgaId, $acc['account_id'], 'sejour', $force);
                 if (!$tid) { $rep['reportes']++; continue; }
                 $r = fin_execute_transfer($pdo, $tid, $acteur);
                 if ($r === 'envoye') {
@@ -170,14 +170,14 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
  * réserve le solde. Le montant = min(versable, solde du portefeuille) : points achetés, remboursements et dettes déjà déduits du solde sont donc compensés.
  * Retourne l'id du transfert ou null s'il n'y a rien à verser.
  */
-function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $type): ?int {
+function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $type, bool $force = false): ?int {
     $pdo->beginTransaction();
     try {
         $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
         $st->execute([$orgaId]);
         $pf = (int)round((float)$st->fetchColumn() * 100);
         $st = $pdo->prepare("SELECT id, camp_id, net_cents, net_rembourse_cents, verse_cents, date_deblocage FROM fin_paiements
-                             WHERE organisateur_id = ? AND statut = 'attente' AND date_deblocage <= NOW() FOR UPDATE");
+                             WHERE organisateur_id = ? AND statut = 'attente'" . ($force ? '' : ' AND date_deblocage <= NOW()') . " FOR UPDATE");
         $st->execute([$orgaId]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         if (!$rows) { $pdo->rollBack(); return null; }
@@ -186,10 +186,11 @@ function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $
         $cs = $pdo->prepare("SELECT id, date_debut, annul_jours_moitie FROM camps WHERE id IN (SELECT camp_id FROM fin_paiements WHERE id IN ($in))");
         $cs->execute(array_column($rows, 'id'));
         foreach ($cs->fetchAll(PDO::FETCH_ASSOC) as $c) $camps[(int)$c['id']] = $c;
-        $pct = fin_reserve_pct(); $now = date('Y-m-d H:i:s');
+        $pct = $force ? 0.0 : fin_reserve_pct(); $now = date('Y-m-d H:i:s');
         $w = []; $due = 0; $held = 0;
         foreach ($rows as $r) {
             $c = $camps[(int)$r['camp_id']] ?? [];
+            if ($force) $r['date_deblocage'] = $now;
             $p = fin_row_parts($r + ['date_debut' => $c['date_debut'] ?? null, 'jm' => $c['annul_jours_moitie'] ?? 15], $pct, $now);
             if ($p['ok'] > 0) { $w[(int)$r['id']] = $p['ok']; $due += $p['ok']; }
             $held += $p['held'];

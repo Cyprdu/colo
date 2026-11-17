@@ -65,8 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
             $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
             if (!$oid) flash_go('err', 'Organisme introuvable.', 'admin_compta.php?v=versements');
-            $r = fin_release_due($pdo, 'admin:' . $uid, $oid, false);
-            adm_audit('versement_immediat', 'organisateur', (string)$oid);
+            $force = !empty($_POST['force']);   // test : ignore délai de sécurité et réserve
+            $r = fin_release_due($pdo, 'admin:' . $uid, $oid, false, $force);
+            adm_audit($force ? 'versement_force_test' : 'versement_immediat', 'organisateur', (string)$oid);
             if ($r['transferts']) flash_go('ok', 'Versement envoyé : ' . fin_eur($r['montant_cents']) . '.', 'admin_compta.php?v=versements');
             $ov = fin_overview($pdo, $oid); $acc = fin_account($pdo, $oid);
             flash_go('err', 'Rien versé. Versable : ' . fin_eur($ov['deblocable_cents']) . ' · réserve retenue : ' . fin_eur($ov['reserve_cents']) . ' · en délai de sécurité (' . $ov['delai_jours'] . ' j) : ' . fin_eur($ov['delai_cents'])
@@ -198,6 +199,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
   <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="versement_now">
     <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($vs['orgas'] as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h($o['nom']) ?></option><?php endforeach; ?></select></label>
     <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+    <label class="fld"><span class="fl"><input type="checkbox" name="force" value="1"> Test : ignorer le délai de sécurité et la réserve (verse tout le net)</span></label>
     <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer le versement maintenant</button></div></form>
 </section>
 
