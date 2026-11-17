@@ -60,6 +60,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             adm_audit('jour_versement_modifie', 'organisateur', FIN_JOURS[$j]);
             flash_go('ok', 'Jour de versement modifié : ' . FIN_JOURS[$j] . '.', 'admin_compta.php?v=versements');
         }
+        if ($act === 'versement_now') {   // lance le versement d'UN organisme tout de suite, sans attendre son jour (même logique que api/cron_virements.php)
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
+            $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
+            if (!$oid) flash_go('err', 'Organisme introuvable.', 'admin_compta.php?v=versements');
+            $r = fin_release_due($pdo, 'admin:' . $uid, $oid, false);
+            adm_audit('versement_immediat', 'organisateur', (string)$oid);
+            if ($r['transferts']) flash_go('ok', 'Versement envoyé : ' . fin_eur($r['montant_cents']) . '.', 'admin_compta.php?v=versements');
+            $ov = fin_overview($pdo, $oid); $acc = fin_account($pdo, $oid);
+            flash_go('err', 'Rien versé. Versable : ' . fin_eur($ov['deblocable_cents']) . ' · réserve retenue : ' . fin_eur($ov['reserve_cents']) . ' · en délai de sécurité (' . $ov['delai_jours'] . ' j) : ' . fin_eur($ov['delai_cents'])
+                . ' · solde : ' . fin_eur($ov['solde_cents']) . ' · compte Stripe ' . (fin_account_ready($acc) ? 'prêt' : 'NON prêt (onboarding incomplet)') . ($r['erreurs'] ? ' · ' . $r['erreurs'] . ' erreur(s), voir le journal' : '') . '.', 'admin_compta.php?v=versements');
+        }
         if ($act === 'retenter') {
             if (!adm_reauth_ok()) flash_go('err', 'Confirmez votre mot de passe (onglet Exports CSV, « Déverrouiller ») puis réessayez.', 'admin_compta.php?v=versements');
             $_SESSION['adm_reauth'] = time();
@@ -180,6 +192,14 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Modifier</button></div></form>
   </section>
 </div>
+
+<section class="card"><h2 class="sec"><?= ic('clock') ?> Lancer le versement maintenant</h2>
+  <p class="muted">Verse tout de suite ce qui est versable pour un seul organisme (après délai de sécurité et réserve), sans attendre son jour. Utile pour un test ou un dépannage ; les règles ne changent pas.</p>
+  <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="versement_now">
+    <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($vs['orgas'] as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h($o['nom']) ?></option><?php endforeach; ?></select></label>
+    <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+    <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer le versement maintenant</button></div></form>
+</section>
 
 <h2 class="sec"><?= ic('chart') ?> Charge par jour de la semaine</h2>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jour</th><th class="num">Organismes</th><th class="num">Sortie prévue (versable)</th><th class="num">Réserve retenue</th></tr></thead><tbody>
