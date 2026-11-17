@@ -190,7 +190,7 @@ function drawList() {
         $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Enfant')}${th('Âge')}${th('Parent', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(i => {
             const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].some(Boolean), m = moyen(i);
             return `<tr class="gm-tr ${i.expire ? 'opacity-60' : ''}" ${open('r', i.reservation_token, i.prenom + ' ' + i.nom)}>
-              ${td(`<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span>${sante ? ' <span class="inline-block w-2 h-2 rounded-full bg-[#c9a227] align-middle" title="Informations de santé renseignées"></span>' : ''}`)}
+              ${td(`<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span>${sante ? ` <span class="inline-block align-middle text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#f8f5ea] text-[#5b4a1c] border border-[#ebe3c8]" title="À consulter dans le dossier : ${i.allergies ? 'allergies' : 'informations de santé'} renseignées par les parents">${i.allergies ? 'Allergie' : 'Santé'}</span>` : ''}`)}
               ${td(a !== null ? a + ' ans' : '—', 'whitespace-nowrap')}
               ${td(`<span class="block truncate max-w-[200px]">${esc(i.parent_prenom)} ${esc(i.parent_nom_famille)}</span>`, 'hidden md:table-cell')}
               ${td(`<span class="block text-xs text-[#6b7780] max-w-[170px]">${esc(I.sessions[i.session_token] || '')}</span>`, 'hidden lg:table-cell')}
