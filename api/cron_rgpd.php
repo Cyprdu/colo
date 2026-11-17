@@ -7,6 +7,7 @@
 require_once 'config.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/rgpd_lib.php';
+require_once __DIR__ . '/sante.php';
 
 $cli = PHP_SAPI === 'cli';
 if (!$cli) {
@@ -21,20 +22,23 @@ try {
     sec_ensure($pdo);
     $cols = rgpd_cols($pdo, 'enfants');
     $dateCol = in_array('date_creation', $cols, true) ? 'e.date_creation' : 'NOW()';
-    $st = $pdo->query("SELECT e.id, e.carnet_sante_token, e.fiche_sanitaire_token, e.signature_token,
+    sante_ensure($pdo);
+    $cols = rgpd_cols($pdo, 'enfants');
+    $st = $pdo->query("SELECT e.id, e.carnet_sante_token, e.fiche_sanitaire_token, e.signature_token, e.photo_token,
             GREATEST(COALESCE($dateCol, '1970-01-01'), COALESCE((SELECT MAX(COALESCE(c.date_fin, c.date_debut)) FROM inscriptions i JOIN camps c ON c.id = i.camp_id WHERE i.enfant_id = e.id), '1970-01-01')) AS derniere_activite
         FROM enfants e
-        WHERE (COALESCE(e.carnet_sante_token, '') <> '' OR COALESCE(e.fiche_sanitaire_token, '') <> '' OR COALESCE(e.signature_token, '') <> '' OR COALESCE(e.infos_sante, '') <> '' OR COALESCE(e.allergies, '') <> '')
+        WHERE (COALESCE(e.carnet_sante_token, '') <> '' OR COALESCE(e.fiche_sanitaire_token, '') <> '' OR COALESCE(e.signature_token, '') <> '' OR COALESCE(e.photo_token, '') <> '' OR COALESCE(e.traitements, '') <> '' OR COALESCE(e.urgence_nom, '') <> '' OR COALESCE(e.infos_sante, '') <> '' OR COALESCE(e.allergies, '') <> '')
         HAVING derniere_activite < (NOW() - INTERVAL " . (int)$mois . " MONTH) LIMIT 200");
     $root = dirname(__DIR__) . '/uploads/';
-    $clean = ['infos_sante' => '', 'allergies' => '', 'regime_alimentaire' => '', 'medecin_nom' => '', 'medecin_tel' => '', 'vaccins_data' => null,
-              'carnet_sante_token' => null, 'fiche_sanitaire_token' => null, 'signature_token' => null];
+    $clean = ['infos_sante' => '', 'allergies' => '', 'traitements' => '', 'regime_alimentaire' => '', 'medecin_nom' => '', 'medecin_tel' => '', 'urgence_nom' => '', 'urgence_tel' => '',
+              'urgence_lien' => '', 'vaccins_data' => null, 'carnet_sante_token' => null, 'fiche_sanitaire_token' => null, 'signature_token' => null, 'photo_token' => null,
+              'fiche_origine' => null, 'sante_consent_at' => null];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $e) {
         $set = []; $vals = [];
         foreach ($clean as $c => $v) if (in_array($c, $cols, true)) { $set[] = "`$c` = ?"; $vals[] = $v; }
         $vals[] = (int)$e['id'];
         $pdo->prepare("UPDATE enfants SET " . implode(', ', $set) . " WHERE id = ?")->execute($vals);
-        foreach (['sante' => 'carnet_sante_token', 'sanitaire' => 'fiche_sanitaire_token', 'signatures' => 'signature_token'] as $dir => $col) {
+        foreach (SANTE_DIRS as $dir => $col) {
             if (!empty($e[$col]) && preg_match('/^[a-f0-9]{64}\.[a-z0-9]{2,5}$/i', $e[$col])) { $f = $root . $dir . '/' . $e[$col]; if (is_file($f) && @unlink($f)) $rep['fichiers_supprimes']++; }
         }
         $rep['sante_purgee']++;

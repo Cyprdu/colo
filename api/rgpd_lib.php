@@ -24,7 +24,7 @@ function rgpd_export(PDO $pdo, int $uid): array {
     $st = $pdo->prepare("SELECT * FROM enfants WHERE parent_id = ?"); $st->execute([$uid]);
     $enfants = $st->fetchAll(PDO::FETCH_ASSOC);
     foreach ($enfants as &$e) {
-        foreach (['carnet_sante_token' => 'carnet_sante', 'fiche_sanitaire_token' => 'fiche_sanitaire', 'signature_token' => 'signature'] as $k => $label) {
+        foreach (['carnet_sante_token' => 'carnet_sante', 'fiche_sanitaire_token' => 'fiche_sanitaire', 'signature_token' => 'signature', 'photo_token' => 'photo'] as $k => $label) {
             $e[$label . '_depose'] = !empty($e[$k]); unset($e[$k]);   // on indique la présence du document, pas son adresse interne
         }
     }
@@ -76,18 +76,18 @@ function rgpd_delete_account(PDO $pdo, int $uid): void {
     $pdo->beginTransaction();
     try {
         // 1. documents de santé et signatures des enfants
-        $st = $pdo->prepare("SELECT id, carnet_sante_token, fiche_sanitaire_token, signature_token FROM enfants WHERE parent_id = ?");
+        $st = $pdo->prepare("SELECT id, carnet_sante_token, fiche_sanitaire_token, signature_token, photo_token FROM enfants WHERE parent_id = ?");
         $st->execute([$uid]);
         $files = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $e) {
-            foreach (['sante' => 'carnet_sante_token', 'sanitaire' => 'fiche_sanitaire_token', 'signatures' => 'signature_token'] as $dir => $col)
+            foreach (['sante' => 'carnet_sante_token', 'sanitaire' => 'fiche_sanitaire_token', 'signatures' => 'signature_token', 'photos' => 'photo_token'] as $dir => $col)
                 if (!empty($e[$col]) && preg_match('/^[a-f0-9]{64}\.[a-z0-9]{2,5}$/i', $e[$col])) $files[] = $root . $dir . '/' . $e[$col];
         }
 
         // 2. enfants : on vide tout ce qui est personnel (la ligne reste, car les inscriptions payées s'y rattachent)
         $blank = ['prenom' => 'Supprimé', 'nom' => '', 'adresse' => '', 'code_postal' => '', 'ville' => '', 'pays' => '', 'tel_mobile_enfant' => '', 'tel_fixe_enfant' => '',
             'email_enfant' => '', 'infos_sante' => '', 'allergies' => '', 'regime_alimentaire' => '', 'poids' => '', 'taille' => '', 'medecin_nom' => '', 'medecin_tel' => '',
-            'vaccins_data' => null, 'carnet_sante_token' => null, 'fiche_sanitaire_token' => null, 'signature_token' => null,
+            'traitements' => '', 'urgence_nom' => '', 'urgence_tel' => '', 'urgence_lien' => '', 'vaccins_data' => null, 'carnet_sante_token' => null, 'fiche_sanitaire_token' => null, 'signature_token' => null, 'photo_token' => null, 'sante_consent_at' => null,
             'resp1_nom' => '', 'resp1_prenom' => '', 'resp1_email' => '', 'resp1_tel' => '', 'resp1_profession' => '',
             'resp2_nom' => '', 'resp2_prenom' => '', 'resp2_email' => '', 'resp2_tel' => '', 'resp2_profession' => '', 'commentaires' => ''];
         $have = rgpd_cols($pdo, 'enfants');
