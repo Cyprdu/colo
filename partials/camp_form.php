@@ -572,7 +572,8 @@ const Sessions = {
         const v = n => (document.querySelector(`[name="${n}"]`) || {}).value || '';
         const sx = document.querySelector('input[name=reserve_sexe]:checked');
         return { date_debut: v('date_debut'), date_fin: v('date_fin'), date_limite_inscription: v('date_limite_inscription'), age_min: +v('age_min') || 0, age_max: +v('age_max') || 0,
-            quota_global: +v('quota_global') || 0, quota_fille: +v('quota_fille') || 0, quota_garcon: +v('quota_garcon') || 0, reserve_sexe: sx ? sx.value : '', prix: +v('prix_simple') || 0 };
+            quota_global: +v('quota_global') || 0, quota_fille: +v('quota_fille') || 0, quota_garcon: +v('quota_garcon') || 0, reserve_sexe: sx ? sx.value : '', prix: +v('prix_simple') || 0,
+            perso_description: 0, description: '', perso_lieu: 0, adresse: '', ville: '', cp: '' };
     },
     shift(d, days) { if (!d) return ''; const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + days); return x.toISOString().slice(0, 10); },
     fresh(base, offset) {
@@ -587,6 +588,13 @@ const Sessions = {
         ColoUI.confirm('Supprimer cette session ?', { confirmLabel: 'Supprimer', danger: true }).then(ok => { if (ok) { SESSIONS.splice(i, 1); this.render(); } });
     },
     focusLast() { const c = $('sessionsList').lastElementChild; if (c) { c.scrollIntoView({ block: 'center', behavior: 'smooth' }); const f = c.querySelector('input'); if (f) f.focus({ preventScroll: true }); } },
+    // Lieu / description propres à une session : les champs sont préremplis avec ceux du séjour principal
+    perso(i, kind, on) {
+        const s = SESSIONS[i], v = n => (document.querySelector(`[name="${n}"]`) || {}).value || '';
+        if (kind === 'lieu') { s.perso_lieu = on ? 1 : 0; if (on && !s.adresse) { s.adresse = v('adresse'); s.ville = v('ville'); s.cp = v('cp'); } }
+        else { s.perso_description = on ? 1 : 0; if (on && !s.description) s.description = v('description'); }
+        this.render();
+    },
     set(i, k, v) { SESSIONS[i][k] = (['age_min', 'age_max', 'quota_global', 'quota_fille', 'quota_garcon'].includes(k)) ? (+v || 0) : v; this.summary(i); },
     toggleTarif(i, id, on) { const t = SESSIONS[i].tarifs; SESSIONS[i].tarifs = on ? [...new Set([...t, id])] : t.filter(x => x !== id); },
     label(s) {
@@ -610,6 +618,15 @@ const Sessions = {
               <div class="col-span-2 md:col-span-1"><label class="ds-label">Public</label><select class="ds-select" onchange="Sessions.set(${i},'reserve_sexe',this.value);Sessions.render()"><option value="" ${!s.reserve_sexe ? 'selected' : ''}>Mixte</option><option value="Homme" ${s.reserve_sexe === 'Homme' ? 'selected' : ''}>Garçons uniquement</option><option value="Femme" ${s.reserve_sexe === 'Femme' ? 'selected' : ''}>Filles uniquement</option></select></div>
               ${s.reserve_sexe ? '' : `<div><label class="ds-label">Places filles</label><input type="number" min="0" class="ds-input" value="${s.quota_fille}" oninput="Sessions.set(${i},'quota_fille',this.value)"></div><div><label class="ds-label">Places garçons</label><input type="number" min="0" class="ds-input" value="${s.quota_garcon}" oninput="Sessions.set(${i},'quota_garcon',this.value)"></div>`}
             </div>
+            <details class="mt-4 rounded-xl border border-[#e5e7eb] bg-white" ${s.perso_lieu || s.perso_description ? 'open' : ''}>
+              <summary class="cursor-pointer select-none px-4 py-3 text-sm font-bold text-[#26343b]">Lieu et description propres à cette session <span class="font-normal text-[#6b7780]">(sinon : ceux du séjour principal)</span></summary>
+              <div class="px-4 pb-4 space-y-4">
+                <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" class="w-4 h-4 accent-[#2f3d45]" ${s.perso_lieu ? 'checked' : ''} onchange="Sessions.perso(${i},'lieu',this.checked)"> Cette session a lieu à une autre adresse</label>
+                ${s.perso_lieu ? `<div class="grid md:grid-cols-3 gap-3"><div class="md:col-span-3"><label class="ds-label">Adresse</label><input class="ds-input" value="${esc(s.adresse)}" oninput="Sessions.set(${i},'adresse',this.value)"></div><div class="md:col-span-2"><label class="ds-label">Ville</label><input class="ds-input" value="${esc(s.ville)}" oninput="Sessions.set(${i},'ville',this.value)"></div><div><label class="ds-label">Code postal</label><input class="ds-input" value="${esc(s.cp)}" oninput="Sessions.set(${i},'cp',this.value)"></div></div>` : ''}
+                <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" class="w-4 h-4 accent-[#2f3d45]" ${s.perso_description ? 'checked' : ''} onchange="Sessions.perso(${i},'description',this.checked)"> Cette session a sa propre description</label>
+                ${s.perso_description ? `<textarea rows="5" maxlength="10000" class="ds-textarea" oninput="Sessions.set(${i},'description',this.value)">${esc(s.description)}</textarea>` : ''}
+              </div>
+            </details>
             ${on ? `<div class="mt-4"><p class="ds-label">Tarifs de cette session</p><div class="flex flex-wrap gap-2">${TARIFS.length ? TARIFS.map(t => `<label class="ds-chip !py-2 cursor-pointer"><input type="checkbox" class="accent-[#2f3d45]" ${s.tarifs.includes(t.id) ? 'checked' : ''} onchange="Sessions.toggleTarif(${i},${t.id},this.checked)">${esc(t.nom)} · ${Tarifs.label(t)}</label>`).join('') : '<span class="ds-hint !mt-0">Créez d\'abord des tarifs dans la section Inscriptions.</span>'}</div></div>`
                 : `<div class="mt-4 max-w-xs"><label class="ds-label">Prix affiché (€)</label><input type="number" min="0" step="0.01" class="ds-input" value="${s.prix || ''}" oninput="Sessions.set(${i},'prix',this.value)"></div>`}
           </div>`).join('');

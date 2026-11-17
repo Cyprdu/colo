@@ -183,9 +183,17 @@ function camp_lire_sessions(PDO $pdo, int $uid, array $in, array $tarifsPrincipa
             'tarifs' => json_encode($tids ?: $tarifsPrincipale),
             'prix_simple' => (string)($s['prix'] ?? ($in['prix_simple'] ?? 0)),
         ]);
+        // Description et lieu propres à la session (sinon elle hérite de ceux de la session principale)
+        $persoD = !empty($s['perso_description']) && trim((string)($s['description'] ?? '')) !== '';
+        $persoL = !empty($s['perso_lieu']);
+        if ($persoD) $sin['description'] = (string)$s['description'];
+        if ($persoL) {
+            $sin['adresse'] = (string)($s['adresse'] ?? ''); $sin['ville'] = (string)($s['ville'] ?? ''); $sin['cp'] = (string)($s['cp'] ?? '');
+            if (trim($sin['adresse']) === '' || trim($sin['ville']) === '') return [[], "Session $n : indiquez l'adresse et la ville de cette session, ou décochez « lieu propre »."];
+        }
         [$d, $t, $err] = camp_lire_formulaire($pdo, $uid, $sin);
         if ($err) return [[], "Session $n : $err"];
-        $out[] = ['token' => preg_match('/^[a-f0-9]{16,64}$/i', (string)($s['token'] ?? '')) ? (string)$s['token'] : null, 'data' => $d, 'tarifs' => $t, 'in' => $sin];
+        $out[] = ['token' => preg_match('/^[a-f0-9]{16,64}$/i', (string)($s['token'] ?? '')) ? (string)$s['token'] : null, 'data' => $d, 'tarifs' => $t, 'in' => $sin, 'perso_d' => $persoD, 'perso_l' => $persoL];
     }
     return [$out, null];
 }
@@ -209,11 +217,20 @@ function camp_enregistrer_sessions(PDO $pdo, int $uid, array $main, array $mainD
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $existants[$r['token']] = (int)$r['id'];
 
     // champs communs à toutes les sessions : jamais le jeton, le groupe ni le statut de validation (propres à chaque ligne)
-    $communes = array_diff_key($mainData, array_flip(array_merge(CAMP_PAR_SESSION, ['token', 'groupe_id', 'id', 'valide', 'en_attente', 'refuse', 'supprime'])));
+    $communesNew = array_diff_key($mainData, array_flip(array_merge(CAMP_PAR_SESSION, ['token', 'groupe_id', 'id', 'valide', 'en_attente', 'refuse', 'supprime', 'perso_description', 'perso_lieu'])));
+    // Si la session éditée a elle-même une description / un lieu propre, elle ne les impose pas aux autres sessions
+    $communes = $communesNew;
+    if (!empty($main['perso_description'])) unset($communes['description']);
+    if (!empty($main['perso_lieu'])) unset($communes['adresse'], $communes['ville'], $communes['code_postal'], $communes['pays']);
     $gardes = [];
     foreach ($sessions as $s) {
-        $data = camp_filtrer_colonnes($pdo, $communes + array_intersect_key($s['data'], array_flip(CAMP_PAR_SESSION)));
-        if ($s['token'] && isset($existants[$s['token']])) {
+        $existe = $s['token'] && isset($existants[$s['token']]);
+        $perso = [];
+        if ($s['perso_d']) $perso['description'] = $s['data']['description'];
+        if ($s['perso_l']) $perso += ['adresse' => $s['data']['adresse'], 'ville' => $s['data']['ville'], 'code_postal' => $s['data']['code_postal']];
+        $flags = ['perso_description' => $s['perso_d'] ? 1 : 0, 'perso_lieu' => $s['perso_l'] ? 1 : 0];
+        $data = camp_filtrer_colonnes($pdo, $perso + $flags + ($existe ? $communes : $communesNew) + array_intersect_key($s['data'], array_flip(CAMP_PAR_SESSION)));
+        if ($existe) {
             $id = $existants[$s['token']]; $gardes[$id] = true;
             $pdo->prepare("UPDATE camps SET " . implode(', ', array_map(fn($c) => "`$c` = ?", array_keys($data))) . " WHERE id = ?")->execute([...array_values($data), $id]);
         } else {
@@ -256,6 +273,8 @@ function camp_sessions_soeurs(PDO $pdo, int $uid, array $camp): array {
             'age_min' => (int)$r['age_min'], 'age_max' => (int)$r['age_max'], 'quota_global' => (int)$r['quota_global'],
             'quota_fille' => (int)$r['quota_fille'], 'quota_garcon' => (int)$r['quota_garcon'], 'reserve_sexe' => (string)($r['reserve_sexe'] ?? ''),
             'tarifs' => array_map('intval', $tar->fetchAll(PDO::FETCH_COLUMN)), 'prix' => (float)$r['prix'], 'inscrits' => (int)$r['nb_inscrits'],
+            'perso_description' => (int)($r['perso_description'] ?? 0), 'description' => (string)$r['description'],
+            'perso_lieu' => (int)($r['perso_lieu'] ?? 0), 'adresse' => (string)$r['adresse'], 'ville' => (string)$r['ville'], 'cp' => (string)$r['code_postal'],
         ];
     }
     return $out;

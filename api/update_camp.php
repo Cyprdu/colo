@@ -13,7 +13,7 @@ $uid = (int)$_SESSION['user']['id'];
 try {
     options_ensure($pdo); attente_ensure($pdo); etapes_ensure($pdo); champs_ensure($pdo);
     // Le séjour est désigné par son jeton secret (jamais par un identifiant numérique)
-    $st = $pdo->prepare("SELECT c.id, c.image_url, c.valide, c.en_attente, c.refuse, c.groupe_id FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE c.token = ? AND o.user_id = ?");
+    $st = $pdo->prepare("SELECT c.id, c.image_url, c.valide, c.en_attente, c.refuse, c.groupe_id, c.perso_description, c.perso_lieu FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE c.token = ? AND o.user_id = ?");
     $st->execute([(string)($_POST['token'] ?? ''), $uid]);
     $cur = $st->fetch(PDO::FETCH_ASSOC);
     if (!$cur) fin(['success' => false, 'message' => "Ce séjour n'existe pas ou ne vous appartient pas."], 404);
@@ -43,6 +43,12 @@ try {
     if ($sessions !== null) camp_enregistrer_sessions($pdo, $uid, $cur, $data, $_POST, $sessions);
     $pdo->commit();
     require_once __DIR__ . '/security.php'; sec_trace($pdo, (int)$_SESSION['user']['id'], 'sejour_modifie', $campId);
+
+    // Position exacte de la session et de ses sœurs (hors transaction ; le reste est fait à la première visite de la fiche)
+    require_once 'geocode.php';
+    $ids = [$campId];
+    if (!empty($cur['groupe_id'])) { $q = $pdo->prepare("SELECT id FROM camps WHERE groupe_id = ? AND COALESCE(supprime, 0) = 0"); $q->execute([$cur['groupe_id']]); $ids = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN)); }
+    geo_actualiser($pdo, $ids);
 
     fin(['success' => true, 'motscles_refuses' => $classement['motscles']['refus'] ?? []]);
 } catch (CampException $e) {

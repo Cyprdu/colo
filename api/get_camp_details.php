@@ -114,6 +114,15 @@ try {
                 ];
             }
         }
+        // Position exacte pour la carte : relue en base, géocodée une seule fois (à l'enregistrement ou à la première visite)
+        require_once 'geocode.php';
+        if (!array_key_exists('lat', $camp)) { geo_ensure($pdo); $camp['lat'] = null; $camp['lng'] = null; $camp['geo_hash'] = null; $camp['geo_precis'] = 0; }
+        if (($camp['geo_hash'] ?? '') !== geo_hash($camp)) {
+            $p = geo_position($camp);
+            $camp['lat'] = $p ? $p[0] : null; $camp['lng'] = $p ? $p[1] : null; $camp['geo_precis'] = $p && $p[2] ? 1 : 0; $camp['geo_hash'] = geo_hash($camp);
+            try { $pdo->prepare('UPDATE camps SET lat = ?, lng = ?, geo_hash = ?, geo_precis = ? WHERE id = ?')->execute([$camp['lat'], $camp['lng'], $camp['geo_hash'], $camp['geo_precis'], $camp['id']]); } catch (Throwable $e) { error_log('geo: ' . $e->getMessage()); }
+        }
+        unset($camp['geo_hash']);
         require_once 'etapes.php';
         $camp['etapes'] = !empty($camp['itinerant']) ? etapes_du_camp($pdo, (int)$camp['id']) : [];
         echo json_encode($camp);
