@@ -312,7 +312,7 @@ function openDrawer(i) {
     $('dShare').onclick = () => share(c.token, c.nom);
     $('dEq').innerHTML = c.eq ? `<div class="rounded-2xl bg-[#f8f5ea] p-4 mt-3"><p class="text-sm font-bold text-[#26343b]">Inscription de votre équipe d'animation</p>
         <p class="text-[13px] text-[#6b7780] mt-1">${c.eq.pub ? 'Le tarif « Animateur » est affiché sur la page publique du séjour. Ce lien y mène directement.' : 'Page du séjour réservée à vos animateurs : envoyez-leur ce lien, rien ne s’affiche côté public.'}</p>
-        <button type="button" id="dEqCopy" class="ds-btn ds-btn-light ds-btn-sm mt-3">Copier le lien animateurs</button></div>` : '';
+        <div class="flex flex-wrap gap-2 mt-3"><button type="button" id="dEqCopy" class="ds-btn ds-btn-light ds-btn-sm">Copier le lien animateurs</button><a class="ds-btn ds-btn-light ds-btn-sm" href="equipe_gestion.php?t=${encodeURIComponent(c.eq.t)}">Infos pour mon équipe</a></div></div>` : '';
     if (c.eq) $('dEqCopy').onclick = () => ColoUI.copy(location.origin + '/camp_details.php?t=' + c.eq.t + '&l=' + c.eq.l);
     $('dAdd').onclick = () => openSession(c);
     $('dSessions').innerHTML = c.sessions.map((s, k) => {

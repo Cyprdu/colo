@@ -105,7 +105,7 @@ function resaImg($url) {
                 $paid = in_array($e['statut_paiement'], ['PAYE', 'GRATUIT'], true);
             ?>
                 <article class="rs-card flex flex-col md:flex-row">
-                    <a href="camp_details?t=<?= urlencode($e['camp_token']) ?>" class="relative block md:w-[200px] h-[140px] md:h-auto flex-none bg-[#e5e7eb] overflow-hidden" aria-label="Voir le séjour">
+                    <a href="mon_sejour_animateur.php?t=<?= urlencode($e['token']) ?>" class="relative block md:w-[200px] h-[140px] md:h-auto flex-none bg-[#e5e7eb] overflow-hidden" aria-label="Ouvrir mon espace animateur">
                         <?php if ($img): ?><img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()"><?php endif; ?>
                         <span class="absolute top-3 left-3 text-[12px] font-bold px-3 py-1.5 rounded-full bg-[#26343b] text-white">Animateur</span>
                     </a>
@@ -118,6 +118,7 @@ function resaImg($url) {
                         <div class="text-right">
                             <p class="text-[20px] font-extrabold text-[#26343b] leading-none"><?= (float)$e['prix_final'] > 0 ? htmlspecialchars(fmtEuro((float)$e['prix_final'])) : 'Gratuit' ?></p>
                             <p class="mt-2 text-[12px] font-bold px-3 py-1 rounded-full inline-block <?= $paid ? 'bg-[#eef2f4] text-[#26343b]' : 'bg-[#f8f5ea] text-[#5b4a1c]' ?>"><?= $paid ? 'Inscription confirmée' : 'Paiement en attente' ?></p>
+                            <div class="mt-3"><a class="rs-btn" href="mon_sejour_animateur.php?t=<?= urlencode($e['token']) ?>">Mon espace animateur</a></div>
                             <?php if (!$paid): ?><div class="mt-3"><button type="button" class="rs-btn eq-pay" data-t="<?= htmlspecialchars($e['token']) ?>">Régler maintenant</button></div><?php endif; ?>
                         </div>
                     </div>
