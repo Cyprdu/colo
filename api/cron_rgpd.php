@@ -41,6 +41,7 @@ try {
     }
     // journaux techniques : on ne garde pas plus de 12 mois
     $rep['journaux_purges'] = (int)$pdo->exec("DELETE FROM acces_sante WHERE created_at < (NOW() - INTERVAL 12 MONTH)");
+    $rep['journaux_purges'] += (int)$pdo->exec("DELETE FROM journal_contenus WHERE created_at < (NOW() - INTERVAL 12 MONTH)");
     echo json_encode($rep), "\n";
 } catch (Throwable $e) {
     error_log('cron_rgpd: ' . $e->getMessage());

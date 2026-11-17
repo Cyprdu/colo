@@ -26,9 +26,22 @@ function sec_ensure(PDO $pdo): void {
             id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, enfant_id INT NULL, type VARCHAR(12) NOT NULL,
             ip_hash CHAR(64) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_enfant (enfant_id), KEY idx_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        // Obligation de conservation des données d'identification de l'auteur d'un contenu (LCEN art. 6, décret 2021-1362) : 12 mois, purgés par cron_rgpd.php
+        $pdo->exec("CREATE TABLE IF NOT EXISTS journal_contenus (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id INT NULL, action VARCHAR(30) NOT NULL, objet_id INT NULL,
+            ip VARCHAR(45) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_user (user_id), KEY idx_date (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         if (mt_rand(1, 40) === 1) $pdo->exec("DELETE FROM sec_tentatives WHERE created_at < (NOW() - INTERVAL 2 DAY)");
     } catch (Throwable $e) { error_log('sec_ensure: ' . $e->getMessage()); }
     $done = true;
+}
+
+/** Garde la trace (compte, date, adresse IP) d'un contenu publié ou envoyé : message, demande de contact... Ne bloque jamais l'action. */
+function sec_trace(PDO $pdo, ?int $userId, string $action, ?int $objetId = null): void {
+    try {
+        sec_ensure($pdo);
+        $pdo->prepare("INSERT INTO journal_contenus (user_id, action, objet_id, ip) VALUES (?, ?, ?, ?)")->execute([$userId, substr($action, 0, 30), $objetId, sec_ip()]);
+    } catch (Throwable $e) { error_log('sec_trace: ' . $e->getMessage()); }
 }
 
 function sec_ip(): string { return substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45); }

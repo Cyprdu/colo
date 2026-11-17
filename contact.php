@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $pdo->prepare("INSERT INTO contact_messages (user_id, nom, prenom, email, motif, message, token) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$user_id, $nom, $prenom, $email, $final_motif, $message, $token]);
+            require_once __DIR__ . '/api/security.php'; sec_trace($pdo, $user_id ? (int)$user_id : null, 'contact', (int)$pdo->lastInsertId());
             
             $msg_success = "Votre demande a bien été envoyée ! Nous vous répondrons par email.";
             $message = ''; 

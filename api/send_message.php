@@ -1,6 +1,7 @@
 <?php
 // api/send_message.php : envoie un message dans une conversation dont on est participant.
 require_once 'config.php';
+require_once __DIR__ . '/security.php';
 
 if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Connectez-vous.'], 403); }
 $myId = (int)$_SESSION['user']['id'];
@@ -19,6 +20,7 @@ try {
 
     $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)")->execute([$convId, $myId, $content]);
     $id = (int)$pdo->lastInsertId();
+    sec_trace($pdo, $myId, 'message', $id);
     $pdo->prepare("UPDATE conversations SET last_message_at = NOW() WHERE id = ?")->execute([$convId]);
 
     $row = $pdo->prepare("SELECT id, content, sender_id, created_at, is_read FROM messages WHERE id = ?");

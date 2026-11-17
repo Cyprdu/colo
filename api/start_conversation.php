@@ -1,6 +1,7 @@
 <?php
 // api/start_conversation.php : ouvre (ou retrouve) la conversation entre le parent et le directeur d'un séjour.
 require_once 'config.php';
+require_once __DIR__ . '/security.php';
 
 if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Connectez-vous pour contacter l\'organisateur.'], 403); }
 
@@ -41,6 +42,7 @@ try {
     $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, content, is_read, created_at) VALUES (?, ?, ?, 1, NOW())")
         ->execute([$newConvId, $targetUserId, $auto]);
 
+    sec_trace($pdo, $myId, 'conversation', (int)$newConvId);
     sendJson(['conversationId' => $newConvId]);
 } catch (Exception $e) {
     error_log('start_conversation: ' . $e->getMessage());

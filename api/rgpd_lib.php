@@ -47,6 +47,7 @@ function rgpd_export(PDO $pdo, int $uid): array {
     } catch (Throwable $e) {}
     try { $st = $pdo->prepare("SELECT conversation_id, content, created_at FROM messages WHERE sender_id = ? ORDER BY id"); $st->execute([$uid]); $out['messages_envoyes'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
     try { $st = $pdo->prepare("SELECT type, version, accepte, created_at FROM consentements WHERE user_id = ? ORDER BY id"); $st->execute([$uid]); $out['consentements'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+    try { $st = $pdo->prepare("SELECT action, ip, created_at FROM journal_contenus WHERE user_id = ? ORDER BY id DESC LIMIT 500"); $st->execute([$uid]); $out['journal_envois'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
     try { $st = $pdo->prepare("SELECT enfant_id, type, created_at FROM acces_sante WHERE enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) ORDER BY id DESC LIMIT 500"); $st->execute([$uid]); $out['acces_aux_documents_de_sante'] = $st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
     return $out;
 }
