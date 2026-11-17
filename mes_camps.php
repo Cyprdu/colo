@@ -1,5 +1,5 @@
 <?php
-// mes_camps.php : « Mes séjours » du directeur. Un clic sur un séjour ouvre son panneau (modifier, inscrits, partager, sessions).
+// mes_camps.php : « Mes séjours » du directeur. Un clic sur un séjour ouvre sa page de gestion (gestion_camp.php).
 require_once 'api/config.php';
 require_once 'api/sessions.php';
 require_once 'api/options.php';
@@ -114,9 +114,12 @@ $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
             <h1 class="ds-h1">Mes séjours</h1>
-            <p class="ds-lead">Cliquez sur un séjour pour le modifier, voir les inscrits, le partager ou ajouter une session.</p>
+            <p class="ds-lead">Cliquez sur un séjour pour le gérer : inscrits, sessions, liens, équipe.</p>
         </div>
+        <div class="flex items-center gap-2">
+        <button type="button" id="loupe" class="ds-btn ds-btn-light" aria-expanded="false" aria-controls="filtres" aria-label="Rechercher et filtrer mes séjours"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg> Rechercher</button>
         <a href="create_camp.php" class="ds-btn"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Publier un séjour</a>
+        </div>
     </div>
 
     <?php if ($flash === 'created' || $flash === 'updated'): ?>
@@ -131,7 +134,7 @@ $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
             <a href="create_camp.php" class="ds-btn">Publier mon premier séjour</a>
         </div>
     <?php else: ?>
-        <section class="ds-card p-4 sm:p-5 mb-4" aria-label="Filtrer et trier les séjours">
+        <section id="filtres" class="ds-card p-4 sm:p-5 mb-4 hidden" aria-label="Filtrer et trier les séjours">
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div class="lg:col-span-2"><label class="ds-label" for="q">Recherche</label><input id="q" type="search" class="ds-input" placeholder="Nom du séjour, ville, organisme" autocomplete="off"></div>
                 <div><label class="ds-label" for="fTs">Période</label><select id="fTs" class="ds-select"><option value="all">Toutes</option><option value="avenir">À venir</option><option value="cours">En cours</option><option value="passe">Passés</option></select></div>
@@ -183,52 +186,6 @@ $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
     <?php endif; ?>
 </main>
 
-<div id="scrim" class="ds-scrim"></div>
-<aside id="drawer" class="ds-drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle" aria-hidden="true">
-    <div class="flex items-start justify-between gap-3 p-6 border-b border-[#e5e7eb]">
-        <div class="min-w-0"><p class="ds-eyebrow">Séjour</p><h2 id="dTitle" class="text-xl font-extrabold text-[#26343b] leading-tight"></h2><p id="dSub" class="text-sm text-[#6b7780] mt-0.5"></p></div>
-        <button type="button" class="ds-iconbtn" id="dClose" aria-label="Fermer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <div class="flex-1 overflow-y-auto p-6 space-y-6">
-        <div class="grid grid-cols-2 gap-3" id="dActions"></div>
-        <div id="dEq"></div>
-        <div><p class="ds-eyebrow mb-3">Sessions</p><div id="dSessions" class="space-y-2"></div></div>
-    </div>
-</aside>
-
-<!-- Ajouter une session -->
-<div id="sessionModal" class="ds-modal" role="dialog" aria-modal="true" aria-labelledby="sessionTitle">
-    <div class="ds-modal-box">
-        <h3 id="sessionTitle" class="text-xl font-extrabold text-[#26343b] mb-1">Ajouter une session</h3>
-        <p class="text-sm text-[#6b7780] mb-5">Nouvelles dates pour <b id="sessionCampName"></b>. Le reste (description, âges, tarifs, options, images) est repris du séjour ; les familles verront un seul camp avec plusieurs sessions.</p>
-        <form id="sessionForm" class="space-y-4">
-            <input type="hidden" id="sessionToken">
-            <div class="grid grid-cols-2 gap-3">
-                <div><label class="ds-label" for="sessionDebut">Début</label><input type="date" id="sessionDebut" required class="ds-input"></div>
-                <div><label class="ds-label" for="sessionFin">Fin</label><input type="date" id="sessionFin" required class="ds-input"></div>
-            </div>
-            <div><label class="ds-label" for="sessionLimite">Date limite d'inscription <span class="font-normal text-[#6b7780]">(facultatif)</span></label><input type="date" id="sessionLimite" class="ds-input"></div>
-            <div><label class="ds-label" for="sessionPrix">Prix de cette session <span class="font-normal text-[#6b7780]">(facultatif, sinon identique)</span></label><input type="number" id="sessionPrix" min="0" step="0.01" class="ds-input"></div>
-            <p id="sessionError" class="hidden text-sm font-semibold text-[#5b4a1c]" role="alert"></p>
-            <div class="flex gap-3 pt-1"><button type="button" class="ds-btn ds-btn-light flex-1" data-close="sessionModal">Annuler</button><button type="submit" id="sessionSubmit" class="ds-btn flex-1">Ajouter</button></div>
-        </form>
-    </div>
-</div>
-
-<!-- Suppression -->
-<div id="deleteModal" class="ds-modal" role="dialog" aria-modal="true" aria-labelledby="delTitle">
-    <div class="ds-modal-box">
-        <h3 id="delTitle" class="text-xl font-extrabold text-[#26343b]">Supprimer cette session</h3>
-        <p class="text-sm text-[#6b7780] mt-1 mb-4">Action <b>irréversible</b>.</p>
-        <form id="deleteForm" action="api/delete_camp.php" method="POST" class="space-y-4">
-            <input type="hidden" name="token" id="modalToken">
-            <div class="bg-[#f8f9fa] border border-[#e5e7eb] rounded-xl p-4 text-sm max-h-36 overflow-y-auto"><p class="font-bold text-[#26343b] mb-1">Inscrits concernés</p><div id="modalInscritsList" class="text-[#3b4a54]"></div></div>
-            <div><label class="ds-label" for="confirmNameInput">Écrivez <b id="modalCampNameDisplay" class="select-all"></b> pour confirmer</label><input type="text" id="confirmNameInput" class="ds-input" autocomplete="off"></div>
-            <label class="flex items-start gap-3 text-sm cursor-pointer"><input id="refundCheck" type="checkbox" class="mt-0.5 w-4 h-4 accent-[#2f3d45]"><span>Je m'engage sur l'honneur à rembourser intégralement les familles inscrites si le séjour est annulé.</span></label>
-            <div class="flex gap-3"><button type="button" class="ds-btn ds-btn-light flex-1" data-close="deleteModal">Annuler</button><button type="submit" id="finalDeleteBtn" class="ds-btn flex-1" disabled>Supprimer définitivement</button></div>
-        </form>
-    </div>
-</div>
 <div id="toast" class="ds-toast" role="status"></div>
 
 <script>
@@ -295,100 +252,16 @@ if ($('q')) {
     apply();
 }
 
-// ---- panneau du séjour
-let cur = null;
-function openDrawer(i) {
-    const c = CARDS[i]; cur = c;
-    $('dTitle').textContent = c.nom;
-    $('dSub').textContent = c.ville + (c.reserve ? ' · réservé aux ' + (c.reserve === 'Femme' ? 'filles' : 'garçons') : '');
-    const act = (href, icon, label, extra = '') => `<a href="${href}" ${extra} class="ds-tile !p-4 !rounded-2xl !gap-3 text-sm font-bold text-[#26343b]">${ico(icon)}<span>${label}</span></a>`;
-    const btn = (id, icon, label) => `<button type="button" id="${id}" class="ds-tile !p-4 !rounded-2xl !gap-3 text-sm font-bold text-[#26343b] text-left">${ico(icon)}<span>${label}</span></button>`;
-    $('dActions').innerHTML =
-        act('edit_camp.php?t=' + encodeURIComponent(c.token), 'edit', 'Modifier le séjour') +
-        act('gestion_camp.php?t=' + encodeURIComponent(c.token), 'users', 'Voir les inscrits') +
-        btn('dShare', 'share', 'Partager') + btn('dAdd', 'plus', 'Ajouter une session') +
-        act('camp_details.php?t=' + encodeURIComponent(c.token), 'eye', 'Page publique', 'target="_blank" rel="noopener"') +
-        act('boost.php?t=' + encodeURIComponent(c.token), 'bolt', 'Booster');
-    $('dShare').onclick = () => share(c.token, c.nom);
-    $('dEq').innerHTML = c.eq ? `<div class="rounded-2xl bg-[#f8f5ea] p-4 mt-3"><p class="text-sm font-bold text-[#26343b]">Inscription de votre équipe d'animation</p>
-        <p class="text-[13px] text-[#6b7780] mt-1">${c.eq.pub ? 'Le tarif « Animateur » est affiché sur la page publique du séjour. Ce lien y mène directement.' : 'Page du séjour réservée à vos animateurs : envoyez-leur ce lien, rien ne s’affiche côté public.'}</p>
-        <div class="flex flex-wrap gap-2 mt-3"><button type="button" id="dEqCopy" class="ds-btn ds-btn-light ds-btn-sm">Copier le lien animateurs</button><a class="ds-btn ds-btn-light ds-btn-sm" href="equipe_gestion.php?t=${encodeURIComponent(c.eq.t)}">Infos pour mon équipe</a></div></div>` : '';
-    if (c.eq) $('dEqCopy').onclick = () => ColoUI.copy(location.origin + '/camp_details.php?t=' + c.eq.t + '&l=' + c.eq.l);
-    $('dAdd').onclick = () => openSession(c);
-    $('dSessions').innerHTML = c.sessions.map((s, k) => {
-        const pct = Math.min(100, Math.round(s.inscrits / s.quota * 100));
-        const state = !s.valide ? (s.refuse ? 'Refusé' : 'En validation') : (s.fini ? 'Terminé' : '');
-        return `<div class="border border-[#e5e7eb] rounded-2xl p-4">
-          <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="text-sm font-bold text-[#26343b]">${esc(s.label)}</p>
-            <p class="text-xs text-[#6b7780] mt-0.5">${s.nuits} nuit${s.nuits > 1 ? 's' : ''} · ${eur(s.prix)} · ${s.inscrits}/${s.quota} inscrits${state ? ' · <b>' + state + '</b>' : ''}</p></div>
-            <label class="ds-switch" title="Visible par les familles"><input type="checkbox" ${s.prive ? '' : 'checked'} onchange="setVisible('${s.token}', this)" aria-label="Session visible par les familles"><span></span></label></div>
-          <div class="h-1.5 bg-[#f1f3f5] rounded-full mt-3 overflow-hidden"><div class="h-1.5 bg-[#2f3d45] rounded-full" style="width:${pct}%"></div></div>
-          <div class="flex flex-wrap gap-2 mt-3">
-            <a class="ds-btn ds-btn-light ds-btn-sm" href="edit_camp.php?t=${encodeURIComponent(s.token)}">Modifier</a>
-            <a class="ds-btn ds-btn-light ds-btn-sm" href="gestion_camp.php?t=${encodeURIComponent(s.token)}">Inscrits</a>
-            <button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="share('${s.token}', CARDS[${i}].nom)">Partager</button>
-            <button type="button" class="ds-iconbtn danger ml-auto" aria-label="Supprimer cette session" onclick="openDelete(${i}, ${k})">${ico('trash')}</button>
-          </div></div>`;
-    }).join('');
-    $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden', 'false'); $('scrim').classList.add('open');
-    setTimeout(() => $('dClose').focus(), 80);
-}
-function closeDrawer() { $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true'); $('scrim').classList.remove('open'); }
-document.querySelectorAll('.camp-card').forEach(c => c.addEventListener('click', () => openDrawer(+c.dataset.i)));
-$('dClose').addEventListener('click', closeDrawer); $('scrim').addEventListener('click', closeDrawer);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeDrawer(); document.querySelectorAll('.ds-modal.open').forEach(m => m.classList.remove('open')); } });
-document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => $(b.dataset.close).classList.remove('open')));
-document.querySelectorAll('.ds-modal').forEach(m => m.addEventListener('mousedown', e => { if (e.target === m) m.classList.remove('open'); }));
+// ---- un clic ouvre la page de gestion du séjour
+document.querySelectorAll('.camp-card').forEach(c => c.addEventListener('click', () => { location.href = 'gestion_camp.php?t=' + encodeURIComponent(CARDS[+c.dataset.i].token); }));
 
-// ---- partage
-async function share(token, nom) {
-    const url = location.origin + '/camp_details.php?t=' + token;
-    try { if (navigator.share) { await navigator.share({ title: nom, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
-    ColoUI.copy(url);
-}
-
-// ---- visibilité d'une session
-async function setVisible(token, cb) {
-    const on = cb.checked;
-    try {
-        const r = await fetch('api/update_camp_visibility.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'token=' + encodeURIComponent(token) + '&prive=' + (on ? 0 : 1) });
-        const d = await r.json(); if (!d.success) throw 0;
-        toast(on ? 'Session visible par les familles.' : 'Session masquée.');
-    } catch (e) { cb.checked = !on; toast('Mise à jour impossible.'); }
-}
-
-// ---- ajouter une session
-function openSession(c) {
-    closeDrawer();
-    $('sessionToken').value = c.token; $('sessionCampName').textContent = c.nom;
-    const d = new Date(c.lastStart), f = new Date(c.lastEnd), days = Math.max(0, Math.round((f - d) / 86400000));
-    let start = new Date(f); start.setDate(start.getDate() + 7); if (isNaN(start) || start < new Date()) start = new Date();
-    const end = new Date(start); end.setDate(end.getDate() + days); const iso = x => x.toISOString().slice(0, 10);
-    $('sessionDebut').value = iso(start); $('sessionFin').value = iso(end); $('sessionLimite').value = ''; $('sessionPrix').value = '';
-    $('sessionError').classList.add('hidden'); $('sessionModal').classList.add('open');
-}
-$('sessionForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const b = $('sessionSubmit'), err = $('sessionError'); b.disabled = true; b.textContent = 'Ajout…'; err.classList.add('hidden');
-    try {
-        const r = await fetch('api/add_session.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-            token: $('sessionToken').value, date_debut: $('sessionDebut').value, date_fin: $('sessionFin').value,
-            date_limite_inscription: $('sessionLimite').value, prix: $('sessionPrix').value }) });
-        const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.error || 'Erreur');
-        location.reload();
-    } catch (x) { err.textContent = x.message; err.classList.remove('hidden'); b.disabled = false; b.textContent = 'Ajouter'; }
-});
-
-// ---- suppression
-let delName = '';
-function openDelete(i, k) {
-    const s = CARDS[i].sessions[k]; delName = s.nom; closeDrawer();
-    $('deleteForm').reset(); $('finalDeleteBtn').disabled = true;
-    $('modalToken').value = s.token; $('modalCampNameDisplay').textContent = s.nom;
-    $('modalInscritsList').innerHTML = s.liste.length ? '<ul class="list-disc pl-5 space-y-0.5">' + s.liste.map(n => '<li>' + esc(n) + '</li>').join('') + '</ul>' : '<span class="italic">Aucun inscrit.</span>';
-    $('deleteModal').classList.add('open');
-}
-const chk = () => { $('finalDeleteBtn').disabled = !($('confirmNameInput').value.trim() === delName && $('refundCheck').checked); };
-$('confirmNameInput').addEventListener('input', chk); $('refundCheck').addEventListener('change', chk);
+// ---- la recherche est repliée : la loupe la déplie (elle reste dépliée si un filtre est actif dans l'adresse)
+(function () {
+    const f = $('filtres'), b = $('loupe'); if (!f || !b) return;
+    const set = open => { f.classList.toggle('hidden', !open); b.setAttribute('aria-expanded', open); if (open) { const q = $('q'); if (q) q.focus({ preventScroll: true }); } };
+    const p = new URLSearchParams(location.search);
+    set([...p.keys()].some(k => k !== 'ok' && k !== 'success' && !(k === 'ts' && p.get(k) === 'avenir') && !(k === 'sort' && p.get(k) === 'date_asc')));
+    b.addEventListener('click', () => set(f.classList.contains('hidden')));
+})();
 </script>
 <?php require_once 'partials/footer.php'; ?>
