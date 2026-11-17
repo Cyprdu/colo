@@ -76,7 +76,7 @@ try {
 
     $tokensString = implode(',', $tokens);
     $params = [
-        'payment_method_types' => ['card'],
+        // moyens de paiement dynamiques (voir create_stripe_session_multi.php)
         'mode' => 'payment',
         'locale' => 'fr',
         'allow_promotion_codes' => true,

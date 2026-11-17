@@ -166,6 +166,7 @@ require_once 'partials/header.php';
                             <button type="submit" class="rv-btn">Payer <?= htmlspecialchars(fmtEuro(max(0, $tot['due'] - $tot['paid']))) ?></button>
                         </form>
                     <?php endif; ?>
+                    <?php if ($canPay) { require_once __DIR__ . '/partials/logos_paiement.php'; echo logos_paiement(false); } ?>
                     <?php if ($hasPaid): ?>
                         <a href="generate_pdf_certificat.php?r=<?= urlencode($token) ?>" target="_blank" rel="noopener" class="rv-btn rv-btn-light">Télécharger le reçu (PDF)</a>
                         <?php if (!$ended): foreach ($live as $m): if ($m['statut_paiement'] === 'PAYE' && $m['mode_paiement'] === 'CARTE'): ?>

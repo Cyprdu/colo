@@ -44,6 +44,7 @@ try {
     switch ($event->type) {
 
         case 'checkout.session.completed':
+        case 'checkout.session.async_payment_succeeded':   // moyens différés (prélèvement...) : payé plus tard
             if (($obj->payment_status ?? '') !== 'paid') break;
             $meta = $obj->metadata;
             $pi = $obj->payment_intent ?? null;

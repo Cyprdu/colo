@@ -271,24 +271,11 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 <div class="mt-8">
                     <button type="submit" id="btn-payer" class="w-full py-4 bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-bold text-lg rounded-xl shadow-md transition transform hover:-translate-y-0.5 flex justify-center items-center">
                         <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-                        <span id="btn-payer-txt">Payer par Carte Bancaire</span>
+                        <span id="btn-payer-txt">Payer en ligne</span>
                     </button>
                     
-                    <div class="mt-6 border-t border-gray-100 pt-4 text-center">
-                        <p class="text-xs text-gray-500 mb-3 flex items-center justify-center">
-                            <svg class="w-3 h-3 mr-1 text-[#3b4a54]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
-                            Paiement 100% sécurisé via Stripe
-                        </p>
-                        <?php /* logos en SVG intégré : plus de dépendance à un hébergeur externe */ ?>
-                        <div class="flex justify-center items-center gap-2">
-                            <svg role="img" aria-label="Visa" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#fff" stroke="#d3dbe0"/><text x="24" y="21" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="900" font-style="italic" fill="#1a1f71">VISA</text></svg>
-                            <svg role="img" aria-label="Mastercard" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#fff" stroke="#d3dbe0"/><circle cx="19" cy="15" r="8" fill="#eb001b"/><circle cx="29" cy="15" r="8" fill="#f79e1b" fill-opacity=".9"/></svg>
-                            <svg role="img" aria-label="American Express" class="h-7 w-auto" viewBox="0 0 48 30"><rect width="48" height="30" rx="4" fill="#2e77bb"/><text x="24" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="800" fill="#fff">AMEX</text></svg>
-                            <svg role="img" aria-label="Carte Bancaire" class="h-7 w-auto" viewBox="0 0 48 30"><defs><linearGradient id="cbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b4f9c"/><stop offset=".55" stop-color="#1a8a8a"/><stop offset="1" stop-color="#2ea66a"/></linearGradient></defs><rect width="48" height="30" rx="4" fill="url(#cbg)"/><path d="M0 19c10-8 22-9 48-3v-5C26 6 10 8 0 15z" fill="#fff" fill-opacity=".22"/><text x="24" y="21.5" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="900" fill="#fff" letter-spacing="-.5">CB</text></svg>
-                        </div>
-                    </div>
+                    <?php require_once __DIR__ . '/partials/logos_paiement.php'; echo logos_paiement(); ?>
                 </div>
-                
                 <div class="mt-4 text-center">
                     <button type="button" onclick="goToStep(3)" class="text-sm text-gray-500 hover:underline">Modifier les tarifs</button>
                 </div>
@@ -332,7 +319,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         const refresh = () => {
             const r = document.querySelector('.moyen-radio:checked');
             const carte = !r || r.value === 'carte';
-            document.getElementById('btn-payer-txt').textContent = carte ? 'Payer par Carte Bancaire' : 'Réserver et régler à l\'organisateur';
+            document.getElementById('btn-payer-txt').textContent = carte ? 'Payer en ligne' : 'Réserver et régler à l\'organisateur';
             document.getElementById('moyen-info').classList.toggle('hidden', carte);
         };
         document.querySelectorAll('.moyen-radio').forEach(r => r.addEventListener('change', refresh));

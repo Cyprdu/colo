@@ -227,7 +227,7 @@ try {
     // 8. Session de paiement Stripe (codes promo Stripe acceptés, expiration 30 min = durée de blocage des places)
     $tokensString = implode(',', $payTokens);
     $params = [
-        'payment_method_types' => ['card'],
+        // moyens de paiement dynamiques : Stripe affiche carte (CB/Visa/Mastercard), Apple Pay, Google Pay, Link... selon le Dashboard, l'appareil et le pays
         'mode' => 'payment',
         'locale' => 'fr',
         'line_items' => $lineItems,
