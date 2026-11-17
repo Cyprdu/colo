@@ -97,7 +97,7 @@ require_once 'partials/header.php';
                 <span class="w-20 h-20 rounded-full bg-[#3a4852] text-white text-[30px] font-extrabold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)$u['prenom'] ?: 'U', 0, 1))) ?></span>
             <?php endif; ?>
             <div class="flex-1 min-w-[220px]">
-                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="block w-full text-[14px] text-[#3b4a54]">
+                <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="ds-file">
                 <p class="text-[12.5px] text-[#6b7780] mt-1">JPEG, PNG ou WebP, 5 Mo maximum. L'image est recadrée en carré.</p>
             </div>
             <div class="flex gap-2">

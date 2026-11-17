@@ -255,7 +255,7 @@ $tick = $svg('check', 'w-3 h-3');
                     <div>
                         <label class="ds-label" for="f-img">Image de couverture *</label>
                         <img id="imgPrev" src="<?= $val('image_url') ?>" alt="" class="w-full h-36 object-cover rounded-xl border border-[#e5e7eb] mb-3 <?= $edit && !empty($camp['image_url']) ? '' : 'hidden' ?>">
-                        <input id="f-img" type="file" name="image" accept="image/jpeg,image/png,image/webp" class="ds-input !p-3">
+                        <input id="f-img" type="file" name="image" accept="image/jpeg,image/png,image/webp" class="ds-file">
                     </div>
                     <div><label class="ds-label" for="f-video">Vidéo teaser (lien YouTube)</label><input id="f-video" type="url" name="video_url" class="ds-input" value="<?= $val('video_url') ?>" placeholder="https://www.youtube.com/watch?v=…">
                         <label class="ds-opt mt-4"><input type="checkbox" name="prive" <?= $chk('prive') ?>><span class="ds-tick"><?= $tick ?></span><span><span class="ds-opt-title block">Séjour privé</span><span class="ds-opt-sub block">Caché de la recherche, accessible uniquement par son lien.</span></span></label></div>

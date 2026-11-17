@@ -167,7 +167,7 @@ require_once 'partials/header.php';
                         <label class="ds-label" for="logo_file">Logo</label>
                         <div class="flex items-center gap-3">
                             <?php if (!empty($organisateur['logo_url'])): ?><img src="<?= htmlspecialchars($organisateur['logo_url']) ?>" alt="Logo actuel" class="w-14 h-14 object-contain border border-[#e5e7eb] rounded-xl bg-white"><?php endif; ?>
-                            <input type="file" name="logo_file" id="logo_file" accept="image/*" class="block w-full text-sm text-[#6b7780] file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-[#eef2f4] file:text-[#26343b] hover:file:bg-[#e1e6ea]">
+                            <input type="file" name="logo_file" id="logo_file" accept="image/*" class="ds-file">
                         </div>
                         <p class="ds-hint">PNG, JPG ou GIF, 2 Mo maximum.</p>
                     </div>

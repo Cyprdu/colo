@@ -169,3 +169,17 @@ body.ds-legacy [class~="shadow-blue-500/30"], body.ds-legacy [class~="shadow-blu
 .sess-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9a62b; flex: none; }
 .herit-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: -6px 0 18px; padding: 10px 14px; border-radius: 12px; background: var(--ds-cream); border: 1px solid #ebe3c8; font-size: 13.5px; color: #5b4a1c; }
 .herit-on > :not(.ds-sec-head):not(.herit-bar) { opacity: .55; user-select: none; }
+
+/* ---------- champ fichier (remplace le bouton natif « Choisir un fichier ») ---------- */
+.ds-file { display: block; width: 100%; padding: 8px; font-size: 14px; color: var(--ds-muted); background: #fff; border: 1.5px dashed #c9d1d8; border-radius: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+.ds-file:hover { border-color: var(--ds-btn); background: #fafbfc; }
+.ds-file:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-file::file-selector-button { margin-right: 12px; padding: 8px 16px; border: 0; border-radius: 10px; background: var(--ds-btn); color: #fff; font: inherit; font-weight: 700; cursor: pointer; transition: background .15s; }
+.ds-file:hover::file-selector-button { background: var(--ds-btn-hover); }
+
+/* ---------- « ? » : texte d'aide déroulé au clic (<details class="ds-help">) ---------- */
+.ds-help { display: inline-block; vertical-align: middle; }
+.ds-help > summary { list-style: none; cursor: pointer; width: 20px; height: 20px; border-radius: 50%; background: var(--ds-soft); color: var(--ds-muted); font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; user-select: none; }
+.ds-help > summary::-webkit-details-marker { display: none; }
+.ds-help > summary:hover, .ds-help[open] > summary { background: var(--ds-btn); color: #fff; }
+.ds-help > div { display: block; margin-top: 8px; padding: 10px 14px; border-radius: 12px; background: var(--ds-soft); color: #3b4a54; font-size: 13px; line-height: 1.5; font-weight: 400; max-width: 520px; }

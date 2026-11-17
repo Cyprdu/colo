@@ -10,6 +10,15 @@ $is_director = $user['is_directeur'] ?? false;
 $prenom = (string)($user['prenom'] ?? '');
 $nom = (string)($user['nom'] ?? '');
 
+$photo = '';
+try {
+    require_once 'api/profil.php';
+    profil_ensure($pdo);
+    $ph = $pdo->prepare("SELECT photo_url FROM users WHERE id = ?");
+    $ph->execute([(int)($user['id'] ?? 0)]);
+    $photo = (string)$ph->fetchColumn();
+} catch (Throwable $e) { $photo = ''; }
+
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 
@@ -30,7 +39,11 @@ if ($is_director) {
 
 <main class="ds-page">
     <section class="flex flex-wrap items-center gap-5">
-        <span class="w-20 h-20 flex-none rounded-full bg-[#3a4852] text-white text-[32px] font-extrabold flex items-center justify-center shadow-lg"><?= htmlspecialchars(mb_strtoupper(mb_substr($prenom ?: 'U', 0, 1))) ?></span>
+        <?php if ($photo !== ''): ?>
+            <a href="edit_profile" title="Changer ma photo"><img src="<?= htmlspecialchars($photo) ?>" alt="Ma photo de profil" referrerpolicy="no-referrer" class="w-20 h-20 flex-none rounded-full object-cover shadow-lg"></a>
+        <?php else: ?>
+            <a href="edit_profile" title="Ajouter une photo" class="w-20 h-20 flex-none rounded-full bg-[#3a4852] text-white text-[32px] font-extrabold flex items-center justify-center shadow-lg"><?= htmlspecialchars(mb_strtoupper(mb_substr($prenom ?: 'U', 0, 1))) ?></a>
+        <?php endif; ?>
         <div class="min-w-0">
             <h1 class="ds-h1">Bonjour <?= htmlspecialchars($prenom) ?></h1>
             <p class="ds-lead truncate"><?= htmlspecialchars((string)($user['email'] ?? '')) ?>

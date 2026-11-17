@@ -45,7 +45,7 @@ $back = (isset($_GET['retour']) && preg_match('/^[a-z0-9_.\-?=&]{1,200}$/i', $_G
         <div>
             <label class="ds-label" for="cv">CV (PDF, DOC ou DOCX, 5 Mo maximum)</label>
             <div id="cv-cur" class="mb-2 text-[14px] text-[#3b4a54] hidden"></div>
-            <input type="file" id="cv" name="cv" accept=".pdf,.doc,.docx" class="ds-input" style="padding:10px">
+            <input type="file" id="cv" name="cv" accept=".pdf,.doc,.docx" class="ds-file">
             <p class="mt-2 text-[12px] text-[#6b7780]">Votre CV n'est accessible qu'aux directeurs des séjours auxquels vous postulez.</p>
         </div>
         <div id="msg" class="hidden"></div>

@@ -287,7 +287,7 @@ require_once 'partials/header.php';
                     <?php endif; ?>
                     <div class="flex-1 min-w-[220px]">
                         <label class="ds-label" for="photo">Photo de l'enfant</label>
-                        <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="block w-full text-[14px] text-[#3b4a54]">
+                        <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="ds-file">
                         <p class="text-[12.5px] text-[#6b7780] mt-1">JPEG, PNG ou WebP, 5 Mo max. Recadrée en rond, stockée de façon privée.</p>
                     </div>
                     <div class="flex gap-2">
