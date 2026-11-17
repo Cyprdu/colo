@@ -46,6 +46,15 @@ function equipe_ensure(PDO $pdo): void {
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY uq_eq_token (token), INDEX idx_eq_camp (camp_id), INDEX idx_eq_user (user_id)
         ) DEFAULT CHARSET=utf8mb4");
+        // Espace animateur : infos laissées par le directeur à son équipe (blocs libres, message, date de versement) et documents PDF
+        $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_infos (
+            camp_id INT PRIMARY KEY, blocs MEDIUMTEXT NULL, message TEXT NULL, message_at DATETIME NULL,
+            date_versement DATE NULL, montre_equipe TINYINT(1) NOT NULL DEFAULT 0, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) DEFAULT CHARSET=utf8mb4");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_docs (
+            id INT AUTO_INCREMENT PRIMARY KEY, camp_id INT NOT NULL, nom VARCHAR(200) NOT NULL, fichier CHAR(40) NOT NULL, taille INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_eqd_camp (camp_id)
+        ) DEFAULT CHARSET=utf8mb4");
         $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_reponses (
             id INT AUTO_INCREMENT PRIMARY KEY, equipe_id INT NOT NULL, champ_id INT NULL, libelle VARCHAR(255) NOT NULL, valeur TEXT NULL,
             INDEX idx_eqr (equipe_id)
@@ -239,4 +248,82 @@ function equipe_liberer(PDO $pdo, array $tokens, ?int $userId = null): void {
     $in = implode(',', array_fill(0, count($tokens), '?'));
     $sql = "DELETE FROM equipe_inscriptions WHERE token IN ($in) AND statut_paiement = 'EN_ATTENTE'" . ($userId ? " AND user_id = " . (int)$userId : '');
     $pdo->prepare($sql)->execute($tokens);
+}
+
+
+const EQUIPE_BLOCS_MAX = 12;
+const EQUIPE_DOC_MAX = 5 * 1024 * 1024;
+const EQUIPE_DOCS_MAX = 10;
+
+/** Accès à l'espace d'une inscription d'équipe (jeton) : l'animateur inscrit, le directeur du séjour ou un admin. Retourne [inscription, séjour, rôle] ou null. */
+function equipe_acces(PDO $pdo, string $token, int $userId, bool $isAdmin): ?array {
+    equipe_ensure($pdo);
+    if (!preg_match('/^[a-f0-9]{32}$/', $token) || !$userId) return null;
+    $st = $pdo->prepare("SELECT e.*, c.id AS cid FROM equipe_inscriptions e JOIN camps c ON c.id = e.camp_id WHERE e.token = ? AND c.supprime = 0");
+    $st->execute([$token]);
+    $e = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$e) return null;
+    $c = $pdo->prepare("SELECT c.*, o.user_id AS dir_user, o.nom AS orga_nom FROM camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id WHERE c.id = ?");
+    $c->execute([$e['camp_id']]);
+    $camp = $c->fetch(PDO::FETCH_ASSOC);
+    if (!$camp) return null;
+    $role = (int)$e['user_id'] === $userId ? 'animateur' : ((int)$camp['dir_user'] === $userId ? 'directeur' : ($isAdmin ? 'admin' : null));
+    return $role ? [$e, $camp, $role] : null;
+}
+
+function equipe_infos(PDO $pdo, int $campId): array {
+    equipe_ensure($pdo);
+    $st = $pdo->prepare("SELECT * FROM equipe_infos WHERE camp_id = ?"); $st->execute([$campId]);
+    $r = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    $b = json_decode((string)($r['blocs'] ?? '[]'), true);
+    $d = $pdo->prepare("SELECT id, nom, taille FROM equipe_docs WHERE camp_id = ? ORDER BY id"); $d->execute([$campId]);
+    return ['blocs' => is_array($b) ? $b : [], 'message' => (string)($r['message'] ?? ''), 'message_at' => $r['message_at'] ?? null,
+            'date_versement' => $r['date_versement'] ?? null, 'montre_equipe' => (int)($r['montre_equipe'] ?? 0), 'docs' => $d->fetchAll(PDO::FETCH_ASSOC)];
+}
+
+/**
+ * Annulation par l'animateur lui-même : mêmes conditions que les familles (api/annulation_lib.php : 100 % / 50 % / 0 selon les jours avant le début,
+ * commission ColoMap retenue). Gratuit ou non payé : annulation directe. Retourne [ok, message].
+ */
+function equipe_annuler(PDO $pdo, array $e, array $camp, int $userId): array {
+    if ($e['statut'] === 'Annulé') return [false, 'Cette inscription est déjà annulée.'];
+    require_once __DIR__ . '/annulation_lib.php';
+    $jours = fin_jours_avant((string)$camp['date_debut']);
+    if ($jours < 0) return [false, 'Le séjour a commencé : contactez l’organisateur.'];
+    if ($e['statut_paiement'] !== 'PAYE') {
+        $pdo->prepare("UPDATE equipe_inscriptions SET statut = 'Annulé' WHERE id = ? AND statut_paiement <> 'PAYE'")->execute([$e['id']]);
+        return [true, 'Inscription annulée.'];
+    }
+    fin_ensure($pdo);
+    $jt = (int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]) ?: FIN_ANNUL_DEFAUT[0]; $jm = (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]) ?: FIN_ANNUL_DEFAUT[1];
+    $pid = -(int)$e['id'];
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare("SELECT * FROM fin_paiements WHERE inscription_id = ? FOR UPDATE"); $st->execute([$pid]);
+        $p = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$p) { $pdo->rollBack(); return [false, 'Paiement introuvable : contactez l’organisateur.']; }
+        if ((int)$p['rembourse_cents'] > 0 || (int)$p['annul_attendu'] > 0 || (int)$p['annul_com'] === 1) { $pdo->rollBack(); return [false, 'Cette inscription a déjà été annulée ou remboursée.']; }
+        [$rembourse, $retenue, $pct] = fin_annul_montants((int)$p['brut_cents'], (int)$p['commission_cents'], $jours, $jt, $jm);
+        $pdo->prepare("INSERT INTO fin_annulations (inscription_id, organisateur_id, parent_id, motif, commentaire, pct, rembourse_cents, commission_retenue_cents) VALUES (?, ?, ?, 'autre', 'Animateur', ?, ?, ?)")
+            ->execute([$pid, $camp['organisateur_id'], $userId, $pct, $rembourse, $retenue]);
+        $annulId = (int)$pdo->lastInsertId();
+        $pdo->prepare("UPDATE fin_paiements SET annul_attendu = ?, annul_com = 1 WHERE id = ?")->execute([$rembourse, $p['id']]);
+        $pdo->prepare("UPDATE equipe_inscriptions SET statut = 'Annulé' WHERE id = ?")->execute([$e['id']]);
+        $pdo->commit();
+    } catch (Throwable $x) { if ($pdo->inTransaction()) $pdo->rollBack(); error_log('equipe_annuler: ' . $x->getMessage()); return [false, 'Une erreur est survenue, réessayez plus tard.']; }
+    try {
+        if ($rembourse > 0) {
+            $rid = fin_stripe()->refunds->create(['payment_intent' => $p['payment_intent'], 'amount' => $rembourse, 'metadata' => ['annulation' => (string)$annulId, 'inscription' => (string)$pid]],
+                ['idempotency_key' => 'annul-' . $pid . '-' . $rembourse])->id;
+            $pdo->prepare("UPDATE fin_annulations SET refund_id = ? WHERE id = ?")->execute([$rid, $annulId]);
+        }
+        fin_audit($pdo, 'annulation_equipe', 'equipe', (int)$e['id'], ['pct' => $pct, 'rembourse' => $rembourse, 'commission_retenue' => $retenue], 'user:' . $userId);
+        return [true, $rembourse > 0 ? 'Inscription annulée. ' . fin_eur($rembourse) . ' vont vous être remboursés (quelques jours selon votre banque).' : 'Inscription annulée. Aucun remboursement n’est dû selon les conditions du séjour.'];
+    } catch (Throwable $x) {
+        error_log('equipe_annuler (Stripe): ' . $x->getMessage());
+        $pdo->prepare("DELETE FROM fin_annulations WHERE id = ?")->execute([$annulId]);
+        $pdo->prepare("UPDATE fin_paiements SET annul_attendu = 0, annul_com = 0 WHERE id = ?")->execute([$p['id']]);
+        $pdo->prepare("UPDATE equipe_inscriptions SET statut = 'Confirmé' WHERE id = ?")->execute([$e['id']]);
+        return [false, 'Le remboursement n’a pas pu être effectué : votre inscription reste valide, réessayez plus tard.'];
+    }
 }
