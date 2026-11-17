@@ -14,6 +14,7 @@ require_once __DIR__ . '/sessions.php';
 require_once __DIR__ . '/attente.php';
 require_once __DIR__ . '/tarifs.php';
 require_once __DIR__ . '/options.php';
+require_once __DIR__ . '/finance_lib.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -165,20 +166,30 @@ try {
     }
 
     $totalCents = array_sum(array_column($orders, 'cents'));
-    if ($totalCents > 0 && $totalCents < 50) backWithError('Le montant minimum de paiement par carte est de 0,50 €.', $campToken, $site);
+    fin_ensure($pdo); // colonnes / tables (avant la transaction : DDL)
+    // Moyen de paiement : uniquement parmi ceux acceptés par le séjour (la carte reste le défaut)
+    $moyens = fin_moyens_du_camp($camp);
+    $moyen = (string)($_POST['moyen'] ?? 'carte');
+    if (!in_array($moyen, $moyens, true)) backWithError('Ce moyen de paiement n\'est pas accepté pour ce séjour.', $campToken, $site);
+    $horsStripe = $moyen !== 'carte' && $totalCents > 0;
+    if ($totalCents > 0 && $totalCents < 50 && !$horsStripe) backWithError('Le montant minimum de paiement par carte est de 0,50 €.', $campToken, $site);
 
     // 7. Enregistrement (commande « en attente » ; les séjours gratuits sont confirmés tout de suite)
     $pdo->beginTransaction();
     $lineItems = []; $payTokens = [];
-    $ins = $pdo->prepare("INSERT INTO inscriptions (camp_id, enfant_id, tarif_id, statut, prix_final, statut_paiement, reservation_token, mode_paiement, montant_paye)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $ins = $pdo->prepare("INSERT INTO inscriptions (camp_id, enfant_id, tarif_id, statut, prix_final, statut_paiement, reservation_token, mode_paiement, montant_paye, moyen_paiement)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $horsTokens = [];
     foreach ($orders as $o) {
         $token = bin2hex(random_bytes(16));
         $price = $o['cents'] / 100;
         if ($o['cents'] === 0) {
-            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'Confirmé', 0, 'PAYE', $token, 'GRATUIT', 0]);
+            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'Confirmé', 0, 'PAYE', $token, 'GRATUIT', 0, null]);
+        } elseif ($horsStripe) { // règlement direct à l'organisateur : place réservée, aucun appel à Stripe
+            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'Confirmé', $price, 'A_REGLER', $token, strtoupper($moyen), 0, $moyen]);
+            $horsTokens[] = $token;
         } else {
-            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'En attente', $price, 'EN_ATTENTE', $token, 'NON_DEFINI', 0]);
+            $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'En attente', $price, 'EN_ATTENTE', $token, 'NON_DEFINI', 0, 'carte']);
             $payTokens[] = $token;
             $lineItems[] = [
                 'price_data' => [
@@ -201,6 +212,12 @@ try {
     }
     $pdo->commit();
 
+    // Règlement hors carte : l'inscription est enregistrée « à régler à l'organisateur », on affiche les consignes
+    if ($horsTokens) {
+        fin_audit($pdo, 'inscription_hors_stripe', 'camp', $camp['id'], ['moyen' => $moyen, 'inscriptions' => count($horsTokens), 'total_cents' => $totalCents], 'user:' . $userId);
+        header('Location: ' . $site . '/reservation.php?r=' . urlencode($horsTokens[0]) . '&nouveau=1');
+        exit;
+    }
     // Tout est gratuit : rien à payer
     if (!$lineItems) {
         header('Location: ' . $site . '/inscription_confirmation.php?success=1&camp_t=' . urlencode($campToken));

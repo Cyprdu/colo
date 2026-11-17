@@ -1,6 +1,8 @@
 <?php
 // gestion_camp.php : tableau de bord d'un séjour (inscrits, remplissage, parité). Adresse à jeton ; les données viennent de api/get_camp_stats.php (propriétaire uniquement).
 require_once 'api/config.php';
+require_once 'api/finance_lib.php';
+require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (empty($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 $token = (string)($_GET['t'] ?? '');
@@ -54,6 +56,8 @@ require_once 'partials/header.php';
 
 <script>
 const TOKEN = <?= json_encode($token) ?>;
+const CSRF = <?= json_encode(fin_csrf()) ?>;
+const MOYENS = <?= json_encode(array_map(fn($m) => $m[0], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -63,7 +67,18 @@ function age(d) { if (!d) return null; const b = new Date(d), n = new Date(); le
 function status(i) {
     if (i.expire) return { k: 'expired', t: 'Délai dépassé', cls: 'bg-[#fbeceb] text-[#a4372f]' };
     if (i.statut_paiement === 'EN_ATTENTE') return { k: 'wait', t: 'En attente de paiement' + (i.limite_paiement ? ' · avant le ' + new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString('fr-FR') : ''), cls: 'bg-[#f8f5ea] text-[#5b4a1c]' };
+    if (i.statut_paiement === 'A_REGLER') return { k: 'wait', t: 'À encaisser', cls: 'bg-[#f8f5ea] text-[#5b4a1c]' };
     return { k: 'paid', t: i.statut_paiement === 'GRATUIT' ? 'Gratuit' : 'Payé', cls: 'bg-[#eef2f4] text-[#26343b]' };
+}
+function moyen(i) { return i.moyen_paiement ? (MOYENS[i.moyen_paiement] || i.moyen_paiement) : (i.mode_paiement === 'CARTE' ? 'Carte bancaire' : (i.statut_paiement === 'GRATUIT' ? 'Gratuit' : '')); }
+async function marquerRecu(btn) {
+    btn.disabled = true;
+    try {
+        const r = await fetch('api/marquer_recu.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ t: btn.dataset.recu, csrf: CSRF }) });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'Erreur');
+        await ColoUI.alert(d.message); location.reload();
+    } catch (e) { btn.disabled = false; ColoUI.alert(e.message); }
 }
 
 function render() {
@@ -85,7 +100,7 @@ function render() {
             <div class="min-w-0"><p class="font-bold text-[#26343b] truncate">${esc(i.prenom)} ${esc(i.nom)}</p><p class="text-xs text-[#6b7780]">${a !== null ? a + ' ans · ' : ''}${i.sexe === 'Femme' ? 'Fille' : 'Garçon'}${i.tarif_nom ? ' · ' + esc(i.tarif_nom) : ''}</p></div></div>
           <div class="min-w-0 text-sm"><p class="font-semibold text-[#26343b] truncate">${esc(i.parent_prenom)} ${esc(i.parent_nom_famille)}</p>
             <p class="text-xs truncate"><a class="text-[#3d6a8e] hover:underline" href="mailto:${esc(i.parent_email)}">${esc(i.parent_email)}</a>${i.parent_tel ? ' · ' + esc(i.parent_tel) : ''}</p></div>
-          <div class="flex flex-wrap gap-2"><span class="text-xs font-bold px-3 py-1 rounded-full ${st.cls}">${esc(st.t)}</span>${sante ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#f8f5ea] text-[#5b4a1c]">Santé</span>' : ''}</div>
+          <div class="flex flex-wrap gap-2"><span class="text-xs font-bold px-3 py-1 rounded-full ${st.cls}">${esc(st.t)}</span>${moyen(i) ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#eef2f4] text-[#26343b]">' + esc(moyen(i)) + '</span>' : ''}${sante ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#f8f5ea] text-[#5b4a1c]">Santé</span>' : ''}${i.statut_paiement === 'A_REGLER' ? '<button type="button" class="ds-btn ds-btn-sm" data-recu="' + esc(i.reservation_token) + '">Marquer reçu</button>' : ''}</div>
           <a class="ds-btn ds-btn-light ds-btn-sm justify-self-start" href="child_details.php?${ref}&t=${encodeURIComponent(TOKEN)}">Voir le dossier</a></div>`;
     }).join('');
 }
@@ -93,9 +108,9 @@ function render() {
 function csvCell(v) { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
 $('btnCsv').addEventListener('click', () => {
     if (!DATA.liste_inscrits.length) return ColoUI.alert('Aucun inscrit à exporter pour le moment.');
-    const head = ['Date', 'Prénom enfant', 'Nom enfant', 'Sexe', 'Naissance', 'Infos santé', 'Allergies', 'Régime', 'Parent', 'Email', 'Téléphone', 'Tarif', 'Montant payé', 'Statut'];
+    const head = ['Date', 'Prénom enfant', 'Nom enfant', 'Sexe', 'Naissance', 'Infos santé', 'Allergies', 'Régime', 'Parent', 'Email', 'Téléphone', 'Tarif', 'Montant payé', 'Moyen de paiement', 'Statut'];
     const rows = DATA.liste_inscrits.map(r => [r.date_inscription, r.prenom, r.nom, r.sexe === 'Femme' ? 'Fille' : 'Garçon', r.date_naissance, r.infos_sante, r.allergies, r.regime_alimentaire,
-        (r.parent_prenom || '') + ' ' + (r.parent_nom_famille || ''), r.parent_email, r.parent_tel, r.tarif_nom, r.montant_paye, status(r).t]);
+        (r.parent_prenom || '') + ' ' + (r.parent_nom_famille || ''), r.parent_email, r.parent_tel, r.tarif_nom, r.montant_paye, moyen(r), status(r).t]);
     const csv = '﻿' + [head, ...rows].map(l => l.map(csvCell).join(';')).join('\r\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'inscrits.csv'; a.click(); URL.revokeObjectURL(a.href);
 });
@@ -111,6 +126,7 @@ document.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', (
 }));
 document.querySelector('[data-s="all"]').click();
 $('search').addEventListener('input', render);
+$('rows').addEventListener('click', e => { const b = e.target.closest('[data-recu]'); if (b && confirm('Confirmer que vous avez bien reçu ce règlement ? ColoMap retiendra sa commission sur vos prochains versements par carte.')) marquerRecu(b); });
 
 (async function () {
     try {

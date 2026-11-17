@@ -78,6 +78,7 @@ try {
     $enfantsJson = json_encode($enfants);
     $tarifsJson = json_encode($tarifs);
     require_once 'api/annulation_lib.php';
+    $moyensOk = fin_moyens_du_camp($camp); $libMoyens = options_paiements();
     $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
 
 } catch (Exception $e) {
@@ -253,10 +254,24 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                     </div>
                 </div>
 
+                <div class="mt-6" id="moyens-bloc">
+                    <h3 class="text-sm font-bold text-gray-800 mb-2">Comment souhaitez-vous régler ?</h3>
+                    <div class="grid gap-2">
+                    <?php foreach ($moyensOk as $k => $code): ?>
+                        <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white cursor-pointer">
+                            <input type="radio" name="moyen" value="<?= htmlspecialchars($code) ?>" <?= $k === 0 ? 'checked' : '' ?> class="moyen-radio" style="accent-color:#2f3d45">
+                            <span class="w-10 flex-none"><?= $libMoyens[$code][2] ?? '' ?></span>
+                            <span class="text-sm"><b class="text-gray-800"><?= htmlspecialchars($libMoyens[$code][0] ?? $code) ?></b><span class="block text-xs text-gray-500"><?= $code === 'carte' ? 'Paiement en ligne immédiat, place confirmée' : 'Votre place est réservée ; vous réglez directement l\'organisateur' ?></span></span>
+                        </label>
+                    <?php endforeach; ?>
+                    </div>
+                    <p id="moyen-info" class="hidden mt-3 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3"><?= htmlspecialchars(trim((string)($camp['instructions_paiement'] ?? ''))) ?: 'Les consignes de règlement vous seront données à l\'étape suivante.' ?></p>
+                </div>
+
                 <div class="mt-8">
-                    <button type="submit" class="w-full py-4 bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-bold text-lg rounded-xl shadow-md transition transform hover:-translate-y-0.5 flex justify-center items-center">
+                    <button type="submit" id="btn-payer" class="w-full py-4 bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-bold text-lg rounded-xl shadow-md transition transform hover:-translate-y-0.5 flex justify-center items-center">
                         <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-                        Payer par Carte Bancaire
+                        <span id="btn-payer-txt">Payer par Carte Bancaire</span>
                     </button>
                     
                     <div class="mt-6 border-t border-gray-100 pt-4 text-center">
@@ -313,6 +328,15 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
     }
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('mainForm').addEventListener('submit', syncHiddenInputs);
+        // Libellé du bouton selon le moyen choisi : carte = Stripe, autres = réservation avec règlement à l'organisateur
+        const refresh = () => {
+            const r = document.querySelector('.moyen-radio:checked');
+            const carte = !r || r.value === 'carte';
+            document.getElementById('btn-payer-txt').textContent = carte ? 'Payer par Carte Bancaire' : 'Réserver et régler à l\'organisateur';
+            document.getElementById('moyen-info').classList.toggle('hidden', carte);
+        };
+        document.querySelectorAll('.moyen-radio').forEach(r => r.addEventListener('change', refresh));
+        refresh();
     });
 
     // --- NAVIGATION ---

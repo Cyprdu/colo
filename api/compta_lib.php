@@ -43,6 +43,15 @@ function compta_summary(PDO $pdo, string $from, string $to, int $orgaId = 0): ar
     return $r;
 }
 
+/** Commissions retenues sur les paiements HORS Stripe (chèque, espèces...) de la période : [nb, brut, commission, par moyen] */
+function compta_hors_stripe(PDO $pdo, string $from, string $to, int $orgaId = 0): array {
+    $st = $pdo->prepare("SELECT moyen, COUNT(*) nb, COALESCE(SUM(brut_cents), 0) brut, COALESCE(SUM(commission_cents), 0) com FROM fin_commissions_hors
+                         WHERE created_at BETWEEN ? AND ?" . ($orgaId ? " AND organisateur_id = ?" : "") . " GROUP BY moyen ORDER BY com DESC");
+    $st->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    return ['nb' => (int)array_sum(array_column($rows, 'nb')), 'brut' => (int)array_sum(array_column($rows, 'brut')), 'commission' => (int)array_sum(array_column($rows, 'com')), 'moyens' => $rows];
+}
+
 /** Une ligne par organisme (période) */
 function compta_by_orga(PDO $pdo, string $from, string $to): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
@@ -112,7 +121,8 @@ function compta_reconcile(PDO $pdo, ?array $stripe): array {
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid','in_transit','pending')")->fetchColumn();
     $nbPayouts = (int)$pdo->query("SELECT COUNT(*) FROM fin_payouts")->fetchColumn();
     $theorique = (int)$a['ca'] + $points - (int)$a['frais'] - (int)$a['litige'] - $transferts; // fonds censés rester chez Stripe ou être partis en banque
-    $r = ['ca' => (int)$a['ca'], 'points' => $points, 'frais' => (int)$a['frais'], 'litige' => (int)$a['litige'], 'frais_inconnus' => (int)$a['inconnus'],
+    $hors = (int)$pdo->query("SELECT COALESCE(SUM(commission_cents), 0) FROM fin_commissions_hors")->fetchColumn();
+    $r = ['hors' => $hors, 'ca' => (int)$a['ca'], 'points' => $points, 'frais' => (int)$a['frais'], 'litige' => (int)$a['litige'], 'frais_inconnus' => (int)$a['inconnus'],
           'transferts' => $transferts, 'du_orgas' => (int)$a['du'], 'theorique' => $theorique, 'payouts' => $payouts, 'nb_payouts' => $nbPayouts, 'stripe' => $stripe];
     if ($stripe) {
         $solde = $stripe['disponible'] + $stripe['en_attente'];
@@ -180,6 +190,14 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
         $rows = compta_by_orga($pdo, $from, $to);
         $h = ['Organisme', 'Nb paiements', 'Chiffre d\'affaires (€)', 'Commission (€)', 'Frais Stripe (€)', 'Frais de litige (€)', 'Marge nette (€)', 'Dû à l\'organisme (€)', 'Déjà versé (€)', 'En attente (€)'];
         $gen = (function () use ($rows) { foreach ($rows as $r) yield [$r['nom'], $r['nb'], compta_eur((int)$r['ca']), compta_eur((int)$r['commission']), compta_eur((int)$r['frais']), compta_eur((int)$r['litige']), compta_eur((int)$r['marge']), compta_eur((int)$r['du']), compta_eur((int)$r['verse']), compta_eur((int)$r['attente'])]; })();
+        return [$h, $gen];
+    }
+    if ($type === 'hors_stripe') {
+        $q = $pdo->prepare("SELECT h.*, o.nom orga, c.nom camp FROM fin_commissions_hors h JOIN organisateurs o ON o.id = h.organisateur_id JOIN camps c ON c.id = h.camp_id
+                WHERE h.created_at BETWEEN ? AND ?" . ($orgaId ? " AND h.organisateur_id = ?" : "") . " ORDER BY h.created_at, h.id");
+        $q->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
+        $h = ['Date', 'Inscription', 'Organisme', 'Séjour', 'Moyen de paiement', 'Montant réglé (€)', 'Taux (%)', 'Commission ColoMap (€)'];
+        $gen = (function () use ($q, $dt) { foreach ($q as $r) yield [$dt($r['created_at']), $r['inscription_id'], $r['orga'], $r['camp'], $r['moyen'], compta_eur((int)$r['brut_cents']), number_format((float)$r['pct'], 2, ',', ''), compta_eur((int)$r['commission_cents'])]; })();
         return [$h, $gen];
     }
     if ($type === 'payouts') {

@@ -216,6 +216,9 @@ $tick = $svg('check', 'w-3 h-3');
                     <?php endforeach; ?>
                 </div>
                 <div class="mt-5"><label class="ds-label" for="f-instr">Consignes de paiement (facultatif)</label><textarea id="f-instr" name="instructions_paiement" rows="2" maxlength="1000" class="ds-textarea" placeholder="Ex : chèques à l'ordre de l'association X, à envoyer avant le 15 juin."><?= $val('instructions_paiement') ?></textarea></div>
+                <?php /* bloc d'aide ciblé : commission sur les paiements hors carte */ require_once __DIR__ . '/../api/finance_lib.php'; ?>
+                <details class="mt-4 text-sm" style="color:#5b4a1c"><summary class="cursor-pointer font-bold" style="color:#26343b">Chèque, espèces, virement : et la commission ? <span aria-hidden="true" style="display:inline-block;width:20px;height:20px;line-height:18px;text-align:center;border:1.5px solid #26343b;border-radius:50%;font-size:12px">?</span></summary>
+                    <p class="mt-2">Pour un paiement hors carte, vous encaissez directement. Une fois que vous le marquez « reçu » dans la liste des inscrits, ColoMap retient <?= number_format(fin_hors_stripe_pct(), 1, ',', ' ') ?> % du montant, déduits de vos prochains versements par carte (rien à payer à part).</p></details>
             </section>
 
             <?= $sec('s-fiche', 'file', 'Fiche enfant : informations obligatoires', "Cochez ce que l'enfant doit avoir renseigné dans sa fiche pour s'inscrire. L'inscription est refusée tant qu'un champ imposé est vide.") ?>

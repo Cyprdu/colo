@@ -28,7 +28,7 @@ function fin_reglages(bool $refresh = false): array {
     $c = [
         'commission_pct' => defined('PLATFORM_COMMISSION_PERCENT') ? (float)PLATFORM_COMMISSION_PERCENT : FIN_DEFAULT_PCT,
         'commission_fixe_cents' => defined('PLATFORM_COMMISSION_FIXED_CENTS') ? (int)PLATFORM_COMMISSION_FIXED_CENTS : FIN_DEFAULT_FIXE_CENTS,
-        'delai_securite_jours' => FIN_DEFAULT_DELAI, 'reserve_pct' => FIN_DEFAULT_RESERVE,
+        'delai_securite_jours' => FIN_DEFAULT_DELAI, 'reserve_pct' => FIN_DEFAULT_RESERVE, 'commission_hors_pct' => FIN_DEFAULT_HORS_PCT,
     ];
     global $pdo;
     if (isset($pdo) && $pdo instanceof PDO) {
@@ -37,7 +37,7 @@ function fin_reglages(bool $refresh = false): array {
             foreach ($pdo->query("SELECT cle, valeur FROM fin_reglages")->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
                 if ($k === 'commission_pct') $c[$k] = (float)$v;
                 elseif ($k === 'commission_fixe_cents' || $k === 'delai_securite_jours') $c[$k] = (int)$v;
-                elseif ($k === 'reserve_pct') $c[$k] = (float)$v;
+                elseif ($k === 'reserve_pct' || $k === 'commission_hors_pct') $c[$k] = (float)$v;
             }
         } catch (Throwable $e) { error_log('fin_reglages: ' . $e->getMessage()); }
     }
@@ -45,20 +45,22 @@ function fin_reglages(bool $refresh = false): array {
     $c['commission_fixe_cents'] = max(0, min(500, $c['commission_fixe_cents']));
     $c['delai_securite_jours'] = max(0, min(60, $c['delai_securite_jours']));
     $c['reserve_pct'] = max(0.0, min(100.0, $c['reserve_pct']));
+    $c['commission_hors_pct'] = max(0.0, min(30.0, $c['commission_hors_pct']));
     return $c;
 }
 function fin_commission_pct(): float { return fin_reglages()['commission_pct']; }
 function fin_commission_fixe_cents(): int { return fin_reglages()['commission_fixe_cents']; }
 
 /** Enregistre un réglage de commission (valeurs bornées) et le journalise. */
-function fin_set_commission(PDO $pdo, float $pct, int $fixeCents, string $acteur): void {
+function fin_set_commission(PDO $pdo, float $pct, int $fixeCents, string $acteur, ?float $horsPct = null): void {
     fin_ensure($pdo);
     $pct = round(max(0.0, min(30.0, $pct)), 2); $fixeCents = max(0, min(500, $fixeCents));
     $old = fin_reglages(true);
     $st = $pdo->prepare("INSERT INTO fin_reglages (cle, valeur, par) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE valeur = VALUES(valeur), par = VALUES(par), maj = NOW()");
     $st->execute(['commission_pct', (string)$pct, substr($acteur, 0, 40)]);
     $st->execute(['commission_fixe_cents', (string)$fixeCents, substr($acteur, 0, 40)]);
-    fin_audit($pdo, 'commission_modifiee', 'reglage', 'commission', ['avant' => $old, 'apres' => ['pct' => $pct, 'fixe_cents' => $fixeCents]], $acteur);
+    if ($horsPct !== null) $st->execute(['commission_hors_pct', (string)round(max(0.0, min(30.0, $horsPct)), 2), substr($acteur, 0, 40)]);
+    fin_audit($pdo, 'commission_modifiee', 'reglage', 'commission', ['avant' => $old, 'apres' => ['pct' => $pct, 'fixe_cents' => $fixeCents, 'hors_pct' => $horsPct]], $acteur);
     fin_reglages(true);
 }
 
@@ -193,6 +195,13 @@ function fin_ensure(PDO $pdo): void {
             $pdo->prepare("UPDATE fin_paiements SET date_deblocage = DATE_ADD(created_at, INTERVAL ? DAY) WHERE statut = 'attente' AND date_deblocage > DATE_ADD(created_at, INTERVAL ? DAY)")->execute([$d, $d]);
             $pdo->exec("INSERT IGNORE INTO fin_reglages (cle, valeur, par) VALUES ('migr_versements_v1', '1', 'migration')");
         }
+        // Paiements hors Stripe (chèque, espèces...) : moyen choisi par la famille + commission retenue sur les versements par carte
+        fin_add_col($pdo, 'inscriptions', 'moyen_paiement', "VARCHAR(12) NULL");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS fin_commissions_hors (
+            id INT AUTO_INCREMENT PRIMARY KEY, inscription_id INT NOT NULL, organisateur_id INT NOT NULL, camp_id INT NOT NULL, moyen VARCHAR(12) NOT NULL,
+            brut_cents INT NOT NULL, commission_cents INT NOT NULL, pct DECIMAL(5,2) NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_ins (inscription_id), KEY idx_orga (organisateur_id), KEY idx_date (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         fin_assign_jours($pdo);
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
@@ -615,3 +624,4 @@ function fin_pdf_txt($s): string {
 }
 
 require_once __DIR__ . '/versements_lib.php';
+require_once __DIR__ . '/moyens_paiement_lib.php';
