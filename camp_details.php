@@ -30,18 +30,28 @@ try {
     }
 } catch (Exception $e) {}
 
-// Inscription des animateurs en mode « public » : un tarif « Animateur » mène à equipe-inscription.php (lien privé = rien d'affiché)
-$eqPub = null;
+// Inscription des animateurs : mode « public » = tarif « Animateur » visible par tous ; mode « privé » = visible seulement avec ?l=<jeton du lien animateurs>
+$eqPub = null; $eqPrive = false;
 if ($camp_token) {
     try {
+        require_once 'api/animateurs.php';
         require_once 'api/equipe.php';
         equipe_ensure($pdo);
-        $q = $pdo->prepare("SELECT c.id, c.equipe_lien, c.equipe_quota FROM camps c JOIN animateur_liens l ON l.token = c.equipe_lien AND l.actif = 1
-            WHERE c.token = ? AND c.valide = 1 AND c.refuse = 0 AND c.supprime = 0 AND c.equipe_active = 1 AND c.equipe_visibilite = 'public' AND (c.date_fin IS NULL OR c.date_fin >= CURDATE())");
+        $q = $pdo->prepare("SELECT * FROM camps WHERE token = ? AND valide = 1 AND refuse = 0 AND supprime = 0 AND equipe_active = 1 AND (date_fin IS NULL OR date_fin >= CURDATE())");
         $q->execute([$camp_token]);
         if ($r = $q->fetch(PDO::FETCH_ASSOC)) {
-            $complet = (int)$r['equipe_quota'] > 0 && equipe_places_prises($pdo, (int)$r['id']) >= (int)$r['equipe_quota'];
-            $eqPub = ['lien' => 'equipe-inscription.php?l=' . $r['equipe_lien'], 'complet' => $complet, 'tarifs' => equipe_tarifs($pdo, (int)$r['id'])];
+            $lien = null;
+            $lp = (string)($_GET['l'] ?? '');
+            if ($lp !== '' && ($v = anim_lien_valide($pdo, $lp)) && (int)$v[1]['id'] === (int)$r['id']) { $lien = $lp; $eqPrive = true; }
+            elseif (($r['equipe_visibilite'] ?? '') === 'public') {
+                $ok = $pdo->prepare("SELECT 1 FROM animateur_liens WHERE token = ? AND actif = 1"); $ok->execute([(string)$r['equipe_lien']]);
+                if ($ok->fetchColumn()) $lien = $r['equipe_lien'];
+            }
+            if ($lien) {
+                $complet = (int)$r['equipe_quota'] > 0 && equipe_places_prises($pdo, (int)$r['id']) >= (int)$r['equipe_quota'];
+                $eqPub = ['lien' => 'equipe-inscription.php?l=' . $lien, 'complet' => $complet, 'tarifs' => equipe_tarifs($pdo, (int)$r['id'])];
+                if ($eqPrive) header('X-Robots-Tag: noindex, nofollow');
+            }
         }
     } catch (Throwable $e) { error_log('camp_details equipe: ' . $e->getMessage()); }
 }
@@ -224,7 +234,8 @@ require_once 'partials/header3.php';
 
                     <?php if ($eqPub): ?>
                     <div id="equipe-card" class="cd-card p-6">
-                        <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]">Vous êtes animateur ?</p>
+                        <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]"><?= $eqPrive ? "Inscription de l'équipe d'animation" : 'Vous êtes animateur ?' ?></p>
+                        <?php if ($eqPrive): ?><p class="mt-2 text-[13px] text-[#6b7780]">Vous accédez à cette page par un lien réservé à l'équipe d'animation.</p><?php endif; ?>
                         <?php foreach ($eqPub['tarifs'] ?: [['nom' => 'Animateur', 'prix' => 0, 'montant_libre' => 0]] as $t): ?>
                             <p class="mt-3 flex items-baseline justify-between gap-3"><span class="font-bold text-[#26343b]"><?= htmlspecialchars($t['nom']) ?></span>
                                 <span class="font-extrabold text-[#26343b]"><?= !empty($t['montant_libre']) ? 'dès ' . htmlspecialchars(rtrim(rtrim(number_format(equipe_plancher($t), 2, ',', ''), '0'), ',')) . ' €' : ((float)$t['prix'] > 0 ? htmlspecialchars(rtrim(rtrim(number_format((float)$t['prix'], 2, ',', ''), '0'), ',')) . ' €' : 'Gratuit') ?></span></p>

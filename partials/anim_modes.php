@@ -15,7 +15,7 @@ if (!empty($camp) && is_array($camp)) {
     if (isset($pdo)) {
         anim_ensure($pdo);
         $c2 = $pdo->prepare("SELECT * FROM camps WHERE id = ?"); $c2->execute([(int)$camp['id']]); $fresh = $c2->fetch(PDO::FETCH_ASSOC) ?: $camp;
-        $animCfg = ['recrute' => !empty($fresh['recrute_animateurs']), 'remuneration' => $fresh['anim_remuneration'] !== null ? (float)$fresh['anim_remuneration'] : null, 'equipe' => equipe_config($pdo, $fresh)];
+        $animCfg = ['recrute' => !empty($fresh['recrute_animateurs']), 'remuneration' => $fresh['anim_remuneration'] !== null ? (float)$fresh['anim_remuneration'] : null, 'equipe' => equipe_config($pdo, $fresh), 'campToken' => $fresh['token']];
     }
 }
 $tk = $tick ?? '';
@@ -96,11 +96,11 @@ $tk = $tick ?? '';
     var $ = function (i) { return document.getElementById(i); };
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var TYPES = { texte: 'Texte court', paragraphe: 'Texte long', case: 'Case à cocher', liste: 'Liste de choix', nombre: 'Nombre', date: 'Date' };
-    var tarifs = [], champs = [], lienTok = null;
+    var tarifs = [], champs = [], lienTok = null, campTok = null;
     var visib = function () { var r = document.querySelector('[name=am-visib]:checked'); return r ? r.value : 'prive'; };
     function drawLien() {
-        $('am-lien-box').classList.toggle('hidden', !lienTok); $('am-lien-hint').classList.toggle('hidden', !!lienTok);
-        if (lienTok) $('am-lien').value = location.origin + '/equipe-inscription.php?l=' + lienTok;
+        var ok = !!(lienTok && campTok); $('am-lien-box').classList.toggle('hidden', !ok); $('am-lien-hint').classList.toggle('hidden', ok);
+        if (lienTok && campTok) $('am-lien').value = location.origin + '/camp_details.php?t=' + campTok + '&l=' + lienTok;
     }
     function toggles() { $('am-a-body').classList.toggle('hidden', !$('am-recrute').checked); $('am-b-body').classList.toggle('hidden', !$('am-equipe').checked); }
     function drawTarifs() {
@@ -141,7 +141,7 @@ $tk = $tick ?? '';
     function load(cfg) {
         $('am-recrute').checked = $('am-recrute').checked || !!cfg.recrute;
         $('am-rem').value = cfg.remuneration != null ? cfg.remuneration : '';
-        var e = cfg.equipe || {};
+        var e = cfg.equipe || {}; if (cfg.campToken) campTok = cfg.campToken;
         $('am-equipe').checked = !!e.active; $('am-age').value = e.age_min || ''; $('am-quota').value = e.quota || '';
         tarifs = (e.tarifs || []).map(function (t) { return { nom: t.nom, prix: t.prix, libre: !!t.libre, min: t.min }; });
         champs = (e.champs || []).map(function (c) { return { id: c.id, libelle: c.libelle, type: c.type, options: c.options, obligatoire: c.obligatoire }; });
@@ -155,7 +155,7 @@ $tk = $tick ?? '';
             equipe: { active: $('am-equipe').checked, visibilite: visib(), renouveler_lien: $('am-renew').checked, age_min: $('am-age').value, quota: $('am-quota').value, tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
     }
     async function save(campToken) {
-        var body = collect(); body.camp = campToken;
+        var body = collect(); body.camp = campToken; campTok = campToken;
         var r = await fetch('api/anim_directeur.php?a=config', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name=csrf]') || {}).content || '' }, body: JSON.stringify(body) });
         var d = {}; try { d = await r.json(); } catch (x) { }
         if (!r.ok) throw new Error(d.error || 'Réglages des animateurs non enregistrés.');
