@@ -63,7 +63,7 @@ try {
     }
 
     if ($a === 'inscrits') {
-        $sel = $pdo->prepare("SELECT i.id inscription_id, i.camp_id, i.reservation_token, i.date_inscription, i.montant_paye, i.statut, i.statut_paiement, i.moyen_paiement, i.mode_paiement, i.tarif_id,
+        $sel = $pdo->prepare("SELECT i.id inscription_id, i.camp_id, i.reservation_token, i.date_inscription, i.montant_paye, i.statut, i.statut_paiement, i.moyen_paiement, i.mode_paiement, i.tarif_id, i.prix_final,
                     e.prenom, e.nom, e.date_naissance, e.sexe, e.infos_sante, e.allergies, e.regime_alimentaire,
                     u.email parent_email, u.tel parent_tel, u.nom parent_nom_famille, u.prenom parent_prenom, t.nom tarif_nom,
                     c.token session_token, c.attente_paiement, c.attente_jours

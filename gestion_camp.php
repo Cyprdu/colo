@@ -22,6 +22,8 @@ require_once 'partials/header.php';
 .gm-tab svg { width: 18px; height: 18px; flex: none; }
 .gm-help { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #b8c2ca; color: #6b7780; font-size: 12px; font-weight: 800; vertical-align: middle; margin-left: 6px; cursor: pointer; }
 .gm-help:hover { background: var(--ds-soft); color: var(--ds-ink); }
+.gm-tr { cursor: pointer; transition: background .12s ease; }
+.gm-tr:hover, .gm-tr:focus-visible { background: #f6f8f9; outline: none; }
 .gm-row { display: grid; gap: 12px; align-items: center; padding: 16px 18px; border-top: 1px solid #f1f3f5; }
 @media (min-width: 768px) { .gm-row { grid-template-columns: 1.3fr 1.5fr auto; } }
 </style>
@@ -42,6 +44,13 @@ require_once 'partials/header.php';
         </div>
     </div>
 </main>
+
+<div id="dosScrim" class="ds-scrim"></div>
+<aside id="dosDrawer" class="ds-drawer" style="width:min(560px,100%)" aria-label="Dossier de l'inscrit">
+    <div class="flex items-start justify-between gap-3 p-5 border-b border-[#e5e7eb]"><div id="dosHead" class="min-w-0"></div><button type="button" id="dosClose" class="ds-btn ds-btn-light ds-btn-sm flex-none">Fermer</button></div>
+    <div id="dosBody" class="flex-1 overflow-y-auto p-5 bg-[#f6f8f9]"></div>
+    <div class="p-4 border-t border-[#e5e7eb]"><a id="dosFull" href="#" class="ds-btn w-full hidden">Ouvrir le dossier complet</a></div>
+</aside>
 
 <div id="dupModal" class="ds-modal" role="dialog" aria-modal="true" aria-labelledby="dupTitle">
     <div class="ds-modal-box">
@@ -65,9 +74,11 @@ require_once 'partials/header.php';
     </div>
 </div>
 
+<script src="assets/js/dossier.js"></script>
 <script>
 const TOKEN = <?= json_encode($token) ?>;
 const CSRF = <?= json_encode(fin_csrf()) ?>;
+window.DOSSIER_MOYENS = <?= json_encode(array_map(fn($m) => $m[0], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
 const MOYENS = <?= json_encode(array_map(fn($m) => $m[0], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -171,19 +182,48 @@ function filtered() {
 function drawList() {
     const L = filtered(); $('listCount').textContent = L.length + (filt.type === 'enfants' ? ' enfant' : ' animateur') + (L.length > 1 ? 's' : '');
     if (!L.length) { $('list').innerHTML = '<p class="p-10 text-center ds-lead">Aucun inscrit pour ce filtre.</p>'; return; }
-    $('list').innerHTML = filt.type === 'enfants' ? L.map(i => {
-        const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].filter(Boolean).length, ref = i.reservation_token ? 'r=' + encodeURIComponent(i.reservation_token) : '';
-        return `<div class="gm-row ${i.expire ? 'opacity-60' : ''}"><div class="min-w-0"><p class="font-bold text-[#26343b] truncate">${esc(i.prenom)} ${esc(i.nom)}</p><p class="text-xs text-[#6b7780]">${a !== null ? a + ' ans · ' : ''}${i.sexe === 'Femme' ? 'Fille' : 'Garçon'}${i.tarif_nom ? ' · ' + esc(i.tarif_nom) : ''} · ${esc(I.sessions[i.session_token] || '')}</p></div>
-          <div class="min-w-0 text-sm"><p class="font-semibold truncate">${esc(i.parent_prenom)} ${esc(i.parent_nom_famille)}</p><p class="text-xs truncate"><a class="text-[#3d6a8e] hover:underline" href="mailto:${esc(i.parent_email)}">${esc(i.parent_email)}</a>${i.parent_tel ? ' · ' + esc(i.parent_tel) : ''}</p></div>
-          <div class="flex flex-wrap items-center gap-2 md:justify-end"><span class="text-xs font-bold px-3 py-1 rounded-full ${st[1]}">${esc(st[0])}</span>${moyen(i) ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#eef2f4] text-[#26343b]">' + esc(moyen(i)) + '</span>' : ''}${i.statut_paiement === 'A_REGLER' ? '<button type="button" class="ds-btn ds-btn-sm" data-recu="' + esc(i.reservation_token) + '">Marquer reçu</button>' : ''}${sante ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#f8f5ea] text-[#5b4a1c]">Santé</span>' : ''}${ref ? `<a class="ds-btn ds-btn-light ds-btn-sm" href="child_details.php?${ref}&t=${encodeURIComponent(i.session_token)}">Dossier</a>` : ''}</div></div>`;
-    }).join('') : L.map(a => {
-        const [s, p] = stAnim(a), rep = (a.reponses || []).filter(r => r.valeur);
-        return `<div class="gm-row"><div class="min-w-0"><p class="font-bold text-[#26343b] truncate">${esc(a.prenom)} ${esc(a.nom)}</p><p class="text-xs text-[#6b7780]">${a.date_naissance ? age(a.date_naissance) + ' ans · ' : ''}BAFA : ${esc(a.bafa_statut || 'aucun')}${a.tarif_nom ? ' · ' + esc(a.tarif_nom) : ''} · ${esc(I.sessions[a.session_token] || '')}</p></div>
-          <div class="min-w-0 text-sm"><p class="text-xs truncate"><a class="text-[#3d6a8e] hover:underline" href="mailto:${esc(a.email)}">${esc(a.email)}</a>${a.tel ? ' · ' + esc(a.tel) : ''}</p>${a.urgence_nom ? `<p class="text-xs text-[#6b7780] truncate">Urgence : ${esc(a.urgence_nom)} ${esc(a.urgence_tel || '')}</p>` : ''}
-            ${rep.length ? `<details class="text-xs mt-1"><summary class="cursor-pointer font-semibold text-[#3d6a8e]">Réponses (${rep.length})</summary><ul class="mt-1 space-y-0.5">${rep.map(r => `<li><b>${esc(r.libelle)}</b> : ${esc(r.valeur)}</li>`).join('')}</ul></details>` : ''}</div>
-          <div class="flex flex-wrap gap-2 md:justify-end"><span class="text-xs font-bold px-3 py-1 rounded-full bg-[#eef2f4] text-[#26343b]">${esc(s)}</span><span class="text-xs font-bold px-3 py-1 rounded-full bg-[#f8f5ea] text-[#5b4a1c]">${esc(p)}</span></div></div>`;
-    }).join('');
+    const th = (l, c = '') => `<th scope="col" class="px-4 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wider text-[#6b7780] whitespace-nowrap ${c}">${l}</th>`;
+    const pill = (t, c) => `<span class="inline-block text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${c}">${esc(t)}</span>`;
+    const td = (h, c = '') => `<td class="px-4 py-3 align-middle ${c}">${h}</td>`;
+    const open = (k, v, l) => `data-open="${esc(k)}:${esc(v)}" tabindex="0" role="button" aria-label="Ouvrir le dossier de ${esc(l)}"`;
+    if (filt.type === 'enfants') {
+        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Enfant')}${th('Âge')}${th('Parent', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(i => {
+            const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].some(Boolean), m = moyen(i);
+            return `<tr class="gm-tr ${i.expire ? 'opacity-60' : ''}" ${open('r', i.reservation_token, i.prenom + ' ' + i.nom)}>
+              ${td(`<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span>${sante ? ' <span class="inline-block w-2 h-2 rounded-full bg-[#c9a227] align-middle" title="Informations de santé renseignées"></span>' : ''}`)}
+              ${td(a !== null ? a + ' ans' : '—', 'whitespace-nowrap')}
+              ${td(`<span class="block truncate max-w-[200px]">${esc(i.parent_prenom)} ${esc(i.parent_nom_famille)}</span>`, 'hidden md:table-cell')}
+              ${td(`<span class="block text-xs text-[#6b7780] max-w-[170px]">${esc(I.sessions[i.session_token] || '')}</span>`, 'hidden lg:table-cell')}
+              ${td(esc(i.tarif_nom || '—'), 'hidden lg:table-cell')}
+              ${td(`${esc(m || '—')}${i.montant_paye > 0 ? `<span class="block text-xs text-[#6b7780]">${eur(i.montant_paye)}</span>` : ''}`)}
+              ${td(`<span class="flex items-center gap-3 flex-wrap">${pill(st[0].split(' · ')[0], st[1])}${i.statut_paiement === 'A_REGLER' ? `<button type="button" class="text-xs font-bold text-[#3d6a8e] underline hover:text-[#26343b]" data-recu="${esc(i.reservation_token)}">Marquer reçu</button>` : ''}</span>`)}</tr>`;
+        }).join('')}</tbody></table></div>`;
+    } else {
+        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Animateur')}${th('Âge')}${th('Contact', 'hidden md:table-cell')}${th('BAFA', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(a => {
+            const [s, p] = stAnim(a);
+            return `<tr class="gm-tr" ${open('a', a.token, a.prenom + ' ' + a.nom)}>
+              ${td(`<span class="font-bold text-[#26343b]">${esc(a.prenom)} ${esc(a.nom)}</span>`)}
+              ${td(a.date_naissance ? age(a.date_naissance) + ' ans' : '—', 'whitespace-nowrap')}
+              ${td(`<span class="block truncate max-w-[220px] text-xs">${esc(a.email)}</span>`, 'hidden md:table-cell')}
+              ${td(esc(a.bafa_statut || 'aucun'), 'hidden md:table-cell')}
+              ${td(`<span class="block text-xs text-[#6b7780] max-w-[170px]">${esc(I.sessions[a.session_token] || '')}</span>`, 'hidden lg:table-cell')}
+              ${td(esc(a.tarif_nom || '—'), 'hidden lg:table-cell')}
+              ${td(esc(p))}${td(pill(s, 'bg-[#eef2f4] text-[#26343b]'))}</tr>`;
+        }).join('')}</tbody></table></div>`;
+    }
 }
+// Panneau latéral : dossier complet (api/dossier_inscrit.php, rendu par assets/js/dossier.js)
+async function openDossier(kind, tok) {
+    $('dosBody').innerHTML = '<p class="ds-lead py-10 text-center">Chargement…</p>'; $('dosHead').innerHTML = ''; $('dosFull').classList.add('hidden');
+    $('dosDrawer').classList.add('open'); $('dosScrim').classList.add('open'); $('dosClose').focus();
+    try {
+        const r = await fetch('api/dossier_inscrit.php?' + kind + '=' + encodeURIComponent(tok)), d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Dossier indisponible.');
+        $('dosHead').innerHTML = Dossier.head(d); $('dosBody').innerHTML = Dossier.stack(d, { recu: true });
+        if (d.type === 'enfant') { $('dosFull').href = 'child_details.php?r=' + encodeURIComponent(d.reservation) + '&t=' + encodeURIComponent(d.session_token); $('dosFull').classList.remove('hidden'); }
+    } catch (e) { $('dosBody').innerHTML = `<p class="ds-alert-err">${esc(ColoUI.friendly(e))}</p>`; }
+}
+function closeDossier() { $('dosDrawer').classList.remove('open'); $('dosScrim').classList.remove('open'); }
 function csvCell(v) { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
 function exportCsv() {
     const L = filtered(); if (!L.length) { ColoUI.alert('Aucun inscrit à exporter pour ce filtre.'); return; }
@@ -257,7 +297,9 @@ async function supprimer(tok) {
     } catch (e) { ColoUI.error(e); }
 }
 document.addEventListener('click', async e => {
-    const t = e.target.closest('button, a'); if (!t) return;
+    const t = e.target.closest('button, a');
+    if (!t) { const row = e.target.closest('[data-open]'); if (row) { const [k, v] = row.dataset.open.split(':'); openDossier(k, v); } return; }
+    if (t.id === 'dosClose') return closeDossier();
     if (t.dataset.tab) go(t.dataset.tab);
     else if (t.dataset.recu) { if (await ColoUI.confirm('Confirmer que vous avez bien reçu ce règlement ? ColoMap retiendra sa commission sur vos prochains versements par carte.')) marquerRecu(t); }
     else if (t.dataset.help) ColoUI.alert(HELP[t.dataset.help], { title: 'Aide' });
@@ -284,7 +326,11 @@ document.addEventListener('input', e => { if (e.target.id === 'fQ') { filt.q = e
 $('dupDebut').addEventListener('change', () => { const n = +$('dupDebut').dataset.n || 0, d = new Date($('dupDebut').value + 'T12:00:00'); if (!isNaN(d)) { d.setDate(d.getDate() + n); $('dupFin').value = d.toISOString().slice(0, 10); } });
 $('dupLieuOn').addEventListener('change', () => $('dupLieu').classList.toggle('hidden', !$('dupLieuOn').checked));
 $('dupCancel').addEventListener('click', () => $('dupModal').classList.remove('open'));
-document.addEventListener('keydown', e => { if (e.key === 'Escape') $('dupModal').classList.remove('open'); });
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { $('dupModal').classList.remove('open'); closeDossier(); }
+    if (e.key === 'Enter' && e.target.dataset && e.target.dataset.open) { const [k, v] = e.target.dataset.open.split(':'); openDossier(k, v); }
+});
+$('dosScrim').addEventListener('click', closeDossier);
 $('dupForm').addEventListener('submit', async e => {
     e.preventDefault(); $('dupErr').textContent = ''; $('dupOk').disabled = true;
     try {
