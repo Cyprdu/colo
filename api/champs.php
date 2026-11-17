@@ -90,20 +90,40 @@ function champs_reponses(PDO $pdo, int $inscriptionId): array {
     } catch (Throwable $e) { return []; }
 }
 
-/** Copie les questions de la session $camp vers les autres sessions de son groupe (même séjour). À appeler dans la transaction de l'appelant. */
-function champs_propager(PDO $pdo, array $camp): void {
-    if (empty($camp['groupe_id'])) return;
-    $sib = $pdo->prepare("SELECT id FROM camps WHERE groupe_id = ? AND id <> ? AND COALESCE(supprime, 0) = 0");
-    $sib->execute([$camp['groupe_id'], $camp['id']]);
-    $ids = $sib->fetchAll(PDO::FETCH_COLUMN);
-    if (!$ids) return;
-    $src = $pdo->prepare("SELECT libelle, type, options, obligatoire, position FROM camp_champs WHERE camp_id = ? ORDER BY position, id");
-    $src->execute([$camp['id']]);
-    $rows = $src->fetchAll(PDO::FETCH_NUM);
-    $del = $pdo->prepare("DELETE FROM camp_champs WHERE camp_id = ?");
+/**
+ * Enregistre la liste de questions d'UNE session (remplace l'existant : mise à jour par identifiant, ajout, suppression).
+ * Les réponses déjà données gardent leur libellé. À appeler dans la transaction de l'appelant (tables créées avant : champs_ensure).
+ * @throws InvalidArgumentException message destiné au directeur
+ */
+function champs_enregistrer(PDO $pdo, int $campId, array $champs): void {
+    if (count($champs) > 30) throw new InvalidArgumentException('30 questions maximum par session.');
+    $clean = [];
+    foreach (array_values($champs) as $i => $c) {
+        $libelle = mb_substr(trim((string)($c['libelle'] ?? '')), 0, 255);
+        $type = (string)($c['type'] ?? 'texte');
+        if ($libelle === '') continue;
+        if (!isset(CHAMPS_TYPES[$type])) throw new InvalidArgumentException('Type de question inconnu.');
+        $options = null;
+        if ($type === 'liste') {
+            $lignes = array_values(array_unique(array_filter(array_map('trim', preg_split('/\r?\n/', (string)($c['options'] ?? ''))))));
+            if (count($lignes) < 2) throw new InvalidArgumentException("La liste « $libelle » doit proposer au moins 2 choix.");
+            $options = implode("\n", array_map(fn($l) => mb_substr($l, 0, 120), $lignes));
+        }
+        $clean[] = [(int)($c['id'] ?? 0), $libelle, $type, $options, !empty($c['obligatoire']) ? 1 : 0, $i];
+    }
+    $ex = $pdo->prepare("SELECT id FROM camp_champs WHERE camp_id = ?");
+    $ex->execute([$campId]);
+    $existingIds = array_map('intval', $ex->fetchAll(PDO::FETCH_COLUMN));
+    $keep = [];
     $ins = $pdo->prepare("INSERT INTO camp_champs (camp_id, libelle, type, options, obligatoire, position) VALUES (?, ?, ?, ?, ?, ?)");
-    foreach ($ids as $id) {
-        $del->execute([$id]);
-        foreach ($rows as $r) $ins->execute(array_merge([$id], $r));
+    $upd = $pdo->prepare("UPDATE camp_champs SET libelle = ?, type = ?, options = ?, obligatoire = ?, position = ? WHERE id = ? AND camp_id = ?");
+    foreach ($clean as [$id, $libelle, $type, $options, $oblig, $pos]) {
+        if ($id && in_array($id, $existingIds, true)) { $upd->execute([$libelle, $type, $options, $oblig, $pos, $id, $campId]); $keep[] = $id; }
+        else { $ins->execute([$campId, $libelle, $type, $options, $oblig, $pos]); $keep[] = (int)$pdo->lastInsertId(); }
+    }
+    $del = array_diff($existingIds, $keep);
+    if ($del) {
+        $q = implode(',', array_fill(0, count($del), '?'));
+        $pdo->prepare("DELETE FROM camp_champs WHERE camp_id = ? AND id IN ($q)")->execute(array_merge([$campId], array_values($del)));
     }
 }

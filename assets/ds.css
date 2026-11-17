@@ -158,3 +158,14 @@ body.ds-legacy [class~="shadow-blue-500/30"], body.ds-legacy [class~="shadow-blu
 .cu-toast svg { width: 20px; height: 20px; flex: none; }
 .cu-t-err { background: #7f2f24; }
 @media (prefers-reduced-motion: reduce) { .cu-back, .cu-box, .cu-toast { transition: none; } }
+
+/* ---------- sessions d'un séjour : onglets et héritage ---------- */
+.ds-sec { scroll-margin-top: 150px; }
+.sess-tab { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 9999px; border: 1.5px solid var(--ds-line); background: #fff; font-size: 14px; font-weight: 700; color: #3b4a54; cursor: pointer; transition: all .15s ease; }
+.sess-tab:hover { border-color: #a9b8c6; background: var(--ds-soft); }
+.sess-tab.on { background: var(--ds-btn); border-color: var(--ds-btn); color: #fff; }
+.sess-tab:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.sess-p { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .7; }
+.sess-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9a62b; flex: none; }
+.herit-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: -6px 0 18px; padding: 10px 14px; border-radius: 12px; background: var(--ds-cream); border: 1px solid #ebe3c8; font-size: 13.5px; color: #5b4a1c; }
+.herit-on > :not(.ds-sec-head):not(.herit-bar) { opacity: .55; user-select: none; }

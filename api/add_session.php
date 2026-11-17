@@ -61,6 +61,10 @@ try {
     $new['date_fin'] = $fin;
     $new['date_limite_inscription'] = $limit ?: null;
     $new['groupe_id'] = (int)($src['groupe_id'] ?: $src['id']);
+    // La nouvelle session reprend TOUS les réglages de la session principale (modifiables ensuite, section par section, depuis « Modifier »)
+    require_once 'camp_groupe.php';
+    $new['heritage'] = json_encode(array_fill_keys(CAMP_HERITAGE_CLES, true));
+    $new['perso_description'] = 0; $new['perso_lieu'] = 0;
     if (isset($in['prix']) && is_numeric($in['prix']) && (float)$in['prix'] >= 0) $new['prix'] = (float)$in['prix'];
 
     $pdo->beginTransaction();

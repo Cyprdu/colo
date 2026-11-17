@@ -140,142 +140,19 @@ function camp_enregistrer_tarifs(PDO $pdo, int $campId, array $tarifIds): void {
 }
 
 /** Enregistre la photo de couverture ; retourne le chemin relatif au site, ou null (aucun fichier / refusé) */
-function camp_enregistrer_image(): ?string {
-    if (empty($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) return null;
-    if ($_FILES['image']['size'] > 8 * 1024 * 1024) return null;
-    $info = @getimagesize($_FILES['image']['tmp_name']);
+function camp_enregistrer_image(string $cle = 'image'): ?string {
+    if (empty($_FILES[$cle]) || $_FILES[$cle]['error'] !== UPLOAD_ERR_OK) return null;
+    if ($_FILES[$cle]['size'] > 8 * 1024 * 1024) return null;
+    $info = @getimagesize($_FILES[$cle]['tmp_name']);
     $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][$info['mime'] ?? ''] ?? null;
     if (!$ext) return null;
     $dir = __DIR__ . '/../uploads/camps/';
     if (!is_dir($dir)) mkdir($dir, 0755, true);
     $name = uniqid('camp_') . '.' . $ext;
-    return move_uploaded_file($_FILES['image']['tmp_name'], $dir . $name) ? 'uploads/camps/' . $name : null;
+    return move_uploaded_file($_FILES[$cle]['tmp_name'], $dir . $name) ? 'uploads/camps/' . $name : null;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Séjour à plusieurs sessions : une ligne `camps` par session, regroupées par groupe_id (modèle conservé).
-// Les champs communs (nom, description, lieu, organisme, options…) sont recopiés sur toutes les sessions ; chaque session a ses
-// propres dates, tranche d'âge, places, quotas filles / garçons, réservation à un sexe, tarifs.
-// ---------------------------------------------------------------------------------------------------------------------
-
-/** Erreur dont le message est destiné au directeur (affiché tel quel) */
-class CampException extends RuntimeException {}
-
-const CAMP_PAR_SESSION = ['date_debut', 'date_fin', 'date_limite_inscription', 'age_min', 'age_max', 'quota_global', 'quota_fille', 'quota_garcon', 'prix'];
-
-/** Lit et valide la liste de sessions POSTée (JSON). Retourne [[ ['token','data','tarifs','in'] ], erreur|null]. */
-function camp_lire_sessions(PDO $pdo, int $uid, array $in, array $tarifsPrincipale): array {
-    $list = json_decode((string)($in['sessions'] ?? '[]'), true);
-    if (!is_array($list)) return [[], 'Liste de sessions illisible.'];
-    if (count($list) > 40) return [[], '40 sessions supplémentaires au maximum.'];
-    $out = [];
-    foreach (array_values($list) as $i => $s) {
-        $n = $i + 2;   // la session 1 est celle du formulaire principal
-        $qf = max(0, (int)($s['quota_fille'] ?? 0)); $qg = max(0, (int)($s['quota_garcon'] ?? 0));
-        $tids = array_values(array_filter(array_map('intval', (array)($s['tarifs'] ?? []))));
-        $sin = array_merge($in, [
-            'date_debut' => (string)($s['date_debut'] ?? ''), 'date_fin' => (string)($s['date_fin'] ?? ''),
-            'date_limite_inscription' => (string)($s['date_limite_inscription'] ?? ''),
-            'age_min' => (int)($s['age_min'] ?? 0), 'age_max' => (int)($s['age_max'] ?? 0),
-            'quota_global' => (int)($s['quota_global'] ?? 0), 'quota_fille' => $qf, 'quota_garcon' => $qg,
-            'quotas_sexe_actifs' => ($qf > 0 || $qg > 0) ? 1 : '',
-            'reserve_sexe' => (string)($s['reserve_sexe'] ?? ''),
-            'tarifs' => json_encode($tids ?: $tarifsPrincipale),
-            'prix_simple' => (string)($s['prix'] ?? ($in['prix_simple'] ?? 0)),
-        ]);
-        // Description et lieu propres à la session (sinon elle hérite de ceux de la session principale)
-        $persoD = !empty($s['perso_description']) && trim((string)($s['description'] ?? '')) !== '';
-        $persoL = !empty($s['perso_lieu']);
-        if ($persoD) $sin['description'] = (string)$s['description'];
-        if ($persoL) {
-            $sin['adresse'] = (string)($s['adresse'] ?? ''); $sin['ville'] = (string)($s['ville'] ?? ''); $sin['cp'] = (string)($s['cp'] ?? '');
-            if (trim($sin['adresse']) === '' || trim($sin['ville']) === '') return [[], "Session $n : indiquez l'adresse et la ville de cette session, ou décochez « lieu propre »."];
-        }
-        [$d, $t, $err] = camp_lire_formulaire($pdo, $uid, $sin);
-        if ($err) return [[], "Session $n : $err"];
-        $out[] = ['token' => preg_match('/^[a-f0-9]{16,64}$/i', (string)($s['token'] ?? '')) ? (string)$s['token'] : null, 'data' => $d, 'tarifs' => $t, 'in' => $sin, 'perso_d' => $persoD, 'perso_l' => $persoL];
-    }
-    return [$out, null];
-}
-
-/**
- * Enregistre les sessions supplémentaires d'un séjour, DANS la transaction de l'appelant.
- *  - $main : ligne de la session principale (id, groupe_id, valide, en_attente, refuse) ; $mainData : ses données validées.
- *  - Les sessions déjà connues (jeton) sont mises à jour, les nouvelles créées, celles retirées de la liste supprimées
- *    (refusé si des familles y sont déjà inscrites).
- * Les créations de table/colonne (DDL) doivent avoir été faites AVANT d'ouvrir la transaction.
- */
-function camp_enregistrer_sessions(PDO $pdo, int $uid, array $main, array $mainData, array $in, array $sessions): void {
-    $mainId = (int)$main['id'];
-    $groupe = (int)($main['groupe_id'] ?: $mainId);
-    if (campsHaveGroupColumn($pdo) && empty($main['groupe_id'])) $pdo->prepare("UPDATE camps SET groupe_id = ? WHERE id = ?")->execute([$groupe, $mainId]);
-
-    $st = $pdo->prepare("SELECT c.id, c.token FROM camps c JOIN organisateurs o ON o.id = c.organisateur_id
-                         WHERE c.groupe_id = ? AND c.id <> ? AND COALESCE(c.supprime, 0) = 0 AND o.user_id = ?");
-    $st->execute([$groupe, $mainId, $uid]);
-    $existants = [];
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $existants[$r['token']] = (int)$r['id'];
-
-    // champs communs à toutes les sessions : jamais le jeton, le groupe ni le statut de validation (propres à chaque ligne)
-    $communesNew = array_diff_key($mainData, array_flip(array_merge(CAMP_PAR_SESSION, ['token', 'groupe_id', 'id', 'valide', 'en_attente', 'refuse', 'supprime', 'perso_description', 'perso_lieu'])));
-    // Si la session éditée a elle-même une description / un lieu propre, elle ne les impose pas aux autres sessions
-    $communes = $communesNew;
-    if (!empty($main['perso_description'])) unset($communes['description']);
-    if (!empty($main['perso_lieu'])) unset($communes['adresse'], $communes['ville'], $communes['code_postal'], $communes['pays']);
-    $gardes = [];
-    foreach ($sessions as $s) {
-        $existe = $s['token'] && isset($existants[$s['token']]);
-        $perso = [];
-        if ($s['perso_d']) $perso['description'] = $s['data']['description'];
-        if ($s['perso_l']) $perso += ['adresse' => $s['data']['adresse'], 'ville' => $s['data']['ville'], 'code_postal' => $s['data']['code_postal']];
-        $flags = ['perso_description' => $s['perso_d'] ? 1 : 0, 'perso_lieu' => $s['perso_l'] ? 1 : 0];
-        $data = camp_filtrer_colonnes($pdo, $perso + $flags + ($existe ? $communes : $communesNew) + array_intersect_key($s['data'], array_flip(CAMP_PAR_SESSION)));
-        if ($existe) {
-            $id = $existants[$s['token']]; $gardes[$id] = true;
-            $pdo->prepare("UPDATE camps SET " . implode(', ', array_map(fn($c) => "`$c` = ?", array_keys($data))) . " WHERE id = ?")->execute([...array_values($data), $id]);
-        } else {
-            $data += ['token' => bin2hex(random_bytes(16)), 'groupe_id' => $groupe, 'valide' => (int)$main['valide'], 'en_attente' => (int)$main['en_attente'], 'refuse' => (int)$main['refuse'], 'supprime' => 0];
-            $data = camp_filtrer_colonnes($pdo, $data);
-            $cols = array_keys($data);
-            $pdo->prepare("INSERT INTO camps (" . implode(',', array_map(fn($c) => "`$c`", $cols)) . ", date_creation, date_bump) VALUES (" . implode(',', array_fill(0, count($cols), '?')) . ", NOW(), NOW())")->execute(array_values($data));
-            $id = (int)$pdo->lastInsertId(); $gardes[$id] = true;
-            // questions personnalisées : mêmes que la session principale
-            $pdo->prepare("INSERT INTO camp_champs (camp_id, libelle, type, options, obligatoire, position) SELECT ?, libelle, type, options, obligatoire, position FROM camp_champs WHERE camp_id = ?")->execute([$id, $mainId]);
-        }
-        camp_enregistrer_tarifs($pdo, $id, $s['tarifs']);
-        camp_enregistrer_attente($pdo, $id, $in);
-        options_enregistrer($pdo, $id, $s['in']);
-        etapes_enregistrer($pdo, $id, !empty($mainData['itinerant']), $in['etapes'] ?? '[]');
-    }
-    // Sessions retirées de la liste
-    foreach ($existants as $tok => $id) {
-        if (isset($gardes[$id])) continue;
-        $n = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule')");
-        $n->execute([$id]);
-        if ((int)$n->fetchColumn() > 0) throw new CampException("Une session retirée de la liste a déjà des inscrits : elle ne peut pas être supprimée. Annulez d'abord ses inscriptions.");
-        $pdo->prepare("UPDATE camps SET supprime = 1 WHERE id = ?")->execute([$id]);
-    }
-}
-
-/** Sessions sœurs d'une session (même séjour, même propriétaire), prêtes pour l'éditeur du formulaire */
-function camp_sessions_soeurs(PDO $pdo, int $uid, array $camp): array {
-    if (empty($camp['groupe_id'])) return [];
-    $st = $pdo->prepare("SELECT c.*, (SELECT COUNT(*) FROM inscriptions i WHERE i.camp_id = c.id AND COALESCE(i.statut, '') NOT IN ('Annulé', 'annule', 'Annule')) AS nb_inscrits
-                         FROM camps c JOIN organisateurs o ON o.id = c.organisateur_id
-                         WHERE c.groupe_id = ? AND c.id <> ? AND COALESCE(c.supprime, 0) = 0 AND o.user_id = ? ORDER BY c.date_debut, c.id");
-    $st->execute([$camp['groupe_id'], $camp['id'], $uid]);
-    $tar = $pdo->prepare("SELECT tarif_id FROM camps_tarifs WHERE camp_id = ?");
-    $out = [];
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $tar->execute([$r['id']]);
-        $out[] = [
-            'token' => $r['token'], 'date_debut' => $r['date_debut'], 'date_fin' => $r['date_fin'], 'date_limite_inscription' => $r['date_limite_inscription'] ?? '',
-            'age_min' => (int)$r['age_min'], 'age_max' => (int)$r['age_max'], 'quota_global' => (int)$r['quota_global'],
-            'quota_fille' => (int)$r['quota_fille'], 'quota_garcon' => (int)$r['quota_garcon'], 'reserve_sexe' => (string)($r['reserve_sexe'] ?? ''),
-            'tarifs' => array_map('intval', $tar->fetchAll(PDO::FETCH_COLUMN)), 'prix' => (float)$r['prix'], 'inscrits' => (int)$r['nb_inscrits'],
-            'perso_description' => (int)($r['perso_description'] ?? 0), 'description' => (string)$r['description'],
-            'perso_lieu' => (int)($r['perso_lieu'] ?? 0), 'adresse' => (string)$r['adresse'], 'ville' => (string)$r['ville'], 'cp' => (string)$r['code_postal'],
-        ];
-    }
-    return $out;
+/** Erreur dont le message est destiné au directeur (affiché tel quel). confirm = true : à confirmer, puis à renvoyer avec confirm_inscrits. */
+class CampException extends RuntimeException {
+    public bool $confirm = false;
 }

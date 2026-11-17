@@ -125,7 +125,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-    <link rel="stylesheet" href="/assets/ds.css?v=4">
+    <link rel="stylesheet" href="/assets/ds.css?v=6">
     <script src="/assets/ui.js?v=1"></script>
 </head>
 <body class="<?php echo htmlspecialchars($body_class); ?><?php echo $body_class === 'bg-gray-100' ? ' ds-legacy' : ''; ?> text-gray-800 flex flex-col min-h-screen">

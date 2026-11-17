@@ -44,6 +44,7 @@ function options_ensure(PDO $pdo): void {
             'instructions_paiement' => "TEXT NULL",
             // colonnes que le formulaire de séjour écrit : créées si une ancienne base ne les a pas
             // description / lieu propres à une session (0 = hérite de la session principale du séjour)
+            'heritage' => "TEXT NULL",   // sections que la session reprend de la session principale (JSON), null = hérite seulement description / lieu non personnalisés
             'perso_description' => "TINYINT(1) NOT NULL DEFAULT 0", 'perso_lieu' => "TINYINT(1) NOT NULL DEFAULT 0",
             'itinerant' => "TINYINT(1) NOT NULL DEFAULT 0", 'theme' => "VARCHAR(100) NULL", 'type' => "VARCHAR(500) NULL",
             'pays' => "VARCHAR(80) NULL", 'video_url' => "VARCHAR(500) NULL",
