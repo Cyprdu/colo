@@ -74,7 +74,7 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title><?= htmlspecialchars($auth_title ?? 'ColoMap') ?></title>
     <meta name="robots" content="noindex, follow">
     <link rel="icon" type="image/png" href="/favico.png">
@@ -83,8 +83,8 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/assets/ds.css?v=7">
-    <script src="/assets/ui.js?v=1"></script>
+    <link rel="stylesheet" href="/assets/ds.css?v=8">
+    <script src="/assets/ui.js?v=2"></script>
     <style>
         body.auth-body { margin: 0; font-family: 'Montserrat', system-ui, sans-serif; background: #faf8f1; color: #26343b; -webkit-font-smoothing: antialiased; }
         .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: 1fr; }

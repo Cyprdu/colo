@@ -59,6 +59,13 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     .chips { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; }
     .chips a { font-size:15px; font-weight:600; color:var(--ink); padding:4px 0; border-bottom:2px solid transparent; transition:border-color .15s ease, color .15s ease; white-space:nowrap; }
     .chips a:hover { color:var(--accent); border-color:var(--accent); }
+    @media (max-width: 767px) {
+        .chips { justify-content:flex-start; flex-wrap:nowrap; gap:8px; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; -webkit-overflow-scrolling:touch; padding-top:14px !important; padding-bottom:14px !important; min-height:0 !important; }
+        .chips::-webkit-scrollbar { display:none; }
+        .chips i.dot { display:none; }
+        .chips a { flex:none; scroll-snap-align:start; display:inline-flex; align-items:center; min-height:44px; padding:0 18px; border:1.5px solid var(--line); border-radius:9999px; font-size:14px; background:#fff; }
+        .chips a:active { background:var(--ink); color:#fff; border-color:var(--ink); }
+    }
     .chips i.dot { width:4px; height:4px; background:var(--ink); border-radius:9999px; margin:0 16px; flex:none; }
 
     /* ---------- Sections et carrousels ---------- */
@@ -119,8 +126,11 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 <!-- ================================================================ -->
 <section class="relative isolate z-30 hero-bg">
     <div class="absolute inset-0 -z-10 overflow-hidden">
-        <img src="/uploads/montagne.jpg"
-             alt="" class="w-full h-full object-cover" loading="eager" fetchpriority="high" onerror="this.remove()">
+        <picture>
+            <source type="image/webp" srcset="/assets/img/hero-640.webp 640w, /assets/img/hero-1280.webp 1280w, /assets/img/hero-1920.webp 1920w" sizes="100vw">
+            <img src="/assets/img/hero-1280.jpg" srcset="/assets/img/hero-640.jpg 640w, /assets/img/hero-1280.jpg 1280w, /assets/img/hero-1920.jpg 1920w" sizes="100vw"
+                 alt="" width="1920" height="1080" class="w-full h-full object-cover" loading="eager" fetchpriority="high" onerror="this.remove()">
+        </picture>
         <div class="absolute inset-0 bg-gradient-to-b from-black/20 via-black/10 to-black/30"></div>
     </div>
 

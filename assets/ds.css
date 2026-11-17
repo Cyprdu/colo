@@ -183,3 +183,67 @@ body.ds-legacy [class~="shadow-blue-500/30"], body.ds-legacy [class~="shadow-blu
 .ds-help > summary::-webkit-details-marker { display: none; }
 .ds-help > summary:hover, .ds-help[open] > summary { background: var(--ds-btn); color: #fff; }
 .ds-help > div { display: block; margin-top: 8px; padding: 10px 14px; border-radius: 12px; background: var(--ds-soft); color: #3b4a54; font-size: 13px; line-height: 1.5; font-weight: 400; max-width: 520px; }
+
+/* =====================================================================
+   COUCHE RESPONSIVE (mobile d'abord) : s'applique à toutes les pages qui chargent ds.css
+   ===================================================================== */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { overflow-x: clip; overflow-wrap: break-word; -webkit-tap-highlight-color: rgba(47, 61, 69, .12); }
+/* un enfant direct du body (main, section…) ne doit jamais élargir la page : sans ça, un contenu « nowrap » ou
+   un carrousel fait grandir toute la page au-delà de l'écran (flex-col => min-width:auto) */
+body > * { min-width: 0; }
+img, video, canvas, iframe { max-width: 100%; }
+table { max-width: 100%; }
+.ds-tablewrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.ds-tablewrap > table { min-width: 560px; }
+/* sauts de ligne sûrs dans les cartes / titres (emails, noms, URLs longs) */
+.ds-card, .ds-tile, h1, h2, h3 { overflow-wrap: anywhere; }
+:focus-visible { outline-offset: 2px; }
+/* barres collées en bas : encoche iOS + clavier */
+.ds-bar { padding-bottom: env(safe-area-inset-bottom); }
+.ds-toast, .cu-toasts { bottom: calc(24px + env(safe-area-inset-bottom)); }
+.ds-modal-box { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overscroll-behavior: contain; }
+.cu-box { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.ds-drawer { height: 100vh; height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+
+/* zones tactiles >= 44 px sur les écrans tactiles */
+@media (pointer: coarse) {
+  .ds-btn, .ds-btn-light, .ds-chip, .sess-tab, .cp-chip, .cp-opt, .mc-sugg button, .cu-btn { min-height: 44px; }
+  .ds-btn-sm { min-height: 40px; }
+  .ds-iconbtn { width: 44px; height: 44px; }
+  .ds-tag button, .mc-pill button { width: 28px; height: 28px; }
+  .ds-help > summary { width: 28px; height: 28px; font-size: 14px; }
+  .ds-switch { width: 52px; height: 30px; }
+  .ds-switch span::after { width: 24px; height: 24px; }
+  .ds-switch input:checked + span::after { transform: translateX(22px); }
+  footer li a { display: inline-block; padding: 6px 0; }
+}
+
+@media (max-width: 767px) {
+  /* 16 px minimum : iOS zoome sur le champ sinon et ne dézoome pas */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]), select, textarea,
+  .ds-input, .ds-select, .ds-textarea, .cu-field, .mc-input { font-size: 16px; }
+  .ds-input, .ds-select, .ds-textarea { padding: 13px 14px; }
+  .ds-page { padding: 24px 16px calc(56px + env(safe-area-inset-bottom)); }
+  .ds-h1 { font-size: clamp(24px, 7vw, 30px); }
+  .ds-card { border-radius: 20px; }
+  .ds-sec { padding: 20px 16px; scroll-margin-top: 80px; }
+  .ds-sec-head { gap: 12px; margin-bottom: 18px; }
+  .ds-row { flex-wrap: wrap; }
+  .ds-sub { padding-left: 12px; }
+  .ds-tile { padding: 16px; gap: 14px; }
+  .ds-btn { padding-left: 18px; padding-right: 18px; }
+  .cu-actions { flex-direction: column-reverse; }
+  /* fenêtres : tiroir qui monte du bas, boutons à portée du pouce */
+  .ds-modal { align-items: flex-end; padding: 0; }
+  .ds-modal-box, .ds-modal-box.wide { max-width: none; border-radius: 24px 24px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); transform: translateY(24px); }
+  .ds-drawer { width: 100%; }
+  .cp-cards { gap: 12px; }
+  .cp-head { padding: 12px; }
+  .cp-body { padding: 12px; }
+  .herit-bar { font-size: 13px; }
+  footer .grid { gap: 28px; }
+  footer { margin-top: 40px !important; }
+  footer > div { padding-bottom: calc(32px + env(safe-area-inset-bottom)) !important; padding-top: 40px !important; }
+}
+@media (max-width: 380px) { .ds-modal-box { padding-left: 14px; padding-right: 14px; } .ds-chip, .sess-tab { padding: 8px 12px; } }
