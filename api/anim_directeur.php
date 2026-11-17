@@ -51,7 +51,8 @@ try {
         $camp = anim_mon_camp($pdo, (string)($in['camp'] ?? ''), $uid);
         $err = equipe_enregistrer($pdo, $camp, $in);
         if ($err) anim_json(['error' => $err], 400);
-        anim_json(['success' => true]);
+        $fresh = anim_mon_camp($pdo, (string)($in['camp'] ?? ''), $uid);
+        anim_json(['success' => true, 'lien' => !empty($fresh['equipe_active']) ? ($fresh['equipe_lien'] ?? null) : null]);
     }
 
     if ($a === 'candidatures' && !$post) {
