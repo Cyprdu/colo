@@ -119,7 +119,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 <!-- ================================================================ -->
 <section class="relative isolate z-30 hero-bg">
     <div class="absolute inset-0 -z-10 overflow-hidden">
-        <img src="https://img3.wallspic.com/crops/1/6/1/1/8/181161/181161-weisshorn-les_reliefs_montagneux-gamme_de_montagne-colline-hiver-3840x2160.jpg"
+        <img src="/uploads/montagne.jpg"
              alt="" class="w-full h-full object-cover" loading="eager" fetchpriority="high" onerror="this.remove()">
         <div class="absolute inset-0 bg-gradient-to-b from-black/20 via-black/10 to-black/30"></div>
     </div>
