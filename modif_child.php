@@ -128,9 +128,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($sig === '') $sig = trim(($enfant['resp1_prenom'] ?? '') . ' ' . ($enfant['resp1_nom'] ?? ''));
             if ($sig === '') throw new Exception("Indiquez le nom du signataire (responsable légal).");
             if (empty($enfant['date_naissance'])) throw new Exception("Renseignez d'abord la date de naissance (rubrique Informations de l'enfant).");
+            // signature manuscrite (tracé JPEG envoyé par le canvas) : obligatoire, vérifiée, stockée chiffrée
+            if (!preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#', (string)($_POST['signature_data'] ?? ''), $sm)) throw new Exception("Signez dans le cadre pour générer la fiche.");
+            $sigBytes = base64_decode($sm[1], true);
+            $si = $sigBytes ? @getimagesizefromstring($sigBytes) : false;
+            if (!$si || $si[2] !== IMAGETYPE_JPEG || strlen($sigBytes) > 400000 || $si[0] > 1200 || $si[1] > 600) throw new Exception("Signature invalide : recommencez.");
+            $sigName = sante_store('signatures', $sigBytes, 'jpg');
+            $newFiles[] = ['signatures', $sigName]; $oldFiles[] = ['signatures', $enfant['signature_token'] ?? null];
+            $put('signature_token', $sigName);
             require_once 'api/sante_pdf.php';
             $row = $enfant; foreach ($sets as $i => $sdef) { if (preg_match('/^`(\w+)`/', $sdef, $m)) $row[$m[1]] = $vals[$i]; }
-            $n = sante_store('sanitaire', sante_pdf_fiche($row, $sig), 'pdf');
+            $n = sante_store('sanitaire', sante_pdf_fiche($row, $sig, $sigBytes), 'pdf');
             $newFiles[] = ['sanitaire', $n]; $oldFiles[] = ['sanitaire', $enfant['fiche_sanitaire_token'] ?? null];
             $put('fiche_sanitaire_token', $n); $put('fiche_origine', 'generee'); $put('fiche_at', date('Y-m-d H:i:s')); $ok = "Fiche sanitaire de liaison générée."; $sectionOuverte = 'documents';
         } elseif ($act === 'purge_sante') {
@@ -379,9 +387,15 @@ require_once 'partials/header.php';
                         <details class="ds-help"><summary>?</summary><div>Un PDF, ou une ou plusieurs photos / scans (JPG, PNG, WebP, HEIC), convertis en PDF. 8 Mo maximum par fichier.</div></details>
                     </div>
                     <div data-fm="gen" class="mt-4 flex flex-wrap items-center gap-3" hidden>
+                        <div class="w-full">
+                            <p class="ds-label">Signature du responsable légal</p>
+                            <canvas id="sig" width="600" height="200" class="w-full max-w-[340px] h-[113px] rounded-xl border-[1.5px] border-dashed border-[#c9d1d8] bg-white touch-none cursor-crosshair"></canvas>
+                            <input type="hidden" name="signature_data" id="sig-data">
+                            <button type="button" id="sig-clear" class="block mt-1 text-[12.5px] font-bold text-[#6b7780] underline">Effacer</button>
+                        </div>
                         <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-[220px]"><input type="checkbox" name="certifie" value="1" class="w-4 h-4"><span class="text-[13.5px] text-[#26343b]">Je certifie l'exactitude des informations</span></label>
-                        <button type="submit" name="act" value="generer_fiche" class="ds-btn"><?= $ficheOk ? 'Régénérer' : 'Générer la fiche' ?></button>
-                        <details class="ds-help"><summary>?</summary><div>La fiche est remplie avec les rubriques Parents, Enfant et Santé, signée électroniquement par le responsable n°1. Complétez-les d'abord.</div></details>
+                        <button type="submit" name="act" value="generer_fiche" id="gen-go" class="ds-btn"><?= $ficheOk ? 'Régénérer' : 'Générer la fiche' ?></button>
+                        <details class="ds-help"><summary>?</summary><div>La fiche officielle (CERFA 10008*02) est remplie avec les rubriques Parents, Enfant et Santé, puis signée par vous. Complétez-les d'abord ; la signature est conservée chiffrée.</div></details>
                     </div>
                 </div>
 
@@ -431,6 +445,18 @@ require_once 'partials/header.php';
     var fm = [].slice.call(document.querySelectorAll('[name=fm]'));   // choix importer / générer
     function fmShow() { var r = fm.filter(function (x) { return x.checked; })[0]; [].forEach.call(document.querySelectorAll('[data-fm]'), function (d) { d.hidden = !r || d.dataset.fm !== r.value; }); }
     fm.forEach(function (r) { r.addEventListener('change', fmShow); });
+    var cv = document.getElementById('sig');   // pad de signature (souris, doigt, stylet)
+    if (cv) {
+        var cx = cv.getContext('2d'), dr = false, drawn = false;
+        function clr() { cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.strokeStyle = '#14205a'; cx.lineWidth = 3.5; cx.lineCap = cx.lineJoin = 'round'; drawn = false; }
+        function pt(e) { var r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; }
+        cv.addEventListener('pointerdown', function (e) { dr = true; drawn = true; cv.setPointerCapture(e.pointerId); var p = pt(e); cx.beginPath(); cx.moveTo(p[0], p[1]); cx.lineTo(p[0] + .1, p[1] + .1); cx.stroke(); e.preventDefault(); });
+        cv.addEventListener('pointermove', function (e) { if (!dr) return; var p = pt(e); cx.lineTo(p[0], p[1]); cx.stroke(); });
+        ['pointerup', 'pointercancel'].forEach(function (n) { cv.addEventListener(n, function () { dr = false; }); });
+        document.getElementById('sig-clear').addEventListener('click', clr);
+        document.getElementById('gen-go').addEventListener('click', function () { document.getElementById('sig-data').value = drawn ? cv.toDataURL('image/jpeg', 0.9) : ''; });
+        clr();
+    }
     document.documentElement.classList.add('js');
     links.forEach(function (a) { a.addEventListener('click', function (ev) { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.go); show(a.dataset.go); window.scrollTo({ top: 0 }); }); });
     window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });

@@ -17,7 +17,7 @@ $t('xref coherent', (int)preg_match('/startxref\n(\d+)/', $pdf, $m) && substr($p
 $t('chiffrement aller-retour', sante_decrypt(sante_encrypt($pdf)) === $pdf && sante_encrypt($pdf) !== $pdf);
 $f = sante_pdf_fiche(['nom' => 'Dupont', 'prenom' => 'Léa', 'sexe' => 'Femme', 'date_naissance' => '2015-04-02', 'allergies' => 'Arachide',
     'vaccins_data' => '{"dtp":"01/2020","bcg":"Oui"}', 'resp1_nom' => 'Dupont', 'resp1_prenom' => 'Anne'], 'Anne Dupont');
-$t('fiche generee (gabarit)', strncmp($f, '%PDF', 4) === 0 && !fiche_modele_actif());
+$t('fiche CERFA generee', strncmp($f, '%PDF', 4) === 0 && fiche_modele_actif());
 $t('fichiers : liste vide', sante_files_list(['error' => UPLOAD_ERR_NO_FILE]) === []);
 file_put_contents(sys_get_temp_dir() . '/cm_test.pdf', $pdf); file_put_contents(sys_get_temp_dir() . '/cm_fiche.pdf', $f);
 exit($ko ? 1 : 0);
