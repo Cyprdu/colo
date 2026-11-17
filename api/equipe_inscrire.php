@@ -62,6 +62,8 @@ try {
 
     if ($a === 'inscrire' && $post) {
         $in = anim_body();
+        if (sec_blocked($pdo, 'equipe', sec_ip(), 20, 60) || sec_blocked($pdo, 'equipe_u', (string)$uid, 10, 60)) anim_json(['error' => 'Trop de tentatives. Réessayez dans une heure.'], 429);
+        sec_hit($pdo, 'equipe', sec_ip()); sec_hit($pdo, 'equipe_u', (string)$uid);
         $r = anim_lien_valide($pdo, (string)($in['lien'] ?? ''));
         if (!$r) anim_json(['error' => "Ce lien n'est plus valide."], 404);
         [$lien, $camp] = $r; $campId = (int)$camp['id'];
@@ -125,6 +127,7 @@ try {
         $eid = (int)$pdo->lastInsertId();
         foreach ($reps as $x) $pdo->prepare("INSERT INTO equipe_reponses (equipe_id, champ_id, libelle, valeur) VALUES (?,?,?,?)")->execute([$eid, $x['champ_id'], $x['libelle'], $x['valeur']]);
         $pdo->commit();
+        sec_trace($pdo, $uid, 'equipe_inscription', $eid);
         if ($free) anim_json(['success' => true, 'gratuit' => true], 201);
 
         try { $row = ['id' => $eid, 'token' => $tok, 'prenom' => $prenom, 'nom' => $nom, 'email' => $email, 'tarif_nom' => $tarifNom, 'prix_final' => $prix];

@@ -30,6 +30,22 @@ try {
     }
 } catch (Exception $e) {}
 
+// Inscription des animateurs en mode « public » : un tarif « Animateur » mène à equipe-inscription.php (lien privé = rien d'affiché)
+$eqPub = null;
+if ($camp_token) {
+    try {
+        require_once 'api/equipe.php';
+        equipe_ensure($pdo);
+        $q = $pdo->prepare("SELECT c.id, c.equipe_lien, c.equipe_quota FROM camps c JOIN animateur_liens l ON l.token = c.equipe_lien AND l.actif = 1
+            WHERE c.token = ? AND c.valide = 1 AND c.refuse = 0 AND c.supprime = 0 AND c.equipe_active = 1 AND c.equipe_visibilite = 'public' AND (c.date_fin IS NULL OR c.date_fin >= CURDATE())");
+        $q->execute([$camp_token]);
+        if ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+            $complet = (int)$r['equipe_quota'] > 0 && equipe_places_prises($pdo, (int)$r['id']) >= (int)$r['equipe_quota'];
+            $eqPub = ['lien' => 'equipe-inscription.php?l=' . $r['equipe_lien'], 'complet' => $complet, 'tarifs' => equipe_tarifs($pdo, (int)$r['id'])];
+        }
+    } catch (Throwable $e) { error_log('camp_details equipe: ' . $e->getMessage()); }
+}
+
 $ads_enabled = true;
 require_once 'partials/header3.php';
 ?>
@@ -205,6 +221,18 @@ require_once 'partials/header3.php';
 
                         <div id="cta-container" class="mt-6"></div>
                     </div>
+
+                    <?php if ($eqPub): ?>
+                    <div id="equipe-card" class="cd-card p-6">
+                        <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]">Vous êtes animateur ?</p>
+                        <?php foreach ($eqPub['tarifs'] ?: [['nom' => 'Animateur', 'prix' => 0, 'montant_libre' => 0]] as $t): ?>
+                            <p class="mt-3 flex items-baseline justify-between gap-3"><span class="font-bold text-[#26343b]"><?= htmlspecialchars($t['nom']) ?></span>
+                                <span class="font-extrabold text-[#26343b]"><?= !empty($t['montant_libre']) ? 'dès ' . htmlspecialchars(rtrim(rtrim(number_format(equipe_plancher($t), 2, ',', ''), '0'), ',')) . ' €' : ((float)$t['prix'] > 0 ? htmlspecialchars(rtrim(rtrim(number_format((float)$t['prix'], 2, ',', ''), '0'), ',')) . ' €' : 'Gratuit') ?></span></p>
+                        <?php endforeach; ?>
+                        <?php if ($eqPub['complet']): ?><p class="mt-4 text-[14px] text-[#6b7780]">L'équipe d'animation est complète.</p>
+                        <?php else: ?><a class="mt-4 block w-full text-center bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-6 py-3 rounded-lg transition-colors" href="<?= htmlspecialchars($eqPub['lien']) ?>" rel="nofollow">Rejoindre l'équipe d'animation</a><?php endif; ?>
+                    </div>
+                    <?php endif; ?>
 
                     <div id="orga-card" class="cd-card p-6">
                         <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Organisé par</p>

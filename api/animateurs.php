@@ -156,7 +156,8 @@ function anim_txt($v, int $max): string {
 /** Lien utilisable ? Renvoie [lien, séjour] ou null (inconnu, révoqué, expiré, quota atteint, inscription d'équipe désactivée sur le séjour). */
 function anim_lien_valide(PDO $pdo, string $token): ?array {
     if (!preg_match('/^[a-f0-9]{40}$/', $token)) return null;
-    $st = $pdo->prepare("SELECT l.*, (SELECT COUNT(*) FROM candidatures WHERE lien_id = l.id) AS used FROM animateur_liens l WHERE l.token = ?");
+    require_once __DIR__ . '/equipe.php'; equipe_ensure($pdo);
+    $st = $pdo->prepare("SELECT l.*, (SELECT COUNT(*) FROM candidatures WHERE lien_id = l.id) + (SELECT COUNT(*) FROM equipe_inscriptions WHERE lien_id = l.id AND statut <> 'Annulé') AS used FROM animateur_liens l WHERE l.token = ?");
     $st->execute([$token]);
     $l = $st->fetch(PDO::FETCH_ASSOC);
     if (!$l || !$l['actif']) return null;

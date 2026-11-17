@@ -23,6 +23,8 @@ function equipe_ensure(PDO $pdo): void {
         $cols = $pdo->query("SHOW COLUMNS FROM camps")->fetchAll(PDO::FETCH_COLUMN);
         if (!in_array('equipe_age_min', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_age_min INT NULL");
         if (!in_array('equipe_quota', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_quota INT NULL");
+        if (!in_array('equipe_visibilite', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_visibilite VARCHAR(6) NOT NULL DEFAULT 'prive'");
+        if (!in_array('equipe_lien', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_lien CHAR(40) NULL");
         $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_tarifs (
             id INT AUTO_INCREMENT PRIMARY KEY, camp_id INT NOT NULL, nom VARCHAR(120) NOT NULL,
             prix DECIMAL(8,2) NOT NULL DEFAULT 0, montant_libre TINYINT(1) NOT NULL DEFAULT 0, montant_min DECIMAL(8,2) NULL,
@@ -84,11 +86,26 @@ function equipe_places_prises(PDO $pdo, int $campId): int {
     return (int)$st->fetchColumn();
 }
 
+/** Lien d'inscription principal du séjour (créé à la demande, un seul actif). $renouveler = révoque l'ancien (lien fuité) et en crée un nouveau. */
+function equipe_lien_principal(PDO $pdo, int $campId, string $visibilite, bool $renouveler = false): string {
+    $st = $pdo->prepare("SELECT equipe_lien FROM camps WHERE id = ?"); $st->execute([$campId]);
+    $tok = (string)$st->fetchColumn();
+    if ($tok !== '' && !$renouveler) {
+        $pdo->prepare("UPDATE animateur_liens SET type = ?, actif = 1 WHERE token = ? AND camp_id = ?")->execute([$visibilite, $tok, $campId]);
+        return $tok;
+    }
+    if ($tok !== '') $pdo->prepare("UPDATE animateur_liens SET actif = 0 WHERE token = ? AND camp_id = ?")->execute([$tok, $campId]);
+    $tok = bin2hex(random_bytes(20));   // 160 bits : non devinable
+    $pdo->prepare("INSERT INTO animateur_liens (camp_id, token, type, libelle) VALUES (?,?,?,?)")->execute([$campId, $tok, $visibilite, "Lien d'inscription"]);
+    $pdo->prepare("UPDATE camps SET equipe_lien = ? WHERE id = ?")->execute([$tok, $campId]);
+    return $tok;
+}
+
 /** Configuration (B) lisible par le formulaire du séjour et le tableau de bord */
 function equipe_config(PDO $pdo, array $camp): array {
     equipe_ensure($pdo);
     return [
-        'active' => !empty($camp['equipe_active']), 'age_min' => $camp['equipe_age_min'] ?? null, 'quota' => $camp['equipe_quota'] ?? null,
+        'active' => !empty($camp['equipe_active']), 'visibilite' => ($camp['equipe_visibilite'] ?? 'prive') === 'public' ? 'public' : 'prive', 'lien' => $camp['equipe_lien'] ?? null, 'age_min' => $camp['equipe_age_min'] ?? null, 'quota' => $camp['equipe_quota'] ?? null,
         'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => $t['montant_min'] !== null ? (float)$t['montant_min'] : null], equipe_tarifs($pdo, (int)$camp['id'])),
         'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], equipe_champs($pdo, (int)$camp['id'])),
     ];
@@ -115,6 +132,7 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
     $e = $in['equipe'] ?? null;
     if (!is_array($e)) return null;
     $active = !empty($e['active']) ? 1 : 0;
+    $visib = ($e['visibilite'] ?? 'prive') === 'public' ? 'public' : 'prive';
     $ageMin = isset($e['age_min']) && is_numeric($e['age_min']) && (int)$e['age_min'] > 0 ? min((int)$e['age_min'], 99) : null;
     $quota = isset($e['quota']) && is_numeric($e['quota']) && (int)$e['quota'] > 0 ? min((int)$e['quota'], 5000) : null;
     $tarifs = is_array($e['tarifs'] ?? null) ? array_slice($e['tarifs'], 0, 10) : [];
@@ -148,7 +166,9 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
 
     $pdo->beginTransaction();
     try {
-        $pdo->prepare("UPDATE camps SET equipe_active = ?, equipe_age_min = ?, equipe_quota = ? WHERE id = ?")->execute([$active, $ageMin, $quota, $campId]);
+        $pdo->prepare("UPDATE camps SET equipe_active = ?, equipe_age_min = ?, equipe_quota = ?, equipe_visibilite = ? WHERE id = ?")->execute([$active, $ageMin, $quota, $visib, $campId]);
+        if ($active) equipe_lien_principal($pdo, $campId, $visib, !empty($e['renouveler_lien']));
+        else $pdo->prepare("UPDATE animateur_liens SET actif = 0 WHERE token = (SELECT equipe_lien FROM camps WHERE id = ?) AND camp_id = ?")->execute([$campId, $campId]);
         // Tarifs : on remplace tout (les inscriptions existantes gardent le nom et le prix payés)
         $pdo->prepare("DELETE FROM equipe_tarifs WHERE camp_id = ?")->execute([$campId]);
         $ins = $pdo->prepare("INSERT INTO equipe_tarifs (camp_id, nom, prix, montant_libre, montant_min, position) VALUES (?,?,?,?,?,?)");

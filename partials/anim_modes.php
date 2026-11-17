@@ -7,7 +7,7 @@
 //                       $camp (array|null : séjour en cours de modification), $val / $chk / $tick (helpers de camp_form, si $animLegacy).
 // JS exposé : window.AnimModes = { load(cfg), collect(), save(campToken) -> Promise }.
 $animLegacy = !empty($animLegacy);
-$animCfg = ['recrute' => false, 'remuneration' => null, 'equipe' => ['active' => false, 'age_min' => null, 'quota' => null, 'tarifs' => [], 'champs' => []]];
+$animCfg = ['recrute' => false, 'remuneration' => null, 'equipe' => ['active' => false, 'visibilite' => 'prive', 'lien' => null, 'age_min' => null, 'quota' => null, 'tarifs' => [], 'champs' => []]];
 if (!empty($camp) && is_array($camp)) {
     require_once __DIR__ . '/../api/animateurs.php';
     require_once __DIR__ . '/../api/equipe.php';
@@ -63,6 +63,19 @@ $tk = $tick ?? '';
                 <div><label class="ds-label" for="am-quota">Places de l'équipe (facultatif)</label><input id="am-quota" type="number" min="0" class="ds-input" placeholder="Illimité"><p class="ds-hint">Séparées des places enfants : elles ne les consomment pas.</p></div>
             </div>
             <div>
+                <p class="ds-label">Qui peut s'inscrire ?</p>
+                <div class="grid sm:grid-cols-2 gap-3">
+                    <label class="ds-opt items-center"><input type="radio" name="am-visib" value="prive"><span class="ds-tick"><?= $tk ?></span><span><span class="ds-opt-title block">Lien privé</span><span class="ds-opt-sub">Seules les personnes à qui vous envoyez le lien peuvent s'inscrire. Rien n'apparaît sur la page du séjour.</span></span></label>
+                    <label class="ds-opt items-center"><input type="radio" name="am-visib" value="public"><span class="ds-tick"><?= $tk ?></span><span><span class="ds-opt-title block">Public</span><span class="ds-opt-sub">Un tarif « Animateur » est affiché sur la page du séjour et mène à l'inscription.</span></span></label>
+                </div>
+                <div id="am-lien-box" class="mt-3 hidden">
+                    <label class="ds-label" for="am-lien">Lien d'inscription des animateurs</label>
+                    <div class="flex gap-2"><input id="am-lien" class="ds-input" readonly><button type="button" class="ds-btn ds-btn-light" id="am-copy">Copier</button></div>
+                    <label class="mt-2 flex items-center gap-2 text-[13px]"><input type="checkbox" id="am-renew" style="accent-color:#26343b"> Générer un nouveau lien à l'enregistrement (l'ancien cessera de fonctionner)</label>
+                </div>
+                <p id="am-lien-hint" class="ds-hint mt-2 hidden">Le lien sera disponible ici après l'enregistrement du séjour.</p>
+            </div>
+            <div>
                 <p class="ds-label">Participation financière</p>
                 <p class="ds-hint mb-2">Aucune participation = inscription gratuite. Sinon, ajoutez un ou plusieurs tarifs (prix fixe, ou montant libre avec un minimum) ; l'animateur paie par carte.</p>
                 <div id="am-tarifs" class="space-y-2"></div>
@@ -74,7 +87,7 @@ $tk = $tick ?? '';
                 <div id="am-champs" class="space-y-2"></div>
                 <button type="button" class="ds-btn ds-btn-light mt-2" id="am-add-champ">Ajouter une question</button>
             </div>
-            <p class="ds-hint">Les liens d'inscription (privés ou publics, révocables) se créent dans « Gestion des animateurs » après l'enregistrement du séjour.</p>
+            <p class="ds-hint">Vous pouvez aussi créer des liens supplémentaires (limités en nombre ou en durée) dans « Gestion des animateurs ».</p>
         </div>
     </div>
 </div>
@@ -83,7 +96,12 @@ $tk = $tick ?? '';
     var $ = function (i) { return document.getElementById(i); };
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var TYPES = { texte: 'Texte court', paragraphe: 'Texte long', case: 'Case à cocher', liste: 'Liste de choix', nombre: 'Nombre', date: 'Date' };
-    var tarifs = [], champs = [];
+    var tarifs = [], champs = [], lienTok = null;
+    var visib = function () { var r = document.querySelector('[name=am-visib]:checked'); return r ? r.value : 'prive'; };
+    function drawLien() {
+        $('am-lien-box').classList.toggle('hidden', !lienTok); $('am-lien-hint').classList.toggle('hidden', !!lienTok);
+        if (lienTok) $('am-lien').value = location.origin + '/equipe-inscription.php?l=' + lienTok;
+    }
     function toggles() { $('am-a-body').classList.toggle('hidden', !$('am-recrute').checked); $('am-b-body').classList.toggle('hidden', !$('am-equipe').checked); }
     function drawTarifs() {
         $('am-tarifs').innerHTML = tarifs.map(function (t, i) {
@@ -107,6 +125,11 @@ $tk = $tick ?? '';
         [].forEach.call($('am-tarifs').children, function (row) { var t = tarifs[row.dataset.i]; [].forEach.call(row.querySelectorAll('[data-f]'), function (el) { t[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value; }); });
         [].forEach.call($('am-champs').children, function (row) { var c = champs[row.dataset.i]; [].forEach.call(row.querySelectorAll('[data-f]'), function (el) { c[el.dataset.f] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value; }); });
     }
+    $('am-copy').addEventListener('click', function () {
+        $('am-lien').select();
+        (navigator.clipboard ? navigator.clipboard.writeText($('am-lien').value) : Promise.reject()).catch(function () { document.execCommand('copy'); });
+        $('am-copy').textContent = 'Copié ✓'; setTimeout(function () { $('am-copy').textContent = 'Copier'; }, 2000);
+    });
     $('am-recrute').addEventListener('change', toggles); $('am-equipe').addEventListener('change', toggles);
     $('am-add-tarif').addEventListener('click', function () { sync(); if (tarifs.length < 10) tarifs.push({ nom: '', prix: '', libre: false, min: '' }); drawTarifs(); });
     $('am-add-champ').addEventListener('click', function () { sync(); if (champs.length < 20) champs.push({ id: 0, libelle: '', type: 'texte', options: '', obligatoire: 0 }); drawChamps(); });
@@ -122,18 +145,21 @@ $tk = $tick ?? '';
         $('am-equipe').checked = !!e.active; $('am-age').value = e.age_min || ''; $('am-quota').value = e.quota || '';
         tarifs = (e.tarifs || []).map(function (t) { return { nom: t.nom, prix: t.prix, libre: !!t.libre, min: t.min }; });
         champs = (e.champs || []).map(function (c) { return { id: c.id, libelle: c.libelle, type: c.type, options: c.options, obligatoire: c.obligatoire }; });
-        drawTarifs(); drawChamps(); toggles();
+        lienTok = e.lien || null; $('am-renew').checked = false;
+        var v = document.querySelector('[name=am-visib][value=' + (e.visibilite === 'public' ? 'public' : 'prive') + ']'); if (v) v.checked = true;
+        drawTarifs(); drawChamps(); drawLien(); toggles();
     }
     function collect() {
         sync();
         return { recrute: $('am-recrute').checked, remuneration: $('am-rem').value,
-            equipe: { active: $('am-equipe').checked, age_min: $('am-age').value, quota: $('am-quota').value, tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
+            equipe: { active: $('am-equipe').checked, visibilite: visib(), renouveler_lien: $('am-renew').checked, age_min: $('am-age').value, quota: $('am-quota').value, tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
     }
     async function save(campToken) {
         var body = collect(); body.camp = campToken;
         var r = await fetch('api/anim_directeur.php?a=config', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name=csrf]') || {}).content || '' }, body: JSON.stringify(body) });
         var d = {}; try { d = await r.json(); } catch (x) { }
         if (!r.ok) throw new Error(d.error || 'Réglages des animateurs non enregistrés.');
+        if (d.lien !== undefined) { lienTok = d.lien; $('am-renew').checked = false; drawLien(); }
         return d;
     }
     window.AnimModes = { load: load, collect: collect, save: save };
