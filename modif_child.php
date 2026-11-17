@@ -8,6 +8,7 @@ require_once 'api/config.php';
 require_once 'api/enfants.php';
 require_once 'api/security.php';
 require_once 'api/sante.php';
+require_once 'api/sante_convert.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 if (!isset($_SESSION['user']['id'])) { header('Location: login.php'); exit; }
@@ -110,17 +111,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         // --- documents ---
         elseif ($act === 'doc_carnet') {
-            $n = sante_save_upload($_FILES['carnet'] ?? [], 'sante', 'doc');
+            $n = sante_save_as_pdf($_FILES['carnet'] ?? [], 'sante');
             $newFiles[] = ['sante', $n]; $oldFiles[] = ['sante', $enfant['carnet_sante_token'] ?? null];
-            $put('carnet_sante_token', $n); $ok = "Carnet de santé enregistré."; $sectionOuverte = 'documents';
+            $put('carnet_sante_token', $n); $put('carnet_at', date('Y-m-d H:i:s')); $ok = "Carnet de santé enregistré."; $sectionOuverte = 'documents';
         } elseif ($act === 'doc_fiche') {
-            $n = sante_save_upload($_FILES['fiche'] ?? [], 'sanitaire', 'pdf');
+            $n = sante_save_as_pdf($_FILES['fiche'] ?? [], 'sanitaire');
             $newFiles[] = ['sanitaire', $n]; $oldFiles[] = ['sanitaire', $enfant['fiche_sanitaire_token'] ?? null];
-            $put('fiche_sanitaire_token', $n); $put('fiche_origine', 'importee'); $ok = "Fiche sanitaire enregistrée."; $sectionOuverte = 'documents';
+            $put('fiche_sanitaire_token', $n); $put('fiche_origine', 'importee'); $put('fiche_at', date('Y-m-d H:i:s')); $ok = "Fiche sanitaire enregistrée."; $sectionOuverte = 'documents';
         } elseif ($act === 'del_carnet') {
-            $oldFiles[] = ['sante', $enfant['carnet_sante_token'] ?? null]; $put('carnet_sante_token', null); $ok = "Carnet de santé supprimé."; $sectionOuverte = 'documents';
+            $oldFiles[] = ['sante', $enfant['carnet_sante_token'] ?? null]; $put('carnet_sante_token', null); $put('carnet_at', null); $ok = "Carnet de santé supprimé."; $sectionOuverte = 'documents';
         } elseif ($act === 'del_fiche') {
-            $oldFiles[] = ['sanitaire', $enfant['fiche_sanitaire_token'] ?? null]; $put('fiche_sanitaire_token', null); $put('fiche_origine', null); $ok = "Fiche sanitaire supprimée."; $sectionOuverte = 'documents';
+            $oldFiles[] = ['sanitaire', $enfant['fiche_sanitaire_token'] ?? null]; $put('fiche_sanitaire_token', null); $put('fiche_origine', null); $put('fiche_at', null); $ok = "Fiche sanitaire supprimée."; $sectionOuverte = 'documents';
         } elseif ($act === 'generer_fiche') {
             if (empty($_POST['certifie'])) throw new Exception("Cochez « Je certifie l'exactitude des informations » pour générer la fiche.");
             $sig = mb_substr(trim((string)($_POST['signataire'] ?? '')), 0, 120);
@@ -131,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $row = $enfant; foreach ($sets as $i => $sdef) { if (preg_match('/^`(\w+)`/', $sdef, $m)) $row[$m[1]] = $vals[$i]; }
             $n = sante_store('sanitaire', sante_pdf_fiche($row, $sig), 'pdf');
             $newFiles[] = ['sanitaire', $n]; $oldFiles[] = ['sanitaire', $enfant['fiche_sanitaire_token'] ?? null];
-            $put('fiche_sanitaire_token', $n); $put('fiche_origine', 'generee'); $ok = "Fiche sanitaire de liaison générée."; $sectionOuverte = 'documents';
+            $put('fiche_sanitaire_token', $n); $put('fiche_origine', 'generee'); $put('fiche_at', date('Y-m-d H:i:s')); $ok = "Fiche sanitaire de liaison générée."; $sectionOuverte = 'documents';
         } elseif ($act === 'purge_sante') {
             sante_purge_enfant($pdo, $child_id);
             consent_log($pdo, $parent_id, 'sante_enfant', null, false);
@@ -350,47 +351,51 @@ require_once 'partials/header.php';
             </section>
 
             <section id="p-documents" class="fc-panel ds-card p-6 sm:p-8" data-panel="documents">
-                <h2 class="ds-h1" style="font-size:24px">Documents</h2>
-                <p class="ds-lead" style="font-size:14px">Stockés chiffrés, hors accès direct. Chaque ouverture par un tiers autorisé est journalisée.</p>
+                <h2 class="ds-h1" style="font-size:24px">Documents <details class="ds-help"><summary>?</summary><div>Stockés chiffrés, hors accès direct. Chaque ouverture par un tiers autorisé (organisateur du séjour) est journalisée. Vous pouvez les supprimer à tout moment.</div></details></h2>
+                <?php
+                $dt = fn($d) => $d ? ' le ' . date('d/m/Y', strtotime($d)) : '';
+                $ficheOk = !empty($enfant['fiche_sanitaire_token']); $carnetOk = !empty($enfant['carnet_sante_token']);
+                $ficheTxt = !$ficheOk ? 'Non fournie' : (($enfant['fiche_origine'] ?? '') === 'generee' ? 'Générée' : 'Importée') . $dt($enfant['fiche_at'] ?? null);
+                $carnetTxt = !$carnetOk ? 'Non fourni' : 'Importé' . $dt($enfant['carnet_at'] ?? null);
+                $statut = function (bool $ok, string $txt, string $type, ?string $tok, string $act, string $conf) use ($fileUrl) {
+                    echo '<div class="flex flex-wrap items-center gap-2"><span class="ds-badge" style="' . ($ok ? '' : 'background:#f8f5ea;color:#5b4a1c') . '">' . htmlspecialchars($txt) . '</span>';
+                    if ($ok) echo '<a href="' . htmlspecialchars($fileUrl($type, $tok)) . '" target="_blank" rel="noopener" class="ds-btn ds-btn-light ds-btn-sm">Voir</a><button type="submit" name="act" value="' . $act . '" class="ds-btn ds-btn-light ds-btn-sm" onclick="return confirm(\'' . $conf . '\')">Supprimer</button>';
+                    echo '</div>';
+                };
+                ?>
 
-                <h3 class="ds-eyebrow mt-7 mb-3">Fiche sanitaire de liaison</h3>
-                <?php if (!empty($enfant['fiche_sanitaire_token'])): ?>
-                    <div class="flex flex-wrap items-center gap-3 bg-[#f1f3f5] rounded-xl p-4">
-                        <span class="font-semibold text-[#26343b] flex-1 min-w-[180px]">Fiche enregistrée<?= ($enfant['fiche_origine'] ?? '') === 'generee' ? ' (générée sur ColoMap)' : ' (importée)' ?></span>
-                        <a href="<?= htmlspecialchars($fileUrl('sanitaire', $enfant['fiche_sanitaire_token'])) ?>" target="_blank" rel="noopener" class="ds-btn ds-btn-light" style="padding:8px 14px;font-size:14px">Voir</a>
-                        <button type="submit" name="act" value="del_fiche" class="ds-btn ds-btn-light" style="padding:8px 14px;font-size:14px" onclick="return confirm('Supprimer la fiche sanitaire ?')">Supprimer</button>
+                <div class="mt-6 border border-[#e5e7eb] rounded-2xl p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h3 class="font-extrabold text-[#26343b]">Fiche sanitaire de liaison</h3>
+                        <?php $statut($ficheOk, $ficheTxt, 'sanitaire', $enfant['fiche_sanitaire_token'] ?? null, 'del_fiche', 'Supprimer la fiche sanitaire ?'); ?>
                     </div>
-                <?php endif; ?>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div class="border border-[#e5e7eb] rounded-2xl p-5">
-                        <p class="font-bold text-[#26343b]">Importer mon PDF</p>
-                        <p class="text-[13px] text-[#6b7780] mb-3">Vous avez déjà la fiche remplie et signée. PDF, 8 Mo max.</p>
-                        <input type="file" name="fiche" accept="application/pdf" class="block w-full text-[13.5px] mb-3">
-                        <button type="submit" name="act" value="doc_fiche" class="ds-btn ds-btn-light" style="padding:9px 16px;font-size:14px">Importer</button>
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label class="ds-opt"><input type="radio" name="fm" value="import" checked><span class="ds-tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><span class="ds-opt-title block">Importer ma fiche</span><span class="ds-opt-sub block">PDF ou photo</span></span></label>
+                        <label class="ds-opt"><input type="radio" name="fm" value="gen"><span class="ds-tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><span class="ds-opt-title block">La générer</span><span class="ds-opt-sub block">À partir des informations saisies</span></span></label>
                     </div>
-                    <div class="border border-[#e5e7eb] rounded-2xl p-5">
-                        <p class="font-bold text-[#26343b]">Générer la fiche</p>
-                        <p class="text-[13px] text-[#6b7780] mb-3">À partir des informations des rubriques Parents, Enfant et Santé (enregistrées avec cette action).</p>
-                        <label class="ds-label" for="signataire">Signataire (responsable légal)</label>
-                        <input id="signataire" name="signataire" class="ds-input mb-3" value="<?= htmlspecialchars(trim(($enfant['resp1_prenom'] ?? '') . ' ' . ($enfant['resp1_nom'] ?? ''))) ?>">
-                        <label class="flex items-start gap-2 mb-3 cursor-pointer"><input type="checkbox" name="certifie" value="1" class="mt-1 w-4 h-4"><span class="text-[13px] text-[#26343b]">Je certifie l'exactitude des informations.</span></label>
-                        <button type="submit" name="act" value="generer_fiche" class="ds-btn" style="padding:9px 16px;font-size:14px">Générer le PDF</button>
+                    <div data-fm="import" class="mt-4 flex flex-wrap items-center gap-3">
+                        <input type="file" name="fiche[]" multiple accept="application/pdf,image/*,.heic,.heif" class="ds-file flex-1 min-w-[220px]" style="width:auto">
+                        <button type="submit" name="act" value="doc_fiche" class="ds-btn"><?= $ficheOk ? 'Remplacer' : 'Importer' ?></button>
+                        <details class="ds-help"><summary>?</summary><div>Un PDF, ou une ou plusieurs photos / scans (JPG, PNG, WebP, HEIC), convertis en PDF. 8 Mo maximum par fichier.</div></details>
+                    </div>
+                    <div data-fm="gen" class="mt-4 flex flex-wrap items-center gap-3" hidden>
+                        <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-[220px]"><input type="checkbox" name="certifie" value="1" class="w-4 h-4"><span class="text-[13.5px] text-[#26343b]">Je certifie l'exactitude des informations</span></label>
+                        <button type="submit" name="act" value="generer_fiche" class="ds-btn"><?= $ficheOk ? 'Régénérer' : 'Générer la fiche' ?></button>
+                        <details class="ds-help"><summary>?</summary><div>La fiche est remplie avec les rubriques Parents, Enfant et Santé, signée électroniquement par le responsable n°1. Complétez-les d'abord.</div></details>
                     </div>
                 </div>
 
-                <h3 class="ds-eyebrow mt-8 mb-3">Copie du carnet de santé (vaccins)</h3>
-                <?php if (!empty($enfant['carnet_sante_token'])): ?>
-                    <div class="flex flex-wrap items-center gap-3 bg-[#f1f3f5] rounded-xl p-4 mb-3">
-                        <span class="font-semibold text-[#26343b] flex-1 min-w-[180px]">Carnet enregistré</span>
-                        <a href="<?= htmlspecialchars($fileUrl('sante', $enfant['carnet_sante_token'])) ?>" target="_blank" rel="noopener" class="ds-btn ds-btn-light" style="padding:8px 14px;font-size:14px">Voir</a>
-                        <button type="submit" name="act" value="del_carnet" class="ds-btn ds-btn-light" style="padding:8px 14px;font-size:14px" onclick="return confirm('Supprimer le carnet de santé ?')">Supprimer</button>
+                <div class="mt-5 border border-[#e5e7eb] rounded-2xl p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h3 class="font-extrabold text-[#26343b]">Carnet de santé <span class="font-semibold text-[#6b7780]">(pages vaccins)</span></h3>
+                        <?php $statut($carnetOk, $carnetTxt, 'sante', $enfant['carnet_sante_token'] ?? null, 'del_carnet', 'Supprimer le carnet de santé ?'); ?>
                     </div>
-                <?php endif; ?>
-                <div class="flex flex-wrap items-center gap-3">
-                    <input type="file" name="carnet" accept="application/pdf,image/jpeg,image/png" class="block text-[13.5px] flex-1 min-w-[220px]">
-                    <button type="submit" name="act" value="doc_carnet" class="ds-btn ds-btn-light" style="padding:9px 16px;font-size:14px"><?= empty($enfant['carnet_sante_token']) ? 'Importer' : 'Remplacer' ?></button>
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <input type="file" name="carnet[]" multiple accept="application/pdf,image/*,.heic,.heif" class="ds-file flex-1 min-w-[220px]" style="width:auto">
+                        <button type="submit" name="act" value="doc_carnet" class="ds-btn"><?= $carnetOk ? 'Remplacer' : 'Importer' ?></button>
+                        <details class="ds-help"><summary>?</summary><div>PDF, ou photos / scans des pages vaccins (JPG, PNG, WebP, HEIC), convertis en un seul PDF. 8 Mo maximum par fichier.</div></details>
+                    </div>
                 </div>
-                <p class="text-[12.5px] text-[#6b7780] mt-2">PDF, JPG ou PNG, 8 Mo max.</p>
                 <div class="mt-7"><?php $consentBloc(); ?></div>
             </section>
 
@@ -423,6 +428,9 @@ require_once 'partials/header.php';
         if (!f || !/^image\//.test(f.type)) return;
         img.src = URL.createObjectURL(f); img.classList.remove('hidden'); if (ini) ini.classList.add('hidden');
     });
+    var fm = [].slice.call(document.querySelectorAll('[name=fm]'));   // choix importer / générer
+    function fmShow() { var r = fm.filter(function (x) { return x.checked; })[0]; [].forEach.call(document.querySelectorAll('[data-fm]'), function (d) { d.hidden = !r || d.dataset.fm !== r.value; }); }
+    fm.forEach(function (r) { r.addEventListener('change', fmShow); });
     document.documentElement.classList.add('js');
     links.forEach(function (a) { a.addEventListener('click', function (ev) { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.go); show(a.dataset.go); window.scrollTo({ top: 0 }); }); });
     window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });

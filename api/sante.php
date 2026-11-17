@@ -25,6 +25,7 @@ function sante_ensure(PDO $pdo): void {
         $cols = $pdo->query("SHOW COLUMNS FROM enfants")->fetchAll(PDO::FETCH_COLUMN);
         $add = ['photo_token' => 'VARCHAR(80) NULL', 'traitements' => 'TEXT NULL', 'urgence_nom' => 'VARCHAR(120) NULL', 'urgence_tel' => 'VARCHAR(30) NULL',
                 'urgence_lien' => 'VARCHAR(60) NULL', 'sante_consent_at' => 'DATETIME NULL', 'fiche_origine' => 'VARCHAR(10) NULL',
+                'fiche_at' => 'DATETIME NULL', 'carnet_at' => 'DATETIME NULL',
                 'allergies' => 'TEXT NULL', 'poids' => 'VARCHAR(20) NULL', 'taille' => 'VARCHAR(20) NULL'];
         foreach ($add as $c => $def) if (!in_array($c, $cols, true)) $pdo->exec("ALTER TABLE enfants ADD COLUMN $c $def");
     } catch (Throwable $e) { error_log('sante_ensure: ' . $e->getMessage()); }
@@ -132,7 +133,7 @@ function sante_purge_enfant(PDO $pdo, int $enfantId): void {
     $e = $st->fetch(PDO::FETCH_ASSOC) ?: [];
     $cols = $pdo->query("SHOW COLUMNS FROM enfants")->fetchAll(PDO::FETCH_COLUMN);
     $clean = ['infos_sante' => '', 'allergies' => '', 'traitements' => '', 'regime_alimentaire' => '', 'medecin_nom' => '', 'medecin_tel' => '', 'urgence_nom' => '', 'urgence_tel' => '',
-              'urgence_lien' => '', 'vaccins_data' => null, 'carnet_sante_token' => null, 'fiche_sanitaire_token' => null, 'signature_token' => null, 'fiche_origine' => null, 'sante_consent_at' => null];
+              'urgence_lien' => '', 'vaccins_data' => null, 'carnet_sante_token' => null, 'fiche_sanitaire_token' => null, 'signature_token' => null, 'fiche_origine' => null, 'fiche_at' => null, 'carnet_at' => null, 'sante_consent_at' => null];
     $set = []; $vals = [];
     foreach ($clean as $c => $v) if (in_array($c, $cols, true)) { $set[] = "`$c` = ?"; $vals[] = $v; }
     $vals[] = $enfantId;
