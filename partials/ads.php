@@ -19,6 +19,9 @@ const ADS_SLOTS = [
     'detail'         => '8318853928',   // Display responsive : fiche séjour (bloc « ColoMap - Display responsive »)
     'accueil'        => '8318853928',   // Display : accueil, sous les carrousels
     'recherche'      => '8318853928',   // Display : bas de la recherche
+    // Pub CARRÉE insérée dans les carrousels de l'accueil (1 carte sur ~7). À créer dans AdSense > Annonces > Par bloc d'annonces :
+    // type « Display », forme « Carré » (ou responsive), puis coller ici son identifiant. Vide = aucune pub dans les carrousels.
+    'carre'          => '',             // ADSENSE_SLOT_CARRE
 ];
 
 function ad_slot(string $id, string $slot, array $o = []): void {
