@@ -51,7 +51,7 @@ try {
         $mine->execute([$camp['id'], $uid]);
         anim_json([
             'camp' => ['nom' => $strip($camp['nom']), 'ville' => $strip($camp['ville']), 'date_debut' => $camp['date_debut'], 'date_fin' => $camp['date_fin'], 'organisateur' => $strip($o->fetchColumn())],
-            'age_min' => $camp['equipe_age_min'] !== null ? (int)$camp['equipe_age_min'] : null,
+            'age_min' => $camp['equipe_age_min'] !== null ? (int)$camp['equipe_age_min'] : null, 'infos' => equipe_infos_niveaux($camp),
             'places_restantes' => $quota > 0 ? max(0, $quota - equipe_places_prises($pdo, (int)$camp['id'])) : null,
             'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => equipe_plancher($t)], equipe_tarifs($pdo, (int)$camp['id'])),
             'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'choix' => $c['choix'], 'obligatoire' => $c['obligatoire']], equipe_champs($pdo, (int)$camp['id'])),
@@ -82,7 +82,9 @@ try {
             if ($dn->diff($ref)->y < (int)$camp['equipe_age_min']) anim_json(['error' => 'Âge minimum pour rejoindre cette équipe : ' . (int)$camp['equipe_age_min'] . ' ans.'], 403);
         }
         $urgNom = anim_txt($in['urgence_nom'] ?? '', 120); $urgTel = anim_txt($in['urgence_tel'] ?? '', 30);
-        if ($urgNom === '' || $urgTel === '') anim_json(['error' => "Indiquez une personne à prévenir en cas d'urgence."], 400);
+        $niv = equipe_infos_niveaux($camp);
+        if ($niv['urgence'] === 2 && ($urgNom === '' || $urgTel === '')) anim_json(['error' => "Indiquez une personne à prévenir en cas d'urgence."], 400);
+        foreach (['allergies', 'regime', 'diplome'] as $k) if ($niv[$k] === 2 && anim_txt($in[$k] ?? '', 1000) === '') anim_json(['error' => 'Information obligatoire : ' . mb_strtolower(EQUIPE_INFOS[$k]) . '.'], 400);
         $bafa = in_array($in['bafa_statut'] ?? '', ['bafa', 'en_cours', 'equivalent', 'aucun'], true) ? $in['bafa_statut'] : 'aucun';
 
         // Déjà inscrit ? (une inscription non payée et expirée est libérée)

@@ -36,16 +36,16 @@ if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlenc
             var d = await A.api('api/equipe_inscrire.php?a=info&l=' + encodeURIComponent(L)); I = d;
             if (d.deja) { box.innerHTML = '<h1 class="ds-h1">Vous êtes déjà inscrit</h1><p class="ds-lead">Votre inscription à « ' + E(d.camp.nom) + ' » est enregistrée.</p><a class="ds-btn mt-5" href="reservations">Mes réservations</a>'; return; }
             if (d.places_restantes === 0) { box.innerHTML = '<h1 class="ds-h1">Équipe complète</h1><p class="ds-lead">Il n’y a plus de place dans l’équipe d’animation de « ' + E(d.camp.nom) + ' ». Contactez le directeur.</p>'; return; }
-            var m = d.moi || {};
+            var m = d.moi || {}, NV = d.infos || { diplome: 1, allergies: 1, regime: 1, urgence: 2 }, opt = function (k) { return NV[k] === 2 ? ' *' : ' (facultatif)'; };
             box.innerHTML = '<h1 class="ds-h1">' + E(d.camp.nom) + '</h1><p class="ds-lead">' + E(d.camp.organisateur) + ' · ' + E(d.camp.ville) + ' · ' + E(A.range(d.camp.date_debut, d.camp.date_fin)) + '</p>' +
                 '<p class="mt-3 text-[14px] text-[#6b7780]">Inscription réservée à l’équipe d’animation' + (d.age_min ? ' (' + d.age_min + ' ans minimum)' : '') + (d.places_restantes != null ? ' · ' + d.places_restantes + ' place(s) restante(s)' : '') + '.</p>' +
                 '<form id="f" class="ds-card mt-6 p-6 sm:p-8 space-y-6" novalidate>' +
                 '<div class="grid sm:grid-cols-2 gap-4">' + inp('prenom', 'Prénom *', 'text', m.prenom, 'maxlength="80"') + inp('nom', 'Nom *', 'text', m.nom, 'maxlength="80"') +
                 inp('email', 'E-mail *', 'email', m.email) + inp('tel', 'Téléphone', 'tel', m.tel) + inp('dn', 'Date de naissance' + (d.age_min ? ' *' : ''), 'date', m.date_naissance) + '</div>' +
-                '<div class="grid sm:grid-cols-2 gap-4"><div><label class="ds-label" for="bafa">Diplôme d’animation (facultatif)</label><select id="bafa" class="ds-select">' +
-                Object.keys(A.BAFA).map(function (k) { return '<option value="' + k + '"' + (k === 'aucun' ? ' selected' : '') + '>' + E(A.BAFA[k]) + '</option>'; }).join('') + '</select></div>' + inp('diplome', 'Numéro / intitulé (facultatif)', 'text', '', 'maxlength="255"') + '</div>' +
-                '<div class="grid sm:grid-cols-2 gap-4"><div><label class="ds-label" for="allergies">Allergies</label><textarea id="allergies" rows="2" maxlength="1000" class="ds-textarea"></textarea></div><div><label class="ds-label" for="regime">Régime alimentaire</label><input id="regime" class="ds-input" maxlength="255"></div></div>' +
-                '<div class="grid sm:grid-cols-2 gap-4">' + inp('un', 'Personne à prévenir en cas d’urgence *', 'text', '', 'maxlength="120"') + inp('ut', 'Téléphone de cette personne *', 'tel', '') + '</div>' +
+                (NV.diplome ? '<div class="grid sm:grid-cols-2 gap-4"><div><label class="ds-label" for="bafa">Diplôme d’animation' + opt('diplome') + '</label><select id="bafa" class="ds-select">' +
+                Object.keys(A.BAFA).map(function (k) { return '<option value="' + k + '"' + (k === 'aucun' ? ' selected' : '') + '>' + E(A.BAFA[k]) + '</option>'; }).join('') + '</select></div>' + inp('diplome', 'Numéro / intitulé' + opt('diplome'), 'text', '', 'maxlength="255"') + '</div>' : '') +
+                (NV.allergies || NV.regime ? '<div class="grid sm:grid-cols-2 gap-4">' + (NV.allergies ? '<div><label class="ds-label" for="allergies">Allergies' + opt('allergies') + '</label><textarea id="allergies" rows="2" maxlength="1000" class="ds-textarea"></textarea></div>' : '') + (NV.regime ? '<div><label class="ds-label" for="regime">Régime alimentaire' + opt('regime') + '</label><input id="regime" class="ds-input" maxlength="255"></div>' : '') + '</div>' : '') +
+                (NV.urgence ? '<div class="grid sm:grid-cols-2 gap-4">' + inp('un', 'Personne à prévenir en cas d’urgence' + opt('urgence'), 'text', '', 'maxlength="120"') + inp('ut', 'Téléphone de cette personne' + opt('urgence'), 'tel', '') + '</div>' : '') +
                 (d.champs.length ? '<div class="space-y-4 border-t border-[#e5e7eb] pt-5">' + d.champs.map(champ).join('') + '</div>' : '') +
                 '<div class="border-t border-[#e5e7eb] pt-5"><p class="ds-label">Participation</p>' + tarifBlock(d) + '</div>' +
                 '<div id="err" class="ds-alert-err hidden"></div><button class="ds-btn" id="go" type="submit">' + (d.tarifs.length ? 'Continuer vers le paiement' : 'Valider mon inscription') + '</button></form>';
@@ -54,13 +54,13 @@ if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlenc
     }
     async function send(ev) {
         ev.preventDefault();
-        var $ = function (i) { return document.getElementById(i); }, er = $('err'), go = $('go');
+        var $ = function (i) { return document.getElementById(i); }, er = $('err'), go = $('go'), v = function (i) { return $(i) ? $(i).value : ''; };
         var rep = {}; [].forEach.call(document.querySelectorAll('[data-q]'), function (el) { rep[el.dataset.q] = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value; });
         var t = document.querySelector('[name=tarif]:checked'), tid = t ? t.value : 0;
         er.classList.add('hidden'); go.disabled = true;
         try {
             var r = await A.api('api/equipe_inscrire.php?a=inscrire', { json: { lien: L, prenom: $('prenom').value, nom: $('nom').value, email: $('email').value, tel: $('tel').value, date_naissance: $('dn').value,
-                bafa_statut: $('bafa').value, diplome: $('diplome').value, allergies: $('allergies').value, regime: $('regime').value, urgence_nom: $('un').value, urgence_tel: $('ut').value,
+                bafa_statut: v('bafa') || 'aucun', diplome: v('diplome'), allergies: v('allergies'), regime: v('regime'), urgence_nom: v('un'), urgence_tel: v('ut'),
                 tarif: tid, montant: tid && $('m' + tid) ? $('m' + tid).value : '', reponses: rep } });
             location.href = r.url || 'reservations?equipe=ok';
         } catch (e) { er.textContent = e.message; er.classList.remove('hidden'); er.scrollIntoView({ block: 'center' }); go.disabled = false; }

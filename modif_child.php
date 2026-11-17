@@ -288,7 +288,7 @@ require_once 'partials/header.php';
                         <img id="photo-prev" src="" alt="" class="w-24 h-24 rounded-full object-cover flex-none hidden">
                     <?php endif; ?>
                     <div class="flex-1 min-w-[220px]">
-                        <label class="ds-label" for="photo">Photo de l'enfant <details class="ds-help"><summary>?</summary><div>JPEG, PNG ou WebP, 5 Mo maximum. Recadrée en carré, stockée de façon privée et chiffrée ; visible uniquement par vous et les organisateurs des séjours de l'enfant.</div></details></label>
+                        <label class="ds-label" for="photo">Photo de l'enfant </label><details class="ds-help mb-2"><summary>?</summary><div>JPEG, PNG ou WebP, 5 Mo maximum. Recadrée en carré, stockée de façon privée et chiffrée ; visible uniquement par vous et les organisateurs des séjours de l'enfant.</div></details>
                         <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="ds-file">
                     </div>
                     <div class="flex gap-2">

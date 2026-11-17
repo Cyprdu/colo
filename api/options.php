@@ -2,7 +2,7 @@
 // api/options.php : options personnalisables d'un séjour (créées à la première utilisation, idempotent).
 //
 //  - reserve_sexe   : NULL (mixte) | 'Homme' (garçons) | 'Femme' (filles)
-//  - champs_requis  : critères de la fiche enfant que le directeur impose (liste de clés de ENFANT_CRITERES, JSON)
+//  - champs_requis  : critères OBLIGATOIRES (inscription impossible sans) ; champs_demandes : critères DEMANDÉS aux parents (obligatoires inclus, JSON)
 //  - moyens_paiement: moyens acceptés par l'organisme (liste de codes de options_paiements(), séparés par des virgules)
 //  - hebergement, transport, encadrement, inclus, a_prevoir, instructions_paiement : informations pratiques
 // Les quotas filles / garçons existent déjà (quota_fille / quota_garcon) : 0 ou vide = pas de quota.
@@ -35,6 +35,7 @@ function options_ensure(PDO $pdo): void {
         $add = [
             'reserve_sexe' => "VARCHAR(10) NULL DEFAULT NULL",
             'champs_requis' => "TEXT NULL",
+            'champs_demandes' => "TEXT NULL",
             'moyens_paiement' => "VARCHAR(255) NULL",
             'hebergement' => "VARCHAR(20) NULL",
             'transport' => "VARCHAR(255) NULL",
@@ -89,10 +90,11 @@ function options_enregistrer(PDO $pdo, int $campId, array $in): void {
     $sexe = in_array($sexe, [SEXE_GARCON, SEXE_FILLE], true) ? $sexe : null;
     $txt = function ($k, $n) use ($in) { $v = trim((string)($in[$k] ?? '')); return $v === '' ? null : mb_substr($v, 0, $n); };
     $heb = (string)($in['hebergement'] ?? '');
-    $pdo->prepare("UPDATE camps SET reserve_sexe = ?, champs_requis = ?, moyens_paiement = ?, hebergement = ?, transport = ?, encadrement = ?, inclus = ?, a_prevoir = ?, instructions_paiement = ? WHERE id = ?")
+    $pdo->prepare("UPDATE camps SET reserve_sexe = ?, champs_requis = ?, champs_demandes = ?, moyens_paiement = ?, hebergement = ?, transport = ?, encadrement = ?, inclus = ?, a_prevoir = ?, instructions_paiement = ? WHERE id = ?")
         ->execute([
             $sexe,
-            json_encode(options_criteres_valides($in['champs_requis'] ?? [])),
+            json_encode($req = options_criteres_valides($in['champs_requis'] ?? [])),
+            json_encode(array_values(array_unique(array_merge($req, options_criteres_valides($in['champs_demandes'] ?? []))))),
             implode(',', options_paiements_valides($in['moyens_paiement'] ?? [])),
             isset(HEBERGEMENTS[$heb]) && $heb !== '' ? $heb : null,
             $txt('transport', 255), $txt('encadrement', 255), $txt('inclus', 2000), $txt('a_prevoir', 2000), $txt('instructions_paiement', 1000),
@@ -110,6 +112,21 @@ function options_enfant_manquants(array $camp, array $enfant): array {
             $v = $enfant[$col] ?? null;
             $vide = $type === 'bool' ? ((int)$v !== 1) : (trim((string)$v) === '' || trim((string)$v) === '0');
             if ($vide) { $out[] = $label; break; }
+        }
+    }
+    return $out;
+}
+
+/** Libellés des critères DEMANDÉS mais non obligatoires que l'enfant n'a pas remplis (simple rappel, jamais bloquant). */
+function options_enfant_souhaites(array $camp, array $enfant): array {
+    $req = options_criteres_valides($camp['champs_requis'] ?? '[]');
+    $out = [];
+    foreach (options_criteres_valides($camp['champs_demandes'] ?? '[]') as $k) {
+        if (in_array($k, $req, true)) continue;
+        [$label, $cols, $type] = ENFANT_CRITERES[$k];
+        foreach ($cols as $col) {
+            $v = $enfant[$col] ?? null;
+            if ($type === 'bool' ? ((int)$v !== 1) : (trim((string)$v) === '' || trim((string)$v) === '0')) { $out[] = $label; break; }
         }
     }
     return $out;

@@ -11,6 +11,7 @@ $val = fn($k, $d = '') => htmlspecialchars((string)($edit ? ($camp[$k] ?? $d) : 
 $chk = fn($k) => $edit && !empty($camp[$k]) ? 'checked' : '';
 $reserve = $edit ? (string)($camp['reserve_sexe'] ?? '') : '';
 $requis = $edit ? options_criteres_valides($camp['champs_requis'] ?? '[]') : ['accord_parental'];
+$demandes = array_values(array_unique(array_merge($requis, $edit ? options_criteres_valides($camp['champs_demandes'] ?? '[]') : [])));
 $moyens = $edit ? options_paiements_valides($camp['moyens_paiement'] ?? '') : ['carte'];
 $quotasOn = $edit && ((int)($camp['quota_fille'] ?? 0) > 0 || (int)($camp['quota_garcon'] ?? 0) > 0);
 $online = $edit ? !empty($camp['inscription_en_ligne']) : false;
@@ -221,13 +222,28 @@ $tick = $svg('check', 'w-3 h-3');
                     <p class="mt-2">Pour un paiement hors carte, vous encaissez directement. Une fois que vous le marquez « reçu » dans la liste des inscrits, ColoMap retient <?= number_format(fin_hors_stripe_pct(), 1, ',', ' ') ?> % du montant, déduits de vos prochains versements par carte (rien à payer à part).</p></details>
             </section>
 
-            <?= $sec('s-fiche', 'file', 'Fiche enfant : informations obligatoires', "Cochez ce que l'enfant doit avoir renseigné dans sa fiche pour s'inscrire. L'inscription est refusée tant qu'un champ imposé est vide.") ?>
-                <div class="grid sm:grid-cols-2 gap-3">
+            <?= $sec('s-fiche', 'file', "Informations sur la fiche enfant", "Ce que vous demandez aux parents.") ?>
+                <details class="ds-help mb-4"><summary>?</summary><div><strong>Demander</strong> : l'information est réclamée aux parents (rappel affiché à l'inscription), sans jamais bloquer. <strong>Obligatoire</strong> : l'inscription est impossible tant qu'elle n'est pas renseignée.<br>Exemple : « Droit à l'image » en <em>Demander</em> seulement : les parents qui refusent peuvent quand même inscrire leur enfant. Nom, prénom, date de naissance et sexe sont toujours obligatoires.</div></details>
+                <div class="space-y-2" id="fiche-infos">
                     <?php foreach (ENFANT_CRITERES as $k => [$lib]): ?>
-                        <label class="ds-opt items-center"><input type="checkbox" name="champs_requis[]" value="<?= $k ?>" <?= in_array($k, $requis, true) ? 'checked' : '' ?>><span class="ds-tick"><?= $tick ?></span><span class="ds-opt-title"><?= htmlspecialchars($lib) ?></span></label>
+                        <div class="ds-row" data-info>
+                            <span class="ds-opt-title"><?= htmlspecialchars($lib) ?></span>
+                            <span class="flex items-center gap-5 flex-none text-[13px] font-semibold text-[#3b4a54]">
+                                <label class="flex items-center gap-2 cursor-pointer">Demander <span class="ds-switch"><input type="checkbox" name="champs_demandes[]" value="<?= $k ?>" data-role="ask" <?= in_array($k, $demandes, true) ? 'checked' : '' ?> aria-label="Demander : <?= htmlspecialchars($lib) ?>"><span></span></span></label>
+                                <label class="flex items-center gap-2 cursor-pointer">Obligatoire <span class="ds-switch"><input type="checkbox" name="champs_requis[]" value="<?= $k ?>" data-role="req" <?= in_array($k, $requis, true) ? 'checked' : '' ?> aria-label="Obligatoire : <?= htmlspecialchars($lib) ?>"><span></span></span></label>
+                            </span>
+                        </div>
                     <?php endforeach; ?>
                 </div>
-                <p class="ds-hint">Nom, prénom, date de naissance et sexe sont toujours obligatoires. Les parents sont invités à compléter la fiche avant de payer.</p>
+                <script>
+                // Obligatoire implique Demander ; retirer Demander retire Obligatoire
+                document.getElementById('fiche-infos').addEventListener('change', function (e) {
+                    var row = e.target.closest('[data-info]'); if (!row) return;
+                    var ask = row.querySelector('[data-role=ask]'), req = row.querySelector('[data-role=req]');
+                    if (e.target === req && req.checked) ask.checked = true;
+                    if (e.target === ask && !ask.checked) req.checked = false;
+                });
+                </script>
             </section>
 
             <?= $sec('s-questions', 'chat', 'Vos propres questions', "Posées pour chaque enfant à l'inscription ; les réponses apparaissent dans la fiche de l'inscrit.") ?>
@@ -235,7 +251,7 @@ $tick = $svg('check', 'w-3 h-3');
                 <button type="button" class="ds-btn ds-btn-light mt-4" onclick="Champs.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une question</button>
             </section>
 
-            <?= $sec('s-anim', 'whistle', "Animateurs de l'équipe", "Deux options distinctes : recruter des animateurs via ColoMap, ou inscrire votre propre équipe d'animation. Vous pouvez activer l'une, l'autre, ou les deux.") ?>
+            <?= $sec('s-anim', 'whistle', "Animateurs de l'équipe", "Recruter via ColoMap, inscrire votre équipe, ou les deux.") ?>
                 <?php $animLegacy = true; include __DIR__ . '/anim_modes.php'; /* point d'accroche animateurs : voir partials/anim_modes.php */ ?>
             </section>
 
@@ -591,7 +607,7 @@ const HERIT = {
     public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
     inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs'] },
     paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement'] },
-    fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]'] },
+    fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]', 'champs_demandes[]'] },
     questions: { label: 'les questions aux familles', a: ['champs'] },
     anim: { label: 'les réglages des animateurs', f: ['gestion_animateur', 'quota_max_anim', 'quota_anim_fille', 'quota_anim_garcon', 'anim_plus_18', 'bafa_obligatoire', 'remuneration_anim', 'anim_doit_payer', 'prix_anim'], a: ['anim'] },
     infos: { label: 'les infos pratiques', f: ['hebergement', 'transport', 'encadrement', 'inclus', 'a_prevoir'] },

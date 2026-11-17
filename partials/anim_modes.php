@@ -25,13 +25,13 @@ $tk = $tick ?? '';
     <div class="rounded-2xl border-2 border-[#e5e7eb] p-5" id="am-a">
         <div class="ds-row">
             <div>
-                <p class="ds-opt-title">A. Recruter des animateurs via ColoMap</p>
-                <p class="ds-opt-sub">Vous cherchez des animateurs : le séjour apparaît dans le catalogue des animateurs inscrits sur ColoMap (avec ou sans BAFA), vous validez leurs candidatures.<br><em>Exemple : un séjour sportif d'été qui a besoin de 6 animateurs qu'il ne connaît pas encore.</em></p>
+                <div class="ds-opt-title">A. Recruter via ColoMap <details class="ds-help"><summary>?</summary><div>Le séjour apparaît dans le catalogue des animateurs inscrits sur ColoMap (avec ou sans BAFA) et vous validez leurs candidatures.<br>Exemple : un séjour sportif d'été qui cherche 6 animateurs qu'il ne connaît pas encore.</div></details></div>
+                <p class="ds-opt-sub">Les animateurs de ColoMap postulent, vous validez.</p>
             </div>
             <label class="ds-switch"><input type="checkbox" id="am-recrute" <?= $animLegacy ? 'name="gestion_animateur"' : '' ?> <?= $animCfg['recrute'] || ($animLegacy && !empty($camp['gestion_animateur'])) ? 'checked' : '' ?> aria-label="Recruter des animateurs via ColoMap"><span></span></label>
         </div>
         <div id="am-a-body" class="mt-4 space-y-4 hidden">
-            <div class="max-w-xs"><label class="ds-label" for="am-rem">Rémunération prévue par animateur (€)</label><input id="am-rem" type="number" min="0" step="0.01" class="ds-input" placeholder="Vide = non rémunéré"></div>
+            <div class="max-w-xs"><label class="ds-label" for="am-rem">Rémunération par animateur (€)</label><input id="am-rem" type="number" min="0" step="0.01" class="ds-input" placeholder="Vide = non rémunéré"></div>
             <?php if ($animLegacy): ?>
             <div class="grid grid-cols-3 gap-4">
                 <div><label class="ds-label" for="a-tot">Animateurs recherchés</label><input id="a-tot" type="number" min="0" name="quota_max_anim" class="ds-input" value="<?= $val('quota_max_anim') ?>"></div>
@@ -52,21 +52,21 @@ $tk = $tick ?? '';
     <div class="rounded-2xl border-2 border-[#e5e7eb] p-5" id="am-b">
         <div class="ds-row">
             <div>
-                <p class="ds-opt-title">B. Inscription de mon équipe d'animation</p>
-                <p class="ds-opt-sub">Vos animateurs sont déjà choisis (vous ne recrutez pas via ColoMap) mais doivent s'inscrire, souvent en payant une participation. Vous partagez un lien ; le séjour n'apparaît jamais dans le catalogue des animateurs, et l'âge des enfants n'est pas vérifié.<br><em>Exemple : une pastorale des jeunes organise un week-end pour des collégiens ; ses animateurs de 20 ans s'inscrivent par le lien et règlent 25 €.</em></p>
+                <div class="ds-opt-title">B. Inscrire mon équipe <details class="ds-help"><summary>?</summary><div>Vos animateurs sont déjà choisis mais doivent s'inscrire, souvent en payant une participation. Vous partagez un lien ; le séjour n'apparaît jamais dans le catalogue des animateurs.<br>Exemple : une pastorale des jeunes organise un week-end ; ses animateurs de 20 ans s'inscrivent par le lien et règlent 25 €.</div></details></div>
+                <p class="ds-opt-sub">Vos animateurs s'inscrivent avec un lien.</p>
             </div>
             <label class="ds-switch"><input type="checkbox" id="am-equipe" aria-label="Ouvrir l'inscription de mon équipe d'animation"><span></span></label>
         </div>
         <div id="am-b-body" class="mt-4 space-y-5 hidden">
             <div class="grid sm:grid-cols-2 gap-4">
                 <div><label class="ds-label" for="am-age">Âge minimum de l'animateur (facultatif)</label><input id="am-age" type="number" min="0" max="99" class="ds-input" placeholder="Ex : 17"></div>
-                <div><label class="ds-label" for="am-quota">Places de l'équipe (facultatif)</label><input id="am-quota" type="number" min="0" class="ds-input" placeholder="Illimité"><p class="ds-hint">Séparées des places enfants : elles ne les consomment pas.</p></div>
+                <div><label class="ds-label" for="am-quota">Places de l'équipe (facultatif)</label><input id="am-quota" type="number" min="0" class="ds-input" placeholder="Illimité"></div>
             </div>
             <div>
                 <p class="ds-label">Qui peut s'inscrire ?</p>
                 <div class="grid sm:grid-cols-2 gap-3">
-                    <label class="ds-opt items-center"><input type="radio" name="am-visib" value="prive"><span class="ds-tick"><?= $tk ?></span><span><span class="ds-opt-title block">Lien privé</span><span class="ds-opt-sub">Seules les personnes à qui vous envoyez le lien peuvent s'inscrire. Rien n'apparaît sur la page du séjour.</span></span></label>
-                    <label class="ds-opt items-center"><input type="radio" name="am-visib" value="public"><span class="ds-tick"><?= $tk ?></span><span><span class="ds-opt-title block">Public</span><span class="ds-opt-sub">Un tarif « Animateur » est affiché sur la page du séjour et mène à l'inscription.</span></span></label>
+                    <label class="ds-opt items-center"><input type="radio" name="am-visib" value="prive"><span class="ds-tick"><?= $tk ?></span><span><span class="ds-opt-title block">Lien privé</span><span class="ds-opt-sub">Uniquement via le lien envoyé.</span></span></label>
+                    <label class="ds-opt items-center"><input type="radio" name="am-visib" value="public"><span class="ds-tick"><?= $tk ?></span><span><span class="ds-opt-title block">Public</span><span class="ds-opt-sub">Tarif « Animateur » sur la page du séjour.</span></span></label>
                 </div>
                 <div id="am-lien-box" class="mt-3 hidden">
                     <label class="ds-label" for="am-lien">Lien d'inscription des animateurs</label>
@@ -76,18 +76,27 @@ $tk = $tick ?? '';
                 <p id="am-lien-hint" class="ds-hint mt-2 hidden">Le lien sera disponible ici après l'enregistrement du séjour.</p>
             </div>
             <div>
-                <p class="ds-label">Participation financière</p>
-                <p class="ds-hint mb-2">Aucune participation = inscription gratuite. Sinon, ajoutez un ou plusieurs tarifs (prix fixe, ou montant libre avec un minimum) ; l'animateur paie par carte.</p>
+                <p class="ds-label">Participation financière <details class="ds-help"><summary>?</summary><div>Aucune participation = inscription gratuite. Sinon, ajoutez un ou plusieurs tarifs (prix fixe, ou montant libre avec un minimum) ; l'animateur paie par carte. Les places de l'équipe sont séparées des places enfants.</div></details></p>
                 <div id="am-tarifs" class="space-y-2"></div>
                 <button type="button" class="ds-btn ds-btn-light mt-2" id="am-add-tarif">Ajouter un tarif</button>
             </div>
             <div>
-                <p class="ds-label">Questions propres à l'équipe</p>
-                <p class="ds-hint mb-2">Posées à chaque animateur en plus de son identité, ses coordonnées, son diplôme, ses allergies, son régime et son contact d'urgence.</p>
+                <p class="ds-label">Informations demandées aux animateurs <details class="ds-help"><summary>?</summary><div><strong>Demander</strong> : le champ apparaît dans le formulaire, facultatif. <strong>Obligatoire</strong> : l'inscription est impossible sans. Identité, e-mail et date de naissance sont toujours demandés.</div></details></p>
+                <div class="space-y-2 mb-5" id="am-infos">
+                    <?php foreach (['diplome' => "Diplôme d'animation", 'allergies' => 'Allergies', 'regime' => 'Régime alimentaire', 'urgence' => "Personne à prévenir"] as $k => $lib): ?>
+                        <div class="ds-row" data-k="<?= $k ?>">
+                            <span class="ds-opt-title"><?= $lib ?></span>
+                            <span class="flex items-center gap-5 flex-none text-[13px] font-semibold text-[#3b4a54]">
+                                <label class="flex items-center gap-2 cursor-pointer">Demander <span class="ds-switch"><input type="checkbox" data-role="ask" aria-label="Demander : <?= $lib ?>"><span></span></span></label>
+                                <label class="flex items-center gap-2 cursor-pointer">Obligatoire <span class="ds-switch"><input type="checkbox" data-role="req" aria-label="Obligatoire : <?= $lib ?>"><span></span></span></label>
+                            </span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <p class="ds-label">Vos propres questions</p>
                 <div id="am-champs" class="space-y-2"></div>
                 <button type="button" class="ds-btn ds-btn-light mt-2" id="am-add-champ">Ajouter une question</button>
             </div>
-            <p class="ds-hint">Vous pouvez aussi créer des liens supplémentaires (limités en nombre ou en durée) dans « Gestion des animateurs ».</p>
         </div>
     </div>
 </div>
@@ -97,6 +106,7 @@ $tk = $tick ?? '';
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var TYPES = { texte: 'Texte court', paragraphe: 'Texte long', case: 'Case à cocher', liste: 'Liste de choix', nombre: 'Nombre', date: 'Date' };
     var tarifs = [], champs = [], lienTok = null, campTok = null;
+    var DEF_INFOS = { diplome: 1, allergies: 1, regime: 1, urgence: 2 };
     var visib = function () { var r = document.querySelector('[name=am-visib]:checked'); return r ? r.value : 'prive'; };
     function drawLien() {
         var ok = !!(lienTok && campTok); $('am-lien-box').classList.toggle('hidden', !ok); $('am-lien-hint').classList.toggle('hidden', ok);
@@ -130,6 +140,14 @@ $tk = $tick ?? '';
         (navigator.clipboard ? navigator.clipboard.writeText($('am-lien').value) : Promise.reject()).catch(function () { document.execCommand('copy'); });
         $('am-copy').textContent = 'Copié ✓'; setTimeout(function () { $('am-copy').textContent = 'Copier'; }, 2000);
     });
+    $('am-infos').addEventListener('change', function (e) {   // Obligatoire implique Demander ; retirer Demander retire Obligatoire
+        var row = e.target.closest('[data-k]'); if (!row) return;
+        var ask = row.querySelector('[data-role=ask]'), req = row.querySelector('[data-role=req]');
+        if (e.target === req && req.checked) ask.checked = true;
+        if (e.target === ask && !ask.checked) req.checked = false;
+    });
+    function drawInfos(n) { [].forEach.call($('am-infos').children, function (row) { var v = (n || DEF_INFOS)[row.dataset.k]; row.querySelector('[data-role=ask]').checked = v >= 1; row.querySelector('[data-role=req]').checked = v === 2; }); }
+    function collectInfos() { var o = {}; [].forEach.call($('am-infos').children, function (row) { o[row.dataset.k] = row.querySelector('[data-role=req]').checked ? 2 : (row.querySelector('[data-role=ask]').checked ? 1 : 0); }); return o; }
     $('am-recrute').addEventListener('change', toggles); $('am-equipe').addEventListener('change', toggles);
     $('am-add-tarif').addEventListener('click', function () { sync(); if (tarifs.length < 10) tarifs.push({ nom: '', prix: '', libre: false, min: '' }); drawTarifs(); });
     $('am-add-champ').addEventListener('click', function () { sync(); if (champs.length < 20) champs.push({ id: 0, libelle: '', type: 'texte', options: '', obligatoire: 0 }); drawChamps(); });
@@ -147,12 +165,12 @@ $tk = $tick ?? '';
         champs = (e.champs || []).map(function (c) { return { id: c.id, libelle: c.libelle, type: c.type, options: c.options, obligatoire: c.obligatoire }; });
         lienTok = e.lien || null; $('am-renew').checked = false;
         var v = document.querySelector('[name=am-visib][value=' + (e.visibilite === 'public' ? 'public' : 'prive') + ']'); if (v) v.checked = true;
-        drawTarifs(); drawChamps(); drawLien(); toggles();
+        drawInfos(e.infos); drawTarifs(); drawChamps(); drawLien(); toggles();
     }
     function collect() {
         sync();
         return { recrute: $('am-recrute').checked, remuneration: $('am-rem').value,
-            equipe: { active: $('am-equipe').checked, visibilite: visib(), renouveler_lien: $('am-renew').checked, age_min: $('am-age').value, quota: $('am-quota').value, tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
+            equipe: { active: $('am-equipe').checked, visibilite: visib(), renouveler_lien: $('am-renew').checked, age_min: $('am-age').value, quota: $('am-quota').value, infos: collectInfos(), tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
     }
     async function save(campToken) {
         var body = collect(); body.camp = campToken; campTok = campToken;

@@ -21,6 +21,7 @@ function equipe_ensure(PDO $pdo): void {
     if ($done) return;
     try {
         $cols = $pdo->query("SHOW COLUMNS FROM camps")->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('equipe_infos', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_infos TEXT NULL");
         if (!in_array('equipe_age_min', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_age_min INT NULL");
         if (!in_array('equipe_quota', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_quota INT NULL");
         if (!in_array('equipe_visibilite', $cols, true)) $pdo->exec("ALTER TABLE camps ADD COLUMN equipe_visibilite VARCHAR(6) NOT NULL DEFAULT 'prive'");
@@ -113,10 +114,19 @@ function equipe_lien_principal(PDO $pdo, int $campId, string $visibilite, bool $
 }
 
 /** Configuration (B) lisible par le formulaire du séjour et le tableau de bord */
+/** Informations standard demandées à l'animateur : 0 = non demandée, 1 = demandée (facultative), 2 = obligatoire. */
+const EQUIPE_INFOS = ['diplome' => 'Diplôme d\'animation', 'allergies' => 'Allergies', 'regime' => 'Régime alimentaire', 'urgence' => 'Personne à prévenir en cas d\'urgence'];
+function equipe_infos_niveaux(array $camp): array {
+    $n = ['diplome' => 1, 'allergies' => 1, 'regime' => 1, 'urgence' => 2];   // comportement historique
+    $j = json_decode((string)($camp['equipe_infos'] ?? ''), true);
+    if (is_array($j)) foreach ($n as $k => $d) if (isset($j[$k]) && in_array((int)$j[$k], [0, 1, 2], true)) $n[$k] = (int)$j[$k];
+    return $n;
+}
+
 function equipe_config(PDO $pdo, array $camp): array {
     equipe_ensure($pdo);
     return [
-        'active' => !empty($camp['equipe_active']), 'visibilite' => ($camp['equipe_visibilite'] ?? 'prive') === 'public' ? 'public' : 'prive', 'lien' => $camp['equipe_lien'] ?? null, 'age_min' => $camp['equipe_age_min'] ?? null, 'quota' => $camp['equipe_quota'] ?? null,
+        'infos' => equipe_infos_niveaux($camp), 'active' => !empty($camp['equipe_active']), 'visibilite' => ($camp['equipe_visibilite'] ?? 'prive') === 'public' ? 'public' : 'prive', 'lien' => $camp['equipe_lien'] ?? null, 'age_min' => $camp['equipe_age_min'] ?? null, 'quota' => $camp['equipe_quota'] ?? null,
         'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => $t['montant_min'] !== null ? (float)$t['montant_min'] : null], equipe_tarifs($pdo, (int)$camp['id'])),
         'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], equipe_champs($pdo, (int)$camp['id'])),
     ];
@@ -148,6 +158,7 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
     $quota = isset($e['quota']) && is_numeric($e['quota']) && (int)$e['quota'] > 0 ? min((int)$e['quota'], 5000) : null;
     $tarifs = is_array($e['tarifs'] ?? null) ? array_slice($e['tarifs'], 0, 10) : [];
     $champs = is_array($e['champs'] ?? null) ? array_slice($e['champs'], 0, 20) : [];
+    $infos = equipe_infos_niveaux(['equipe_infos' => json_encode($e['infos'] ?? [])]);
 
     $cleanT = [];
     foreach ($tarifs as $i => $t) {
@@ -177,7 +188,7 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
 
     $pdo->beginTransaction();
     try {
-        $pdo->prepare("UPDATE camps SET equipe_active = ?, equipe_age_min = ?, equipe_quota = ?, equipe_visibilite = ? WHERE id = ?")->execute([$active, $ageMin, $quota, $visib, $campId]);
+        $pdo->prepare("UPDATE camps SET equipe_active = ?, equipe_age_min = ?, equipe_quota = ?, equipe_visibilite = ?, equipe_infos = ? WHERE id = ?")->execute([$active, $ageMin, $quota, $visib, json_encode($infos), $campId]);
         if ($active) equipe_lien_principal($pdo, $campId, $visib, !empty($e['renouveler_lien']));
         else $pdo->prepare("UPDATE animateur_liens SET actif = 0 WHERE token = (SELECT equipe_lien FROM camps WHERE id = ?) AND camp_id = ?")->execute([$campId, $campId]);
         // Tarifs : on remplace tout (les inscriptions existantes gardent le nom et le prix payés)

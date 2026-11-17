@@ -154,6 +154,9 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                                     <?php elseif ($blq && $blq['manque']): ?>
                                         <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($blq['manque'][0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
                                     <?php endif; ?>
+                                    <?php if (!$blq || !$blq['manque']): $sg = options_enfant_souhaites($camp, $enfant); if ($sg): ?>
+                                        <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
+                                    <?php endif; endif; ?>
                                 </div>
                             </label>
                         <?php endforeach; ?>
