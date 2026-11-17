@@ -30,29 +30,34 @@ try {
     }
 } catch (Exception $e) {}
 
-// Inscription des animateurs : mode « public » = tarif « Animateur » visible par tous ; mode « privé » = visible seulement avec ?l=<jeton du lien animateurs>
-$eqPub = null; $eqPrive = false;
+// Inscription des animateurs, intégrée au parcours de réservation (date puis « mon enfant » / « animateur »), par session :
+//   mode « public » = choix visible pour tous ; mode « privé » = seulement avec ?l=<jeton du lien animateurs> d'une session du séjour.
+$eqMap = [];   // jeton de session => ['lien', 'complet', 'tarifs' => [[nom, texte]]]
 if ($camp_token) {
     try {
         require_once 'api/animateurs.php';
         require_once 'api/equipe.php';
         equipe_ensure($pdo);
-        $q = $pdo->prepare("SELECT * FROM camps WHERE token = ? AND valide = 1 AND refuse = 0 AND supprime = 0 AND equipe_active = 1 AND (date_fin IS NULL OR date_fin >= CURDATE())");
-        $q->execute([$camp_token]);
-        if ($r = $q->fetch(PDO::FETCH_ASSOC)) {
-            $lien = null;
-            $lp = (string)($_GET['l'] ?? '');
-            if ($lp !== '' && ($v = anim_lien_valide($pdo, $lp)) && (int)$v[1]['id'] === (int)$r['id']) { $lien = $lp; $eqPrive = true; }
-            elseif (($r['equipe_visibilite'] ?? '') === 'public') {
-                $ok = $pdo->prepare("SELECT 1 FROM animateur_liens WHERE token = ? AND actif = 1"); $ok->execute([(string)$r['equipe_lien']]);
-                if ($ok->fetchColumn()) $lien = $r['equipe_lien'];
-            }
-            if ($lien) {
-                $complet = (int)$r['equipe_quota'] > 0 && equipe_places_prises($pdo, (int)$r['id']) >= (int)$r['equipe_quota'];
-                $eqPub = ['lien' => 'equipe-inscription.php?l=' . $lien, 'complet' => $complet, 'tarifs' => equipe_tarifs($pdo, (int)$r['id'])];
-                if ($eqPrive) header('X-Robots-Tag: noindex, nofollow');
-            }
+        $cond = "valide = 1 AND refuse = 0 AND supprime = 0 AND equipe_active = 1 AND (date_fin IS NULL OR date_fin >= CURDATE())";
+        try {
+            $q = $pdo->prepare("SELECT * FROM camps WHERE $cond AND (token = ? OR (groupe_id IS NOT NULL AND groupe_id = (SELECT g.groupe_id FROM camps g WHERE g.token = ?)))");
+            $q->execute([$camp_token, $camp_token]);
+        } catch (Throwable $e) { $q = $pdo->prepare("SELECT * FROM camps WHERE $cond AND token = ?"); $q->execute([$camp_token]); }
+        $sess = $q->fetchAll(PDO::FETCH_ASSOC);
+        $granted = false;
+        $lp = (string)($_GET['l'] ?? '');
+        if ($lp !== '' && $sess && ($v = anim_lien_valide($pdo, $lp))) foreach ($sess as $r) if ((int)$r['id'] === (int)$v[1]['id']) $granted = true;
+        $money = fn($x) => rtrim(rtrim(number_format((float)$x, 2, ',', ''), '0'), ',') . ' €';
+        foreach ($sess as $r) {
+            $pub = ($r['equipe_visibilite'] ?? '') === 'public';
+            if (!$pub && !$granted) continue;
+            $ok = $pdo->prepare("SELECT 1 FROM animateur_liens WHERE token = ? AND actif = 1"); $ok->execute([(string)$r['equipe_lien']]);
+            if (!$ok->fetchColumn()) continue;
+            $tarifs = array_map(fn($t) => [$t['nom'], !empty($t['montant_libre']) ? 'dès ' . $money(equipe_plancher($t)) : ((float)$t['prix'] > 0 ? $money($t['prix']) : 'Gratuit')], equipe_tarifs($pdo, (int)$r['id']));
+            $eqMap[$r['token']] = ['lien' => 'equipe-inscription.php?l=' . $r['equipe_lien'], 'tarifs' => $tarifs ?: [['Animateur', 'Gratuit']],
+                'complet' => (int)$r['equipe_quota'] > 0 && equipe_places_prises($pdo, (int)$r['id']) >= (int)$r['equipe_quota']];
         }
+        if ($granted) header('X-Robots-Tag: noindex, nofollow');
     } catch (Throwable $e) { error_log('camp_details equipe: ' . $e->getMessage()); }
 }
 
@@ -236,19 +241,6 @@ require_once 'partials/header3.php';
                         <div id="cta-container" class="mt-6"></div>
                     </div>
 
-                    <?php if ($eqPub): ?>
-                    <div id="equipe-card" class="cd-card p-6">
-                        <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780]"><?= $eqPrive ? "Inscription de l'équipe d'animation" : 'Vous êtes animateur ?' ?></p>
-                        <?php if ($eqPrive): ?><p class="mt-2 text-[13px] text-[#6b7780]">Vous accédez à cette page par un lien réservé à l'équipe d'animation.</p><?php endif; ?>
-                        <?php foreach ($eqPub['tarifs'] ?: [['nom' => 'Animateur', 'prix' => 0, 'montant_libre' => 0]] as $t): ?>
-                            <p class="mt-3 flex items-baseline justify-between gap-3"><span class="font-bold text-[#26343b]"><?= htmlspecialchars($t['nom']) ?></span>
-                                <span class="font-extrabold text-[#26343b]"><?= !empty($t['montant_libre']) ? 'dès ' . htmlspecialchars(rtrim(rtrim(number_format(equipe_plancher($t), 2, ',', ''), '0'), ',')) . ' €' : ((float)$t['prix'] > 0 ? htmlspecialchars(rtrim(rtrim(number_format((float)$t['prix'], 2, ',', ''), '0'), ',')) . ' €' : 'Gratuit') ?></span></p>
-                        <?php endforeach; ?>
-                        <?php if ($eqPub['complet']): ?><p class="mt-4 text-[14px] text-[#6b7780]">L'équipe d'animation est complète.</p>
-                        <?php else: ?><a class="mt-4 block w-full text-center bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-semibold px-6 py-3 rounded-lg transition-colors" href="<?= htmlspecialchars($eqPub['lien']) ?>" rel="nofollow">Rejoindre l'équipe d'animation</a><?php endif; ?>
-                    </div>
-                    <?php endif; ?>
-
                     <div id="orga-card" class="cd-card p-6">
                         <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Organisé par</p>
                         <div class="flex items-center gap-4 mb-5">
@@ -269,6 +261,7 @@ require_once 'partials/header3.php';
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
     const isLoggedIn = <?= json_encode($is_logged_in); ?>;
+    const EQ = <?= json_encode($eqMap ?: new stdClass(), JSON_UNESCAPED_UNICODE) ?>;
     const initialToken = <?= json_encode($camp_token); ?>;
     let userFavorites = <?= json_encode(array_map('intval', (array)$user_favorites)); ?>;
 
@@ -436,6 +429,16 @@ document.addEventListener('DOMContentLoaded', async function () {
                 : `<a href="login.php?redirect=${encodeURIComponent(location.origin + '/camp_details?t=' + camp.token)}" class="cd-btn">Se connecter pour réserver</a>`;
         } else if (camp.inscription_en_ligne == 1 && places === 0) {
             cta = `<button type="button" disabled class="cd-btn" style="background:#eceef1;color:#9aa3ab;cursor:not-allowed">Inscriptions closes</button>`;
+        }
+        // Parcours unique : « mon enfant » (réservation actuelle) ou « animateur » (tarif et formulaire de CETTE session)
+        const eq = EQ[camp.token];
+        if (eq) {
+            if (cta) cta = cta.replace('Réserver via ColoMap', "J’inscris mon enfant").replace('Réserver ma place', "J’inscris mon enfant");
+            cta = `<div class="space-y-4">${cta ? `<div><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-2">Pour mon enfant</p>${cta}</div>` : ''}
+                <div class="${cta ? 'border-t border-[#e5e7eb] pt-4' : ''}"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-2">Équipe d’animation</p>
+                ${eq.tarifs.map(t => `<p class="flex items-baseline justify-between gap-3 mb-2"><span class="font-bold text-[#26343b]">${esc(t[0])}</span><span class="font-extrabold text-[#26343b]">${esc(t[1])}</span></p>`).join('')}
+                ${eq.complet ? '<p class="text-[14px] text-[#6b7780]">L’équipe d’animation est complète.</p>'
+                    : `<a href="${esc(eq.lien)}" rel="nofollow" class="cd-btn">Je m’inscris en tant qu’animateur</a>`}</div></div>`;
         }
         $('cta-container').innerHTML = cta;
 
