@@ -32,6 +32,10 @@ if ($limit !== '' && (!$isDate($limit) || $limit > $debut)) sendJson(['error' =>
 if (!campsHaveGroupColumn($pdo)) sendJson(['error' => "Les sessions multiples ne sont pas encore activées sur le site (migration à lancer par l'administrateur)."], 409);
 
 try {
+    // Les créations de table/colonne (DDL) valident implicitement une transaction : elles se font AVANT d'en ouvrir une
+    require_once 'etapes.php'; require_once 'options.php'; require_once 'attente.php';
+    require_once 'champs.php';
+    etapes_ensure($pdo); options_ensure($pdo); attente_ensure($pdo); champs_ensure($pdo);
     // Le camp source doit appartenir à un organisme de l'utilisateur connecté
     $stmt = $pdo->prepare("SELECT c.* FROM camps c JOIN organisateurs o ON o.id = c.organisateur_id
                            WHERE c.token = ? AND o.user_id = ? AND COALESCE(c.supprime, 0) = 0");
@@ -77,7 +81,9 @@ try {
         } catch (Throwable $e) { /* table absente : sans importance */ }
     }
     try {
-        require_once 'etapes.php'; etapes_ensure($pdo);
+        $pdo->prepare("INSERT INTO camp_champs (camp_id, libelle, type, options, obligatoire, position) SELECT ?, libelle, type, options, obligatoire, position FROM camp_champs WHERE camp_id = ?")->execute([$newId, $src['id']]);
+    } catch (Throwable $e) { }
+    try {
         $pdo->prepare("INSERT INTO camp_etapes (camp_id, jour, lieu, description, ordre) SELECT ?, jour, lieu, description, ordre FROM camp_etapes WHERE camp_id = ?")->execute([$newId, $src['id']]);
     } catch (Throwable $e) { }
     $pdo->commit();

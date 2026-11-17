@@ -351,8 +351,8 @@ require_once 'partials/header.php';
             }).catch(function () { b.textContent = old; });
         });
     }
-    function delMsg(mid) {
-        if (!confirm('Supprimer ce message ?')) return;
+    async function delMsg(mid) {
+        if (!(await ColoUI.confirm('Supprimer ce message ?', { danger: true, confirmLabel: 'Supprimer' }))) return;
         api('api/delete_message.php', { message_id: mid }).then(function (r) { return r.json(); }).then(function (d) {
             if (d && d.success && shown[mid]) { shown[mid].row.remove(); delete shown[mid]; loadConvs(); }
         });

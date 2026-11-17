@@ -58,7 +58,7 @@ $tick = $svg('check', 'w-3 h-3');
 
     <div class="grid lg:grid-cols-[210px_1fr] gap-8 items-start">
         <nav class="hidden lg:block sticky top-24 text-sm font-semibold text-[#6b7780]" aria-label="Sections">
-            <?php foreach (['s-orga' => 'Organisme', 's-sejour' => 'Le séjour', 's-categories' => 'Catégories', 's-lieu' => 'Lieu et dates', 's-public' => 'Public et places', 's-inscription' => 'Inscriptions', 's-paiement' => 'Paiements acceptés', 's-fiche' => 'Fiche enfant', 's-questions' => 'Questions', 's-anim' => 'Animateurs', 's-infos' => 'Infos pratiques', 's-medias' => 'Visuels'] as $a => $t): ?>
+            <?php foreach (['s-orga' => 'Organisme', 's-sejour' => 'Le séjour', 's-categories' => 'Catégories', 's-lieu' => 'Lieu et dates', 's-sessions' => 'Plusieurs sessions', 's-public' => 'Public et places', 's-inscription' => 'Inscriptions', 's-paiement' => 'Paiements acceptés', 's-fiche' => 'Fiche enfant', 's-questions' => 'Questions', 's-anim' => 'Animateurs', 's-infos' => 'Infos pratiques', 's-medias' => 'Visuels'] as $a => $t): ?>
                 <a href="#<?= $a ?>" class="block px-3 py-2 rounded-lg hover:bg-white hover:text-[#26343b] transition"><?= $t ?></a>
             <?php endforeach; ?>
         </nav>
@@ -122,6 +122,17 @@ $tick = $svg('check', 'w-3 h-3');
                     </div>
                     <div><label class="ds-label" for="f-debut">Début *</label><input id="f-debut" type="date" name="date_debut" class="ds-input" required value="<?= $val('date_debut') ?>"></div>
                     <div><label class="ds-label" for="f-fin">Fin *</label><input id="f-fin" type="date" name="date_fin" class="ds-input" required value="<?= $val('date_fin') ?>"></div>
+                </div>
+            </section>
+
+            <?= $sec('s-sessions', 'ticket', 'Ce séjour a-t-il lieu plusieurs fois ?', "Plusieurs sessions dans l'année : chacune a ses dates, sa tranche d'âge, ses places, ses tarifs et peut être réservée aux filles ou aux garçons. Les familles choisissent leur session sur une seule page.") ?>
+                <div class="ds-row">
+                    <div><p class="ds-opt-title">Oui, il a lieu plusieurs fois</p><p class="ds-opt-sub" id="sessLock">Les dates, âges, places et tarifs de la section « Lieu et dates » et « Inscriptions » sont ceux de la <b>session 1</b>. Ajoutez les autres ci-dessous.</p></div>
+                    <label class="ds-switch"><input type="checkbox" id="toggleSessions" aria-label="Ce séjour a lieu plusieurs fois"><span></span></label>
+                </div>
+                <div id="sessionsBox" class="hidden mt-5">
+                    <div id="sessionsList" class="space-y-4"></div>
+                    <button type="button" class="ds-btn ds-btn-light mt-4" onclick="Sessions.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une session</button>
                 </div>
             </section>
 
@@ -310,6 +321,7 @@ let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'li
 const CATALOGUE = <?= json_encode(cat_pour_js($catalogue), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 const CAT_SEL = <?= json_encode($catSel, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 const KW_INIT = <?= json_encode(array_values($kwInit), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+let SESSIONS = <?= json_encode($sessionsActuelles ?? [], JSON_UNESCAPED_UNICODE) ?>;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -477,7 +489,7 @@ const Tarifs = {
     libre() { const l = $('t-libre').checked; $('t-min-box').classList.toggle('hidden', !l); $('t-prix-l').textContent = l ? 'Montant suggéré (€)' : 'Prix (€)'; },
     async remove(id) {
         const t = TARIFS.find(x => x.id === id);
-        if (!confirm('Supprimer définitivement le tarif « ' + t.nom + ' » ?')) return;
+        if (!(await ColoUI.confirm('Supprimer définitivement le tarif « ' + t.nom + ' » ?', { danger: true, confirmLabel: 'Supprimer' }))) return;
         try {
             await api('api/gerer_orga_tarifs.php', { action: 'tarif_delete', id });
             TARIFS = TARIFS.filter(x => x.id !== id); SELECTED = SELECTED.filter(x => x !== id);
@@ -553,6 +565,68 @@ const Etapes = {
 document.querySelector('input[name=itinerant]').addEventListener('change', e => { $('etapesBox').classList.toggle('hidden', !e.target.checked); if (e.target.checked && !ETAPES.length) Etapes.add(); });
 Etapes.render();
 
+// ------------------------------------------------ sessions multiples (une ligne `camps` par session, groupées côté serveur)
+const Sessions = {
+    mois: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
+    main() {
+        const v = n => (document.querySelector(`[name="${n}"]`) || {}).value || '';
+        const sx = document.querySelector('input[name=reserve_sexe]:checked');
+        return { date_debut: v('date_debut'), date_fin: v('date_fin'), date_limite_inscription: v('date_limite_inscription'), age_min: +v('age_min') || 0, age_max: +v('age_max') || 0,
+            quota_global: +v('quota_global') || 0, quota_fille: +v('quota_fille') || 0, quota_garcon: +v('quota_garcon') || 0, reserve_sexe: sx ? sx.value : '', prix: +v('prix_simple') || 0 };
+    },
+    shift(d, days) { if (!d) return ''; const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + days); return x.toISOString().slice(0, 10); },
+    fresh(base, offset) {
+        const nights = base.date_debut && base.date_fin ? Math.round((new Date(base.date_fin) - new Date(base.date_debut)) / 86400000) : 0;
+        const start = this.shift(base.date_debut, offset);
+        return { token: null, ...base, date_debut: start, date_fin: start ? this.shift(start, nights) : '', date_limite_inscription: '', tarifs: [...SELECTED], inscrits: 0 };
+    },
+    add() { const last = SESSIONS[SESSIONS.length - 1] || this.main(); SESSIONS.push(this.fresh(last, 7)); this.render(); this.focusLast(); },
+    dup(i) { SESSIONS.splice(i + 1, 0, this.fresh(SESSIONS[i], 7)); this.render(); },
+    remove(i) {
+        if (SESSIONS[i].inscrits > 0) { ColoUI.alert("Cette session a déjà des inscrits : elle ne peut pas être supprimée. Annulez d'abord ses inscriptions."); return; }
+        ColoUI.confirm('Supprimer cette session ?', { confirmLabel: 'Supprimer', danger: true }).then(ok => { if (ok) { SESSIONS.splice(i, 1); this.render(); } });
+    },
+    focusLast() { const c = $('sessionsList').lastElementChild; if (c) { c.scrollIntoView({ block: 'center', behavior: 'smooth' }); const f = c.querySelector('input'); if (f) f.focus({ preventScroll: true }); } },
+    set(i, k, v) { SESSIONS[i][k] = (['age_min', 'age_max', 'quota_global', 'quota_fille', 'quota_garcon'].includes(k)) ? (+v || 0) : v; this.summary(i); },
+    toggleTarif(i, id, on) { const t = SESSIONS[i].tarifs; SESSIONS[i].tarifs = on ? [...new Set([...t, id])] : t.filter(x => x !== id); },
+    label(s) {
+        const f = d => { if (!d) return '…'; const x = new Date(d + 'T12:00:00'); return x.getDate() + ' ' + this.mois[x.getMonth()] + ' ' + x.getFullYear(); };
+        return f(s.date_debut) + ' → ' + f(s.date_fin) + (s.age_min || s.age_max ? ' · ' + s.age_min + '–' + s.age_max + ' ans' : '') + (s.reserve_sexe ? ' · ' + (s.reserve_sexe === 'Femme' ? 'filles' : 'garçons') : '');
+    },
+    summary(i) { const el = $('sess-sum-' + i); if (el) el.textContent = this.label(SESSIONS[i]); },
+    render() {
+        const on = $('toggleOnline').checked;
+        $('sessionsList').innerHTML = SESSIONS.map((s, i) => `
+          <div class="border border-[#e5e7eb] rounded-2xl p-4 bg-[#fafbfb]">
+            <div class="flex items-start justify-between gap-3 mb-4"><div class="min-w-0"><p class="text-sm font-bold text-[#26343b]">Session ${i + 2}${s.inscrits ? ` <span class="ds-badge ml-1">${s.inscrits} inscrit${s.inscrits > 1 ? 's' : ''}</span>` : ''}</p><p id="sess-sum-${i}" class="text-xs text-[#6b7780] mt-0.5">${esc(this.label(s))}</p></div>
+              <div class="flex gap-1 flex-none"><button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="Sessions.dup(${i})">Dupliquer</button><button type="button" class="ds-iconbtn danger" aria-label="Supprimer la session ${i + 2}" onclick="Sessions.remove(${i})">${ICON.trash}</button></div></div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div><label class="ds-label">Début</label><input type="date" class="ds-input" value="${esc(s.date_debut)}" oninput="Sessions.set(${i},'date_debut',this.value)"></div>
+              <div><label class="ds-label">Fin</label><input type="date" class="ds-input" value="${esc(s.date_fin)}" oninput="Sessions.set(${i},'date_fin',this.value)"></div>
+              <div class="col-span-2 md:col-span-1"><label class="ds-label">Date limite d'inscription</label><input type="date" class="ds-input" value="${esc(s.date_limite_inscription || '')}" oninput="Sessions.set(${i},'date_limite_inscription',this.value)"></div>
+              <div><label class="ds-label">Âge min</label><input type="number" min="0" max="30" class="ds-input" value="${s.age_min}" oninput="Sessions.set(${i},'age_min',this.value)"></div>
+              <div><label class="ds-label">Âge max</label><input type="number" min="0" max="30" class="ds-input" value="${s.age_max}" oninput="Sessions.set(${i},'age_max',this.value)"></div>
+              <div class="col-span-2 md:col-span-1"><label class="ds-label">Places</label><input type="number" min="0" class="ds-input" value="${s.quota_global}" oninput="Sessions.set(${i},'quota_global',this.value)"></div>
+              <div class="col-span-2 md:col-span-1"><label class="ds-label">Public</label><select class="ds-select" onchange="Sessions.set(${i},'reserve_sexe',this.value);Sessions.render()"><option value="" ${!s.reserve_sexe ? 'selected' : ''}>Mixte</option><option value="Homme" ${s.reserve_sexe === 'Homme' ? 'selected' : ''}>Garçons uniquement</option><option value="Femme" ${s.reserve_sexe === 'Femme' ? 'selected' : ''}>Filles uniquement</option></select></div>
+              ${s.reserve_sexe ? '' : `<div><label class="ds-label">Places filles</label><input type="number" min="0" class="ds-input" value="${s.quota_fille}" oninput="Sessions.set(${i},'quota_fille',this.value)"></div><div><label class="ds-label">Places garçons</label><input type="number" min="0" class="ds-input" value="${s.quota_garcon}" oninput="Sessions.set(${i},'quota_garcon',this.value)"></div>`}
+            </div>
+            ${on ? `<div class="mt-4"><p class="ds-label">Tarifs de cette session</p><div class="flex flex-wrap gap-2">${TARIFS.length ? TARIFS.map(t => `<label class="ds-chip !py-2 cursor-pointer"><input type="checkbox" class="accent-[#2f3d45]" ${s.tarifs.includes(t.id) ? 'checked' : ''} onchange="Sessions.toggleTarif(${i},${t.id},this.checked)">${esc(t.nom)} · ${Tarifs.label(t)}</label>`).join('') : '<span class="ds-hint !mt-0">Créez d\'abord des tarifs dans la section Inscriptions.</span>'}</div></div>`
+                : `<div class="mt-4 max-w-xs"><label class="ds-label">Prix affiché (€)</label><input type="number" min="0" step="0.01" class="ds-input" value="${s.prix || ''}" oninput="Sessions.set(${i},'prix',this.value)"></div>`}
+          </div>`).join('');
+    }
+};
+(function () {
+    const t = $('toggleSessions');
+    t.checked = SESSIONS.length > 0;
+    if (SESSIONS.length) { t.disabled = true; $('sessLock').innerHTML = 'Ce séjour a plusieurs sessions. Pour le ramener à une seule, supprimez les autres sessions ci-dessous.'; }
+    const sync = () => { $('sessionsBox').classList.toggle('hidden', !t.checked); };
+    t.addEventListener('change', () => { if (t.checked && !SESSIONS.length) { Sessions.add(); } sync(); });
+    $('toggleOnline').addEventListener('change', () => Sessions.render());
+    $('orga-select').addEventListener('change', async () => { await Tarifs.load(); Sessions.render(); });
+    sync(); Sessions.render();
+    Tarifs.load().then(() => Sessions.render());
+})();
+
 // ------------------------------------------------ envoi
 $('campForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -568,14 +642,16 @@ $('campForm').addEventListener('submit', async e => {
     try {
         const fd = new FormData(form);
         fd.set('type', MC.get().join(', ')); fd.set('motscles', JSON.stringify(MC.get())); fd.set('categories', JSON.stringify(CP.value())); fd.set('tarifs', JSON.stringify(SELECTED)); fd.set('etapes', JSON.stringify(ETAPES.filter(x => x.lieu.trim() !== '')));
+        // sessions supplémentaires : une seule requête, enregistrée en transaction côté serveur
+        if ($('toggleSessions').checked) { fd.set('plusieurs_fois', '1'); fd.set('sessions', JSON.stringify(SESSIONS)); } else { fd.delete('plusieurs_fois'); }
         const r = await fetch(IS_EDIT ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
-        const cid = IS_EDIT ? CAMP_ID : d.camp_id;
+        const cTok = IS_EDIT ? form.querySelector('[name=token]').value : d.token;
         // Réglages animateurs (A : recrutement ColoMap, B : inscription de l'équipe) : enregistrés une fois le séjour créé
-        if (window.AnimModes) { try { await AnimModes.save(IS_EDIT ? form.querySelector('[name=token]').value : d.token); } catch (animErr) { alert(animErr.message + ' Vous pouvez les régler dans « Gestion des animateurs ».'); } }
+        if (window.AnimModes) { try { await AnimModes.save(IS_EDIT ? form.querySelector('[name=token]').value : d.token); } catch (animErr) { await ColoUI.alert(ColoUI.friendly(animErr) + ' Vous pouvez les régler dans « Gestion des animateurs ».', { tone: 'err' }); } }
         const questions = CHAMPS.filter(c => c.libelle.trim() !== '');
-        if (cid && (questions.length || IS_EDIT)) await api('api/save_champs.php', { camp_id: cid, champs: questions });
+        if (cTok && (questions.length || IS_EDIT)) await api('api/save_champs.php', { token: cTok, champs: questions });
         const go = () => { location.href = 'mes_camps.php?ok=' + (IS_EDIT ? 'updated' : 'created'); };
         if ((d.motscles_refuses || []).length) { msg.textContent = 'Séjour enregistré. Mots-clés refusés : ' + d.motscles_refuses.map(r => '« ' + r.label + ' » (' + r.raison + ')').join(' ; '); setTimeout(go, 4500); } else go();
     } catch (err) {

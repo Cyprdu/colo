@@ -78,7 +78,7 @@ if ($is_director) {
 <script>
 // Demande d'accès organisateur (directeur)
 async function requestDirectorAccess(element) {
-    if (!confirm("Vous êtes sur le point de demander un accès Organisateur (Directeur). Confirmer ?")) return;
+    if (!(await ColoUI.confirm("Vous êtes sur le point de demander un accès Organisateur (Directeur). Confirmer ?", { confirmLabel: "Envoyer la demande" }))) return;
     const originalContent = element.innerHTML;
     element.innerHTML = '<span class="flex items-center justify-center h-12 w-full text-[#2f3d45]"><i class="fa-solid fa-circle-notch fa-spin text-2xl"></i></span>';
     element.style.pointerEvents = 'none';
@@ -86,16 +86,16 @@ async function requestDirectorAccess(element) {
         const response = await fetch('api/request_director_access.php', { method: 'POST' });
         const data = await response.json();
         if (data.success) {
-            alert("Votre demande a bien été envoyée ! Elle sera examinée par un administrateur.");
+            await ColoUI.alert("Votre demande a bien été envoyée. Elle sera examinée par un administrateur.", { tone: "ok" });
             element.remove();
         } else {
-            alert(data.message || "Une erreur est survenue.");
+            ColoUI.error(data.message);
             element.innerHTML = originalContent;
             element.style.pointerEvents = 'auto';
         }
     } catch (error) {
         console.error(error);
-        alert("Erreur de connexion au serveur.");
+        ColoUI.error('Failed to fetch');
         element.innerHTML = originalContent;
         element.style.pointerEvents = 'auto';
     }

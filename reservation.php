@@ -175,8 +175,8 @@ document.getElementById('btn-contact')?.addEventListener('click', async function
             body: JSON.stringify({ organisateurId: <?= json_encode((int)$first['orga_user_id']) ?>, campId: <?= json_encode((int)$first['camp_id']) ?> }) });
         const data = await res.json();
         if (data.conversationId) window.location.href = 'messagerie?conv_id=' + data.conversationId;
-        else { alert(data.error || 'Erreur'); btn.disabled = false; btn.style.opacity = ''; }
-    } catch (e) { alert('Erreur réseau'); btn.disabled = false; btn.style.opacity = ''; }
+        else { ColoUI.error(data.error); btn.disabled = false; btn.style.opacity = ''; }
+    } catch (e) { ColoUI.error('Failed to fetch'); btn.disabled = false; btn.style.opacity = ''; }
 });
 </script>
 

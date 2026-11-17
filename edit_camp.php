@@ -27,6 +27,8 @@ $organisateurs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmt = $pdo->prepare("SELECT t.* FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE ct.camp_id = ? ORDER BY t.nom");
 $stmt->execute([$camp['id']]);
 $currentTarifs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+require_once 'api/camp_save.php';
+$sessionsActuelles = camp_sessions_soeurs($pdo, (int)$_SESSION['user']['id'], $camp);
 $etapesActuelles = etapes_du_camp($pdo, (int)$camp['id']);
 $champsActuels = champs_du_camp($pdo, (int)$camp['id']);
 $att = ['attente_paiement' => $camp['attente_paiement'] ?? 1, 'attente_jours' => $camp['attente_jours'] ?? ATTENTE_DEFAUT_JOURS];

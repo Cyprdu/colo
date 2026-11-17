@@ -18,7 +18,7 @@ $themesList = ["Archéologie","Art plastique","Astronomie","Aventure","Basket","
 sort($themesList);
 $paysList = ["France", "Belgique", "Suisse", "Espagne", "Italie", "Royaume-Uni", "Allemagne", "Portugal", "Grèce", "Canada", "États-Unis", "Maroc", "Tunisie", "Irlande", "Croatie", "Autre"];
 
-$etapesActuelles = []; $camp = null; $currentTarifs = []; $champsActuels = []; $att = [];
+$sessionsActuelles = []; $etapesActuelles = []; $camp = null; $currentTarifs = []; $champsActuels = []; $att = [];
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>

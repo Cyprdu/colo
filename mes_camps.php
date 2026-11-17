@@ -117,7 +117,7 @@ $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
     </div>
 
     <?php if ($flash === 'created' || $flash === 'updated'): ?>
-        <div class="ds-alert-ok mb-6 font-semibold" role="status"><?= $flash === 'created' ? 'Séjour publié.' : 'Séjour mis à jour. Il repasse en validation avant d\'être de nouveau visible.' ?></div>
+        <div class="ds-alert-ok mb-6 font-semibold" role="status"><?= $flash === 'created' ? 'Séjour enregistré. Il sera visible sur le site dès sa validation par l’équipe ColoMap (statut « En validation » en attendant).' : 'Séjour mis à jour.' ?></div>
     <?php endif; ?>
     <?php if ($error): ?><div class="ds-alert-err mb-6" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
@@ -336,7 +336,7 @@ document.querySelectorAll('.ds-modal').forEach(m => m.addEventListener('mousedow
 async function share(token, nom) {
     const url = location.origin + '/camp_details.php?t=' + token;
     try { if (navigator.share) { await navigator.share({ title: nom, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
-    try { await navigator.clipboard.writeText(url); toast('Lien copié.'); } catch (e) { prompt('Copiez le lien :', url); }
+    ColoUI.copy(url);
 }
 
 // ---- visibilité d'une session

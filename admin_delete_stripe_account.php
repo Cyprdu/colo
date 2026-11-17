@@ -131,7 +131,7 @@ require_once 'partials/header.php';
                                         <?= number_format($orga['portefeuille'], 2, ',', ' ') ?> €
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <form method="POST" onsubmit="return confirm('ATTENTION : Cette action est irréversible et supprimera la liaison.\n\nÊtes-vous sûr ?');">
+                                        <form method="POST" data-confirm="ATTENTION : cette action est irréversible et supprimera la liaison.&#10;&#10;Êtes-vous sûr ?" data-danger>
                                             <input type="hidden" name="delete_organisateur_id" value="<?= $orga['id'] ?>">
                                             <button type="submit" class="text-red-600 hover:text-red-900 font-bold bg-red-50 hover:bg-red-100 px-3 py-1 rounded transition">
                                                 Forcer la suppression

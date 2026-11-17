@@ -41,10 +41,13 @@ function normalizeCampName(?string $s): string {
  */
 function collapseSessions(array $list, ?array $universe = null): array {
     $universe = $universe ?? $list;
-    $count = []; $min = []; $max = [];
+    $count = []; $min = []; $max = []; $prixMin = [];
     foreach ($universe as $r) {
         $k = sessionGroupKey($r);
         $count[$k] = ($count[$k] ?? 0) + 1;
+        // « Dès X € » = le plus petit prix (tarifs rattachés compris) de TOUTES les sessions du séjour, pas celui de la session affichée
+        $p = $r['prix_affiche'] ?? $r['prix'] ?? null;
+        if ($p !== null && (float)$p > 0 && (!isset($prixMin[$k]) || (float)$p < $prixMin[$k])) $prixMin[$k] = (float)$p;
         $d1 = $r['date_debut'] ?? null; $d2 = $r['date_fin'] ?? $d1;
         if ($d1 && (!isset($min[$k]) || $d1 < $min[$k])) $min[$k] = $d1;
         if ($d2 && (!isset($max[$k]) || $d2 > $max[$k])) $max[$k] = $d2;
@@ -55,11 +58,27 @@ function collapseSessions(array $list, ?array $universe = null): array {
         if (isset($seen[$k])) continue;
         $seen[$k] = true;
         $r['sessions_count'] = $count[$k] ?? 1;
+        $own = $r['prix_affiche'] ?? $r['prix'] ?? null;
+        $r['prix_min'] = $prixMin[$k] ?? ($own !== null ? (float)$own : null);
         $r['date_debut_min'] = $min[$k] ?? ($r['date_debut'] ?? null);
         $r['date_fin_max']   = $max[$k] ?? ($r['date_fin'] ?? null);
         $out[] = $r;
     }
     return $out;
+}
+
+/**
+ * Toutes les sessions publiques à venir (une ligne par session) : sert d'« univers » à collapseSessions pour que le nombre de sessions,
+ * les dates et le prix « dès » d'une carte portent sur TOUTES les sessions du séjour, même quand une recherche n'en retient qu'une.
+ */
+function publicSessionsUniverse(PDO $pdo): array {
+    $price = "COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix)";
+    $g = campsHaveGroupColumn($pdo) ? 'c.groupe_id' : 'NULL';
+    try {
+        return $pdo->query("SELECT c.id, $g AS groupe_id, c.date_debut, c.date_fin, $price AS prix_affiche FROM camps c
+            WHERE c.valide = 1 AND c.en_attente = 0 AND c.refuse = 0 AND COALESCE(c.supprime, 0) = 0 AND COALESCE(c.prive, 0) = 0
+              AND COALESCE(c.date_limite_inscription, c.date_debut) >= CURDATE()")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { error_log('publicSessionsUniverse: ' . $e->getMessage()); return []; }
 }
 
 /**

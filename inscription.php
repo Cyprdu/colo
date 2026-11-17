@@ -40,8 +40,8 @@ try {
     // Règles du directeur : séjour réservé à un sexe, fiche enfant à compléter
     $bloques = []; // [id enfant => ['sexe' => bool, 'manque' => [libellés]]]
     foreach ($enfants as $e) {
-        $b = ['sexe' => !options_sexe_admis($camp, $e['sexe'] ?? null), 'manque' => options_enfant_manquants($camp, $e)];
-        if ($b['sexe'] || $b['manque']) $bloques[(int)$e['id']] = $b;
+        $b = ['sexe' => !options_sexe_admis($camp, $e['sexe'] ?? null), 'manque' => options_enfant_manquants($camp, $e), 'age' => options_age_probleme($camp, $e)];
+        if ($b['sexe'] || $b['manque'] || $b['age']) $bloques[(int)$e['id']] = $b;
     }
 
     // 3. Enfants déjà inscrits
@@ -131,7 +131,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                         <?php foreach ($enfants as $enfant): 
                             $isInscrit = in_array($enfant['id'], $dejaInscrits);
                             $blq = $bloques[(int)$enfant['id']] ?? null;
-                            if ($blq && $blq['sexe']) $isInscrit = true;
+                            if ($blq && ($blq['sexe'] || $blq['age'])) $isInscrit = true;
                         ?>
                             <label class="relative flex items-start p-4 rounded-xl border-2 transition cursor-pointer group <?= $isInscrit ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : 'border-gray-100 hover:border-blue-200 hover:bg-[#f1f5f9]' ?>">
                                 <div class="flex items-center h-5 mt-1">
@@ -144,6 +144,8 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                                     <span class="block text-sm text-gray-500">Né(e) le <?= date('d/m/Y', strtotime($enfant['date_naissance'])) ?></span>
                                     <?php if ($blq && $blq['sexe']): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#5b4a1c] bg-[#f8f5ea] px-2 py-0.5 rounded">Séjour réservé aux <?= $camp['reserve_sexe'] === SEXE_FILLE ? 'filles' : 'garçons' ?></span>
+                                    <?php elseif ($blq && $blq['age']): ?>
+                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]"><?= htmlspecialchars($blq['age']) ?></span>
                                     <?php elseif($isInscrit): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit<?= ($enfant['sexe'] ?? '') === 'Femme' ? 'e' : '' ?></span>
                                     <?php elseif ($blq && $blq['manque']): ?>
@@ -315,7 +317,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
     function goToStep(step) {
         if (step === 2) {
             const checkboxes = document.querySelectorAll('.child-check:checked');
-            if (checkboxes.length === 0) { alert("Sélectionnez au moins un enfant."); return; }
+            if (checkboxes.length === 0) { ColoUI.alert("Sélectionnez au moins un enfant pour continuer."); return; }
             selectedChildIds = Array.from(checkboxes).map(cb => cb.value);
             initStep2();
         }
@@ -420,7 +422,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             const sel = selections[id]; const t = sel && tariffs.find(x => x.id == sel.tariffId);
             if (!t || t.montant_libre != 1 || !(sel.customPrice > 0) || sel.customFor != t.id) continue;
             const fl = parseFloat(t.plancher) || 0;
-            if (sel.customPrice < fl) { alert('Le montant minimum pour « ' + t.nom + ' » est de ' + fl.toFixed(2).replace('.', ',') + ' €.'); return false; }
+            if (sel.customPrice < fl) { ColoUI.alert('Le montant minimum pour « ' + t.nom + ' » est de ' + fl.toFixed(2).replace('.', ',') + ' €.'); return false; }
         }
         return true;
     }
@@ -431,7 +433,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 if (empty) {
                     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
                     el.focus();
-                    alert('Merci de répondre à toutes les questions obligatoires (*).');
+                    ColoUI.alert('Merci de répondre à toutes les questions obligatoires (*).');
                     return false;
                 }
             }

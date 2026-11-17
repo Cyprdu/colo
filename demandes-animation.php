@@ -166,7 +166,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
             });
             [].forEach.call(pane.querySelectorAll('[data-copy]'), function (b) { b.addEventListener('click', function () { navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy).then(function () { A.toast('Lien copié'); }); }); });
             [].forEach.call(pane.querySelectorAll('[data-rev]'), function (b) {
-                b.addEventListener('click', async function () { if (!confirm('Révoquer ce lien ? Il ne fonctionnera plus.')) return; await A.api(API + '?a=lien_revoquer', { json: { l: b.dataset.rev } }); paneLiens(); });
+                b.addEventListener('click', async function () { if (!(await ColoUI.confirm('Révoquer ce lien ? Il ne fonctionnera plus.', { danger: true, confirmLabel: 'Révoquer' }))) return; await A.api(API + '?a=lien_revoquer', { json: { l: b.dataset.rev } }); paneLiens(); });
             });
         } catch (e) { pane.innerHTML = '<div class="ds-alert-err">' + E(e.message) + '</div>'; }
     }

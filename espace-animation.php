@@ -61,7 +61,7 @@ if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redi
     $('list').addEventListener('click', async function (e) {
         var r = e.target.closest('.retire'), w = e.target.closest('.ecrire');
         try {
-            if (r) { if (!confirm('Retirer cette candidature ? Vous pourrez postuler de nouveau plus tard.')) return; await A.api('api/anim_animateur.php?a=retirer', { json: { c: r.dataset.c } }); A.toast('Candidature retirée'); load(); }
+            if (r) { if (!(await ColoUI.confirm('Retirer cette candidature ? Vous pourrez postuler de nouveau plus tard.', { confirmLabel: 'Retirer' }))) return; await A.api('api/anim_animateur.php?a=retirer', { json: { c: r.dataset.c } }); A.toast('Candidature retirée'); load(); }
             if (w) { var d = await A.api('api/anim_contact.php', { json: { camp: w.dataset.t } }); location.href = d.url; }
         } catch (er) { A.toast(er.message, true); }
     });

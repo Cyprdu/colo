@@ -68,7 +68,7 @@ $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
       </select>
       <label class="block font-semibold mt-4 mb-1" for="commentaire">Précisions (facultatif)</label>
       <textarea id="commentaire" name="commentaire" class="ds-input" rows="3" maxlength="500"></textarea>
-      <button type="submit" class="ds-btn mt-4" onclick="return confirm('Annuler définitivement cette inscription ?')">Annuler l'inscription et être remboursé</button>
+      <button type="submit" class="ds-btn mt-4" data-confirm="Annuler définitivement cette inscription ?" data-danger data-confirm-label="Annuler l'inscription">Annuler l'inscription et être remboursé</button>
     </form>
   <?php endif; ?>
   <?php endif; ?>

@@ -9,6 +9,6 @@ try {
     $pdo->prepare("UPDATE camps SET refuse = 0, en_attente = 1 WHERE id = ?")->execute([$campId]);
     sendJson(['success' => true]);
 } catch (Exception $e) {
-    sendJson(['error' => $e->getMessage()], 500);
+    error_log(basename(__FILE__) . ': ' . $e->getMessage()); sendJson(['error' => 'Une erreur est survenue. Réessayez dans un instant.'], 500);
 }
 ?>
