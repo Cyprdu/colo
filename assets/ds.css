@@ -217,6 +217,8 @@ table { max-width: 100%; }
   .ds-switch span::after { width: 24px; height: 24px; }
   .ds-switch input:checked + span::after { transform: translateX(22px); }
   footer li a { display: inline-block; padding: 6px 0; }
+  .fav-btn { width: 40px; height: 40px; }
+  body > header button, #mobile-menu a, #mobile-menu button { min-height: 44px; min-width: 44px; }
 }
 
 @media (max-width: 767px) {
