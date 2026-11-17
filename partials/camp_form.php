@@ -45,7 +45,8 @@ $ICO = [
     'up' => '<path d="M12 19V5M6 11l6-6 6 6"/>', 'down' => '<path d="M12 5v14M6 13l6 6 6-6"/>',
 ];
 $svg = fn($n, $cls = '') => '<svg class="' . $cls . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $ICO[$n] . '</svg>';
-$sec = fn($id, $ico, $title, $desc) => '<section id="' . $id . '" class="ds-card ds-sec ds-fade"><div class="ds-sec-head"><div class="ds-sec-ico">' . $svg($ico) . '</div><div><h2 class="ds-sec-title">' . $title . '</h2><p class="ds-sec-desc">' . $desc . '</p></div></div>';
+$HERIT = ['s-description' => 'description', 's-lieu' => 'lieu', 's-public' => 'public', 's-inscription' => 'inscription', 's-paiement' => 'paiement', 's-fiche' => 'fiche', 's-questions' => 'questions', 's-anim' => 'anim', 's-infos' => 'infos', 's-medias' => 'visuels'];
+$sec = fn($id, $ico, $title, $desc) => '<section id="' . $id . '"' . (isset($HERIT[$id]) ? ' data-herit="' . $HERIT[$id] . '"' : '') . ' class="ds-card ds-sec ds-fade"><div class="ds-sec-head"><div class="ds-sec-ico">' . $svg($ico) . '</div><div><h2 class="ds-sec-title">' . $title . '</h2><p class="ds-sec-desc">' . $desc . '</p></div></div>';
 $tick = $svg('check', 'w-3 h-3');
 ?>
 <form id="campForm" class="ds-page" style="max-width:1180px" enctype="multipart/form-data" novalidate>
@@ -56,9 +57,21 @@ $tick = $svg('check', 'w-3 h-3');
         <p class="ds-lead"><?= $edit ? htmlspecialchars($camp['nom']) . ' : toutes les informations et les options du séjour.' : 'Renseignez le séjour, choisissez vos options : tout se règle sur cette page.' ?></p>
     </div>
 
+    <div id="sessBar" class="ds-card p-3 mb-6 sticky top-[76px] z-30">
+        <div class="flex flex-wrap items-center gap-2">
+            <div id="sessTabs" role="tablist" aria-label="Sessions du séjour" class="flex flex-wrap items-center gap-2"></div>
+            <button type="button" class="ds-chip" id="sessAdd"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une session</button>
+            <span class="ml-auto flex items-center gap-2">
+                <button type="button" class="ds-btn ds-btn-light ds-btn-sm" id="sessDup">Dupliquer cette session</button>
+                <button type="button" class="ds-iconbtn danger" id="sessDel" aria-label="Supprimer cette session"><?= $svg('trash') ?></button>
+            </span>
+        </div>
+        <p id="sessHint" class="ds-hint !mt-2"></p>
+    </div>
+
     <div class="grid lg:grid-cols-[210px_1fr] gap-8 items-start">
         <nav class="hidden lg:block sticky top-24 text-sm font-semibold text-[#6b7780]" aria-label="Sections">
-            <?php foreach (['s-orga' => 'Organisme', 's-sejour' => 'Le séjour', 's-categories' => 'Catégories', 's-lieu' => 'Lieu et dates', 's-sessions' => 'Plusieurs sessions', 's-public' => 'Public et places', 's-inscription' => 'Inscriptions', 's-paiement' => 'Paiements acceptés', 's-fiche' => 'Fiche enfant', 's-questions' => 'Questions', 's-anim' => 'Animateurs', 's-infos' => 'Infos pratiques', 's-medias' => 'Visuels'] as $a => $t): ?>
+            <?php foreach (['s-orga' => 'Organisme', 's-sejour' => 'Le séjour', 's-categories' => 'Catégories', 's-dates' => 'Dates', 's-description' => 'Description', 's-lieu' => 'Lieu', 's-public' => 'Public et places', 's-inscription' => 'Inscriptions', 's-paiement' => 'Paiements acceptés', 's-fiche' => 'Fiche enfant', 's-questions' => 'Questions', 's-anim' => 'Animateurs', 's-infos' => 'Infos pratiques', 's-medias' => 'Visuels'] as $a => $t): ?>
                 <a href="#<?= $a ?>" class="block px-3 py-2 rounded-lg hover:bg-white hover:text-[#26343b] transition"><?= $t ?></a>
             <?php endforeach; ?>
         </nav>
@@ -83,10 +96,24 @@ $tick = $svg('check', 'w-3 h-3');
                 <div class="grid md:grid-cols-2 gap-5">
                     <div class="md:col-span-2"><label class="ds-label" for="f-nom">Nom du séjour *</label><input id="f-nom" name="nom" class="ds-input" required maxlength="200" value="<?= $val('nom') ?>" placeholder="Ex : Aventure dans les Alpes"></div>
                     <input type="hidden" name="theme" id="f-theme" value="<?= $val('theme') ?>">
-                    <div class="grid grid-cols-2 gap-3">
-                        <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="30" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
-                        <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="30" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
-                    </div>
+                </div>
+            </section>
+
+            <?= $sec('s-categories', 'tag', 'Catégories et précisions', "Les familles filtrent par catégorie, puis par précisions (niveau, confession, discipline…). Un séjour peut avoir plusieurs catégories : par exemple « Spirituel » et « Montagne ».") ?>
+                <div id="catPicker"></div>
+                <input type="hidden" name="categories" id="catHidden">
+            </section>
+
+            <?= $sec('s-dates', 'ticket', 'Dates de cette session', "Début, fin et date limite d'inscription : propres à chaque session.") ?>
+                <div class="grid md:grid-cols-3 gap-5">
+                    <div><label class="ds-label" for="f-debut">Début *</label><input id="f-debut" type="date" name="date_debut" class="ds-input" required value="<?= $val('date_debut') ?>"></div>
+                    <div><label class="ds-label" for="f-fin">Fin *</label><input id="f-fin" type="date" name="date_fin" class="ds-input" required value="<?= $val('date_fin') ?>"></div>
+                    <div><label class="ds-label" for="f-limite">Date limite d'inscription</label><input id="f-limite" type="date" name="date_limite_inscription" class="ds-input" value="<?= $val('date_limite_inscription') ?>"></div>
+                </div>
+            </section>
+
+            <?= $sec('s-description', 'edit', 'Description et mots-clés', "Ce que les familles lisent, et les mots qu'elles tapent pour vous trouver.") ?>
+                <div class="grid md:grid-cols-2 gap-5">
                     <div class="md:col-span-2">
                         <label class="ds-label" for="mcInput">Mots-clés et alias du séjour <span class="font-normal text-[#6b7780]">(12 maximum)</span></label>
                         <div id="mcCamp"></div>
@@ -97,12 +124,7 @@ $tick = $svg('check', 'w-3 h-3');
                 </div>
             </section>
 
-            <?= $sec('s-categories', 'tag', 'Catégories et précisions', "Les familles filtrent par catégorie, puis par précisions (niveau, confession, discipline…). Un séjour peut avoir plusieurs catégories : par exemple « Spirituel » et « Montagne ».") ?>
-                <div id="catPicker"></div>
-                <input type="hidden" name="categories" id="catHidden">
-            </section>
-
-            <?= $sec('s-lieu', 'pin', 'Lieu et dates', "Où et quand se déroule le séjour.") ?>
+            <?= $sec('s-lieu', 'pin', 'Lieu', "Où se déroule la session.") ?>
                 <div class="grid md:grid-cols-2 gap-5">
                     <div class="md:col-span-2 relative"><label class="ds-label" for="addressSearch">Adresse du centre ou lieu de rendez-vous *</label>
                         <input id="addressSearch" name="adresse" class="ds-input" required autocomplete="off" value="<?= $val('adresse') ?>" placeholder="Commencez à taper l'adresse…">
@@ -120,23 +142,17 @@ $tick = $svg('check', 'w-3 h-3');
                             <button type="button" class="ds-btn ds-btn-light ds-btn-sm mt-3" onclick="Etapes.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une étape</button>
                         </div>
                     </div>
-                    <div><label class="ds-label" for="f-debut">Début *</label><input id="f-debut" type="date" name="date_debut" class="ds-input" required value="<?= $val('date_debut') ?>"></div>
-                    <div><label class="ds-label" for="f-fin">Fin *</label><input id="f-fin" type="date" name="date_fin" class="ds-input" required value="<?= $val('date_fin') ?>"></div>
                 </div>
             </section>
 
-            <?= $sec('s-sessions', 'ticket', 'Ce séjour a-t-il lieu plusieurs fois ?', "Plusieurs sessions dans l'année : chacune a ses dates, sa tranche d'âge, ses places, ses tarifs et peut être réservée aux filles ou aux garçons. Les familles choisissent leur session sur une seule page.") ?>
-                <div class="ds-row">
-                    <div><p class="ds-opt-title">Oui, il a lieu plusieurs fois</p><p class="ds-opt-sub" id="sessLock">Les dates, âges, places et tarifs de la section « Lieu et dates » et « Inscriptions » sont ceux de la <b>session 1</b>. Ajoutez les autres ci-dessous.</p></div>
-                    <label class="ds-switch"><input type="checkbox" id="toggleSessions" aria-label="Ce séjour a lieu plusieurs fois"><span></span></label>
-                </div>
-                <div id="sessionsBox" class="hidden mt-5">
-                    <div id="sessionsList" class="space-y-4"></div>
-                    <button type="button" class="ds-btn ds-btn-light mt-4" onclick="Sessions.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une session</button>
-                </div>
-            </section>
 
             <?= $sec('s-public', 'users', 'Public et places', 'Séjour mixte ou réservé, quotas par sexe : à vous de choisir.') ?>
+                <div class="max-w-sm mb-6">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="30" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
+                        <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="30" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
+                    </div>
+                </div>
                 <p class="ds-label">Qui peut s'inscrire ?</p>
                 <div class="grid sm:grid-cols-3 gap-3" id="reserveOpts">
                     <?php foreach (['' => ['Mixte', 'Filles et garçons'], SEXE_GARCON => ['Garçons uniquement', 'Séjour réservé aux garçons'], SEXE_FILLE => ['Filles uniquement', 'Séjour réservé aux filles']] as $k => [$t, $d]): ?>
@@ -181,9 +197,8 @@ $tick = $svg('check', 'w-3 h-3');
                         <div id="tarifsSelected" class="space-y-2"></div>
                         <input type="hidden" name="tarifs" id="tarifsHidden">
                     </div>
-                    <div class="grid md:grid-cols-3 gap-5">
+                    <div class="grid md:grid-cols-2 gap-5">
                         <div><label class="ds-label" for="q-tot">Nombre total de places *</label><input id="q-tot" type="number" min="0" name="quota_global" class="ds-input" value="<?= $val('quota_global') ?>"></div>
-                        <div><label class="ds-label" for="f-limite">Date limite d'inscription</label><input id="f-limite" type="date" name="date_limite_inscription" class="ds-input" value="<?= $val('date_limite_inscription') ?>"></div>
                         <div><label class="ds-label" for="f-frat">Remise fratrie (%)</label><input id="f-frat" type="number" min="0" max="100" name="remise_fratrie" class="ds-input" value="<?= $val('remise_fratrie', 0) ?>"></div>
                     </div>
                     <div class="ds-row">
@@ -235,9 +250,9 @@ $tick = $svg('check', 'w-3 h-3');
             <?= $sec('s-medias', 'image', 'Visuels et visibilité', 'La photo de couverture et la vidéo teaser.') ?>
                 <div class="grid md:grid-cols-2 gap-5">
                     <div>
-                        <label class="ds-label" for="f-img">Image de couverture <?= $edit ? '(laisser vide pour garder l\'actuelle)' : '*' ?></label>
-                        <?php if ($edit && !empty($camp['image_url'])): ?><img src="<?= $val('image_url') ?>" alt="" class="w-full h-36 object-cover rounded-xl border border-[#e5e7eb] mb-3"><?php endif; ?>
-                        <input id="f-img" type="file" name="image" accept="image/jpeg,image/png,image/webp" class="ds-input !p-3" <?= $edit ? '' : 'required' ?>>
+                        <label class="ds-label" for="f-img">Image de couverture *</label>
+                        <img id="imgPrev" src="<?= $val('image_url') ?>" alt="" class="w-full h-36 object-cover rounded-xl border border-[#e5e7eb] mb-3 <?= $edit && !empty($camp['image_url']) ? '' : 'hidden' ?>">
+                        <input id="f-img" type="file" name="image" accept="image/jpeg,image/png,image/webp" class="ds-input !p-3">
                     </div>
                     <div><label class="ds-label" for="f-video">Vidéo teaser (lien YouTube)</label><input id="f-video" type="url" name="video_url" class="ds-input" value="<?= $val('video_url') ?>" placeholder="https://www.youtube.com/watch?v=…">
                         <label class="ds-opt mt-4"><input type="checkbox" name="prive" <?= $chk('prive') ?>><span class="ds-tick"><?= $tick ?></span><span><span class="ds-opt-title block">Séjour privé</span><span class="ds-opt-sub block">Caché de la recherche, accessible uniquement par son lien.</span></span></label></div>
@@ -321,7 +336,7 @@ let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'li
 const CATALOGUE = <?= json_encode(cat_pour_js($catalogue), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 const CAT_SEL = <?= json_encode($catSel, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 const KW_INIT = <?= json_encode(array_values($kwInit), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
-let SESSIONS = <?= json_encode($sessionsActuelles ?? [], JSON_UNESCAPED_UNICODE) ?>;
+const SESS_META = <?= json_encode($sessionsMeta ?? [], JSON_UNESCAPED_UNICODE) ?>;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -565,114 +580,252 @@ const Etapes = {
 document.querySelector('input[name=itinerant]').addEventListener('change', e => { $('etapesBox').classList.toggle('hidden', !e.target.checked); if (e.target.checked && !ETAPES.length) Etapes.add(); });
 Etapes.render();
 
-// ------------------------------------------------ sessions multiples (une ligne `camps` par session, groupées côté serveur)
-const Sessions = {
+// ------------------------------------------------ sessions du séjour : une configuration complète par session, dans le même formulaire
+// Communs à toute la séjour : nom, organisme, catégories. Tout le reste est propre à chaque session, avec héritage optionnel par section.
+const HERIT = {
+    description: { label: 'la description et les mots-clés', f: ['description'], a: ['tags'] },
+    lieu: { label: 'le lieu et le parcours', f: ['adresse', 'ville', 'cp', 'pays', 'itinerant'], a: ['etapes'] },
+    public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
+    inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs'] },
+    paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement'] },
+    fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]'] },
+    questions: { label: 'les questions aux familles', a: ['champs'] },
+    anim: { label: 'les réglages des animateurs', f: ['gestion_animateur', 'quota_max_anim', 'quota_anim_fille', 'quota_anim_garcon', 'anim_plus_18', 'bafa_obligatoire', 'remuneration_anim', 'anim_doit_payer', 'prix_anim'], a: ['anim'] },
+    infos: { label: 'les infos pratiques', f: ['hebergement', 'transport', 'encadrement', 'inclus', 'a_prevoir'] },
+    visuels: { label: "l'image, la vidéo et la visibilité", f: ['video_url', 'prive'], a: ['image'] }
+};
+const CLES = Object.keys(HERIT);
+const SKIP_F = ['token', 'image', 'tarifs', 'categories', 'theme', 'nom', 'organisateur_id', 'type', 'motscles', 'etapes'];
+const clone = o => JSON.parse(JSON.stringify(o));
+
+const SM = {
+    list: [], cur: null, loading: false, seq: 0,
     mois: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
-    main() {
-        const v = n => (document.querySelector(`[name="${n}"]`) || {}).value || '';
-        const sx = document.querySelector('input[name=reserve_sexe]:checked');
-        return { date_debut: v('date_debut'), date_fin: v('date_fin'), date_limite_inscription: v('date_limite_inscription'), age_min: +v('age_min') || 0, age_max: +v('age_max') || 0,
-            quota_global: +v('quota_global') || 0, quota_fille: +v('quota_fille') || 0, quota_garcon: +v('quota_garcon') || 0, reserve_sexe: sx ? sx.value : '', prix: +v('prix_simple') || 0,
-            perso_description: 0, description: '', perso_lieu: 0, adresse: '', ville: '', cp: '' };
+    get c() { return this.list.find(s => s.key === this.cur); },
+    get principal() { return this.list.find(s => s.principal); },
+    // ---- instantané du formulaire (valeurs affichées) <-> état
+    capture() {
+        const f = {};
+        document.querySelectorAll('#s-dates [name], section[data-herit] [name]').forEach(el => {
+            const n = el.name;
+            if (!n || el.type === 'file' || SKIP_F.includes(n) || n.startsWith('am-')) return;
+            if (n.endsWith('[]')) { f[n] = f[n] || []; if (el.checked) f[n].push(el.value); }
+            else if (el.type === 'checkbox') f[n] = el.checked;
+            else if (el.type === 'radio') { if (el.checked) f[n] = el.value; else if (!(n in f)) f[n] = ''; }
+            else f[n] = el.value;
+        });
+        return { f, tags: MC.get(), tarifs: [...SELECTED], champs: clone(CHAMPS), etapes: clone(ETAPES), anim: window.AnimModes ? AnimModes.collect() : null, image_url: (this.c && this.c.snap && this.c.snap.image_url) || '' };
+    },
+    apply(st) {
+        this.loading = true;
+        document.querySelectorAll('#s-dates [name], section[data-herit] [name]').forEach(el => {
+            const n = el.name;
+            if (!n || el.type === 'file' || SKIP_F.includes(n) || n.startsWith('am-') || !(n in st.f)) return;
+            const v = st.f[n];
+            if (n.endsWith('[]')) el.checked = (v || []).includes(el.value);
+            else if (el.type === 'checkbox') el.checked = !!v;
+            else if (el.type === 'radio') el.checked = el.value === (v == null ? '' : v);
+            else el.value = v == null ? '' : v;
+        });
+        MC.set(st.tags || []);
+        SELECTED = [...(st.tarifs || [])]; CHAMPS = clone(st.champs || []); ETAPES = clone(st.etapes || []);
+        if (window.AnimModes && st.anim) { $('am-recrute').checked = false; $('am-equipe').checked = false; AnimModes.load(clone(st.anim)); }
+        if (SELECTED.some(id => !TARIFS.some(t => t.id === id))) Tarifs.load().then(renderSelectedTarifs);
+        renderSelectedTarifs(); Champs.render(); Etapes.render(); $('etapesBox').classList.toggle('hidden', !document.querySelector('input[name=itinerant]').checked);
+        refreshToggles();
+        this.loading = false;
+    },
+    // état de la session s avec, pour les sections héritées, les valeurs de la session principale
+    eff(s) {
+        const p = this.principal, own = clone(s.snap);
+        if (s.principal || !p || !p.snap) return own;
+        const e = own;
+        CLES.forEach(k => {
+            if (!s.herit[k]) return;
+            (HERIT[k].f || []).forEach(n => { if (n in p.snap.f) e.f[n] = clone(p.snap.f[n]); });
+            (HERIT[k].a || []).forEach(a => { if (a !== 'image' && p.snap[a] !== undefined) e[a] = clone(p.snap[a]); });
+        });
+        return e;
+    },
+    save() { const s = this.c; if (s && !this.loading) s.snap = this.capture(); },
+    async ensure(s) {
+        if (s.snap) return;
+        const r = await fetch('api/session_config.php?t=' + encodeURIComponent(s.token));
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.snap) throw new Error(d.error || 'Impossible de charger cette session.');
+        s.snap = d.snap;
+    },
+    // ---- affichage
+    label(s) {
+        const d = s.snap ? s.snap.f.date_debut : s.date_debut;
+        if (!d) return 'Nouvelle session';
+        const x = new Date(d + 'T12:00:00'); return x.getDate() + ' ' + this.mois[x.getMonth()] + (s.snap && s.snap.f.date_fin && s.snap.f.date_fin.slice(0, 4) !== d.slice(0, 4) ? ' ' + d.slice(0, 4) : '');
+    },
+    sorted() { return [...this.list].sort((a, b) => String((a.snap ? a.snap.f.date_debut : a.date_debut) || '9999').localeCompare(String((b.snap ? b.snap.f.date_debut : b.date_debut) || '9999'))); },
+    renderBar() {
+        const multi = this.list.length > 1;
+        $('sessTabs').innerHTML = this.sorted().map(s => `<button type="button" role="tab" aria-selected="${s.key === this.cur}" data-key="${s.key}" class="sess-tab${s.key === this.cur ? ' on' : ''}">${esc(multi ? this.label(s) : 'Session 1')}${s.principal && multi ? '<span class="sess-p">principale</span>' : ''}${s.dirty ? '<span class="sess-dot" title="Modifications non enregistrées" aria-label="modifications non enregistrées"></span>' : ''}</button>`).join('');
+        const s = this.c;
+        $('sessDel').classList.toggle('hidden', !s || s.principal || !multi);
+        $('sessDup').classList.toggle('hidden', false);
+        $('sessHint').textContent = !multi ? 'Ce séjour n’a qu’une session. « Ajouter une session » en crée une autre (autres dates, autre lieu…) : elle reprend les réglages de celle-ci, que vous pouvez personnaliser section par section.'
+            : (s.principal ? 'Session principale : les autres sessions reprennent ses réglages tant qu’elles ne sont pas personnalisées.' : 'Cette session reprend les réglages de la session principale (« identique au séjour ») sauf sections personnalisées.') + (s.inscrits ? ' · ' + s.inscrits + ' inscrit' + (s.inscrits > 1 ? 's' : '') + ' : modifier ses dates ou son prix demandera confirmation.' : '');
+        this.renderHerit();
+    },
+    renderHerit() {
+        const s = this.c, multi = this.list.length > 1;
+        document.querySelectorAll('section[data-herit]').forEach(sec => {
+            const k = sec.dataset.herit; let bar = sec.querySelector('.herit-bar');
+            const show = multi && s && !s.principal;
+            if (!bar) { bar = document.createElement('div'); bar.className = 'herit-bar'; sec.querySelector('.ds-sec-head').after(bar); }
+            bar.classList.toggle('hidden', !show);
+            const on = show && !!s.herit[k];
+            sec.classList.toggle('herit-on', on);
+            [...sec.children].forEach(ch => { if (!ch.classList.contains('ds-sec-head') && !ch.classList.contains('herit-bar')) ch.inert = on; });
+            if (!show) return;
+            bar.innerHTML = on ? `<span><b>Identique au séjour</b> : cette session reprend ${esc(HERIT[k].label)} de la session principale.</span><button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-herit-off="${k}">Personnaliser pour cette session</button>`
+                : `<span><b>Personnalisé</b> pour cette session.</span><button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-herit-on="${k}">Revenir à l’identique</button>`;
+        });
+    },
+    markDirty() { const s = this.c; if (s && !this.loading && !s.dirty) { s.dirty = true; this.renderBar(); } },
+    // ---- actions
+    async go(key) {
+        if (key === this.cur) return;
+        const t = this.list.find(s => s.key === key); if (!t) return;
+        this.save();
+        try { await this.ensure(t); if (!t.principal) await this.ensure(this.principal); }
+        catch (e) { ColoUI.error(e); return; }
+        this.cur = key; this.show();
+    },
+    show() {
+        const s = this.c;
+        this.apply(this.eff(s));
+        this.setImage();
+        this.renderBar();
+        $('campForm').dispatchEvent(new CustomEvent('sessionchange'));
+        window.scrollTo({ top: Math.max(0, $('sessBar').getBoundingClientRect().top + window.scrollY - 90), behavior: 'smooth' });
+    },
+    setImage() {
+        const s = this.c, p = this.principal, inh = !s.principal && s.herit.visuels;
+        const src = inh ? ((p.img && URL.createObjectURL(p.img)) || (p.snap && p.snap.image_url)) : ((s.img && URL.createObjectURL(s.img)) || (s.snap && s.snap.image_url));
+        $('imgPrev').classList.toggle('hidden', !src); if (src) $('imgPrev').src = src;
+        $('f-img').value = '';
     },
     shift(d, days) { if (!d) return ''; const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + days); return x.toISOString().slice(0, 10); },
-    fresh(base, offset) {
-        const nights = base.date_debut && base.date_fin ? Math.round((new Date(base.date_fin) - new Date(base.date_debut)) / 86400000) : 0;
-        const start = this.shift(base.date_debut, offset);
-        return { token: null, ...base, date_debut: start, date_fin: start ? this.shift(start, nights) : '', date_limite_inscription: '', tarifs: [...SELECTED], inscrits: 0 };
+    nouvelle(base, herit, decalage) {
+        const snap = this.eff(base); snap.champs = (snap.champs || []).map(c => ({ ...c, id: 0 }));
+        const f = snap.f, nuits = f.date_debut && f.date_fin ? Math.round((new Date(f.date_fin) - new Date(f.date_debut)) / 86400000) : 0;
+        const last = this.sorted().map(x => x.snap ? x.snap.f.date_debut : x.date_debut).filter(Boolean).pop() || f.date_debut;
+        f.date_debut = last ? this.shift(last, decalage) : ''; f.date_fin = f.date_debut ? this.shift(f.date_debut, nuits) : ''; f.date_limite_inscription = '';
+        return { key: 'n' + (++this.seq), token: null, principal: false, herit, snap, img: base.img || null, inscrits: 0, dirty: true };
     },
-    add() { const last = SESSIONS[SESSIONS.length - 1] || this.main(); SESSIONS.push(this.fresh(last, 7)); this.render(); this.focusLast(); },
-    dup(i) { SESSIONS.splice(i + 1, 0, this.fresh(SESSIONS[i], 7)); this.render(); },
-    remove(i) {
-        if (SESSIONS[i].inscrits > 0) { ColoUI.alert("Cette session a déjà des inscrits : elle ne peut pas être supprimée. Annulez d'abord ses inscriptions."); return; }
-        ColoUI.confirm('Supprimer cette session ?', { confirmLabel: 'Supprimer', danger: true }).then(ok => { if (ok) { SESSIONS.splice(i, 1); this.render(); } });
+    async add() {
+        this.save(); const p = this.principal;
+        try { await this.ensure(p); } catch (e) { ColoUI.error(e); return; }
+        const h = {}; CLES.forEach(k => h[k] = true);   // une nouvelle session reprend tout : on ne change que ce qui diffère
+        const n = this.nouvelle(p, h, 7); this.list.push(n); this.cur = n.key; this.show();
+        toast('Session ajoutée : elle reprend les réglages du séjour. Renseignez ses dates.');
+        setTimeout(() => { const el = $('f-debut'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus({ preventScroll: true }); }, 350);
     },
-    focusLast() { const c = $('sessionsList').lastElementChild; if (c) { c.scrollIntoView({ block: 'center', behavior: 'smooth' }); const f = c.querySelector('input'); if (f) f.focus({ preventScroll: true }); } },
-    // Lieu / description propres à une session : les champs sont préremplis avec ceux du séjour principal
-    perso(i, kind, on) {
-        const s = SESSIONS[i], v = n => (document.querySelector(`[name="${n}"]`) || {}).value || '';
-        if (kind === 'lieu') { s.perso_lieu = on ? 1 : 0; if (on && !s.adresse) { s.adresse = v('adresse'); s.ville = v('ville'); s.cp = v('cp'); } }
-        else { s.perso_description = on ? 1 : 0; if (on && !s.description) s.description = v('description'); }
-        this.render();
+    async dup() {
+        this.save(); const s = this.c;
+        try { await this.ensure(s); if (!s.principal) await this.ensure(this.principal); } catch (e) { ColoUI.error(e); return; }
+        const h = s.principal ? Object.fromEntries(CLES.map(k => [k, true])) : { ...s.herit };
+        const n = this.nouvelle(s, h, 7); this.list.push(n); this.cur = n.key; this.show();
+        toast('Session dupliquée : ajustez ses dates.');
     },
-    set(i, k, v) { SESSIONS[i][k] = (['age_min', 'age_max', 'quota_global', 'quota_fille', 'quota_garcon'].includes(k)) ? (+v || 0) : v; this.summary(i); },
-    toggleTarif(i, id, on) { const t = SESSIONS[i].tarifs; SESSIONS[i].tarifs = on ? [...new Set([...t, id])] : t.filter(x => x !== id); },
-    label(s) {
-        const f = d => { if (!d) return '…'; const x = new Date(d + 'T12:00:00'); return x.getDate() + ' ' + this.mois[x.getMonth()] + ' ' + x.getFullYear(); };
-        return f(s.date_debut) + ' → ' + f(s.date_fin) + (s.age_min || s.age_max ? ' · ' + s.age_min + '–' + s.age_max + ' ans' : '') + (s.reserve_sexe ? ' · ' + (s.reserve_sexe === 'Femme' ? 'filles' : 'garçons') : '');
+    async remove() {
+        const s = this.c; if (!s || s.principal) return;
+        if (s.inscrits > 0) { ColoUI.alert('Cette session a déjà ' + s.inscrits + ' inscrit(s) : elle ne peut pas être supprimée. Annulez d’abord leurs inscriptions.'); return; }
+        if (!(await ColoUI.confirm('Supprimer la session « ' + this.label(s) + ' » ? Elle sera retirée au prochain enregistrement.', { danger: true, confirmLabel: 'Supprimer' }))) return;
+        this.list = this.list.filter(x => x !== s); this.cur = this.principal.key; this.show();
     },
-    summary(i) { const el = $('sess-sum-' + i); if (el) el.textContent = this.label(SESSIONS[i]); },
-    render() {
-        const on = $('toggleOnline').checked;
-        $('sessionsList').innerHTML = SESSIONS.map((s, i) => `
-          <div class="border border-[#e5e7eb] rounded-2xl p-4 bg-[#fafbfb]">
-            <div class="flex items-start justify-between gap-3 mb-4"><div class="min-w-0"><p class="text-sm font-bold text-[#26343b]">Session ${i + 2}${s.inscrits ? ` <span class="ds-badge ml-1">${s.inscrits} inscrit${s.inscrits > 1 ? 's' : ''}</span>` : ''}</p><p id="sess-sum-${i}" class="text-xs text-[#6b7780] mt-0.5">${esc(this.label(s))}</p></div>
-              <div class="flex gap-1 flex-none"><button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="Sessions.dup(${i})">Dupliquer</button><button type="button" class="ds-iconbtn danger" aria-label="Supprimer la session ${i + 2}" onclick="Sessions.remove(${i})">${ICON.trash}</button></div></div>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div><label class="ds-label">Début</label><input type="date" class="ds-input" value="${esc(s.date_debut)}" oninput="Sessions.set(${i},'date_debut',this.value)"></div>
-              <div><label class="ds-label">Fin</label><input type="date" class="ds-input" value="${esc(s.date_fin)}" oninput="Sessions.set(${i},'date_fin',this.value)"></div>
-              <div class="col-span-2 md:col-span-1"><label class="ds-label">Date limite d'inscription</label><input type="date" class="ds-input" value="${esc(s.date_limite_inscription || '')}" oninput="Sessions.set(${i},'date_limite_inscription',this.value)"></div>
-              <div><label class="ds-label">Âge min</label><input type="number" min="0" max="30" class="ds-input" value="${s.age_min}" oninput="Sessions.set(${i},'age_min',this.value)"></div>
-              <div><label class="ds-label">Âge max</label><input type="number" min="0" max="30" class="ds-input" value="${s.age_max}" oninput="Sessions.set(${i},'age_max',this.value)"></div>
-              <div class="col-span-2 md:col-span-1"><label class="ds-label">Places</label><input type="number" min="0" class="ds-input" value="${s.quota_global}" oninput="Sessions.set(${i},'quota_global',this.value)"></div>
-              <div class="col-span-2 md:col-span-1"><label class="ds-label">Public</label><select class="ds-select" onchange="Sessions.set(${i},'reserve_sexe',this.value);Sessions.render()"><option value="" ${!s.reserve_sexe ? 'selected' : ''}>Mixte</option><option value="Homme" ${s.reserve_sexe === 'Homme' ? 'selected' : ''}>Garçons uniquement</option><option value="Femme" ${s.reserve_sexe === 'Femme' ? 'selected' : ''}>Filles uniquement</option></select></div>
-              ${s.reserve_sexe ? '' : `<div><label class="ds-label">Places filles</label><input type="number" min="0" class="ds-input" value="${s.quota_fille}" oninput="Sessions.set(${i},'quota_fille',this.value)"></div><div><label class="ds-label">Places garçons</label><input type="number" min="0" class="ds-input" value="${s.quota_garcon}" oninput="Sessions.set(${i},'quota_garcon',this.value)"></div>`}
-            </div>
-            <details class="mt-4 rounded-xl border border-[#e5e7eb] bg-white" ${s.perso_lieu || s.perso_description ? 'open' : ''}>
-              <summary class="cursor-pointer select-none px-4 py-3 text-sm font-bold text-[#26343b]">Lieu et description propres à cette session <span class="font-normal text-[#6b7780]">(sinon : ceux du séjour principal)</span></summary>
-              <div class="px-4 pb-4 space-y-4">
-                <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" class="w-4 h-4 accent-[#2f3d45]" ${s.perso_lieu ? 'checked' : ''} onchange="Sessions.perso(${i},'lieu',this.checked)"> Cette session a lieu à une autre adresse</label>
-                ${s.perso_lieu ? `<div class="grid md:grid-cols-3 gap-3"><div class="md:col-span-3"><label class="ds-label">Adresse</label><input class="ds-input" value="${esc(s.adresse)}" oninput="Sessions.set(${i},'adresse',this.value)"></div><div class="md:col-span-2"><label class="ds-label">Ville</label><input class="ds-input" value="${esc(s.ville)}" oninput="Sessions.set(${i},'ville',this.value)"></div><div><label class="ds-label">Code postal</label><input class="ds-input" value="${esc(s.cp)}" oninput="Sessions.set(${i},'cp',this.value)"></div></div>` : ''}
-                <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" class="w-4 h-4 accent-[#2f3d45]" ${s.perso_description ? 'checked' : ''} onchange="Sessions.perso(${i},'description',this.checked)"> Cette session a sa propre description</label>
-                ${s.perso_description ? `<textarea rows="5" maxlength="10000" class="ds-textarea" oninput="Sessions.set(${i},'description',this.value)">${esc(s.description)}</textarea>` : ''}
-              </div>
-            </details>
-            ${on ? `<div class="mt-4"><p class="ds-label">Tarifs de cette session</p><div class="flex flex-wrap gap-2">${TARIFS.length ? TARIFS.map(t => `<label class="ds-chip !py-2 cursor-pointer"><input type="checkbox" class="accent-[#2f3d45]" ${s.tarifs.includes(t.id) ? 'checked' : ''} onchange="Sessions.toggleTarif(${i},${t.id},this.checked)">${esc(t.nom)} · ${Tarifs.label(t)}</label>`).join('') : '<span class="ds-hint !mt-0">Créez d\'abord des tarifs dans la section Inscriptions.</span>'}</div></div>`
-                : `<div class="mt-4 max-w-xs"><label class="ds-label">Prix affiché (€)</label><input type="number" min="0" step="0.01" class="ds-input" value="${s.prix || ''}" oninput="Sessions.set(${i},'prix',this.value)"></div>`}
-          </div>`).join('');
-    }
+    toggleHerit(k, inherit) {
+        const s = this.c; if (!s || s.principal) return;
+        this.save(); s.herit[k] = inherit; s.dirty = true;
+        this.apply(this.eff(s)); this.setImage(); this.renderBar();
+    },
+    anyDirty() { return this.list.some(s => s.dirty); }
 };
+
 (function () {
-    const t = $('toggleSessions');
-    t.checked = SESSIONS.length > 0;
-    if (SESSIONS.length) { t.disabled = true; $('sessLock').innerHTML = 'Ce séjour a plusieurs sessions. Pour le ramener à une seule, supprimez les autres sessions ci-dessous.'; }
-    const sync = () => { $('sessionsBox').classList.toggle('hidden', !t.checked); };
-    t.addEventListener('change', () => { if (t.checked && !SESSIONS.length) { Sessions.add(); } sync(); });
-    $('toggleOnline').addEventListener('change', () => Sessions.render());
-    $('orga-select').addEventListener('change', async () => { await Tarifs.load(); Sessions.render(); });
-    sync(); Sessions.render();
-    Tarifs.load().then(() => Sessions.render());
+    const tok = $('campForm').querySelector('[name=token]').value;
+    if (IS_EDIT) {
+        SESS_META.forEach(m => SM.list.push({ key: 'e' + (++SM.seq), token: m.token, principal: !!m.principal, herit: Object.fromEntries((m.heritage || []).map(k => [k, true])), snap: null, date_debut: m.date_debut, img: null, inscrits: m.inscrits, dirty: false }));
+        if (!SM.list.some(s => s.principal)) SM.list[0].principal = true;
+        const open = SM.list.find(s => s.token === tok) || SM.list[0];
+        SM.cur = open.key;
+        // les valeurs affichées au chargement sont celles de la session ouverte
+        open.snap = SM.capture(); open.snap.image_url = $('imgPrev').getAttribute('src') || '';
+        if (!open.principal) { SM.ensure(SM.principal).then(() => SM.show(), () => {}); }
+    } else {
+        SM.list.push({ key: 'e' + (++SM.seq), token: null, principal: true, herit: {}, snap: null, img: null, inscrits: 0, dirty: false });
+        SM.cur = SM.list[0].key; SM.list[0].snap = SM.capture();
+    }
+    SM.renderBar();
+    $('sessTabs').addEventListener('click', e => { const b = e.target.closest('[data-key]'); if (b) SM.go(b.dataset.key); });
+    $('sessAdd').addEventListener('click', () => SM.add());
+    $('sessDup').addEventListener('click', () => SM.dup());
+    $('sessDel').addEventListener('click', () => SM.remove());
+    document.addEventListener('click', e => {
+        const off = e.target.closest('[data-herit-off]'), on = e.target.closest('[data-herit-on]');
+        if (off) SM.toggleHerit(off.dataset.heritOff, false);
+        if (on) ColoUI.confirm('Revenir aux réglages de la session principale ? Les valeurs propres à cette session pour cette section seront remplacées.', { confirmLabel: 'Revenir à l’identique' }).then(ok => { if (ok) SM.toggleHerit(on.dataset.heritOn, true); });
+    });
+    // modifications non enregistrées : repère sur l'onglet + avertissement à la fermeture de la page
+    ['input', 'change'].forEach(ev => $('campForm').addEventListener(ev, () => SM.markDirty()));
+    $('f-img').addEventListener('change', () => { const s = SM.c, f = $('f-img').files[0]; if (!f) return; s.img = f; s.dirty = true; if (s.herit && s.herit.visuels) { s.herit.visuels = false; } $('imgPrev').src = URL.createObjectURL(f); $('imgPrev').classList.remove('hidden'); SM.renderBar(); });
+    window.addEventListener('beforeunload', e => { if (SM.anyDirty() && !SM.saving) { e.preventDefault(); e.returnValue = ''; } });
+    // listes (questions, étapes, tarifs, catégories, mots-clés) : modifiées par des boutons, hors champs du formulaire
+    $('campForm').addEventListener('click', e => { if (e.target.closest('#champsList button, #etapesList button, #tarifsSelected button, #catPicker, #mcCamp, [onclick*="Champs."], [onclick*="Etapes."]')) SM.markDirty(); });
 })();
 
 // ------------------------------------------------ envoi
-$('campForm').addEventListener('submit', async e => {
-    e.preventDefault();
+async function envoyer(confirmInscrits) {
     const msg = $('formMsg'), btn = $('submitBtn'); msg.textContent = '';
     const form = $('campForm');
-    // champs visibles invalides : on les montre
-    const bad = [...form.querySelectorAll('[required]')].find(el => el.offsetParent !== null && !el.checkValidity());
+    SM.save();
+    // la session affichée est vérifiée comme avant ; les autres le sont par le serveur (le message indique la session concernée)
+    const bad = [...form.querySelectorAll('[required]')].find(el => el.offsetParent !== null && !el.inert && !el.closest('[inert]') && !el.checkValidity());
     if (bad) { bad.scrollIntoView({ block: 'center', behavior: 'smooth' }); bad.reportValidity(); return; }
     if ($('toggleOnline').checked && !IS_EDIT && !$('acceptToS').checked) { msg.textContent = 'Acceptez les conditions de commission pour ouvrir les inscriptions en ligne.'; $('tosBox').scrollIntoView({ block: 'center' }); return; }
-    if ($('toggleOnline').checked && !SELECTED.length) { msg.textContent = 'Ajoutez au moins un tarif pour ouvrir les inscriptions en ligne.'; $('tarifsSelected').scrollIntoView({ block: 'center' }); return; }
     if (!CP.value().order.length) { msg.textContent = 'Choisissez au moins une catégorie pour votre séjour.'; $('s-categories').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     btn.disabled = true; const label = btn.textContent; btn.textContent = 'Enregistrement…';
     try {
-        const fd = new FormData(form);
-        fd.set('type', MC.get().join(', ')); fd.set('motscles', JSON.stringify(MC.get())); fd.set('categories', JSON.stringify(CP.value())); fd.set('tarifs', JSON.stringify(SELECTED)); fd.set('etapes', JSON.stringify(ETAPES.filter(x => x.lieu.trim() !== '')));
-        // sessions supplémentaires : une seule requête, enregistrée en transaction côté serveur
-        if ($('toggleSessions').checked) { fd.set('plusieurs_fois', '1'); fd.set('sessions', JSON.stringify(SESSIONS)); } else { fd.delete('plusieurs_fois'); }
-        const r = await fetch(IS_EDIT ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
+        await Promise.all(SM.list.map(s => SM.ensure(s)));
+        const p = SM.principal, fd = new FormData();
+        const sessions = SM.list.map(s => {
+            const e = SM.eff(s), inh = !s.principal && s.herit.visuels;
+            const mode = inh ? 'inherit' : (s.img ? 'file' : 'keep');
+            if (mode === 'file') fd.append('image_' + s.key, s.img);
+            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, champs: e.champs, etapes: e.etapes, image: mode, image_url: (s.snap.image_url || '') };
+        });
+        const openTok = SM.list.map(s => s.token).find(Boolean) || '';
+        fd.set('payload', JSON.stringify({ common: { nom: $('f-nom').value, organisateur_id: $('orga-select').value, categories: CP.value() }, sessions, confirm_inscrits: !!confirmInscrits }));
+        fd.set('token', openTok);
+        SM.saving = true;
+        const r = await fetch(openTok ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
         let d = {}; try { d = await r.json(); } catch (x) {}
+        if (r.status === 409 && d.confirm) {
+            SM.saving = false; btn.disabled = false; btn.textContent = label;
+            if (await ColoUI.confirm(d.message, { confirmLabel: 'Enregistrer quand même', title: 'Des familles sont inscrites' })) return envoyer(true);
+            return;
+        }
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
-        const cTok = IS_EDIT ? form.querySelector('[name=token]').value : d.token;
-        // Réglages animateurs (A : recrutement ColoMap, B : inscription de l'équipe) : enregistrés une fois le séjour créé
-        if (window.AnimModes) { try { await AnimModes.save(IS_EDIT ? form.querySelector('[name=token]').value : d.token); } catch (animErr) { await ColoUI.alert(ColoUI.friendly(animErr) + ' Vous pouvez les régler dans « Gestion des animateurs ».', { tone: 'err' }); } }
-        const questions = CHAMPS.filter(c => c.libelle.trim() !== '');
-        if (cTok && (questions.length || IS_EDIT)) await api('api/save_champs.php', { token: cTok, champs: questions });
-        const go = () => { location.href = 'mes_camps.php?ok=' + (IS_EDIT ? 'updated' : 'created'); };
+        // Réglages des animateurs : par session (recrutement ColoMap, inscription de l'équipe), une fois les sessions enregistrées
+        if (window.AnimModes) {
+            for (const s of SM.list) {
+                const tk = d.tokens && d.tokens[s.key]; if (!tk) continue;
+                try { const e = SM.eff(s); if (e.anim) { $('am-recrute').checked = false; $('am-equipe').checked = false; AnimModes.load(clone(e.anim)); await AnimModes.save(tk); } }
+                catch (animErr) { await ColoUI.alert(ColoUI.friendly(animErr) + ' Vous pouvez les régler dans « Gestion des animateurs ».', { tone: 'err' }); }
+            }
+        }
+        const go = () => { location.href = 'mes_camps.php?ok=' + (openTok ? 'updated' : 'created'); };
         if ((d.motscles_refuses || []).length) { msg.textContent = 'Séjour enregistré. Mots-clés refusés : ' + d.motscles_refuses.map(r => '« ' + r.label + ' » (' + r.raison + ')').join(' ; '); setTimeout(go, 4500); } else go();
     } catch (err) {
-        msg.textContent = err.message; btn.disabled = false; btn.textContent = label;
+        SM.saving = false;
+        msg.textContent = ColoUI.friendly(err); btn.disabled = false; btn.textContent = label;
     }
-});
+}
+$('campForm').addEventListener('submit', e => { e.preventDefault(); envoyer(false); });
 </script>
