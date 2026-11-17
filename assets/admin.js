@@ -14,11 +14,14 @@
       else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), attrs[k]);
       else if (attrs[k] !== false && attrs[k] != null) n.setAttribute(k, attrs[k] === true ? '' : attrs[k]);
     }
-    for (var i = 2; i < arguments.length; i++) {
-      var c = arguments[i];
-      if (c == null || c === false) continue;
-      n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-    }
+    (function add(list) {
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if (c == null || c === false) continue;
+        if (Array.isArray(c)) { add(c); continue; }   // dialog() passe un tableau de nœuds : appendChild(tableau) levait une TypeError
+        n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      }
+    })([].slice.call(arguments, 2));
     return n;
   }
   function icon(name) {

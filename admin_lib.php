@@ -308,7 +308,7 @@ function adm_head(string $title, string $active = ''): void {
        . '<title>' . h($title) . ' · Administration ColoMap</title><link rel="icon" type="image/png" href="favico.png">'
        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
        . '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
-       . '<link rel="stylesheet" href="assets/admin.css?v=2"></head><body>' . adm_sprite()
+       . '<link rel="stylesheet" href="assets/admin.css?v=3"></head><body>' . adm_sprite()
        . '<div class="adm" id="adm"><aside class="side" id="side"><a class="brand" href="admin.php">' . ic('shield', 'ic ic-lg') . '<span>ColoMap<small>Administration</small></span></a><nav>';
     foreach (adm_nav() as $grp => $items) {
         echo '<div class="grp">' . h($grp) . '</div>';
@@ -340,7 +340,7 @@ function adm_foot(array $page = []): void {
        . '<div class="row"><button class="btn ghost" type="button" data-close>Annuler</button><button class="btn" type="button" id="cf-go">Confirmer</button></div></div></div>'
        . '<div class="toast" id="toast" role="status"></div>'
        . '<script type="application/json" id="adm-data">' . json_encode($page + ['reauth' => adm_reauth_ok() ? max(0, ADM_REAUTH_TTL - (time() - (int)$_SESSION['adm_reauth'])) : 0], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '</script>'
-       . '<script src="assets/admin.js?v=2"></script>' . (!empty($page['js']) && preg_match('/^[a-z_]+$/', $page['js']) ? '<script src="assets/' . $page['js'] . '.js?v=1"></script>' : '') . '</body></html>';
+       . '<script src="assets/admin.js?v=3"></script>' . (!empty($page['js']) && preg_match('/^[a-z_]+$/', $page['js']) ? '<script src="assets/' . $page['js'] . '.js?v=1"></script>' : '') . '</body></html>';
 }
 
 /* ----------------------------------------------------------------- entités */
