@@ -192,6 +192,7 @@ body { overflow-x: clip; overflow-wrap: break-word; -webkit-tap-highlight-color:
 /* un enfant direct du body (main, section…) ne doit jamais élargir la page : sans ça, un contenu « nowrap » ou
    un carrousel fait grandir toute la page au-delà de l'écran (flex-col => min-width:auto) */
 body > * { min-width: 0; }
+body > main, body > section, body > article { width: 100%; }  /* main avec mx-auto + max-w : sans ça sa largeur = contenu le plus large (carrousel, chips) */
 img, video, canvas, iframe { max-width: 100%; }
 table { max-width: 100%; }
 .ds-tablewrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
