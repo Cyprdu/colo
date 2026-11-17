@@ -88,6 +88,12 @@ function sante_image_jpeg(string $bytes, int $max = 2000, int $carre = 0): strin
     if (!function_exists('imagecreatefromstring')) throw new Exception("Traitement d'image indisponible.");
     $src = @imagecreatefromstring($bytes);
     if (!$src) throw new Exception("Image illisible.");
+    // Photos de téléphone : applique l'orientation EXIF avant de supprimer les métadonnées
+    if (function_exists('exif_read_data') && strncmp($bytes, "ÿØ", 2) === 0) {
+        $o = (int)(@exif_read_data('data://image/jpeg;base64,' . base64_encode($bytes))['Orientation'] ?? 1);
+        $deg = [3 => 180, 6 => -90, 8 => 90][$o] ?? 0;
+        if ($deg && ($rot = imagerotate($src, $deg, 0))) { imagedestroy($src); $src = $rot; }
+    }
     $w = imagesx($src); $h = imagesy($src);
     if ($carre > 0) { $s = min($w, $h); $dst = imagecreatetruecolor($carre, $carre); imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
         imagecopyresampled($dst, $src, 0, 0, (int)(($w - $s) / 2), (int)(($h - $s) / 2), $carre, $carre, $s, $s); }

@@ -281,17 +281,17 @@ require_once 'partials/header.php';
                 <h2 class="ds-h1" style="font-size:24px">Informations de l'enfant</h2>
                 <div class="mt-5 flex flex-wrap items-center gap-5 pb-6 border-b border-[#e5e7eb]">
                     <?php if (!empty($enfant['photo_token'])): ?>
-                        <img src="<?= htmlspecialchars($fileUrl('photos', $enfant['photo_token'])) ?>" alt="Photo de l'enfant" class="w-24 h-24 rounded-full object-cover">
+                        <img id="photo-prev" src="<?= htmlspecialchars($fileUrl('photos', $enfant['photo_token'])) ?>" alt="Photo de l'enfant" class="w-24 h-24 rounded-full object-cover flex-none">
                     <?php else: ?>
-                        <span class="w-24 h-24 rounded-full bg-[#3a4852] text-white text-[36px] font-extrabold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)$enfant['prenom'], 0, 1))) ?></span>
+                        <span id="photo-init" class="w-24 h-24 flex-none rounded-full bg-[#3a4852] text-white text-[36px] font-extrabold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)$enfant['prenom'], 0, 1))) ?></span>
+                        <img id="photo-prev" src="" alt="" class="w-24 h-24 rounded-full object-cover flex-none hidden">
                     <?php endif; ?>
                     <div class="flex-1 min-w-[220px]">
-                        <label class="ds-label" for="photo">Photo de l'enfant</label>
+                        <label class="ds-label" for="photo">Photo de l'enfant <details class="ds-help"><summary>?</summary><div>JPEG, PNG ou WebP, 5 Mo maximum. Recadrée en carré, stockée de façon privée et chiffrée ; visible uniquement par vous et les organisateurs des séjours de l'enfant.</div></details></label>
                         <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="ds-file">
-                        <p class="text-[12.5px] text-[#6b7780] mt-1">JPEG, PNG ou WebP, 5 Mo max. Recadrée en rond, stockée de façon privée.</p>
                     </div>
                     <div class="flex gap-2">
-                        <button type="submit" name="act" value="photo_up" class="ds-btn ds-btn-light">Envoyer</button>
+                        <button type="submit" name="act" value="photo_up" id="photo-go" class="ds-btn ds-btn-light" disabled>Enregistrer</button>
                         <?php if (!empty($enfant['photo_token'])): ?><button type="submit" name="act" value="photo_del" class="ds-btn ds-btn-light">Retirer</button><?php endif; ?>
                     </div>
                 </div>
@@ -416,6 +416,13 @@ require_once 'partials/header.php';
         links.forEach(function (a) { if (a.closest('.fc-nav')) a.classList.toggle('on', a.dataset.go === name); });
         cur.value = name;
     }
+    var ph = document.getElementById('photo');   // aperçu rond immédiat
+    if (ph) ph.addEventListener('change', function () {
+        var f = ph.files[0], img = document.getElementById('photo-prev'), ini = document.getElementById('photo-init');
+        document.getElementById('photo-go').disabled = !f;
+        if (!f || !/^image\//.test(f.type)) return;
+        img.src = URL.createObjectURL(f); img.classList.remove('hidden'); if (ini) ini.classList.add('hidden');
+    });
     document.documentElement.classList.add('js');
     links.forEach(function (a) { a.addEventListener('click', function (ev) { ev.preventDefault(); history.replaceState(null, '', '#' + a.dataset.go); show(a.dataset.go); window.scrollTo({ top: 0 }); }); });
     window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
