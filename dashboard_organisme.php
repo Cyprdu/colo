@@ -66,103 +66,167 @@ $delay = fin_release_delay_days();
 $mkTot = ['i' => 0, 'c' => 0, 'n' => 0];
 foreach ($mkStats as $c) { $mkTot['i'] += $c['impressions']; $mkTot['c'] += $c['clics']; $mkTot['n'] += $c['inscriptions']; }
 
+
+// ---- Données des graphiques (12 derniers mois) ----
+$serie = [];
+for ($i = 11; $i >= 0; $i--) { $k = date('Y-m', strtotime("first day of -$i month")); $serie[$k] = ['ca' => 0, 'ins' => 0]; }
+$nbInscrits = 0; $nbPlaces = 0;
+if ($orga) {
+    try {
+        require_once 'api/compta_lib.php';
+        foreach (compta_by_month($pdo, date('Y-m-01 00:00:00', strtotime('first day of -11 month')), date('Y-m-d 23:59:59'), $orgaId) as $r) {
+            if (isset($serie[$r['m']])) { $serie[$r['m']]['ca'] = round((int)$r['ca'] / 100, 2); }
+        }
+        $q = $pdo->prepare("SELECT DATE_FORMAT(i.date_inscription, '%Y-%m') m, COUNT(*) n FROM inscriptions i JOIN camps c ON c.id = i.camp_id
+                            WHERE c.organisateur_id = ? AND i.statut_paiement = 'PAYE' AND COALESCE(i.statut,'') NOT IN ('Annulé','annule','Annule')
+                              AND i.date_inscription >= ? GROUP BY m");
+        $q->execute([$orgaId, date('Y-m-01', strtotime('first day of -11 month'))]);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) if (isset($serie[$r['m']])) $serie[$r['m']]['ins'] = (int)$r['n'];
+    } catch (Throwable $e) { error_log('dashboard series: ' . $e->getMessage()); }
+}
+$moisCourt = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+$chart = ['labels' => [], 'ca' => [], 'ins' => []];
+foreach ($serie as $k => $v) { $chart['labels'][] = $moisCourt[(int)substr($k, 5, 2) - 1]; $chart['ca'][] = $v['ca']; $chart['ins'][] = $v['ins']; }
+$sejours = [];
+foreach ($mkStats as $c) {
+    $qt = max(1, (int)$c['quota_global']); $in = (int)$c['inscrits_total'];
+    $nbInscrits += $in; $nbPlaces += $qt;
+    $sejours[] = ['nom' => $c['nom'], 'ins' => $in, 'quota' => $qt, 'pct' => min(100, (int)round($in / $qt * 100))];
+}
+usort($sejours, fn($a, $b) => $b['ins'] <=> $a['ins']);
+$remplissage = $nbPlaces ? (int)round($nbInscrits / $nbPlaces * 100) : 0;
+$caTotal = $fin ? (int)$fin['brut_total_cents'] : 0;
+
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 require_once 'partials/mk_icons.php';
+$statusTxt = $ready ? 'Versements activés' : ($hasAccount && !empty($acc['details_submitted']) ? 'Vérification Stripe en cours' : ($hasAccount ? 'Inscription Stripe à finaliser' : 'Versements non activés'));
+$help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmlspecialchars($t, ENT_QUOTES) . '" aria-label="Aide" aria-expanded="false">?</button>';
 ?>
 <title>Tableau de bord - <?= htmlspecialchars($orga['nom'] ?? 'Organisme') ?></title>
 <link rel="stylesheet" href="assets/mk.css?v=1">
+<style>
+.dbh { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #b8c2ca; color: var(--ds-muted); font-size: 12px; font-weight: 800; line-height: 1; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; margin-left: 6px; background: #fff; cursor: pointer; flex: none; }
+.dbh:hover, .dbh[aria-expanded="true"] { background: var(--ds-btn); border-color: var(--ds-btn); color: #fff; }
+.dbh:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+#dbPop { position: absolute; z-index: 60; max-width: 280px; background: var(--ds-btn); color: #fff; font-size: 13px; line-height: 1.45; padding: 12px 14px; border-radius: 12px; box-shadow: 0 12px 30px rgba(31,42,48,.25); display: none; }
+#dbPop.on { display: block; animation: dsFade .15s ease-out; }
+.db-h { font-size: 14px; font-weight: 800; color: var(--ds-ink); display: flex; align-items: center; margin-bottom: 12px; }
+.db-chart { width: 100%; height: 190px; display: block; }
+.db-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--ds-muted); margin-top: 8px; }
+.db-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.db-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font-size: 13px; margin-bottom: 12px; }
+.db-row b { color: var(--ds-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-row span { color: var(--ds-muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+.db-bar { grid-column: 1 / -1; height: 8px; background: var(--ds-soft); border-radius: 9999px; overflow: hidden; }
+.db-bar i { display: block; height: 100%; background: var(--ds-btn); border-radius: 9999px; transition: width .5s ease; }
+.db-empty { color: var(--ds-muted); font-size: 13px; padding: 28px 0; text-align: center; }
+.db-tip { fill: var(--ds-muted); font-size: 10px; font-family: Montserrat, sans-serif; }
+@media (prefers-reduced-motion: reduce) { .db-bar i { transition: none; } #dbPop.on { animation: none; } }
+</style>
 
 <main class="mk-wrap">
 <a href="public_infos.php" class="mk-back"><?= mk_icon('back', 16) ?> Mes organismes</a>
 
 <?php if (!$orga): ?>
-    <div class="ds-alert-err"><b>Erreur.</b> <?= htmlspecialchars($error ?? '') ?></div>
+    <div class="ds-alert-err" role="alert"><b>Erreur.</b> <?= htmlspecialchars($error ?? '') ?></div>
 <?php else: ?>
     <?php if ($error): ?><div class="ds-alert-err" style="margin-bottom:16px" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-    <?php if ($success): ?><div class="ds-alert-ok" style="margin-bottom:16px"><?= htmlspecialchars($success) ?></div><?php endif; ?>
+    <?php if ($success): ?><div class="ds-alert-ok" style="margin-bottom:16px" role="status"><?= htmlspecialchars($success) ?></div><?php endif; ?>
 
     <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:14px;min-width:0">
-            <?php if (!empty($orga['logo_url'])): ?><img src="<?= htmlspecialchars($orga['logo_url']) ?>" alt="" style="width:56px;height:56px;border-radius:16px;object-fit:cover;border:1px solid var(--ds-line)"><?php endif; ?>
+            <?php if (!empty($orga['logo_url'])): ?><img src="<?= htmlspecialchars($orga['logo_url']) ?>" alt="" style="width:52px;height:52px;border-radius:16px;object-fit:cover;border:1px solid var(--ds-line)"><?php endif; ?>
             <div style="min-width:0"><p class="ds-eyebrow">Tableau de bord</p><h1 class="ds-h1" style="overflow-wrap:anywhere"><?= htmlspecialchars($orga['nom']) ?></h1></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <a class="ds-btn ds-btn-light" href="annulations_organisme.php?o=<?= fin_orga_tok($orgaId) ?>">Annulations<?= !empty($nbAnnul) ? ' (' . $nbAnnul . ')' : '' ?></a>
-            <a class="ds-btn ds-btn-light" href="edit_organisateur.php?id=<?= $orgaId ?>">Modifier l'organisme</a>
-            <a class="ds-btn" href="marketing.php?id=<?= $orgaId ?>"><?= mk_icon('star', 18) ?> Marketing</a>
+            <a class="ds-btn" href="create_camp.php">Créer un séjour</a>
+            <a class="ds-btn ds-btn-light" href="mes_camps.php">Inscrits</a>
+            <a class="ds-btn ds-btn-light" href="messagerie.php">Messages</a>
+            <a class="ds-btn ds-btn-light" href="marketing.php?id=<?= $orgaId ?>">Marketing</a>
         </div>
     </div>
 
-    <!-- Versements Stripe -->
-    <section class="mk-section" style="margin-top:28px">
-        <div class="ds-card" style="padding:24px;display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-            <div style="display:flex;gap:14px;align-items:flex-start;max-width:640px">
-                <span class="ds-tile-ico" style="background:<?= $ready ? '#e6efe9' : 'var(--ds-cream)' ?>;color:<?= $ready ? '#2d5a43' : '#6b5518' ?>"><?= mk_icon($ready ? 'check' : 'bank') ?></span>
-                <div>
-                    <b class="text-[#26343b] text-[17px]">
-                        <?php if ($ready): ?>Versements activés<?php elseif ($hasAccount && !empty($acc['details_submitted'])): ?>Vérification en cours chez Stripe<?php elseif ($hasAccount): ?>Finalisez votre inscription pour être payé<?php else: ?>Activez vos versements<?php endif; ?>
-                    </b>
-                    <p class="mk-note" style="margin-top:4px;font-size:14px">
-                        <?php if ($ready): ?>L'argent des inscriptions est versé automatiquement sur votre compte bancaire, <?= $fin['jour_nom'] ? 'chaque <b>' . $fin['jour_nom'] . '</b>' : 'une fois par semaine' ?>, sans attendre le séjour.
-                        <?php elseif ($hasAccount && !empty($acc['details_submitted'])): ?>Stripe vérifie votre dossier (en général sous 24 à 48 h). Les sommes restent en sécurité et seront versées dès la validation.
-                        <?php else: ?>Pour recevoir le paiement des inscriptions, renseignez votre identité et votre IBAN directement chez Stripe, notre prestataire de paiement. ColoMap ne voit ni ne conserve ces données. Compter 5 minutes.<?php endif; ?>
-                    </p>
-                    <?php if ($hasAccount && !$ready && $due): ?><p class="mk-note" style="margin-top:6px"><?= count($due) ?> information<?= count($due) > 1 ? 's' : '' ?> restant à fournir.</p><?php endif; ?>
-                </div>
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <?php if (!$ready): ?><a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= fin_orga_tok($orgaId) ?>"><?= $hasAccount ? 'Continuer mon inscription' : 'Activer mes versements' ?> <?= mk_icon('arrow', 16) ?></a>
-                <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light" href="api/connect_dashboard.php?organisateur_id=<?= $orgaId ?>" target="_blank" rel="noopener">Mon espace Stripe</a><?php endif; ?>
-            </div>
-        </div>
-    </section>
-
-    <section class="mk-section" style="margin-top:20px">
+    <!-- Indicateurs -->
+    <section class="mk-section" style="margin-top:24px">
         <div class="mk-grid mk-g4">
-            <div class="mk-stat dark"><div class="k">Disponible au prochain versement</div><div class="v"><?= fin_eur($fin['prochain']['cents'] ?? 0) ?></div><div class="s"><?= $fin['prochain'] ? 'le ' . ($fin['jour_nom'] ?? '') . ' ' . date('d/m/Y', strtotime($fin['prochain']['d'])) : 'jour de versement en cours d\'attribution' ?><?= $ready ? '' : ' (après activation des versements)' ?></div></div>
-            <div class="mk-stat"><div class="k">Réserve retenue</div><div class="v"><?= fin_eur($fin['reserve_cents']) ?></div><div class="s"><?= number_format($fin['reserve_pct'], 0, ',', ' ') ?> % gardés tant qu'une annulation est possible</div></div>
-            <div class="mk-stat"><div class="k">Déjà versé</div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div><div class="s"><?= count($transferts) ?> versement<?= count($transferts) > 1 ? 's' : '' ?> récent<?= count($transferts) > 1 ? 's' : '' ?></div></div>
-            <div class="mk-stat"><div class="k">Commission ColoMap</div><div class="v"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?></div><div class="s">tout compris, par inscription : <?= fin_eur($fin['commission_nette_cents']) ?> au total</div></div>
+            <div class="mk-stat dark"><div class="k">Prochain versement<?= $help("Somme versée sur votre compte bancaire au prochain jour de versement. Elle comprend les inscriptions payées depuis au moins " . (int)$fin['delai_jours'] . " jours, hors réserve. Le jour est fixe chaque semaine" . ($fin['jour_nom'] ? " (" . $fin['jour_nom'] . ")" : "") . ".") ?></div><div class="v"><?= fin_eur($fin['prochain']['cents'] ?? 0) ?></div><div class="s"><?= $fin['prochain'] ? date('d/m/Y', strtotime($fin['prochain']['d'])) : 'date à venir' ?></div></div>
+            <div class="mk-stat"><div class="k">Réserve<?= $help(number_format($fin['reserve_pct'], 0, ',', ' ') . " % de chaque paiement est gardé de côté tant qu'une famille peut annuler et être remboursée. Il vous est versé automatiquement ensuite : ce n'est pas un frais.") ?></div><div class="v"><?= fin_eur($fin['reserve_cents']) ?></div></div>
+            <div class="mk-stat"><div class="k">Déjà versé<?= $help("Total des versements envoyés sur votre compte bancaire via Stripe.") ?></div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div></div>
+            <div class="mk-stat"><div class="k">Commission<?= $help("Commission ColoMap : " . number_format(fin_commission_pct(), 1, ',', ' ') . " %" . (fin_commission_fixe_cents() > 0 ? " + " . fin_eur(fin_commission_fixe_cents()) : "") . " du montant payé par inscription, frais bancaires de paiement par carte inclus. Aucun autre frais.") ?></div><div class="v"><?= fin_eur($fin['commission_nette_cents']) ?></div></div>
+            <div class="mk-stat"><div class="k">Chiffre d'affaires</div><div class="v"><?= fin_eur($caTotal) ?></div></div>
+            <div class="mk-stat"><div class="k">Inscrits</div><div class="v"><?= $nbInscrits ?></div></div>
+            <div class="mk-stat"><div class="k">Remplissage<?= $help("Inscrits sur le nombre total de places de tous vos séjours.") ?></div><div class="v"><?= $remplissage ?> %</div></div>
+            <div class="mk-stat"><div class="k">Points marketing</div><div class="v"><?= number_format((int)$fin['points'], 0, ',', ' ') ?></div></div>
         </div>
-        <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Vous devez <?= fin_eur(-$fin['solde_cents']) ?> à ColoMap : une famille a été remboursée après que vous avez reçu l'argent. Cette somme est retirée automatiquement de vos prochains versements.</div><?php endif; ?>
-        <?php if ($fin['historique_cents'] > 0): ?><div class="mk-tip" style="margin-top:14px"><?= mk_icon('info', 20) ?><div>Un solde de <b><?= fin_eur($fin['historique_cents']) ?></b> provient de l'ancien système de virement. L'équipe ColoMap le règle manuellement : <a class="underline" href="contact.php">contactez-nous</a> si vous souhaitez le recevoir.</div></div><?php endif; ?>
+        <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Solde négatif : <?= fin_eur(-$fin['solde_cents']) ?> seront retirés de vos prochains versements. <?= $help("Une famille a été remboursée après que vous avez reçu l'argent.") ?></div><?php endif; ?>
+        <?php if ($fin['historique_cents'] > 0): ?><div class="ds-alert-ok" style="margin-top:14px">Solde de l'ancien système : <?= fin_eur($fin['historique_cents']) ?> <?= $help("Réglé manuellement par l'équipe ColoMap : contactez-nous pour le recevoir.") ?></div><?php endif; ?>
     </section>
 
-    <!-- Comprendre mes versements et la commission -->
-    <section class="mk-section" style="margin-top:20px">
-        <div class="ds-card" style="padding:24px">
-            <h2 style="margin:0 0 4px">Comment je suis payé, et où est la commission ?</h2>
-            <p class="mk-note" style="margin:0 0 16px;font-size:14px">Un seul prélèvement, affiché ligne par ligne : vous voyez toujours le montant payé par la famille, la commission, puis ce qui vous revient.</p>
-            <?php [$exC, $exP, $exF] = fin_commission_split(10000); ?>
-            <div class="mk-grid mk-g3">
-                <div><b class="text-[#26343b]">1. La famille paie ColoMap</b><p class="mk-note" style="margin-top:4px">Le paiement par carte est encaissé par ColoMap (via Stripe) au moment de l'inscription. La place est réservée aussitôt. Une famille peut annuler et être remboursée selon vos conditions d'annulation.</p></div>
-                <div><b class="text-[#26343b]">2. La commission est retenue sur chaque inscription</b><p class="mk-note" style="margin-top:4px"><?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?> du montant payé. Elle inclut <b>les frais bancaires de paiement par carte</b> : vous n'avez aucun autre frais à payer. Exemple : pour <?= fin_eur(10000) ?> payés, commission <?= fin_eur($exC) ?>, vous recevez <b><?= fin_eur(10000 - $exC) ?></b>.</p></div>
-                <div><b class="text-[#26343b]">3. Vous êtes versé chaque semaine</b><p class="mk-note" style="margin-top:4px">Pas besoin d'attendre le séjour : <?= $fin['jour_nom'] ? 'chaque <b>' . $fin['jour_nom'] . '</b>' : 'chaque semaine' ?>, vous recevez les inscriptions payées depuis au moins <b><?= (int)$fin['delai_jours'] ?> jours</b> (délai de sécurité contre les erreurs de paiement). Votre jour est fixe. Stripe verse ensuite sur votre compte bancaire (2 à 3 jours ouvrés).</p></div>
+    <!-- Versements -->
+    <section class="mk-section" style="margin-top:16px">
+        <div class="ds-card" style="padding:16px 20px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:12px"><span class="ds-tile-ico" style="width:40px;height:40px"><?= mk_icon($ready ? 'check' : 'bank', 20) ?></span>
+                <b class="text-[#26343b]"><?= $statusTxt ?></b><?= $help($ready ? "L'argent des inscriptions est versé automatiquement sur votre compte bancaire, chaque semaine, sans attendre le séjour." : "Pour être payé, renseignez votre identité et votre IBAN directement chez Stripe (5 minutes). ColoMap ne voit ni ne conserve ces données." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <?php if (!$ready): ?><a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= fin_orga_tok($orgaId) ?>"><?= $hasAccount ? 'Continuer' : 'Activer mes versements' ?></a>
+                <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light" href="api/connect_dashboard.php?organisateur_id=<?= $orgaId ?>" target="_blank" rel="noopener">Espace Stripe</a><?php endif; ?>
+                <a class="ds-btn ds-btn-light" href="#versements">Versements</a>
+                <a class="ds-btn ds-btn-light" href="annulations_organisme.php?o=<?= fin_orga_tok($orgaId) ?>">Annulations<?= !empty($nbAnnul) ? ' (' . $nbAnnul . ')' : '' ?></a>
+                <a class="ds-btn ds-btn-light" href="edit_organisateur.php?id=<?= $orgaId ?>">Modifier</a>
             </div>
-            <div class="mk-tip" style="margin-top:16px"><?= mk_icon('shield', 20) ?><div><b>Pourquoi une réserve de <?= number_format($fin['reserve_pct'], 0, ',', ' ') ?> % ?</b> Tant qu'une famille peut encore annuler et être remboursée, nous gardons <?= number_format($fin['reserve_pct'], 0, ',', ' ') ?> % de chaque paiement de côté pour pouvoir la rembourser sans vous redemander d'argent. Cette réserve vous est versée automatiquement dès qu'aucun remboursement n'est plus possible (séjour commencé ou délai d'annulation dépassé). Rien n'est perdu : c'est une mise de côté, pas un frais.</div></div>
-            <?php if ($fin['prochain']): ?><div class="mk-tip" style="margin-top:12px"><?= mk_icon('clock', 20) ?><div><b>Prochain versement : <?= fin_eur((int)$fin['prochain']['cents']) ?></b> le <b><?= date('d/m/Y', strtotime($fin['prochain']['d'])) ?></b><?= $fin['delai_cents'] > 0 ? '. ' . fin_eur($fin['delai_cents']) . ' sont encore dans le délai de sécurité de ' . (int)$fin['delai_jours'] . ' jours et arriveront un peu plus tard' : '' ?><?= $ready ? '' : ' : activez vos versements ci-dessus pour le recevoir' ?>.</div></div><?php endif; ?>
         </div>
     </section>
 
-    <!-- Derniers paiements -->
-    <section class="mk-section">
-        <h2>Derniers paiements reçus</h2>
-        <p class="lead">Détail de la commission, inscription par inscription.</p>
-        <?php if (!$recent): ?><p class="mk-note" style="margin-top:14px">Aucun paiement pour le moment.</p><?php else: ?>
-        <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:640px">
-            <thead><tr><th>Date</th><th>Séjour</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Net pour vous</th><th>Versement</th></tr></thead><tbody>
-            <?php foreach ($recent as $p): $sl = ['attente' => 'prévu ' . date('d/m/Y', strtotime($p['date_deblocage'])), 'bloque' => 'suspendu', 'litige' => 'litige', 'en_cours' => 'en cours', 'verse' => 'versé', 'rembourse' => 'remboursé'][$p['statut']] ?? $p['statut']; ?>
-                <tr><td><?= date('d/m/Y', strtotime($p['created_at'])) ?></td><td><b><?= htmlspecialchars($p['camp']) ?></b></td><td class="num"><?= fin_eur((int)$p['brut_cents']) ?></td><td class="num">- <?= fin_eur((int)$p['commission_cents']) ?></td><td class="num"><b><?= fin_eur((int)$p['net_cents'] - (int)$p['net_rembourse_cents']) ?></b><?= $p['rembourse_cents'] ? '<div class="mk-note">remboursé : ' . fin_eur((int)$p['rembourse_cents']) . '</div>' : '' ?></td><td><?= htmlspecialchars($sl) ?></td></tr>
-            <?php endforeach; ?></tbody></table></div>
+    <!-- Graphiques -->
+    <section class="mk-section" style="margin-top:16px">
+        <div class="mk-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+            <div class="ds-card" style="padding:20px"><div class="db-h">Chiffre d'affaires (12 mois)<?= $help("Montant payé par les familles, remboursements déduits, par mois.") ?></div><svg id="chCa" class="db-chart" role="img" aria-label="Courbe du chiffre d'affaires sur 12 mois"></svg></div>
+            <div class="ds-card" style="padding:20px"><div class="db-h">Inscriptions (12 mois)<?= $help("Nombre d'inscriptions payées et non annulées, par mois.") ?></div><svg id="chIns" class="db-chart" role="img" aria-label="Courbe des inscriptions sur 12 mois"></svg></div>
+            <div class="ds-card" style="padding:20px"><div class="db-h">Remplissage par séjour<?= $help("Inscrits sur places disponibles, séjour par séjour.") ?></div>
+                <?php if (!$sejours): ?><p class="db-empty">Aucun séjour. <a class="underline" href="create_camp.php">Créer un séjour</a></p><?php else: foreach (array_slice($sejours, 0, 8) as $s): ?>
+                    <div class="db-row"><b><?= htmlspecialchars($s['nom']) ?></b><span><?= $s['ins'] ?>/<?= $s['quota'] ?></span><div class="db-bar" role="img" aria-label="<?= $s['pct'] ?> % rempli"><i style="width:<?= $s['pct'] ?>%"></i></div></div>
+                <?php endforeach; endif; ?></div>
+            <div class="ds-card" id="payCard" style="padding:20px;display:none"><div class="db-h">Moyens de paiement<?= $help("Répartition des paiements par moyen utilisé (carte, etc.).") ?></div><svg id="chPay" class="db-chart" role="img" aria-label="Répartition des moyens de paiement"></svg><div id="payLeg" class="db-legend"></div></div>
+        </div>
+    </section>
+
+    <!-- Historique -->
+    <section class="mk-section" id="versements">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Versements<?= $help("Chaque versement a son justificatif, détaillé inscription par inscription.") ?></h2>
+            <?php if ($transferts || $legacy): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="pdf_export_virements_history.php?organisateur_id=<?= $orgaId ?>" target="_blank"><?= mk_icon('doc', 16) ?> PDF</a><?php endif; ?></div>
+        <?php if (!$transferts && !$legacy): ?>
+            <p class="db-empty">Aucun versement pour le moment.</p>
+        <?php else: ?>
+            <div class="mk-table-wrap" style="margin-top:12px"><table class="mk-table">
+                <thead><tr><th>Date</th><th class="num">Montant</th><th>Statut</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($transferts as $t): $s = ['envoye' => ['Envoyé', 'ok'], 'en_cours' => ['En cours', 'info'], 'echec' => ['Échec, nouvel essai', 'bad']][$t['statut']] ?? [$t['statut'], '']; ?>
+                    <tr><td><?= date('d/m/Y', strtotime($t['created_at'])) ?></td><td class="num"><b><?= fin_eur((int)$t['montant_cents']) ?></b></td><td><span class="mk-pill <?= $s[1] ?>"><?= $s[0] ?></span></td><td class="num"><a class="underline" href="virement.php?t=<?= urlencode($t['token']) ?>">Justificatif</a></td></tr>
+                <?php endforeach; ?>
+                <?php foreach ($legacy as $v): ?>
+                    <tr><td><?= date('d/m/Y', strtotime($v['date_demande'])) ?></td><td class="num"><b><?= fin_eur((int)round($v['montant_apres_commission'] * 100)) ?></b></td><td><span class="mk-pill <?= $v['effectue'] ? 'ok' : 'warn' ?>"><?= $v['effectue'] ? 'Effectué' : 'En attente' ?></span></td><td class="num"><a class="underline" href="virement.php?t=<?= urlencode($v['token']) ?>">Justificatif</a></td></tr>
+                <?php endforeach; ?>
+                </tbody></table></div>
         <?php endif; ?>
     </section>
 
+    <!-- Derniers paiements -->
+    <?php if ($recent): ?>
+    <section class="mk-section">
+        <h2 style="margin:0">Derniers paiements<?= $help("Payé par la famille, commission ColoMap, puis net pour vous.") ?></h2>
+        <div class="mk-table-wrap" style="margin-top:12px"><table class="mk-table" style="min-width:560px">
+            <thead><tr><th>Date</th><th>Séjour</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Net</th></tr></thead><tbody>
+            <?php foreach (array_slice($recent, 0, 8) as $p): ?>
+                <tr><td><?= date('d/m/Y', strtotime($p['created_at'])) ?></td><td><b><?= htmlspecialchars($p['camp']) ?></b></td><td class="num"><?= fin_eur((int)$p['brut_cents']) ?></td><td class="num">- <?= fin_eur((int)$p['commission_cents']) ?></td><td class="num"><b><?= fin_eur((int)$p['net_cents'] - (int)$p['net_rembourse_cents']) ?></b></td></tr>
+            <?php endforeach; ?></tbody></table></div>
+    </section>
+    <?php endif; ?>
+
     <!-- TVA -->
-    <section class="mk-section" style="margin-top:20px">
-        <form method="post" class="ds-card" style="padding:22px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
-            <div style="max-width:560px"><b class="text-[#26343b] text-[17px]">TVA sur vos séjours</b>
-                <p class="mk-note" style="margin-top:4px;font-size:14px">Les prix que vous fixez sont des prix TTC : les familles paient ce prix, sans supplément. Si vous êtes assujetti à la TVA, indiquez votre taux : la TVA incluse apparaîtra sur le reçu des familles. Associations et micro-entrepreneurs sont souvent non assujettis : laissez « Non applicable ». Cette indication ne remplace pas l'avis de votre comptable.</p></div>
+    <section class="mk-section" style="margin-top:16px">
+        <form method="post" class="ds-card" style="padding:16px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+            <b class="text-[#26343b]">TVA<?= $help("Les prix sont TTC : les familles ne paient rien de plus. Si vous êtes assujetti, indiquez votre taux : la TVA incluse figurera sur leur reçu. Associations et micro-entrepreneurs sont souvent non assujettis. Ne remplace pas l'avis d'un comptable.") ?></b>
             <div style="display:flex;gap:10px;align-items:center">
                 <input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="act" value="tva">
                 <select class="ds-select" name="tva" aria-label="Taux de TVA"><?php foreach (fin_tva_taux_permis() as $k => $l): $cur = $orga['tva_taux'] === null ? '' : rtrim(rtrim((string)$orga['tva_taux'], '0'), '.'); ?><option value="<?= htmlspecialchars((string)$k) ?>"<?= (string)$k === $cur ? ' selected' : '' ?>><?= htmlspecialchars($l) ?></option><?php endforeach; ?></select>
@@ -170,74 +234,68 @@ require_once 'partials/mk_icons.php';
             </div>
         </form>
     </section>
-
-    <!-- Marketing -->
-    <section class="mk-section" style="margin-top:20px">
-        <div class="ds-card" style="padding:22px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-            <div style="max-width:620px"><b class="text-[#26343b] text-[17px]">Marketing : <?= number_format((int)$fin['points'], 0, ',', ' ') ?> points</b>
-                <p class="mk-note" style="margin-top:4px;font-size:14px">Sur 30 jours : <?= number_format($mkTot['i'], 0, ',', ' ') ?> impressions, <?= number_format($mkTot['c'], 0, ',', ' ') ?> visites, <?= $mkTot['n'] ?> inscription<?= $mkTot['n'] > 1 ? 's' : '' ?>.
-                <?= $fin['solde_cents'] >= 1000 ? 'Vous pouvez payer vos points avec vos gains, sans carte.' : '' ?></p></div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="ds-btn ds-btn-light" href="marketing_dashboard.php?id=<?= $orgaId ?>"><?= mk_icon('chart', 18) ?> Statistiques</a><a class="ds-btn" href="marketing.php?id=<?= $orgaId ?>">Booster mes séjours</a></div>
-        </div>
-    </section>
-
-    <!-- Prochains versements -->
-    <section class="mk-section">
-        <h2>Mes sommes en attente, séjour par séjour</h2>
-        <p class="lead">Ce qui sera versé au prochain passage, ce qui est gardé en réserve et pourquoi.</p>
-        <?php if (!$fin['prochains']): ?>
-            <p class="mk-note" style="margin-top:14px">Aucune inscription payée en attente de versement.</p>
-        <?php else: ?>
-            <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:720px">
-                <thead><tr><th>Séjour</th><th>Départ</th><th class="num">Inscr.</th><th class="num">À verser</th><th class="num">Réserve</th><th class="num">Délai de sécurité</th><th>Réserve libérée le</th></tr></thead>
-                <tbody>
-                <?php foreach ($fin['prochains'] as $p): ?>
-                    <tr><td><b><?= htmlspecialchars($p['nom']) ?></b></td><td><?= $p['date_debut'] ? date('d/m/Y', strtotime($p['date_debut'])) : '-' ?></td><td class="num"><?= (int)$p['n'] ?></td><td class="num"><b><?= fin_eur((int)$p['ok']) ?></b></td><td class="num"><?= fin_eur((int)$p['held']) ?></td><td class="num"><?= fin_eur((int)$p['wait']) ?></td><td><?= $p['held'] > 0 && $p['libere'] ? date('d/m/Y', strtotime($p['libere'])) : '-' ?></td></tr>
-                <?php endforeach; ?>
-                </tbody></table></div>
-        <?php endif; ?>
-    </section>
-
-    <!-- Historique -->
-    <section class="mk-section">
-        <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap"><div><h2>Historique des versements</h2><p class="lead">Chaque versement a son justificatif, détaillé inscription par inscription.</p></div>
-            <?php if ($transferts || $legacy): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="pdf_export_virements_history.php?organisateur_id=<?= $orgaId ?>" target="_blank"><?= mk_icon('doc', 16) ?> Export PDF</a><?php endif; ?></div>
-        <?php if (!$transferts && !$legacy): ?>
-            <p class="mk-note" style="margin-top:14px">Aucun versement pour le moment.</p>
-        <?php else: ?>
-            <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table">
-                <thead><tr><th>Date</th><th>Référence</th><th class="num">Montant</th><th>Statut</th><th></th></tr></thead>
-                <tbody>
-                <?php foreach ($transferts as $t): $s = ['envoye' => ['Envoyé à Stripe', 'ok'], 'en_cours' => ['En cours', 'info'], 'echec' => ['Échec, nouvel essai', 'bad']][$t['statut']] ?? [$t['statut'], '']; ?>
-                    <tr><td><?= date('d/m/Y H:i', strtotime($t['created_at'])) ?></td><td class="mk-note"><?= htmlspecialchars(substr($t['token'], 0, 10)) ?> · <?= (int)$t['nb_paiements'] ?> inscr.</td><td class="num"><b><?= fin_eur((int)$t['montant_cents']) ?></b></td><td><span class="mk-pill <?= $s[1] ?>"><?= $s[0] ?></span></td><td class="num"><a class="underline" href="virement.php?t=<?= urlencode($t['token']) ?>">Justificatif</a></td></tr>
-                <?php endforeach; ?>
-                <?php foreach ($legacy as $v): ?>
-                    <tr><td><?= date('d/m/Y', strtotime($v['date_demande'])) ?></td><td class="mk-note">Ancien système</td><td class="num"><b><?= fin_eur((int)round($v['montant_apres_commission'] * 100)) ?></b></td><td><span class="mk-pill <?= $v['effectue'] ? 'ok' : 'warn' ?>"><?= $v['effectue'] ? 'Effectué' : 'En attente' ?></span></td><td class="num"><a class="underline" href="virement.php?t=<?= urlencode($v['token']) ?>">Justificatif</a></td></tr>
-                <?php endforeach; ?>
-                </tbody></table></div>
-        <?php endif; ?>
-    </section>
-
-    <!-- Séjours -->
-    <section class="mk-section">
-        <h2>Séjours de <?= htmlspecialchars($orga['nom']) ?></h2>
-        <?php if (!$mkStats): ?>
-            <p class="mk-note" style="margin-top:14px">Aucun séjour publié. <a class="underline" href="create_camp.php">Créer un séjour</a></p>
-        <?php else: ?>
-            <div class="mk-grid mk-g3" style="margin-top:16px">
-                <?php foreach ($mkStats as $c): $qt = max(1, (int)$c['quota_global']); $pc = min(100, round($c['inscrits_total'] / $qt * 100)); ?>
-                    <div class="ds-card" style="padding:18px;display:flex;flex-direction:column">
-                        <b class="text-[#26343b]" style="overflow-wrap:anywhere"><?= htmlspecialchars($c['nom']) ?></b>
-                        <span class="mk-note"><?= htmlspecialchars($c['ville'] ?? '') ?> · <?= $c['date_debut'] ? date('d/m/Y', strtotime($c['date_debut'])) : '' ?></span>
-                        <div style="margin-top:12px;display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span class="mk-note">Inscrits</span><span><?= (int)$c['inscrits_total'] ?> / <?= (int)$c['quota_global'] ?></span></div>
-                        <div class="mk-meter" style="margin-top:6px"><span style="width:<?= $pc ?>%"></span></div>
-                        <div class="mk-note" style="margin-top:10px"><?= number_format($c['impressions'], 0, ',', ' ') ?> impr. · <?= number_format($c['clics'], 0, ',', ' ') ?> visites (30 j)</div>
-                        <div style="margin-top:auto;padding-top:14px;display:flex;gap:8px;flex-wrap:wrap"><a class="ds-btn ds-btn-light mk-btn-sm" href="gestion_camp.php?t=<?= urlencode($c['token']) ?>">Inscrits</a><?php if (!empty($c['valide'])): ?><a class="ds-btn mk-btn-sm" href="boost.php?t=<?= urlencode($c['token']) ?>">Booster</a><?php endif; ?></div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </section>
 <?php endif; ?>
 </main>
+<div id="dbPop" role="tooltip"></div>
+
+<?php if ($orga): ?>
+<script>
+(function () {
+    var D = <?= json_encode($chart, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    var NS = 'http://www.w3.org/2000/svg', INK = '#2f3d45', ACC = '#3d6a8e';
+
+    // Courbe SVG légère (aire + ligne + points, axes minimaux)
+    function line(id, vals, color, fmt) {
+        var s = document.getElementById(id), W = 360, H = 190, pl = 8, pr = 8, pt = 14, pb = 24;
+        s.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        var max = Math.max.apply(null, vals.concat([1])), n = vals.length;
+        var x = function (i) { return pl + i * (W - pl - pr) / (n - 1); }, y = function (v) { return H - pb - v / max * (H - pt - pb); };
+        var h = '';
+        [0, .5, 1].forEach(function (t) { var yy = y(max * t); h += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + yy + '" y2="' + yy + '" stroke="#e5e7eb"/>'; });
+        var pts = vals.map(function (v, i) { return x(i) + ',' + y(v); }).join(' ');
+        h += '<polygon points="' + pl + ',' + y(0) + ' ' + pts + ' ' + (W - pr) + ',' + y(0) + '" fill="' + color + '" opacity=".1"/>';
+        h += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>';
+        vals.forEach(function (v, i) { h += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3" fill="#fff" stroke="' + color + '" stroke-width="2"><title>' + D.labels[i] + ' : ' + fmt(v) + '</title></circle>'; });
+        D.labels.forEach(function (l, i) { if (i % 2 === (n - 1) % 2) h += '<text class="db-tip" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + l + '</text>'; });
+        h += '<text class="db-tip" x="' + pl + '" y="' + (pt - 4) + '">' + fmt(max) + '</text>';
+        s.innerHTML = h;
+    }
+    line('chCa', D.ca, INK, function (v) { return Math.round(v).toLocaleString('fr-FR') + ' €'; });
+    line('chIns', D.ins, ACC, function (v) { return Math.round(v) + ''; });
+
+    // Moyens de paiement : alimenté par api/moyens_paiement_stats.php (masqué si absent ou vide)
+    fetch('api/moyens_paiement_stats.php?organisateur_id=<?= $orgaId ?>', { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) {
+        var list = (d && (d.moyens || d.data || d)) || [];
+        if (!Array.isArray(list)) list = Object.keys(list).map(function (k) { return { label: k, n: list[k] }; });
+        list = list.map(function (m) { return { l: String(m.label || m.moyen || m.nom || ''), n: Number(m.n != null ? m.n : (m.total != null ? m.total : m.montant)) || 0 }; }).filter(function (m) { return m.n > 0; });
+        if (!list.length) return;
+        var tot = list.reduce(function (a, m) { return a + m.n; }, 0), cols = ['#2f3d45', '#3d6a8e', '#8aa4b8', '#c9d3db', '#6b7780', '#b9a96b'], a0 = -Math.PI / 2, h = '', leg = '';
+        list.forEach(function (m, i) {
+            var a1 = a0 + m.n / tot * Math.PI * 2, big = a1 - a0 > Math.PI ? 1 : 0, R = 70, r = 42, cx = 95, cy = 95;
+            var p = function (rad, a) { return (cx + rad * Math.cos(a)) + ' ' + (cy + rad * Math.sin(a)); };
+            h += list.length === 1 ? '<circle cx="95" cy="95" r="56" fill="none" stroke="' + cols[0] + '" stroke-width="28"/>' : '<path d="M' + p(R, a0) + ' A' + R + ' ' + R + ' 0 ' + big + ' 1 ' + p(R, a1) + ' L' + p(r, a1) + ' A' + r + ' ' + r + ' 0 ' + big + ' 0 ' + p(r, a0) + 'Z" fill="' + cols[i % cols.length] + '"><title>' + m.l + '</title></path>';
+            leg += '<span><i style="background:' + cols[i % cols.length] + '"></i>' + m.l.replace(/[<&]/g, '') + ' ' + Math.round(m.n / tot * 100) + ' %</span>';
+            a0 = a1;
+        });
+        document.getElementById('chPay').setAttribute('viewBox', '0 0 190 190'); document.getElementById('chPay').innerHTML = h;
+        document.getElementById('payLeg').innerHTML = leg; document.getElementById('payCard').style.display = '';
+    }).catch(function () {});
+
+    // Bulles d'aide « ? » (clic)
+    var pop = document.getElementById('dbPop'), cur = null;
+    function close() { pop.classList.remove('on'); if (cur) cur.setAttribute('aria-expanded', 'false'); cur = null; }
+    document.addEventListener('click', function (e) {
+        var b = e.target.closest('.dbh');
+        if (!b) { if (!e.target.closest('#dbPop')) close(); return; }
+        if (cur === b) { close(); return; }
+        close(); cur = b; b.setAttribute('aria-expanded', 'true'); pop.textContent = b.dataset.help; pop.classList.add('on');
+        var r = b.getBoundingClientRect(), w = pop.offsetWidth;
+        pop.style.top = (window.scrollY + r.bottom + 8) + 'px';
+        pop.style.left = Math.max(8, Math.min(window.scrollX + r.left - 8, window.scrollX + document.documentElement.clientWidth - w - 8)) + 'px';
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    window.addEventListener('scroll', close, { passive: true });
+})();
+</script>
+<?php endif; ?>
 <?php require_once 'partials/footer.php'; ?>
