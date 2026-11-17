@@ -87,6 +87,7 @@ try {
         $pdo->prepare("INSERT INTO camp_etapes (camp_id, jour, lieu, description, ordre) SELECT ?, jour, lieu, description, ordre FROM camp_etapes WHERE camp_id = ?")->execute([$newId, $src['id']]);
     } catch (Throwable $e) { }
     $pdo->commit();
+    require_once __DIR__ . '/security.php'; sec_trace($pdo, (int)$_SESSION['user']['id'], 'session_ajoutee', $newId);
 
     sendJson(['success' => true, 'id' => $newId, 'token' => $newToken]);
 } catch (Throwable $e) {

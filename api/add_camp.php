@@ -41,6 +41,7 @@ try {
     camp_enregistrer_classement($pdo, $campId, $classement);
     if ($sessions) camp_enregistrer_sessions($pdo, (int)$_SESSION['user']['id'], ['id' => $campId, 'groupe_id' => null, 'valide' => 0, 'en_attente' => 1, 'refuse' => 0], $data, $_POST, $sessions);
     $pdo->commit();
+    require_once __DIR__ . '/security.php'; sec_trace($pdo, (int)$_SESSION['user']['id'], 'sejour_cree', $campId);
 
     fin(['success' => true, 'token' => $data['token'], 'camp_id' => $campId, 'motscles_refuses' => $classement['motscles']['refus'] ?? []]);
 } catch (CampException $e) {
