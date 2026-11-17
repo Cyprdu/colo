@@ -43,6 +43,10 @@ try {
     $pdo->commit();
     require_once __DIR__ . '/security.php'; sec_trace($pdo, (int)$_SESSION['user']['id'], 'sejour_cree', $campId);
 
+    require_once 'geocode.php';
+    $q = $pdo->prepare("SELECT id FROM camps WHERE id = ? OR groupe_id = ?"); $q->execute([$campId, $campId]);
+    geo_actualiser($pdo, array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN)));
+
     fin(['success' => true, 'token' => $data['token'], 'camp_id' => $campId, 'motscles_refuses' => $classement['motscles']['refus'] ?? []]);
 } catch (CampException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

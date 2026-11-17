@@ -76,9 +76,10 @@ require_once 'partials/header3.php';
     .cd-btn-light:hover { background:#f1f3f5; }
 
     /* Choix des dates / formules : boutons, aucun changement de page */
-    .opt { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:11px 13px; border:1.5px solid var(--line); border-radius:14px; background:#fff; text-align:left; transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; cursor:pointer; }
+    .opt { -webkit-tap-highlight-color:transparent; box-sizing:border-box; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:11px 13px; border:1.5px solid var(--line); border-radius:14px; background:#fff; text-align:left; transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; cursor:pointer; }
+    .opt:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
     .opt:hover { border-color:#a9b8c6; background:#f6f8fa; }
-    .opt.is-selected { border-color:var(--accent); background:#f1f5f9; box-shadow:0 0 0 3px rgba(61,106,142,.15); }
+    .opt.is-selected { border-color:var(--accent); background:#f1f5f9; box-shadow:inset 0 0 0 1px var(--accent); }
     .opt.is-full { opacity:.55; }
     .opt-title { display:block; font-size:14px; font-weight:700; color:var(--ink); line-height:1.25; }
     .opt-sub { display:block; margin-top:2px; font-size:12.5px; color:var(--muted); }
@@ -190,8 +191,11 @@ require_once 'partials/header3.php';
                     </div>
                     <div id="route" class="mt-4 rounded-2xl bg-[#f8f5ea] p-5 hidden"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Parcours itinérant</p><ol id="route-list"></ol></div>
                     <div id="info-extra" class="mt-4 space-y-4 hidden"></div>
-                    <div class="mt-4 rounded-3xl overflow-hidden border border-[#e5e7eb]">
-                        <iframe id="map-frame" title="Carte" class="w-full block" style="height:190px;border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                    <div id="map-box" class="mt-4 hidden">
+                        <div class="rounded-3xl overflow-hidden border border-[#e5e7eb]">
+                            <iframe id="map-frame" title="Carte du lieu du séjour" class="w-full block" style="height:260px;border:0" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                        </div>
+                        <p class="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px] text-[#6b7780]"><span id="map-note"></span><a id="map-link" href="#" target="_blank" rel="noopener noreferrer" class="font-semibold text-[#3d6a8e] hover:underline">Agrandir la carte</a></p>
                     </div>
                 </section>
             </div>
@@ -394,8 +398,16 @@ document.addEventListener('DOMContentLoaded', async function () {
             if ($('video-frame').getAttribute('src') !== embedUrl) $('video-frame').src = embedUrl;
             $('video-wrapper').classList.remove('hidden');
         } else { $('video-wrapper').classList.add('hidden'); }
-        const mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(`${camp.ville || ''} ${camp.code_postal || ''}`)}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
-        if ($('map-frame').getAttribute('src') !== mapSrc) $('map-frame').src = mapSrc;
+        // Carte OpenStreetMap centrée sur le lieu exact de la session choisie (repli : la ville ; sinon pas de carte)
+        const mapBox = $('map-box');
+        if (camp.lat != null && camp.lng != null) {
+            const la = Number(camp.lat), lo = Number(camp.lng), d = Number(camp.geo_precis) ? 0.004 : 0.04;
+            const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${(lo - d * 1.6).toFixed(6)},${(la - d).toFixed(6)},${(lo + d * 1.6).toFixed(6)},${(la + d).toFixed(6)}&layer=mapnik&marker=${la.toFixed(6)},${lo.toFixed(6)}`;
+            if ($('map-frame').getAttribute('src') !== mapSrc) $('map-frame').src = mapSrc;
+            $('map-link').href = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${Number(camp.geo_precis) ? 16 : 13}/${la}/${lo}`;
+            $('map-note').textContent = Number(camp.geo_precis) ? '' : 'Position approximative (centre de la ville).';
+            mapBox.classList.remove('hidden');
+        } else { mapBox.classList.add('hidden'); $('map-frame').removeAttribute('src'); }
 
         // Carte de réservation
         $('card-price').textContent = `${fmtPrice(camp.prix)} €`;
