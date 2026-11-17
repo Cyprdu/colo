@@ -14,6 +14,7 @@ $pdo = new PDO($dsn, getenv('FIN_TEST_USER') ?: 'root', getenv('FIN_TEST_PASS') 
 foreach (['fin_paiements', 'fin_transferts', 'fin_transfert_lignes', 'fin_reversals', 'fin_reversal_ops', 'fin_reglages', 'fin_audit', 'stripe_comptes', 'camps', 'organisateurs', 'inscriptions'] as $t) $pdo->exec("DROP TABLE IF EXISTS $t");
 $pdo->exec("CREATE TABLE organisateurs (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), user_id INT, portefeuille DECIMAL(12,2) NOT NULL DEFAULT 0, solde_points INT DEFAULT 0, stripe_account_id VARCHAR(64) NULL, adresse_complete VARCHAR(80) NULL, code_postal_orga VARCHAR(10) NULL, ville_orga VARCHAR(50) NULL, email VARCHAR(80) NULL)");
 $pdo->exec("CREATE TABLE camps (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), date_debut DATE, organisateur_id INT)");
+$pdo->exec("CREATE TABLE inscriptions (id INT AUTO_INCREMENT PRIMARY KEY, camp_id INT, enfant_id INT, tarif_id INT NULL, statut VARCHAR(20), prix_final DECIMAL(10,2), statut_paiement VARCHAR(20), reservation_token VARCHAR(64), mode_paiement VARCHAR(20), montant_paye DECIMAL(10,2) DEFAULT 0)");
 $pdo->exec("INSERT INTO organisateurs (nom) VALUES ('A'), ('B'), ('C'), ('D'), ('E'), ('F'), ('G')");
 fin_ensure($pdo);
 
@@ -105,6 +106,25 @@ $l = $pdo->query("SELECT statut, verse_cents FROM fin_paiements WHERE inscriptio
 ok($l['statut'] === 'attente' && (int)$l['verse_cents'] === 0, 'ligne remise en attente, rien de versé');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - $w0) < 0.001, 'solde de organisme rendu');
 $GLOBALS['stripe_fail'] = null;
+
+// --- paiement hors Stripe : l'organisateur marque « reçu », commission 1 % déduite de la cagnotte carte
+$pdo->exec("UPDATE organisateurs SET user_id = 7 WHERE id = 1");
+$tok = str_repeat('a', 32);
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token, mode_paiement, moyen_paiement) VALUES (301, 1, 9, 'Confirmé', 100.00, 'A_REGLER', '$tok', 'CHEQUE', 'cheque')");
+$w1 = round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn(), 2);
+ok(fin_marquer_recu($pdo, $tok, 99)[0] === false, 'un autre utilisateur ne peut pas marquer reçu');
+ok(fin_marquer_recu($pdo, str_repeat('b', 32), 7)[0] === false, 'jeton inconnu refusé');
+[$okr, $msg] = fin_marquer_recu($pdo, $tok, 7);
+ok($okr === true, 'organisateur : règlement marqué reçu');
+ok($pdo->query("SELECT statut_paiement FROM inscriptions WHERE id = 301")->fetchColumn() === 'PAYE', 'inscription passée à payée');
+ok((int)$pdo->query("SELECT commission_cents FROM fin_commissions_hors WHERE inscription_id = 301")->fetchColumn() === 100, 'commission hors Stripe : 1 % de 100 EUR = 1 EUR');
+ok(abs(round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn(), 2) - ($w1 - 1.00)) < 0.001, 'commission déduite de la cagnotte carte (solde)');
+ok(fin_marquer_recu($pdo, $tok, 7)[0] === false && (int)$pdo->query("SELECT COUNT(*) FROM fin_commissions_hors")->fetchColumn() === 1, 'idempotent : pas de seconde commission');
+$ms = fin_moyens_stats($pdo, 1);
+ok(isset($ms['cheque']) && $ms['cheque']['nb'] === 1 && $ms['cheque']['commission_cents'] === 100, 'statistiques par moyen de paiement');
+require __DIR__ . '/../api/compta_lib.php';
+ok(compta_hors_stripe($pdo, '2000-01-01', '2100-01-01')['commission'] === 100, 'comptabilité : commissions hors Stripe');
+ok(fin_moyens_du_camp(['moyens_paiement' => '']) === ['carte'] && fin_moyens_du_camp(['moyens_paiement' => 'cheque,carte,xx']) === ['cheque', 'carte'], 'moyens du séjour : carte par défaut, codes inconnus ignorés');
 
 // --- calcul pur
 ok(fin_reserve_needed(date('Y-m-d', strtotime('+20 day')), 15, date('Y-m-d')) === true, 'réserve : fenêtre 50 % ouverte');

@@ -35,7 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $fixe = ctype_digit((string)($_POST['fixe'] ?? '')) ? (int)$_POST['fixe'] : -1;
             if (!is_numeric(str_replace(',', '.', (string)($_POST['pct'] ?? ''))) || $pct < 0 || $pct > 30 || $fixe < 0 || $fixe > 500)
                 flash_go('err', 'Valeurs invalides : pourcentage entre 0 et 30, part fixe entre 0 et 500 centimes.', 'admin_compta.php?v=reglages');
-            fin_set_commission($pdo, $pct, $fixe, 'admin:' . $uid);
+            $hors = str_replace(',', '.', (string)($_POST['hors'] ?? ''));
+            if (!is_numeric($hors) || (float)$hors < 0 || (float)$hors > 30) flash_go('err', 'Commission hors carte invalide (0 à 30 %).', 'admin_compta.php?v=reglages');
+            fin_set_commission($pdo, $pct, $fixe, 'admin:' . $uid, (float)$hors);
             adm_audit('commission_modifiee', 'fin_reglages', number_format($pct, 2, '.', '') . ' % + ' . $fixe . ' c');
             flash_go('ok', 'Commission enregistrée : ' . number_format($pct, 2, ',', ' ') . ' % + ' . compta_eur($fixe) . ' €. Elle s\'applique aux prochains paiements uniquement.', 'admin_compta.php?v=reglages');
         }
@@ -88,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* ------------------------------------------------------------------ données */
 $sum = compta_summary($pdo, $from, $to, $orgaId);
+$hs = compta_hors_stripe($pdo, $from, $to, $orgaId);
 $negN = compta_negative_count($pdo);
 $orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id ORDER BY o.nom")->fetchAll(PDO::FETCH_ASSOC);
 $e = fn($c) => h(fin_eur((int)$c));
@@ -126,6 +129,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
   <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions ColoMap</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($sum['frais'] + $sum['litige']) ?></b><span>Frais Stripe réels</span><small>dont litiges : <?= $e($sum['litige']) ?></small></div></div>
   <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette ColoMap</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= $e($hs['commission']) ?></b><span>Commissions hors carte</span><small><?= $hs['nb'] ?> règlement<?= $hs['nb'] > 1 ? 's' : '' ?> (<?= $e($hs['brut']) ?>) · retenues sur les versements par carte</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('building') ?></span><div><b><?= $e($sum['du_total']) ?></b><span>Dû aux organismes</span><small>net total de la période</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('check') ?></span><div><b><?= $e($sum['verse']) ?></b><span>Déjà versé</span><small>transferts exécutés</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('clock') ?></span><div><b><?= $e($sum['attente']) ?></b><span>En attente de versement</span><small>avant la date de déblocage, suspendu ou en litige</small></div></div>
@@ -221,6 +225,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
     <div class="kv"><span>+ Achats de points par carte</span><b><?= $e($rc['points']) ?></b></div>
     <div class="kv"><span>− Frais Stripe relevés</span><b><?= $e($rc['frais']) ?></b></div>
     <div class="kv"><span>− Frais de litige</span><b><?= $e($rc['litige']) ?></b></div>
+    <div class="kv"><span>dont commissions hors carte (retenues sur les versements : l'argent reste chez vous)</span><b><?= $e($rc['hors']) ?></b></div>
     <div class="kv"><span>− Transferts envoyés aux organismes</span><b><?= $e($rc['transferts']) ?></b></div>
     <div class="kv"><span><b>= Fonds ColoMap attendus (Stripe + banque)</b></span><b><?= $e($rc['theorique']) ?></b></div>
     <?php if ($rc['frais_inconnus'] > 0): ?><p class="muted small"><?= $rc['frais_inconnus'] ?> paiement(s) sans frais relevés : le théorique est surévalué d'autant.</p><?php endif; ?>
@@ -263,6 +268,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
         ['paiements', 'Écritures de paiement', 'Une ligne par inscription payée : brut, commission, frais Stripe réels, marge, net dû, statut.'],
         ['transferts', 'Versements aux organismes', 'Transferts Stripe Connect envoyés (montant, statut, référence).'],
         ['organismes', 'Synthèse par organisme', 'CA, commissions, frais, marge, dû / versé / en attente (ignore le filtre organisme).'],
+        ['hors_stripe', 'Paiements hors carte et commissions', 'Chèques, espèces, virements... marqués reçus par les organisateurs, avec la commission retenue.'],
         ['payouts', 'Virements Stripe vers la banque', 'Pour le rapprochement avec votre relevé bancaire (synchroniser d\'abord).'],
         ['journal', 'Journal d\'audit financier', 'Toutes les opérations (paiements, remboursements, transferts, suspensions).'],
     ]; ?>
@@ -283,6 +289,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
       <input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="commission">
       <label class="fld"><span class="fl">Pourcentage du montant payé <small>(0 à 30 %)</small></span><input class="in" name="pct" inputmode="decimal" value="<?= h(number_format($rg['commission_pct'], 2, ',', '')) ?>" required></label>
       <label class="fld"><span class="fl">Part fixe par inscription, en centimes <small>(0 à 500)</small></span><input class="in" name="fixe" type="number" min="0" max="500" step="1" value="<?= (int)$rg['commission_fixe_cents'] ?>" required></label>
+      <label class="fld"><span class="fl">Commission sur les paiements hors carte (chèque, espèces...), en % <small>(0 à 30)</small></span><input class="in" name="hors" inputmode="decimal" value="<?= h(number_format($rg['commission_hors_pct'], 2, ',', '')) ?>" required></label>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div>
     </form>

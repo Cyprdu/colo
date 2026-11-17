@@ -4,6 +4,7 @@ require_once 'config.php';
 require_once 'options.php';
 require_once 'attente.php';
 require_once 'champs.php';
+require_once 'finance_lib.php';
 
 // 1. Vérification session
 if (!isset($_SESSION['user']['id']) || !$_SESSION['user']['is_directeur']) {
@@ -40,7 +41,7 @@ try {
         sendJson(['error' => 'Vous n\'êtes pas le propriétaire de ce camp.'], 403);
     }
 
-    options_ensure($pdo); attente_ensure($pdo);
+    options_ensure($pdo); attente_ensure($pdo); fin_ensure($pdo);
     // --- À partir d'ici, on a le feu vert, on charge les données sensibles ---
 
     // 4. Récupérer la liste des inscrits
@@ -53,7 +54,7 @@ try {
             i.tarif_id,
             i.date_inscription,
             i.montant_paye,
-            i.statut_paiement,
+            i.statut_paiement, i.moyen_paiement, i.mode_paiement,
             e.prenom, e.nom, e.date_naissance, e.sexe, e.infos_sante, e.allergies, e.regime_alimentaire,
             u.email as parent_email, u.tel as parent_tel, u.nom as parent_nom_famille, u.prenom as parent_prenom,
             t.nom as tarif_nom

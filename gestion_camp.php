@@ -2,6 +2,8 @@
 // gestion_camp.php?t=<jeton d'une session> : page de gestion d'un séjour (aperçu des sessions, inscrits enfants et animateurs, liens, équipe, actions).
 // Réservée au propriétaire de l'organisme et à l'administrateur : les données viennent de api/gestion_donnees.php, qui vérifie l'accès.
 require_once 'api/config.php';
+require_once 'api/finance_lib.php';
+require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { header('Location: index.php'); exit; }
 $token = (string)($_GET['t'] ?? '');
@@ -65,6 +67,8 @@ require_once 'partials/header.php';
 
 <script>
 const TOKEN = <?= json_encode($token) ?>;
+const CSRF = <?= json_encode(fin_csrf()) ?>;
+const MOYENS = <?= json_encode(array_map(fn($m) => $m[0], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
@@ -100,6 +104,16 @@ async function go(k) {
     $('panel').innerHTML = ({ apercu, inscrits, liens, equipe, plus })[k]();
     if (k === 'inscrits') drawList();
     history.replaceState(null, '', '#' + k);
+}
+function moyen(i) { return i.moyen_paiement ? (MOYENS[i.moyen_paiement] || i.moyen_paiement) : (i.mode_paiement === 'CARTE' ? 'Carte bancaire' : (i.statut_paiement === 'GRATUIT' ? 'Gratuit' : '')); }
+async function marquerRecu(btn) {
+    btn.disabled = true;
+    try {
+        const r = await fetch('api/marquer_recu.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ t: btn.dataset.recu, csrf: CSRF }) });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'Erreur');
+        await ColoUI.alert(d.message); location.reload();
+    } catch (e) { btn.disabled = false; ColoUI.alert(e.message); }
 }
 
 // ---------------------------------------------------------------- Aperçu
@@ -145,6 +159,7 @@ function inscrits() {
 function stEnfant(i) {
     if (i.expire) return ['Délai dépassé', 'bg-[#fbeceb] text-[#a4372f]', 'expired'];
     if (i.statut_paiement === 'EN_ATTENTE') return ['En attente de paiement' + (i.limite_paiement ? ' · avant le ' + new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString('fr-FR') : ''), 'bg-[#f8f5ea] text-[#5b4a1c]', 'wait'];
+    if (i.statut_paiement === 'A_REGLER') return ['À encaisser', 'bg-[#f8f5ea] text-[#5b4a1c]', 'wait'];
     return [i.statut_paiement === 'GRATUIT' ? 'Gratuit' : 'Payé', 'bg-[#eef2f4] text-[#26343b]', 'paid'];
 }
 function stAnim(a) { const p = Number(a.prix_final) > 0 ? (a.statut_paiement === 'PAYE' ? 'Payé' : 'À payer ' + eur(a.prix_final)) : 'Gratuit'; return [a.statut || '—', p]; }
@@ -160,7 +175,7 @@ function drawList() {
         const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].filter(Boolean).length, ref = i.reservation_token ? 'r=' + encodeURIComponent(i.reservation_token) : '';
         return `<div class="gm-row ${i.expire ? 'opacity-60' : ''}"><div class="min-w-0"><p class="font-bold text-[#26343b] truncate">${esc(i.prenom)} ${esc(i.nom)}</p><p class="text-xs text-[#6b7780]">${a !== null ? a + ' ans · ' : ''}${i.sexe === 'Femme' ? 'Fille' : 'Garçon'}${i.tarif_nom ? ' · ' + esc(i.tarif_nom) : ''} · ${esc(I.sessions[i.session_token] || '')}</p></div>
           <div class="min-w-0 text-sm"><p class="font-semibold truncate">${esc(i.parent_prenom)} ${esc(i.parent_nom_famille)}</p><p class="text-xs truncate"><a class="text-[#3d6a8e] hover:underline" href="mailto:${esc(i.parent_email)}">${esc(i.parent_email)}</a>${i.parent_tel ? ' · ' + esc(i.parent_tel) : ''}</p></div>
-          <div class="flex flex-wrap items-center gap-2 md:justify-end"><span class="text-xs font-bold px-3 py-1 rounded-full ${st[1]}">${esc(st[0])}</span>${sante ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#f8f5ea] text-[#5b4a1c]">Santé</span>' : ''}${ref ? `<a class="ds-btn ds-btn-light ds-btn-sm" href="child_details.php?${ref}&t=${encodeURIComponent(i.session_token)}">Dossier</a>` : ''}</div></div>`;
+          <div class="flex flex-wrap items-center gap-2 md:justify-end"><span class="text-xs font-bold px-3 py-1 rounded-full ${st[1]}">${esc(st[0])}</span>${moyen(i) ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#eef2f4] text-[#26343b]">' + esc(moyen(i)) + '</span>' : ''}${i.statut_paiement === 'A_REGLER' ? '<button type="button" class="ds-btn ds-btn-sm" data-recu="' + esc(i.reservation_token) + '">Marquer reçu</button>' : ''}${sante ? '<span class="text-xs font-bold px-3 py-1 rounded-full bg-[#f8f5ea] text-[#5b4a1c]">Santé</span>' : ''}${ref ? `<a class="ds-btn ds-btn-light ds-btn-sm" href="child_details.php?${ref}&t=${encodeURIComponent(i.session_token)}">Dossier</a>` : ''}</div></div>`;
     }).join('') : L.map(a => {
         const [s, p] = stAnim(a), rep = (a.reponses || []).filter(r => r.valeur);
         return `<div class="gm-row"><div class="min-w-0"><p class="font-bold text-[#26343b] truncate">${esc(a.prenom)} ${esc(a.nom)}</p><p class="text-xs text-[#6b7780]">${a.date_naissance ? age(a.date_naissance) + ' ans · ' : ''}BAFA : ${esc(a.bafa_statut || 'aucun')}${a.tarif_nom ? ' · ' + esc(a.tarif_nom) : ''} · ${esc(I.sessions[a.session_token] || '')}</p></div>
@@ -174,8 +189,8 @@ function exportCsv() {
     const L = filtered(); if (!L.length) { ColoUI.alert('Aucun inscrit à exporter pour ce filtre.'); return; }
     let head, rows;
     if (filt.type === 'enfants') {
-        head = ['Session', 'Date', 'Prénom enfant', 'Nom enfant', 'Sexe', 'Naissance', 'Infos santé', 'Allergies', 'Régime', 'Parent', 'Email', 'Téléphone', 'Tarif', 'Montant payé', 'Statut'];
-        rows = L.map(r => [I.sessions[r.session_token], r.date_inscription, r.prenom, r.nom, r.sexe === 'Femme' ? 'Fille' : 'Garçon', r.date_naissance, r.infos_sante, r.allergies, r.regime_alimentaire, (r.parent_prenom || '') + ' ' + (r.parent_nom_famille || ''), r.parent_email, r.parent_tel, r.tarif_nom, r.montant_paye, stEnfant(r)[0]]);
+        head = ['Session', 'Date', 'Prénom enfant', 'Nom enfant', 'Sexe', 'Naissance', 'Infos santé', 'Allergies', 'Régime', 'Parent', 'Email', 'Téléphone', 'Tarif', 'Montant payé', 'Moyen de paiement', 'Statut'];
+        rows = L.map(r => [I.sessions[r.session_token], r.date_inscription, r.prenom, r.nom, r.sexe === 'Femme' ? 'Fille' : 'Garçon', r.date_naissance, r.infos_sante, r.allergies, r.regime_alimentaire, (r.parent_prenom || '') + ' ' + (r.parent_nom_famille || ''), r.parent_email, r.parent_tel, r.tarif_nom, r.montant_paye, moyen(r), stEnfant(r)[0]]);
     } else {
         const libs = [...new Set(L.flatMap(a => (a.reponses || []).map(x => x.libelle)))];
         head = ['Session', 'Inscription', 'Prénom', 'Nom', 'Naissance', 'Email', 'Téléphone', 'BAFA', 'Diplôme', 'Allergies', 'Régime', 'Contact urgence', 'Tel urgence', 'Tarif', 'Prix', 'Payé', 'Statut', 'Paiement', ...libs];
@@ -244,6 +259,7 @@ async function supprimer(tok) {
 document.addEventListener('click', async e => {
     const t = e.target.closest('button, a'); if (!t) return;
     if (t.dataset.tab) go(t.dataset.tab);
+    else if (t.dataset.recu) { if (await ColoUI.confirm('Confirmer que vous avez bien reçu ce règlement ? ColoMap retiendra sa commission sur vos prochains versements par carte.')) marquerRecu(t); }
     else if (t.dataset.help) ColoUI.alert(HELP[t.dataset.help], { title: 'Aide' });
     else if (t.dataset.dup) openDup(t.dataset.dup);
     else if (t.dataset.ins) { filt.session = t.dataset.ins; filt.type = 'enfants'; go('inscrits'); }

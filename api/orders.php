@@ -82,6 +82,7 @@ function orderStatus(array $members): array {
     if ($allExpired) return ['expired', 'Expirée', 'bg-gray-100 text-gray-600'];
     if ($allPaid) return ['paid', 'Confirmée', 'bg-emerald-50 text-emerald-700'];
     if ($paid > 0.0 && $paid < $total) return ['partial', 'Paiement partiel', 'bg-amber-50 text-amber-700'];
+    foreach ($live as $m) if ($m['statut_paiement'] === 'A_REGLER') return ['pending', 'À régler à l\'organisateur', 'bg-amber-50 text-amber-700'];
     return ['pending', 'À régler', 'bg-amber-50 text-amber-700'];
 }
 

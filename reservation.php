@@ -4,6 +4,8 @@
 require_once 'api/config.php';
 require_once 'api/orders.php';
 require_once 'api/enfants.php';
+require_once 'api/finance_lib.php';
+require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 if (empty($_SESSION['user']['id'])) { header('Location: login.php?redirect=' . urlencode('reservation?r=' . ($_GET['r'] ?? ''))); exit; }
@@ -28,6 +30,15 @@ if ($img !== '') { $img = str_replace('\\', '/', $img); if (!preg_match('#^(http
 $lieu = trim(implode(', ', array_filter([trim((string)$first['adresse']), trim($first['code_postal'] . ' ' . $first['ville'])])));
 $ended = $first['_end'] < new DateTime('today');
 $mode = ['CARTE' => 'Carte bancaire', 'GRATUIT' => 'Gratuit'][$first['mode_paiement']] ?? null;
+// Règlement hors carte : moyen choisi et consignes de l'organisateur
+$aRegler = null; foreach ($live as $m) if ($m['statut_paiement'] === 'A_REGLER') { $aRegler = $m; break; }
+if ($aRegler) {
+    $canPay = false;
+    $mp = options_paiements(); $code = (string)($aRegler['moyen_paiement'] ?? strtolower((string)$aRegler['mode_paiement']));
+    $mode = $mp[$code][0] ?? 'Règlement à l\'organisateur';
+    $ci = $pdo->prepare("SELECT instructions_paiement FROM camps WHERE id = ?"); $ci->execute([(int)$first['camp_id']]);
+    $consigne = fin_instruction_moyen($code, (string)$ci->fetchColumn());
+}
 
 $body_class = 'bg-white';
 require_once 'partials/header.php';
@@ -147,6 +158,7 @@ require_once 'partials/header.php';
                     <div class="flex justify-between"><span class="text-[#6b7780]">Réservé le</span><span class="font-semibold text-[#26343b]"><?= htmlspecialchars((new DateTime($first['date_inscription']))->format('d/m/Y')) ?></span></div>
                 </div>
 
+                <?php if ($aRegler): ?><div class="mt-4 p-4 rounded-2xl text-[14px]" style="background:#f8f5ea;border:1px solid #e4d9ad;color:#5b4a1c"><b>Votre place est réservée.</b> Il reste à régler <?= htmlspecialchars(fmtEuro($tot['due'] - $tot['paid'])) ?> directement à l'organisateur (<?= htmlspecialchars((string)$mode) ?>). <?= htmlspecialchars($consigne) ?> L'inscription sera marquée « payée » dès que l'organisateur aura reçu le règlement.</div><?php endif; ?>
                 <div class="mt-6 space-y-3">
                     <?php if ($canPay): ?>
                         <form action="api/create_stripe_session.php" method="POST">
