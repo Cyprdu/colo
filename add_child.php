@@ -6,8 +6,10 @@ require_once 'api/security.php';
 require_once 'api/sante.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']['id'])) { header('Location: login.php?redirect=add_child'); exit; }
+require_once 'api/enfants.php';
 $uid = (int)$_SESSION['user']['id'];
 $error = '';
+$retour = retour_interne($_GET['retour'] ?? '');
 $v = ['prenom' => '', 'nom' => (string)($_SESSION['user']['nom'] ?? ''), 'date_naissance' => '', 'sexe' => 'Homme'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -29,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?)")
             ->execute([$uid, $v['prenom'], $v['nom'], $v['date_naissance'], $v['sexe'], $u['nom'] ?? null, $u['prenom'] ?? null, $u['email'] ?? null, $u['telephone'] ?? null, enfant_new_public_id()]);
         $_SESSION['flash_child'] = ['success', $v['prenom'] . " est ajouté(e). Complétez sa fiche : santé et documents."];
-        header('Location: modif_child?id=' . urlencode(enfant_jeton($pdo, (int)$pdo->lastInsertId())) . '#sante');
+        header('Location: modif_child?id=' . urlencode(enfant_jeton($pdo, (int)$pdo->lastInsertId())) . ($retour !== '' ? '&retour=' . urlencode($retour) : '') . '#sante');
         exit;
     } catch (Throwable $e) {
         if ($e instanceof PDOException) { error_log('add_child: ' . $e->getMessage()); $error = "Erreur lors de l'enregistrement."; }
@@ -44,9 +46,9 @@ require_once 'partials/header.php';
 <title>Ajouter un enfant - moncamp.fr</title>
 
 <main class="ds-page ds-fade" style="max-width:640px">
-    <a href="children" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+    <a href="<?= $h($retour !== '' ? $retour : 'children') ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Mes enfants
+        <?= $retour !== '' ? "Retour à l'inscription" : 'Mes enfants' ?>
     </a>
     <h1 class="ds-h1 mt-5">Ajouter un enfant</h1>
     <p class="ds-lead">Quelques informations pour commencer. Vous complétez ensuite sa fiche (santé, documents, autorisations) quand vous voulez.</p>

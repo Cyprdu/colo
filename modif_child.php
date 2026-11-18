@@ -29,7 +29,8 @@ sante_ensure($pdo);
 $enfant = enfant_par_jeton($pdo, $token, $parent_id);
 if (!$enfant) { header('Location: children'); exit; }
 $child_id = (int)$enfant['id'];
-$self = 'modif_child?id=' . $token;
+$retour = retour_interne($_GET['retour'] ?? '');   // ex. retour vers l'inscription au séjour en cours
+$self = 'modif_child?id=' . $token . ($retour !== '' ? '&retour=' . urlencode($retour) : '');
 
 // ---------- champs modifiables par rubrique (liste blanche : jamais de nom de colonne venant du formulaire) ----------
 $TXT = [
@@ -173,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($oldFiles as [$d, $n]) sante_unlink($d, $n);   // seulement après l'écriture en base
         $_SESSION['flash_child'] = ['success', $ok];
         $dest = $sectionOuverte ?: (count($wantSections) === 1 ? $wantSections[0] : '');
+        if ($retour !== '' && $act === 'save:all') { header('Location: ' . $retour); exit; }
         header('Location: ' . $self . ($dest ? '#' . $dest : '')); exit;
     } catch (Throwable $ex) {
         foreach ($newFiles ?? [] as [$d, $n]) sante_unlink($d, $n);   // le fichier écrit n'est pas resté orphelin
@@ -288,10 +290,11 @@ require_once 'partials/header.php';
 </style>
 
 <main class="ds-page" style="max-width:1100px">
-    <a href="children" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+    <a href="<?= htmlspecialchars($retour !== '' ? $retour : 'children') ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Mes enfants
+        <?= $retour !== '' ? "Retour à l'inscription" : 'Mes enfants' ?>
     </a>
+    <?php if ($retour !== ''): ?><div class="ds-alert-ok mt-5 text-[14px]">Complétez la fiche de <?= htmlspecialchars($enfant['prenom']) ?>, puis cliquez sur « Enregistrer et revenir » : vous retrouverez l'inscription au séjour.</div><?php endif; ?>
 
     <?php if ($message): ?>
         <div class="<?= $message_type === 'success' ? 'ds-alert-ok' : 'ds-alert-err' ?> mt-5 font-semibold" role="<?= $message_type === 'success' ? 'status' : 'alert' ?>"><?= htmlspecialchars($message) ?></div>
@@ -489,8 +492,8 @@ require_once 'partials/header.php';
             <?php if (sec_turnstile_enabled()): ?><div class="ds-card p-4"><?= sec_turnstile_widget() ?></div><?php endif; ?>
 
             <div class="flex flex-wrap justify-end gap-3">
-                <a href="children" class="ds-btn ds-btn-light">Fermer</a>
-                <button type="submit" name="act" value="save:all" class="ds-btn">Tout enregistrer</button>
+                <a href="<?= htmlspecialchars($retour !== '' ? $retour : 'children') ?>" class="ds-btn ds-btn-light"><?= $retour !== '' ? 'Retour' : 'Fermer' ?></a>
+                <button type="submit" name="act" value="save:all" class="ds-btn"><?= $retour !== '' ? 'Enregistrer et revenir' : 'Tout enregistrer' ?></button>
             </div>
         </div>
     </form>

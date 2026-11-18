@@ -79,6 +79,7 @@ try {
     $jf = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP;
     $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? ''], $enfants), $jf) ?: '[]';
     $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
+    $retourInscr = urlencode('inscription?camp_t=' . $camp_token);
     require_once 'api/annulation_lib.php';
     $moyensOk = fin_moyens_du_camp($camp); $libMoyens = options_paiements();
     $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
@@ -129,7 +130,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 <?php if (empty($enfants)): ?>
                     <div class="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                         <p class="text-gray-500 mb-4">Aucun enfant enregistré.</p>
-                        <a href="add_child.php" class="px-5 py-2 bg-[#2f3d45] text-white rounded-lg">Ajouter un enfant</a>
+                        <a href="add_child?retour=<?= $retourInscr ?>" class="px-5 py-2 bg-[#2f3d45] text-white rounded-lg">Ajouter un enfant</a>
                     </div>
                 <?php else: ?>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -154,15 +155,16 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                                     <?php elseif($isInscrit): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit<?= ($enfant['sexe'] ?? '') === 'Femme' ? 'e' : '' ?></span>
                                     <?php elseif ($blq && $blq['manque']): ?>
-                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($blq['manque'][0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
+                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>&retour=<?= $retourInscr ?>#<?= fiche_rubrique_critere($blq['manque'][0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
                                     <?php endif; ?>
                                     <?php if (!$blq || !$blq['manque']): $sg = options_enfant_souhaites($camp, $enfant); if ($sg): ?>
-                                        <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
+                                        <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>&retour=<?= $retourInscr ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
                                     <?php endif; endif; ?>
                                 </div>
                             </label>
                         <?php endforeach; ?>
                     </div>
+                    <a href="add_child?retour=<?= $retourInscr ?>" class="inline-block mt-4 text-sm font-semibold text-[#3d6a8e] hover:underline">+ Ajouter un enfant</a>
                 <?php endif; ?>
 
                 <div class="mt-8 flex justify-end">

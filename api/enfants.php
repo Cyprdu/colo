@@ -23,6 +23,11 @@ function enfants_ensure(PDO $pdo): void {
 }
 
 /** Nouveau jeton (à utiliser à l'INSERT) */
+/** Chemin de retour interne validé (ex. « inscription?camp_t=… ») : un nom de page du site et sa requête, jamais d'hôte ni de schéma ; '' sinon */
+function retour_interne($r): string {
+    $r = ltrim(trim((string)$r), '/');
+    return preg_match('#^[a-z0-9_-]+(\.php)?(\?[A-Za-z0-9_=&%.+-]*)?$#D', $r) ? $r : '';
+}
 function enfant_new_public_id(): string { return bin2hex(random_bytes(12)); }
 
 /** Enfant du parent connecté, retrouvé par son jeton ; null si inconnu ou pas à lui */
