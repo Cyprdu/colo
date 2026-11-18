@@ -349,6 +349,25 @@ function fin_payout_date(?string $dateDebut): string {
  * application_fee_amount = commission de chaque inscription (fin_commission_split) + dette à compenser (solde négatif), jamais plus que le payé moins la commission.
  * Un code promo réduit le montant payé : la commission prélevée en trop est rendue par le webhook (fin_fee_excess_refund).
  */
+/** Détail de l'application fee (commission, frais estimés, compensation de dette) dans la description et les métadonnées du paiement */
+function fin_detail_frais(array $extra): array {
+    $m = $extra['metadata'] ?? [];
+    if (!isset($m['commission'])) return $extra;
+    $e = fn($c) => number_format($c / 100, 2, ',', ' ') . ' €';
+    $com = (int)$m['commission']; $comp = (int)($m['compensation'] ?? 0); $fe = (int)($m['frais_estimes'] ?? 0);
+    $parts = ['Commission moncamp.fr ' . $e($com)];
+    if ($fe) $parts[] = 'frais de paiement estimés ' . $e($fe);
+    if ($comp) $parts[] = 'compensation de dette ' . $e($comp) . ' (réf. ' . ($m['compensation_ref'] ?? '') . ')';
+    $txt = implode(' + ', $parts) . ' = ' . $e($com + $comp + $fe);
+    $extra['payment_intent_data']['metadata']['Frais moncamp.fr'] = $txt;
+    $extra['payment_intent_data']['metadata']['application_fee'] = (string)($com + $comp + $fe);
+    if ($comp) {
+        $extra['payment_intent_data']['metadata']['Compensation de dette'] = $e($comp) . ' (réf. ' . ($m['compensation_ref'] ?? '') . ')';
+        $extra['payment_intent_data']['description'] = mb_substr(trim(($extra['payment_intent_data']['description'] ?? '') . ' · ' . $txt, ' ·'), 0, 500);
+    }
+    return $extra;
+}
+
 /** Frais Stripe estimés d'une charge par carte européenne : 1,5 % + 0,25 € (ajustés ensuite aux frais réels) */
 function fin_frais_estimes(int $cents): int { return $cents > 0 ? (int)round($cents * 0.015) + 25 : 0; }
 
@@ -370,6 +389,7 @@ function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     $pid = ['application_fee_amount' => $com + $comp + $fe, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId]];
     if (!$direct) $pid['transfer_data'] = ['destination' => $acc['account_id']];
     $extra = ['payment_intent_data' => $pid, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp, 'frais_estimes' => (string)$fe]];
+    if ($comp > 0) $extra['metadata']['compensation_ref'] = 'D' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
     if ($direct) $extra['payment_method_types'] = ['card']; // carte (+ Apple Pay / Google Pay) : ne dépend pas de la configuration de moyens de paiement (pmc_) du compte connecté
     return [$extra, $direct ? ['stripe_account' => $acc['account_id']] : []];
 }

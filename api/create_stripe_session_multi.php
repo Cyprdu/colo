@@ -251,6 +251,7 @@ try {
     // Direct charges : paiement créé sur le compte Stripe de l'organisme, commission prélevée par moncamp.fr (repli destination / legacy si compte non prêt)
     [$extra, $opts] = fin_checkout_params($pdo, (int)$camp['organisateur_id'], array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems));
     $extra = array_replace_recursive($extra, fin_lisible($pdo, $payTokens)); // lisible dans le Stripe de l'organisme
+    $extra = fin_detail_frais($extra);
 
     $checkout = \Stripe\Checkout\Session::create(array_replace_recursive($params, $extra), $opts);
 

@@ -38,6 +38,7 @@ function eq_stripe(PDO $pdo, array $camp, array $row, int $uid): string {
     [$extra, $opts] = fin_checkout_params($pdo, (int)$camp['organisateur_id'], [$cents]);
     $extra = array_replace_recursive($extra, fin_lisible_params((string)$camp['nom'], $camp['date_debut'] ?? null, $camp['date_fin'] ?? null, [[(string)$row['prenom'], (string)$row['nom']]],
         trim($row['prenom'] . ' ' . $row['nom']), (string)$row['email'], fin_commission_split($cents)[0], [(string)$row['token']], 'Équipe d\'animation'));
+    $extra = fin_detail_frais($extra);
     $co = \Stripe\Checkout\Session::create(array_replace_recursive($params, $extra), $opts);
     $pdo->prepare("UPDATE equipe_inscriptions SET stripe_session_id = ? WHERE id = ?")->execute([$co->id, $row['id']]);
     return $co->url;

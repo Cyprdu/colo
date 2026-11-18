@@ -93,6 +93,7 @@ try {
     $orgaId = (int)$pdo->query("SELECT organisateur_id FROM camps WHERE id = " . (int)$first['camp_id'])->fetchColumn();
     [$extra, $opts] = fin_checkout_params($pdo, $orgaId, array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems));
     $extra = array_replace_recursive($extra, fin_lisible($pdo, $tokens)); // lisible dans le Stripe de l'organisme
+    $extra = fin_detail_frais($extra);
 
     $checkout = \Stripe\Checkout\Session::create(array_replace_recursive($params, $extra), $opts);
 
