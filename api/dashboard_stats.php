@@ -99,16 +99,18 @@ try {
     $fam = "COALESCE(NULLIF(e.nom, ''), 'Équipe d''animation')";
     $st = $pdo->prepare("SELECT p.id, p.created_at d, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, p.brut_cents brut, p.rembourse_cents remb,
                                 p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, p.mode, p.payment_intent pi, i.reservation_token tok, p.annul_com ann,
-                                IF(p.mode = 'direct', COALESCE(p.frais_stripe_cents, 0) + p.frais_litige_cents, 0) frais, p.compensation_cents comp, p.verse_cents verse, p.tva_taux_pct tva,
-                                (SELECT t.token FROM fin_transfert_lignes l JOIN fin_transferts t ON t.id = l.transfert_id WHERE l.paiement_id = p.id ORDER BY t.id DESC LIMIT 1) vtok
+                                IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) frais, (p.mode = 'direct' OR p.frais_orga = 1) fo, p.frais_stripe_cents IS NULL fnc, p.compensation_cents comp, p.verse_cents verse, p.tva_taux_pct tva,
+                                (SELECT t.token FROM fin_transfert_lignes l JOIN fin_transferts t ON t.id = l.transfert_id WHERE l.paiement_id = p.id ORDER BY t.id DESC LIMIT 1) vtok,
+                                (SELECT CONCAT(t.statut, '|', COALESCE(t.arrivee, '')) FROM fin_transfert_lignes l JOIN fin_transferts t ON t.id = l.transfert_id
+                                  WHERE l.paiement_id = p.id AND t.type = 'payout' AND t.statut IN ('envoye', 'paye') ORDER BY t.id DESC LIMIT 1) po
                          FROM fin_paiements p JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id
                          LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN users u ON u.id = e.parent_id
                          WHERE p.organisateur_id = ? AND p.created_at BETWEEN ? AND ? ORDER BY p.created_at DESC LIMIT 5000");
     $st->execute([$orgaId, $dt[0], $dt[1]]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     $st = $pdo->prepare("SELECT i.id, i.date_inscription d, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, ROUND(i.prix_final * 100) brut, 0 remb,
-                                ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv, i.statut_paiement st, NULL dd, 'hors' mode, NULL pi, i.reservation_token tok, 0 ann, 0 frais,
-                                0 comp, 0 verse, NULL tva, NULL vtok, i.moyen_paiement moy
+                                ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv, i.statut_paiement st, NULL dd, 'hors' mode, NULL pi, i.reservation_token tok, 0 ann, 0 frais, 0 fo, 0 fnc,
+                                0 comp, 0 verse, NULL tva, NULL vtok, NULL po, i.moyen_paiement moy
                          FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN users u ON u.id = e.parent_id
                          LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
                          WHERE c.organisateur_id = ? AND $CANC AND i.statut_paiement IN ('PAYE', 'A_REGLER') AND COALESCE(i.moyen_paiement, '') NOT IN ('', 'carte')
@@ -119,10 +121,17 @@ try {
     $etat = function (array $r): array {
         if ((int)$r['ann'] === 1) return ['annule', 'Annulé par la famille'];
         if ((int)$r['remb'] > 0 && (int)$r['remb'] >= (int)$r['brut']) return ['rembourse', 'Remboursé'];
-        $k = $r['st']; $dd = $r['dd'] ? date('d/m/Y', strtotime($r['dd'])) : '';
-        if ($r['mode'] === 'legacy' && $k === 'verse') return ['verse', 'Transféré sur votre compte Stripe'];
-        $l = ['attente' => 'En attente de versement', 'en_cours' => 'Versement en cours', 'verse' => 'Versé', 'litige' => 'Litige', 'bloque' => 'Suspendu',
-              'rembourse' => 'Remboursé', 'PAYE' => 'Reçu (hors carte)', 'A_REGLER' => 'À encaisser'][$k] ?? $k;
+        $k = $r['st'];
+        // Parcours de l'argent (mis à jour par les webhooks) : sur votre compte Stripe → virement en cours (payout envoyé) → versé sur votre banque (payout.paid)
+        if (in_array($k, ['attente', 'en_cours', 'verse'], true) && $r['mode'] !== 'hors') {
+            [$ps, $pa] = $r['po'] ? explode('|', (string)$r['po']) + [1 => ''] : ['', ''];
+            if ($r['mode'] === 'legacy' && $k !== 'verse') { $k = 'moncamp'; }
+            elseif ($ps === 'paye' && $k === 'verse') { $k = 'banque'; }
+            elseif ($ps === 'envoye' && $k === 'verse') { $k = 'route'; $route = $pa ? ' · arrivée prévue le ' . date('d/m/Y', strtotime($pa)) : ''; }
+            else { $k = 'stripe'; }
+        }
+        $l = ['moncamp' => 'Chez moncamp.fr (compte à activer)', 'stripe' => 'Sur votre compte Stripe', 'route' => 'Virement en cours' . ($route ?? ''), 'banque' => 'Versé sur votre banque',
+              'litige' => 'Litige', 'bloque' => 'Suspendu', 'rembourse' => 'Remboursé', 'PAYE' => 'Reçu (hors carte)', 'A_REGLER' => 'À encaisser'][$k] ?? $k;
         if ((int)$r['remb'] > 0) return [$k === 'rembourse' ? 'rembourse' : 'partiel', $l . ' · remboursé en partie'];
         return [$k, $l];
     };
@@ -131,7 +140,7 @@ try {
         [$sk, $sl] = $etat($r); $card = $r['mode'] !== 'hors'; $moy = $card ? 'carte' : (string)$r['moy'];
         $tx[] = ['k' => ($card ? 'p' : 'h') . $r['id'], 'd' => $r['d'], 'fam' => $txt($r['fam']), 'enf' => $txt($r['enf']), 'parent' => trim($txt($r['pp']) . ' ' . $txt($r['pn'])),
             'camp' => $txt($r['camp']), 'sej' => $campGrp[(int)$r['camp_id']][0] ?? '', 'ses' => $campGrp[(int)$r['camp_id']][1] ?? '', 'sesl' => $sessLab[(int)$r['camp_id']] ?? '',
-            'moy' => $moy, 'moyl' => $lib[$moy] ?? 'Non précisé', 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'], 'frais' => (int)$r['frais'], 'pv' => (int)$r['pv'],
+            'moy' => $moy, 'moyl' => $lib[$moy] ?? 'Non précisé', 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'], 'frais' => (int)$r['frais'], 'fo' => (int)$r['fo'], 'fest' => (int)$r['fo'] && (int)$r['fnc'], 'pv' => (int)$r['pv'],
             'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'] - (int)$r['frais'], 'comp' => (int)$r['comp'], 'verse' => (int)$r['verse'],
             'st' => $sk, 'stl' => $sl, 'dd' => $r['dd'] ? substr($r['dd'], 0, 10) : null, 'mode' => $r['mode'], 'pi' => $r['pi'] ? (string)$r['pi'] : null,
             'tok' => (string)$r['tok'], 'vtok' => $r['vtok'] ? (string)$r['vtok'] : null,
@@ -229,7 +238,7 @@ try {
     ds_fin([
         'periode' => ['du' => $du, 'au' => $au, 'prev_du' => $pdu, 'prev_au' => $pau],
         'kpi' => ['cur' => $cur, 'prev' => $prev, 'en_attente' => max(0, $all['en_attente']), 'dette' => $dette, 'verse_total' => $all['verse'],
-                  'prochain' => $prochains ? ['d' => $prochains[0]['d'], 'm' => $prochains[0]['m']] : null,
+                  'prochain' => fin_prochain_virement($pdo, $orgaId),
                   'a_encaisser' => array_sum(array_column($hors, 'm')), 'nb_a_encaisser' => count($hors)],
         'jours' => array_map(fn($d, $v) => ['d' => $d] + $v, array_keys($days), array_values($days)),
         'moyens' => $moyens, 'remplissage' => $remp,

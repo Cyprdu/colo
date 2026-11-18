@@ -5,7 +5,7 @@
 //   paiement +brut payé par la famille | commission −commission moncamp.fr (+ part rendue lors d'un remboursement)
 //   frais_paiement −frais Stripe débités à l'organisme (direct charges) | remboursement −brut rendu à la famille
 //   ajustement (points payés avec le solde...) | versement −virement vers sa banque
-//   frais : frais Stripe payés par moncamp.fr (paiements destination / legacy ; exclus des totaux de l'organisme, servent à la marge).
+//   frais : frais Stripe payés par moncamp.fr (anciens paiements destination / legacy seulement ; exclus des totaux de l'organisme, servent à la marge).
 //   dette : +remboursement avancé par moncamp.fr, −dette compensée sur un paiement (historique de la dette ; hors totaux, la dette en cours est
 //           organisateurs.portefeuille négatif).
 // Pour vous = paiement + commission + frais_paiement + remboursement + ajustement ; en attente = pour vous − versé.

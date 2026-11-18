@@ -50,7 +50,7 @@ ok(fin_checkout_params($pdo, 2, [2500]) === [[], []], 'compte non prêt : repli 
 $pdo->exec("UPDATE organisateurs SET stripe_account_id = 'acct_D' WHERE id = 2");
 $pdo->exec("INSERT INTO stripe_comptes (organisateur_id, account_id, transfers_actif, payouts_enabled, details_submitted, charges_enabled) VALUES (2, 'acct_D', 1, 1, 1, 0)");
 [$d, $o] = fin_checkout_params($pdo, 2, [2500, 10000]);
-ok($d['payment_intent_data']['application_fee_amount'] === 93 + 280 && $d['payment_intent_data']['transfer_data']['destination'] === 'acct_D' && $o === [], 'cartes pas encore activées : destination charges, commission = somme par inscription (0,93 + 2,80)');
+ok($d['payment_intent_data']['application_fee_amount'] === 93 + 280 + 213 && $d['metadata']['frais_estimes'] === '213' && $d['payment_intent_data']['transfer_data']['destination'] === 'acct_D' && $o === [], 'cartes pas encore activées : destination charges, commission par inscription (0,93 + 2,80) + frais Stripe estimés (1,5 % + 0,25 € = 2,13) payés par l\'organisme');
 $pdo->exec("UPDATE stripe_comptes SET charges_enabled = 1 WHERE organisateur_id = 2");
 $pdo->exec("UPDATE organisateurs SET portefeuille = -5.00 WHERE id = 2"); // commission hors carte due
 [$d, $o] = fin_checkout_params($pdo, 2, [2500, 10000]);
@@ -69,7 +69,7 @@ $r = $pdo->query("SELECT mode, net_cents, compensation_cents, verse_cents, DATE(
 ok($r[0]['mode'] === 'destination' && array_sum(array_column($r, 'compensation_cents')) === 500 && $r[0]['d'] === date('Y-m-d'), 'mode destination, dette répartie, versable tout de suite (versements automatiques)');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001, 'solde : net non crédité (il est chez Stripe), dette soldée');
 $t = fin_ledger_totaux($pdo, 2);
-ok($t['encaisse'] === 12500 && $t['commission'] === 373 && $t['en_attente'] === 12500 - 373, 'cascade destination : 125 EUR encaissés, 3,73 EUR de commission');
+ok($t['encaisse'] === 12500 && $t['commission'] === 373 && $t['frais'] === 213 && $t['en_attente'] === 12500 - 373 - 213, 'cascade destination : 125 EUR encaissés, 3,73 EUR de commission, 2,13 EUR de frais Stripe estimés (à la charge de l’organisme)');
 
 // ---------------------------------------------------------------- 4. webhook : paiement destination avec code promo, rejeu, remboursement, litige perdu
 require __DIR__ . '/../api/marketing_lib.php';
@@ -78,13 +78,13 @@ $ev = fn(string $id, string $type, array $o, string $acct = '') => json_decode(j
 $GLOBALS['stripe_resp']['paymentIntents.retrieve'] = fn($id) => (object)['latest_charge' => (object)['id' => 'ch_' . $id, 'application_fee' => 'fee_' . $id, 'transfer' => 'tr_' . $id]];
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (4, 3, 4, 'En attente', 25.00, 'EN_ATTENTE', 'tokE'), (5, 3, 5, 'En attente', 100.00, 'EN_ATTENTE', 'tokF')");
 $paid = $ev('evt_1', 'checkout.session.completed', ['id' => 'cs_E', 'payment_status' => 'paid', 'payment_intent' => 'pi_E', 'amount_total' => 11250, 'amount_subtotal' => 12500,
-    'metadata' => ['reservation_token' => 'tokE,tokF', 'mode' => 'destination', 'organisateur_id' => '2', 'commission' => '373', 'compensation' => '0']]);
+    'metadata' => ['reservation_token' => 'tokE,tokF', 'mode' => 'destination', 'organisateur_id' => '2', 'commission' => '373', 'compensation' => '0', 'frais_estimes' => '213']]);
 $r = stripe_webhook_process($pdo, $paid);
-ok($r[0] === 200 && $r[2]['feeAdj'] === ['pi_E', 373], 'webhook : paiement destination enregistré');
+ok($r[0] === 200 && $r[2]['feeAdj'] === ['pi_E', 373 + 213], 'webhook : paiement destination enregistré');
 ok((int)$pdo->query("SELECT SUM(commission_cents) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn() === 86 + 255, 'code promo -10 % : commission recalculée sur le payé (0,86 + 2,55)');
 stripe_webhook_after($pdo, $r[2]);
 $fee = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'applicationFees.createRefund'));
-ok($fee && $fee[0][1][0] === 'fee_pi_E' && $fee[0][1][1]['amount'] === 32 && $fee[0][1][2]['idempotency_key'] === 'moncamp-fee-pi_E', 'commission prélevée en trop (0,32 EUR) rendue à l\'organisme, clé d\'idempotence');
+ok($fee && $fee[0][1][0] === 'fee_pi_E' && $fee[0][1][1]['amount'] === 32 + 19 && $fee[0][1][2]['idempotency_key'] === 'moncamp-fee-pi_E', 'commission et frais estimés prélevés en trop (0,32 + 0,19 EUR, code promo) rendus à l\'organisme, clé d\'idempotence');
 ok(stripe_webhook_process($pdo, $paid)[1] === 'deja traite', 'webhook rejoué : ignoré');
 $paid->id = 'evt_1bis'; // même paiement notifié deux fois (double clic, async_payment_succeeded...) sous un autre identifiant d'événement
 ok(stripe_webhook_process($pdo, $paid)[0] === 200 && (int)$pdo->query("SELECT COUNT(*) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn() === 2, 'même paiement reçu deux fois : une ligne par inscription');
@@ -107,7 +107,11 @@ ok($rep === (int)$pdo->query("SELECT SUM(net_cents) FROM fin_paiements WHERE pay
 stripe_webhook_after($pdo, $r[2]);
 $rev = array_values(array_filter($GLOBALS['fake_transfers']->calls, fn($c) => $c[0] === 'reversal'));
 ok($rev && $rev[0][1] === 'tr_pi_E' && $rev[0][2]['amount'] === $rep && (int)$pdo->query("SELECT SUM(a_reprendre_cents) FROM fin_paiements")->fetchColumn() === 0, 'reprise : reversement du transfert de la charge, rien ne reste à reprendre');
-ok(fin_ledger_totaux($pdo, 2)['rembourse'] === 11250 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference LIKE 'litige:%'")->fetchColumn() === 2, 'litige perdu : tout est remboursé au journal, frais de litige à la charge de moncamp.fr');
+ok(fin_ledger_totaux($pdo, 2)['rembourse'] === 11250 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais_paiement' AND reference LIKE 'litige:%'")->fetchColumn() === 2
+   && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference LIKE 'litige:%'")->fetchColumn() === 0
+   && (int)$pdo->query("SELECT SUM(montant_cents) FROM fin_ledger WHERE type = 'dette' AND reference LIKE 'fraisdette:litige:%'")->fetchColumn() === 1500, 'litige perdu : tout est remboursé au journal, frais de litige (15 EUR) à la charge de l\'organisme (dette), jamais de moncamp.fr');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 15.00) < 0.001, 'frais de litige : dette de 15 EUR (solde négatif, compensée sur les paiements suivants)');
+$pdo->exec("UPDATE organisateurs SET portefeuille = portefeuille + 15.00 WHERE id = 2"); // dette réglée : la suite du test part d'un solde nul
 
 // ---------------------------------------------------------------- 5. versements bancaires (Payout manuel N jours après le début du séjour)
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (6, 3, 6, 'En attente', 50.00, 'EN_ATTENTE', 'tokG')");
@@ -135,7 +139,7 @@ ok($pdo->query("SELECT statut FROM fin_transferts WHERE stripe_transfer_id = 'po
 // remboursement après versement : le solde Stripe devient négatif, rien n'est versé tant qu'il n'est pas compensé
 stripe_webhook_process($pdo, $ev('evt_7', 'charge.refunded', ['id' => 'ch_G', 'payment_intent' => 'pi_G', 'amount_refunded' => 5000, 'amount' => 5000]));
 $t = fin_ledger_totaux($pdo, 2);
-ok($t['en_attente'] === (12500 - 373) - (5000 - 155), 'remboursé après versement : en attente = séjour à venir − part déjà versée (à compenser)');
+ok($t['en_attente'] === (12500 - 373 - 213) - 4845, 'remboursé après versement : en attente = séjour à venir − part déjà versée (à compenser), frais Stripe estimés déduits');
 $bal(-4845, 11627);
 ok(fin_payouts_run($pdo)['payouts'] === 0, 'solde Stripe négatif : aucun versement');
 
@@ -177,9 +181,9 @@ $h = $pdo->query("SELECT * FROM fin_paiements WHERE payment_intent = 'pi_H'")->f
 ok($h['mode'] === 'direct' && (int)$h['commission_cents'] === 230 && ($GLOBALS['pi_opts']['pi_H'] ?? []) === ['stripe_account' => 'acct_D'], 'paiement direct enregistré, frais lus sur le compte de l\'organisme');
 ok((int)$h['frais_stripe_cents'] === 145 && (int)$h['net_cents'] === 8000 - 230 - 145, 'frais Stripe (1,45 EUR, commission exclue) déduits du net de l\'organisme');
 fin_sync_fees($pdo, 'pi_H');
-ok((int)$pdo->query("SELECT net_cents FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetchColumn() === 7625 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais_paiement'")->fetchColumn() === 1, 'frais relevés deux fois : déduits une seule fois');
+ok((int)$pdo->query("SELECT net_cents FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetchColumn() === 7625 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais_paiement' AND reference = 'frais:" . (int)$h['id'] . "'")->fetchColumn() === 1, 'frais relevés deux fois : déduits une seule fois');
 $t = fin_ledger_totaux($pdo, 2);
-ok($t['frais'] === 145 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference = 'frais:" . $h['id'] . "'")->fetchColumn() === 0, 'journal : frais à la charge de l\'organisme, pas de moncamp.fr');
+ok((int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'frais_paiement' AND reference = 'frais:" . $h['id'] . "'")->fetchColumn() === -145 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference = 'frais:" . $h['id'] . "'")->fetchColumn() === 0, 'journal : frais à la charge de l\'organisme, pas de moncamp.fr');
 $mg = array_values(array_filter(compta_marges($pdo, '2000-01-01', '2100-01-01', 2), fn($m) => $m['mode'] === 'direct'));
 ok((int)$mg[0]['marge'] === 230, 'marge moncamp.fr d\'un paiement direct = sa commission (jamais négative)');
 
@@ -188,10 +192,11 @@ fin_refund($pdo, $h, 3000, ['annulation' => '1'], 'k-ok');
 $c = array_column($GLOBALS['stripe_calls'], 1, 0);
 ok(!isset($c['transfers.create']) && $c['refunds.create'][1]['stripe_account'] === 'acct_D' && $c['refunds.create'][0]['refund_application_fee'] === false, 'solde suffisant : remboursé sur le compte de l\'organisme, commission non rendue');
 $nTr = count($GLOBALS['fake_transfers']->calls); $bal(1000, 0);
+$pf0 = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn(); // déjà négatif des frais de litige de E (dette)
 fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
 $tr = array_slice($GLOBALS['fake_transfers']->calls, $nTr);
 ok($tr && $tr[0][1]['amount'] === 2000 && $tr[0][1]['destination'] === 'acct_D' && $tr[0][2]['idempotency_key'] === 'k-manque-avance', 'solde insuffisant : moncamp.fr avance les 20 EUR manquants');
-ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 20.00) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'avance:k-manque'")->fetchColumn() === 2000, 'dette de 20 EUR : solde négatif et journal');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() - ($pf0 - 20.00)) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'avance:k-manque'")->fetchColumn() === 2000, 'dette de 20 EUR : solde négatif et journal');
 fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 20.00) < 0.001, 'remboursement rejoué : dette comptée une fois');
 $r = stripe_webhook_process($pdo, $ev('evt_21', 'charge.refunded', ['id' => 'ch_pi_H', 'payment_intent' => 'pi_H', 'amount_refunded' => 6000, 'amount' => 8000], 'acct_D'));

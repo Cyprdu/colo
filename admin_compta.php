@@ -8,6 +8,7 @@ require_once __DIR__ . '/api/compta_lib.php';
 require_once __DIR__ . '/api/gains_lib.php';
 adm_guard();
 fin_ensure($pdo);
+try { fin_frais_rattrapage($pdo); } catch (Throwable $e) { error_log('admin rattrapage frais: ' . $e->getMessage()); } // une fois, puis ne refait rien
 
 $v = in_array($_GET['v'] ?? '', ['synthese', 'revenus', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
 [$from, $to, $periodLabel, $pk] = compta_period($_GET);
@@ -35,6 +36,19 @@ function flash_go(string $kind, string $msg, string $to): void { $_SESSION['adm_
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = (string)($_POST['act'] ?? '');
     try {
+        if ($act === 'ajustement') {   // ajustement / dette manuelle d'un organisme (mot de passe, motif obligatoire, journalisé)
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
+            $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
+            $m = str_replace([' ', ','], ['', '.'], (string)($_POST['montant'] ?? ''));
+            $motif = trim((string)($_POST['motif'] ?? ''));
+            if (!$oid || !preg_match('/^\d+(\.\d{1,2})?$/', $m) || (float)$m <= 0 || (float)$m > 100000 || mb_strlen($motif) < 3)
+                flash_go('err', 'Organisme, montant positif et motif (3 caractères minimum) obligatoires.', 'admin_compta.php?v=versements');
+            $sens = ($_POST['sens'] ?? '') === 'credit' ? 'credit' : 'dette';
+            $ref = fin_ajustement_manuel($pdo, $oid, $sens, (int)round((float)$m * 100), $motif, 'admin:' . $uid);
+            adm_audit('ajustement_organisme', 'organisateur', $sens . ' ' . $m . ' EUR · ' . mb_substr($motif, 0, 120));
+            flash_go('ok', ($sens === 'dette' ? 'Dette' : 'Crédit') . ' de ' . fin_eur((int)round((float)$m * 100)) . ' enregistré (réf. ' . substr($ref, 7) . ').', 'admin_compta.php?v=versements');
+        }
         if ($act === 'commission') {
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=reglages');
@@ -147,7 +161,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
 <?php endif; ?>
 <section class="kpis">
   <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= $e($sum['ca']) ?></b><span>Chiffre d'affaires encaissé</span><small><?= $sum['nb'] ?> paiement<?= $sum['nb'] > 1 ? 's' : '' ?> · remboursé : <?= $e($sum['rembourse']) ?></small></div></div>
-  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions moncamp.fr</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions moncamp.fr</span><small>nettes des remboursements</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($sum['frais'] + $sum['litige']) ?></b><span>Frais Stripe réels</span><small>dont litiges : <?= $e($sum['litige']) ?></small></div></div>
   <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette moncamp.fr</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= $e($hs['commission']) ?></b><span>Commissions hors carte</span><small><?= $hs['nb'] ?> règlement<?= $hs['nb'] > 1 ? 's' : '' ?> (<?= $e($hs['brut']) ?>) · retenues sur les versements par carte</small></div></div>
@@ -186,6 +200,21 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
   $dl = function (int $c, int $p, bool $up = true) { if (!$p) return $c ? 'nouveau' : '='; $x = (int)round(($c - $p) / abs($p) * 100); return ($x > 0 ? '+' : '') . $x . ' % vs ' . fin_eur($p); };
   $c = $rv['cur']; $pv = $rv['prev']; ?>
 <p class="muted">Ce que gagne moncamp.fr, lu dans le journal comptable <code>fin_ledger</code>. Comparaison : du <?= h(date('d/m/Y', strtotime($rv['prev_du']))) ?> au <?= h(date('d/m/Y', strtotime($rv['prev_au']))) ?>.</p>
+<?php $rr = compta_revenus_rapprochement($pdo, $ps); ?>
+<section class="card"><h2 class="sec"><?= ic('bank') ?> Ce que gagne moncamp.fr <span class="muted small">· depuis le début</span></h2>
+  <div class="kv"><span>Commission</span><b><?= $e($rr['com']) ?></b></div>
+  <div class="kv"><span>− frais Stripe payés par moncamp.fr <small class="muted">(anciens paiements seulement : depuis la règle « frais à la charge de l'organisme », tous les nouveaux paiements, y compris reçus avant l'activation ou en repli destination, sont payés par l'organisme)</small></span><b>− <?= $e($rr['frais']) ?></b></div>
+  <div class="kv"><span><b>= net pour moncamp.fr</b></span><b><?= $e($rr['net']) ?></b></div>
+  <?php if ($rr['hors']): ?><div class="kv"><span>− commissions hors carte pas encore encaissées <small class="muted">(retenues sur les paiements suivants des organismes)</small></span><b>− <?= $e($rr['hors']) ?></b></div><?php endif; ?>
+  <?php if ($rr['points']): ?><div class="kv"><span>+ achats de points par carte</span><b>+ <?= $e($rr['points']) ?></b></div><?php endif; ?>
+  <?php if ($rr['detenu']): ?><div class="kv"><span>+ argent d'organismes encore détenu <small class="muted">(paiements reçus avant l'activation, à leur transférer)</small></span><b>+ <?= $e($rr['detenu']) ?></b></div><?php endif; ?>
+  <?php if ($rr['dette']): ?><div class="kv"><span><?= $rr['dette'] > 0 ? '− dettes d\'organismes avancées, pas encore recouvrées' : '+ dettes et commissions hors carte recouvrées' ?></span><b><?= $rr['dette'] > 0 ? '− ' : '+ ' ?><?= $e(abs($rr['dette'])) ?></b></div><?php endif; ?>
+  <?php if ($rr['payouts']): ?><div class="kv"><span>− déjà viré sur votre banque</span><b>− <?= $e($rr['payouts']) ?></b></div><?php endif; ?>
+  <?php if ($rr['solde'] === null): ?><p class="muted">Solde Stripe indisponible : rapprochement impossible pour le moment.</p>
+  <?php elseif (abs($rr['ecart']) <= 1): ?><div class="note ok"><?= ic('check') ?><div><b>= solde Stripe de la plateforme : <?= $e($rr['solde']) ?></b> (disponible + à venir). Tout est rapproché.</div></div>
+  <?php else: ?><div class="note err"><?= ic('alert') ?><div><b>Solde attendu <?= $e($rr['attendu']) ?> · solde Stripe <?= $e($rr['solde']) ?> · écart <?= $e($rr['ecart']) ?></b><br>
+    Causes possibles : frais Stripe pas encore relevés sur un paiement récent, frais Connect ou de virement facturés par Stripe, virements vers votre banque pas encore synchronisés (onglet Rapprochement Stripe), paiements antérieurs au journal, mouvements en cours.</div></div><?php endif; ?>
+</section>
 <section class="kpis">
   <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($c['com']) ?></b><span>Commissions encaissées</span><small><?= h($dl($c['com'], $pv['com'])) ?> · dont hors carte <?= $e($c['hors']) ?></small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($c['frais']) ?></b><span>Frais Stripe payés par moncamp.fr</span><small><?= h($dl($c['frais'], $pv['frais'])) ?> · paiements en repli destination / anciens</small></div></div>
@@ -314,6 +343,17 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer maintenant</button></div></form>
   </section>
 </div>
+
+<section class="card"><h2 class="sec"><?= ic('edit') ?> Ajouter un ajustement / une dette</h2>
+  <p class="muted">Dette : l'organisme doit ce montant à moncamp.fr (compensée sur ses prochains paiements, visible dans son onglet Dette). Crédit : moncamp.fr lui doit ce montant. Journalisé avec le motif.</p>
+  <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="ajustement">
+    <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($pdo->query("SELECT id, nom FROM organisateurs ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC) as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h(html_entity_decode((string)$o['nom'], ENT_QUOTES, 'UTF-8')) ?></option><?php endforeach; ?></select></label>
+    <label class="fld"><span class="fl">Type</span><select class="in" name="sens"><option value="dette">Dette de l'organisme</option><option value="credit">Crédit à l'organisme</option></select></label>
+    <label class="fld"><span class="fl">Montant (EUR)</span><input class="in" name="montant" inputmode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" required></label>
+    <label class="fld"><span class="fl">Motif (obligatoire, visible par l'organisme)</span><input class="in" name="motif" minlength="3" maxlength="110" required></label>
+    <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+    <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
+</section>
 
 <h2 class="sec"><?= ic('building') ?> Situation par organisme</h2>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">À verser maintenant</th><th class="num">Séjours à venir</th><th class="num">Litige</th><th class="num">Anciens paiements</th><th class="num">Solde moncamp.fr</th></tr></thead><tbody>

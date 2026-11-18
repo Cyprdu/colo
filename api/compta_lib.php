@@ -28,8 +28,8 @@ function compta_summary(PDO $pdo, string $from, string $to, int $orgaId = 0): ar
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $sql = "SELECT COUNT(*) nb, COALESCE(SUM(p.brut_cents), 0) brut, COALESCE(SUM(p.rembourse_cents), 0) rembourse,
                 COALESCE(SUM($com), 0) commission,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(p.net_cents - p.net_rembourse_cents), 0) du_total,
                 COALESCE(SUM(p.verse_cents), 0) verse,
                 COALESCE(SUM(CASE WHEN p.statut IN ('attente','bloque','litige','en_cours') THEN GREATEST(0, p.net_cents - p.net_rembourse_cents - p.verse_cents) END), 0) attente,
@@ -56,7 +56,7 @@ function compta_hors_stripe(PDO $pdo, string $from, string $to, int $orgaId = 0)
 function compta_by_orga(PDO $pdo, string $from, string $to): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $st = $pdo->prepare("SELECT o.id, o.nom, COUNT(*) nb, SUM(p.brut_cents - p.rembourse_cents) ca, SUM($com) commission,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(CASE WHEN p.frais_stripe_cents IS NOT NULL THEN $marge END), 0) marge,
                 SUM(p.net_cents - p.net_rembourse_cents) du,
                 COALESCE(SUM(p.verse_cents), 0) verse,
@@ -71,7 +71,7 @@ function compta_by_orga(PDO $pdo, string $from, string $to): array {
 function compta_by_month(PDO $pdo, string $from, string $to, int $orgaId = 0): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $st = $pdo->prepare("SELECT DATE_FORMAT(p.created_at, '%Y-%m') m, COUNT(*) nb, SUM(p.brut_cents - p.rembourse_cents) ca, SUM($com) commission,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(CASE WHEN p.frais_stripe_cents IS NOT NULL THEN $marge END), 0) marge
             FROM fin_paiements p WHERE p.created_at BETWEEN ? AND ?" . ($orgaId ? " AND p.organisateur_id = ?" : "") . " GROUP BY m ORDER BY m DESC");
     $st->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
@@ -171,6 +171,32 @@ function compta_revenus(PDO $pdo, string $from, string $to, string $g = 'm'): ar
         $pdo->query("SELECT o.nom, SUM(l.montant_cents) du, MIN(l.created_at) depuis FROM fin_ledger l JOIN organisateurs o ON o.id = l.organisateur_id
                      WHERE l.type = 'dette' GROUP BY o.id, o.nom HAVING du > 0 ORDER BY du DESC")->fetchAll(PDO::FETCH_ASSOC));
     return ['cur' => $tot($from, $to), 'prev' => $tot($pfrom, $pto), 'prev_du' => $pfrom, 'prev_au' => $pto, 'serie' => $serie, 'orgas' => $orgas, 'sejours' => $sejours, 'dettes' => $dettes];
+}
+
+/**
+ * « Commission − frais Stripe payés par moncamp.fr = net pour moncamp.fr », puis rapprochement avec le solde Stripe de la plateforme
+ * (depuis le début, journal fin_ledger). Solde attendu = commissions par carte − frais + achats de points par carte + argent d'organismes encore
+ * détenu (paiements reçus avant l'activation) − dette nette (avances − compensations et règlements) − virements vers la banque de moncamp.fr.
+ * Les commissions hors carte n'entrent en caisse que lorsqu'elles sont compensées (lignes « dette » négatives).
+ */
+function compta_revenus_rapprochement(PDO $pdo, ?array $ps): array {
+    $l = $pdo->query("SELECT -COALESCE(SUM(IF(type = 'commission', montant_cents, 0)), 0) com,
+                             -COALESCE(SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)), 0) hors,
+                             -COALESCE(SUM(IF(type = 'frais', montant_cents, 0)), 0) frais,
+                             COALESCE(SUM(IF(type = 'dette' AND (montant_cents < 0 OR reference LIKE 'avance:%'), montant_cents, 0)), 0) dette
+                      FROM fin_ledger")->fetch(PDO::FETCH_ASSOC);
+    $l = array_map('intval', $l);
+    $points = 0;
+    try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
+    $fraisEcart = (int)$pdo->query("SELECT COALESCE(SUM(frais_estimes_cents - COALESCE(frais_stripe_cents, frais_estimes_cents)), 0) FROM fin_paiements WHERE frais_orga = 1 AND mode = 'destination'")->fetchColumn();
+    $detenu = (int)$pdo->query("SELECT COALESCE(SUM(GREATEST(0, net_cents - net_rembourse_cents - verse_cents)), 0) FROM fin_paiements WHERE mode = 'legacy' AND statut IN ('attente', 'bloque', 'litige', 'en_cours')")->fetchColumn();
+    $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid', 'in_transit', 'pending')")->fetchColumn();
+    $r = ['com' => $l['com'], 'frais' => $l['frais'], 'net' => $l['com'] - $l['frais'], 'hors' => $l['hors'], 'points' => $points, 'detenu' => $detenu, 'dette' => $l['dette'], 'payouts' => $payouts];
+    $r['frais_ecart'] = $fraisEcart; // destination récente : frais estimés prélevés − frais réels payés par la plateforme (écart en dette ou rendu)
+    $r['attendu'] = $r['net'] - $l['hors'] + $points + $detenu - $l['dette'] - $payouts + $fraisEcart;
+    $r['solde'] = $ps ? $ps['disponible'] + $ps['a_venir'] : null;
+    $r['ecart'] = $ps ? $r['solde'] - $r['attendu'] : null;
+    return $r;
 }
 
 /** Export comptable mensuel de « Mes revenus » (une ligne par mois) */
