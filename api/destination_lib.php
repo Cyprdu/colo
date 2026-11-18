@@ -353,20 +353,27 @@ function fin_dette_reglee(PDO $pdo, $session): ?array {
     $orgaId = fin_orga_from_tok($pdo, (string)($session->metadata->organisateur ?? ''));
     $paid = (int)($session->amount_total ?? 0);
     if (!$orgaId || $paid <= 0) { fin_audit($pdo, 'dette_paiement_inconnu', 'checkout', (string)$session->id, ['cents' => $paid], 'webhook'); return null; }
-    $ref = 'dettecb:' . $session->id;
+    $r = fin_dette_reglement($pdo, $orgaId, $paid, 'dettecb:' . $session->id, 'Dette réglée par carte');
+    if (!$r) return null;
+    $r += ['session' => (string)$session->id, 'attendu' => (int)($session->metadata->montant ?? 0)];
+    fin_audit($pdo, 'dette_reglee_carte', 'organisateur', $orgaId, $r, 'webhook');
+    return $r;
+}
+
+/** Règlement de dette reçu (carte ou prélèvement) : solde la dette du moment, excédent crédité au solde. Idempotent par référence. */
+function fin_dette_reglement(PDO $pdo, int $orgaId, int $paid, string $ref, string $libelle): ?array {
     $st = $pdo->prepare("SELECT COUNT(*) FROM fin_ledger WHERE reference IN (?, ?)");
     $st->execute([$ref, $ref . ':surplus']);
-    if ((int)$st->fetchColumn()) return null; // déjà traité
+    if ((int)$st->fetchColumn()) return null;
     $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
     $st->execute([$orgaId]);
     $due = max(0, -(int)round((float)$st->fetchColumn() * 100));
     $solde = min($paid, $due); $surplus = $paid - $solde;
+    $obj = substr($ref, strpos($ref, ':') + 1);
     $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$paid / 100, $orgaId]);
-    if ($solde > 0) fin_ledger_add($pdo, 'dette', $orgaId, -$solde, $ref, 'checkout', $session->id, 'Dette réglée par carte', 'webhook', 'plateforme');
-    if ($surplus > 0) fin_ledger_add($pdo, 'ajustement', $orgaId, $surplus, $ref . ':surplus', 'checkout', $session->id, 'Excédent du règlement de dette crédité au solde', 'webhook', 'plateforme');
-    $r = ['organisateur_id' => $orgaId, 'session' => (string)$session->id, 'paye' => $paid, 'solde' => $solde, 'surplus' => $surplus, 'attendu' => (int)($session->metadata->montant ?? 0)];
-    fin_audit($pdo, 'dette_reglee_carte', 'organisateur', $orgaId, $r, 'webhook');
-    return $r;
+    if ($solde > 0) fin_ledger_add($pdo, 'dette', $orgaId, -$solde, $ref, 'paiement', $obj, $libelle, 'webhook', 'plateforme');
+    if ($surplus > 0) fin_ledger_add($pdo, 'ajustement', $orgaId, $surplus, $ref . ':surplus', 'paiement', $obj, 'Excédent du règlement de dette crédité au solde', 'webhook', 'plateforme');
+    return ['organisateur_id' => $orgaId, 'paye' => $paid, 'solde' => $solde, 'surplus' => $surplus];
 }
 
 /** Reçu par e-mail (après la transaction du webhook ; un échec n'annule rien) */

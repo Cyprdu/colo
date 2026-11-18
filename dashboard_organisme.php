@@ -57,6 +57,7 @@ $autoTxt = 'viré chaque jour sur votre banque dès que l\'argent est disponible
 $solde = $ready ? fin_solde_compte($pdo, $orgaId) : null;
 $comTxt = number_format(fin_commission_pct(), 1, ',', ' ') . ' %' . (fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '');
 $detteDue = fin_dette_due($pdo, $orgaId); // « Payer ma dette » : affiché seulement si > 0
+if (($_GET['mandat'] ?? '') === 'ok' && !$success) $success = 'Mandat de prélèvement SEPA enregistré (activé dans quelques instants).';
 if (($_GET['dette'] ?? '') === 'ok' && !$success) $success = 'Paiement reçu : votre dette est soldée dans quelques instants (reçu envoyé par e-mail).';
 $tvaCur = $orga['tva_taux'] === null ? '' : rtrim(rtrim((string)$orga['tva_taux'], '0'), '.');
 
@@ -307,6 +308,12 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     <section class="fd-panel" role="tabpanel" id="pan-dette" aria-labelledby="tab-dette" hidden>
         <div class="fd-card" style="max-width:720px"><h2 class="fd-h"><span>Dette et compensations<?= $help("Quand une famille est remboursée alors que votre solde ne suffit pas, moncamp.fr avance la différence. Elle est retenue avec la commission sur vos paiements par carte suivants, jamais plus que leur montant. Aucune démarche.") ?></span></h2>
             <dl class="fd-dl" id="dTot"></dl>
+            <?php $sepa = fin_sepa_info($pdo, $orgaId); ?>
+            <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--ds-soft);font-size:13.5px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+                <?php if (!empty($sepa['sepa_pm'])): ?><span><b>Prélèvement SEPA actif</b><?= $sepa['sepa_last4'] ? ' · IBAN ••••' . htmlspecialchars($sepa['sepa_last4']) : '' ?> : une dette restée impayée 15 jours est prélevée automatiquement. Vous pouvez aussi payer vos boosts par prélèvement.</span>
+                <?php elseif ($orga['user_id'] == $userId): ?><span>Enregistrez un mandat de prélèvement SEPA : vos boosts pourront être payés par prélèvement, et une dette restée impayée 15 jours sera prélevée automatiquement.</span>
+                <form method="post" action="api/mandat_sepa.php"><input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>"><button type="submit" class="fd-btn">Enregistrer un mandat SEPA</button></form><?php endif; ?>
+            </div>
             <?php if ($detteDue > 0 && $orga['user_id'] == $userId): ?>
             <form method="post" action="api/payer_dette.php" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                 <input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>">

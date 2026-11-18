@@ -209,4 +209,32 @@ ok($v['m'] === 4200 && $pc[1]['stripe_account'] === 'acct_A' && str_starts_with(
 ok(fin_virer_maintenant($pdo, 1, 'cron', true) === null, 'quotidien : déjà un virement aujourd\'hui, rien de plus');
 $GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 50, 'currency' => 'eur']], 'pending' => []];
 ok(fin_virer_maintenant($pdo, 1, 'user:7') === null, 'moins de 1 EUR disponible : aucun virement');
+// ---- D. mandat SEPA, prélèvement automatique d'une dette impayée 15 jours, points par prélèvement
+$ev2 = fn(string $id, string $type, array $o, string $acct = '') => json_decode(json_encode(['id' => $id, 'type' => $type, 'account' => $acct, 'data' => ['object' => $o]]));
+$pdo->exec("CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY, prenom VARCHAR(50), nom VARCHAR(50), email VARCHAR(80))");
+$tok1 = fin_orga_tok(1, $pdo);
+$r = stripe_webhook_process($pdo, $ev2('evt_m1', 'checkout.session.completed', ['id' => 'cs_m1', 'mode' => 'setup', 'payment_status' => 'no_payment_required', 'setup_intent' => 'seti_1', 'metadata' => ['type' => 'mandat_sepa', 'organisateur' => $tok1]]));
+$GLOBALS['stripe_resp']['setupIntents.retrieve'] = (object)['id' => 'seti_1', 'status' => 'succeeded', 'payment_method' => (object)['id' => 'pm_sepa1', 'sepa_debit' => (object)['last4' => '4321']]];
+$GLOBALS['stripe_resp']['customers.create'] = (object)['id' => 'cus_o1'];
+stripe_webhook_after($pdo, $r[2]);
+$si = fin_sepa_info($pdo, 1);
+ok($r[2]['mandat'] === [1, 'seti_1'] && $si['sepa_pm'] === 'pm_sepa1' && $si['sepa_last4'] === '4321' && $si['stripe_customer_id'] === 'cus_o1', 'mandat SEPA enregistré (moyen de paiement du client plateforme de l\'organisme)');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -20.00, dette_depuis = NOW() - INTERVAL 16 DAY, sepa_dette_pi = NULL WHERE id = 1");
+$GLOBALS['stripe_calls'] = []; $GLOBALS['stripe_resp']['paymentIntents.create'] = (object)['id' => 'pi_sepa_d1', 'status' => 'processing'];
+$rep = fin_sepa_dettes_run($pdo);
+$pc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'paymentIntents.create'))[0][1] ?? [];
+ok($rep['prelevements'] === 1 && $pc[0]['amount'] === 2000 && $pc[0]['off_session'] === true && $pc[0]['payment_method'] === 'pm_sepa1' && $pc[0]['customer'] === 'cus_o1' && !isset($pc[1]['stripe_account'])
+   && fin_sepa_info($pdo, 1)['sepa_dette_pi'] === 'pi_sepa_d1', 'dette impayée depuis 15 jours : prélèvement SEPA de 20 EUR sur la plateforme (hors session)');
+ok(fin_sepa_dettes_run($pdo)['prelevements'] === 0, 'un seul prélèvement en cours à la fois');
+$r = stripe_webhook_process($pdo, $ev2('evt_s1', 'payment_intent.succeeded', ['id' => 'pi_sepa_d1', 'amount' => 2000, 'amount_received' => 2000, 'metadata' => ['type' => 'dette_sepa', 'sepa' => '1', 'organisateur' => $tok1]]));
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn()) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE reference = 'dettesepa:pi_sepa_d1'")->fetchColumn() === -2000
+   && fin_sepa_info($pdo, 1)['sepa_dette_pi'] === null && !empty($r[2]['notif']), 'prélèvement reçu : dette soldée, journalisée, notification');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -5.00, sepa_dette_pi = 'pi_sepa_d2' WHERE id = 1");
+$r = stripe_webhook_process($pdo, $ev2('evt_s2', 'payment_intent.payment_failed', ['id' => 'pi_sepa_d2', 'amount' => 500, 'metadata' => ['type' => 'dette_sepa', 'sepa' => '1', 'organisateur' => $tok1]]));
+ok(fin_sepa_info($pdo, 1)['sepa_dette_pi'] === null && abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() + 5.00) < 0.001 && $r[2]['notif'][1] === 'Prélèvement de votre dette refusé', 'prélèvement refusé : la dette reste, notification');
+$pk = array_key_first(mk_packs()); $pp = mk_packs()[$pk];
+$sp0 = (int)$pdo->query("SELECT solde_points FROM organisateurs WHERE id = 1")->fetchColumn();
+stripe_webhook_process($pdo, $ev2('evt_s3', 'payment_intent.succeeded', ['id' => 'pi_pts1', 'amount' => $pp['cents'], 'amount_received' => $pp['cents'], 'metadata' => ['type' => 'buy_points', 'sepa' => '1', 'points_amount' => (string)$pp['points'], 'organisateur' => $tok1]]));
+stripe_webhook_process($pdo, $ev2('evt_s3b', 'payment_intent.succeeded', ['id' => 'pi_pts1', 'amount' => $pp['cents'], 'amount_received' => $pp['cents'], 'metadata' => ['type' => 'buy_points', 'sepa' => '1', 'points_amount' => (string)$pp['points'], 'organisateur' => $tok1]]));
+ok((int)$pdo->query("SELECT solde_points FROM organisateurs WHERE id = 1")->fetchColumn() === $sp0 + $pp['points'], 'points payés par prélèvement : crédités une seule fois à réception');
 echo "Tout est bon.\n";

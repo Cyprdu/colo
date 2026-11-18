@@ -8,7 +8,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
 
     $feePI = null; // paiement dont on relève les frais Stripe réels, une fois la transaction validée
     $feeAdj = null;
-    $dette = null; // « Payer ma dette » réglé : reçu par e-mail après la transaction
+    $dette = null; $mandat = null; $notif = null; // « Payer ma dette » réglé : reçu par e-mail après la transaction
     $pret = 0; // account.updated : organisme dont le compte est prêt (paiements reçus avant l'activation à transférer)
     $copie = null; // destination : PaymentIntent dont on recopie description et métadonnées sur le paiement côté organisme // destination : [payment_intent, commission prélevée] pour rendre un éventuel excédent (code promo)
     try {
@@ -25,6 +25,11 @@ function stripe_webhook_process(PDO $pdo, $event): array {
 
             case 'checkout.session.completed':
             case 'checkout.session.async_payment_succeeded':   // moyens différés (prélèvement...) : payé plus tard
+                if (($obj->mode ?? '') === 'setup' && ($obj->metadata->type ?? '') === 'mandat_sepa') {
+                    $oid = fin_orga_from_tok($pdo, (string)($obj->metadata->organisateur ?? ''));
+                    if ($oid && !empty($obj->setup_intent)) $mandat = [$oid, (string)$obj->setup_intent];
+                    break;
+                }
                 if (($obj->payment_status ?? '') !== 'paid') break;
                 $meta = $obj->metadata;
                 $pi = $obj->payment_intent ?? null;
@@ -123,6 +128,11 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                 if ($orgaId) { fin_store_account($pdo, $orgaId, $obj); if (fin_account_ready(fin_account($pdo, $orgaId))) $pret = $orgaId; } // transfert après la transaction
                 break;
 
+            case 'payment_intent.succeeded':       // prélèvement SEPA de la plateforme (dette, points marketing)
+            case 'payment_intent.payment_failed':
+                if ((string)($event->account ?? '') === '') $notif = fin_sepa_evenement($pdo, $obj, $event->type === 'payment_intent.succeeded');
+                break;
+
             case 'payout.created': // versement automatique Stripe d'un compte connecté : relevé avec sa date d'arrivée
             case 'payout.updated':
                 fin_payout_record($pdo, $obj, (string)($event->account ?? ''));
@@ -139,7 +149,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
         }
 
         $pdo->commit();
-        return [200, 'ok', ['type' => $event->type, 'feePI' => $feePI, 'feeAdj' => $feeAdj, 'copie' => $copie, 'pret' => $pret, 'dette' => $dette]];
+        return [200, 'ok', ['type' => $event->type, 'feePI' => $feePI, 'feeAdj' => $feeAdj, 'copie' => $copie, 'pret' => $pret, 'dette' => $dette, 'mandat' => $mandat, 'notif' => $notif]];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('WEBHOOK ERROR (' . ($event->type ?? '?') . '): ' . $e->getMessage());
@@ -154,6 +164,8 @@ function stripe_webhook_after(PDO $pdo, array $a): void {
     if ($a['feeAdj']) fin_fee_excess_refund($pdo, $a['feeAdj'][0], $a['feeAdj'][1]);
     if (!empty($a['copie'])) fin_copy_to_destination($pdo, $a['copie']);
     if (!empty($a['dette'])) fin_dette_notifier($pdo, $a['dette']);
+    if (!empty($a['mandat'])) fin_sepa_mandat_enregistrer($pdo, $a['mandat'][0], $a['mandat'][1]);
+    if (!empty($a['notif'])) fin_sepa_notifier($pdo, $a['notif']);
     if (!empty($a['pret'])) { try { fin_sync_account($pdo, (int)$a['pret']); } catch (Throwable $e) { error_log('webhook compte pret: ' . $e->getMessage()); try { fin_release_pending_now($pdo, (int)$a['pret']); } catch (Throwable $e2) { error_log('webhook transfert: ' . $e2->getMessage()); } } }
     if ($a['feePI']) { try { fin_sync_fees($pdo, $a['feePI']); } catch (Throwable $e) { error_log('webhook frais Stripe: ' . $e->getMessage()); } }
 }

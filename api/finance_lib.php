@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/orga_lib.php';
+require_once __DIR__ . '/sepa_lib.php';
 // api/finance_lib.php : flux d'argent entre les familles, moncamp.fr et les organismes (Stripe Connect).
 //
 // ARCHITECTURE (depuis 2026-11) : « direct charges » sur les comptes Connect EXPRESS (fin_paiements.mode = 'direct')
@@ -244,6 +245,7 @@ function fin_ensure(PDO $pdo): void {
             $pdo->exec("INSERT IGNORE INTO fin_reglages (cle, valeur, par) VALUES ('migr_payout_auto_v1', '1', 'migration')");
         }
         fin_ledger_ensure($pdo);
+        fin_sepa_ensure($pdo);
         fin_ledger_backfill($pdo);
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
