@@ -255,3 +255,53 @@ function compta_versements(PDO $pdo): array {
     $negatifs = array_values(array_filter($orgs, fn($o) => (float)$o['portefeuille'] < -0.004));
     return ['orgas' => array_values($orgs), 'payouts' => $payouts, 'dettes' => $dettes, 'negatifs' => $negatifs, 'legacy' => array_sum(array_column($orgs, 'legacy'))];
 }
+
+// ---------------------------------------------------------------------------------------------
+// Onglet « Commission » : lu dans le journal fin_ledger (ajout seulement) ; Stripe sert au rapprochement
+// ---------------------------------------------------------------------------------------------
+/** Commission (nette des commissions rendues), frais Stripe réels et marge : totaux, par organisme, par mois */
+function compta_ledger_commission(PDO $pdo, string $from, string $to, int $orgaId = 0): array {
+    $w = "l.created_at BETWEEN ? AND ?" . ($orgaId ? " AND l.organisateur_id = " . (int)$orgaId : '');
+    $sel = "-SUM(IF(l.type = 'commission', l.montant_cents, 0)) com, -SUM(IF(l.type = 'frais', l.montant_cents, 0)) frais, SUM(IF(l.type = 'paiement', l.montant_cents, 0)) encaisse";
+    $q = function (string $k) use ($pdo, $w, $sel, $from, $to) {
+        $st = $pdo->prepare("SELECT $k k, $sel FROM fin_ledger l LEFT JOIN organisateurs o ON o.id = l.organisateur_id WHERE $w GROUP BY k ORDER BY k");
+        $st->execute([$from, $to]);
+        return array_map(fn($r) => $r + ['marge' => (int)$r['com'] - (int)$r['frais']], $st->fetchAll(PDO::FETCH_ASSOC));
+    };
+    $tot = $q("'total'")[0] ?? ['com' => 0, 'frais' => 0, 'encaisse' => 0, 'marge' => 0];
+    return ['tot' => $tot, 'orgas' => $q('o.nom'), 'mois' => $q("DATE_FORMAT(l.created_at, '%Y-%m')")];
+}
+
+/** Marge réelle par paiement (pires d'abord) : commission conservée − frais Stripe − frais de litige */
+function compta_marges(PDO $pdo, string $from, string $to, int $orgaId = 0, int $limit = 30): array {
+    $st = $pdo->prepare("SELECT p.created_at, p.mode, o.nom orga, p.brut_cents, " . fin_sql_com_nette('p') . " com, p.frais_stripe_cents frais, p.frais_litige_cents litige, " . fin_sql_marge('p') . " marge
+                         FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id
+                         WHERE p.created_at BETWEEN ? AND ? AND p.frais_stripe_cents IS NOT NULL" . ($orgaId ? " AND p.organisateur_id = " . (int)$orgaId : '') . " ORDER BY marge ASC, p.id DESC LIMIT " . (int)$limit);
+    $st->execute([$from, $to]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/** Dernières lignes du journal (période, organisme) */
+function compta_journal(PDO $pdo, string $from, string $to, int $orgaId = 0, int $limit = 50): array {
+    $st = $pdo->prepare("SELECT l.*, o.nom orga FROM fin_ledger l LEFT JOIN organisateurs o ON o.id = l.organisateur_id WHERE l.created_at BETWEEN ? AND ?"
+                        . ($orgaId ? " AND l.organisateur_id = " . (int)$orgaId : '') . " ORDER BY l.id DESC LIMIT " . (int)$limit);
+    $st->execute([$from, $to]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Rapprochement des commissions « destination » avec Stripe (application fees de la période, remboursements de commission déduits).
+ * Attendu = commission + dette compensée − commission rendue des paiements destination créés sur la période. Écart ≠ 0 : à contrôler
+ * (un litige perdu en crée un normalement : Stripe garde la commission, nos comptes la rendent car le paiement est perdu).
+ */
+function compta_fees_reconcile(PDO $pdo, string $from, string $to): array {
+    $st = $pdo->prepare("SELECT COALESCE(SUM(commission_cents + compensation_cents - IF(annul_com = 1, 0, rembourse_cents - net_rembourse_cents)), 0) FROM fin_paiements
+                         WHERE mode = 'destination' AND created_at BETWEEN ? AND ?");
+    $st->execute([$from, $to]);
+    $attendu = (int)$st->fetchColumn(); $stripe = 0; $n = 0;
+    foreach (fin_stripe()->applicationFees->all(['created' => ['gte' => strtotime($from), 'lte' => strtotime($to)], 'limit' => 100])->autoPagingIterator() as $fee) {
+        if (strtolower((string)$fee->currency) !== 'eur') continue;
+        $stripe += (int)$fee->amount - (int)$fee->amount_refunded; $n++;
+    }
+    return ['attendu' => $attendu, 'stripe' => $stripe, 'ecart' => $stripe - $attendu, 'n' => $n];
+}

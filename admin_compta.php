@@ -9,7 +9,7 @@ require_once __DIR__ . '/api/gains_lib.php';
 adm_guard();
 fin_ensure($pdo);
 
-$v = in_array($_GET['v'] ?? '', ['synthese', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
+$v = in_array($_GET['v'] ?? '', ['synthese', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
 [$from, $to, $periodLabel, $pk] = compta_period($_GET);
 $orgaTok = preg_match('/^[a-f0-9]{24}$/', (string)($_GET['o'] ?? '')) ? (string)$_GET['o'] : '';
 $orgaId = $orgaTok ? fin_orga_from_tok($pdo, $orgaTok) : 0;
@@ -100,7 +100,7 @@ $orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN or
 $e = fn($c) => h(fin_eur((int)$c));
 
 adm_head('Comptabilité', 'admin_compta.php');
-$tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Commission'];
+$tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Réglages'];
 ?>
 <nav class="tabs" aria-label="Sections de la comptabilité">
 <?php foreach ($tabs as $k => $l): ?><a class="tab<?= $k === $v ? ' on' : '' ?>" href="<?= h(cu(['v' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
@@ -110,7 +110,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
 <div class="note err"><?= ic('alert') ?><div><b><?= $negN ?> paiement<?= $negN > 1 ? 's' : '' ?> à marge négative.</b> La commission ne couvre pas les frais Stripe réels (carte hors Europe, remboursement, litige...). <a class="lnk" href="<?= h(cu(['v' => 'synthese'])) ?>#negatives">Voir le détail</a> · envisagez d'augmenter la part fixe ou le pourcentage (onglet Commission).</div></div>
 <?php endif; ?>
 
-<?php if ($v === 'synthese' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
+<?php if ($v === 'synthese' || $v === 'commission' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
 <form class="bar" method="get" action="admin_compta.php">
   <input type="hidden" name="v" value="<?= h($v) ?>"><input type="hidden" name="p" value="perso">
   <?php foreach (['mois' => 'Ce mois', 'trimestre' => 'Trimestre', 'annee' => 'Année', 'tout' => 'Tout'] as $k => $l): ?><a class="btn ghost<?= $pk === $k ? ' sel-on' : '' ?>" href="<?= h(cu(['p' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
@@ -164,6 +164,45 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
   </tbody></table></div>
 <p class="muted small">Un remboursement ne restitue pas les frais Stripe : la commission rendue à la famille augmente la perte. Cas normaux à surveiller : cartes hors Europe, litiges (frais fixes élevés).</p>
 <?php endif; ?>
+
+<?php elseif ($v === 'commission'): $lc = compta_ledger_commission($pdo, $from, $to, $orgaId); $rc = null; $rcErr = null;
+  if (!empty($_GET['rp'])) { try { $rc = compta_fees_reconcile($pdo, $from, $to); } catch (Throwable $ex) { $rcErr = 'Stripe injoignable : ' . mb_substr($ex->getMessage(), 0, 160); } } ?>
+<p class="muted">Lu dans le journal comptable unique <code>fin_ledger</code> (ajout seulement). Commission nette des commissions rendues ; frais Stripe réels relevés sur chaque paiement.</p>
+<section class="kpis">
+  <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= $e($lc['tot']['encaisse']) ?></b><span>Encaissé par carte</span></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($lc['tot']['com']) ?></b><span>Commission</span><small>y compris hors carte</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($lc['tot']['frais']) ?></b><span>Frais Stripe réels</span><small>dont litiges</small></div></div>
+  <div class="kpi<?= $lc['tot']['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($lc['tot']['marge']) ?></b><span>Marge nette</span></div></div>
+</section>
+<section class="card"><h2 class="sec"><?= ic('check') ?> Rapprochement avec Stripe</h2>
+  <?php if ($rcErr): ?><div class="note warn"><?= ic('alert') ?><div><?= h($rcErr) ?></div></div><?php endif; ?>
+  <?php if ($rc): ?><p>Commissions attendues (paiements destination de la période) : <b><?= $e($rc['attendu']) ?></b> · relevées chez Stripe (<?= (int)$rc['n'] ?> commissions) : <b><?= $e($rc['stripe']) ?></b> ·
+    écart : <b<?= $rc['ecart'] !== 0 ? ' class="neg" style="color:#b42318"' : '' ?>><?= $e($rc['ecart']) ?></b></p>
+    <?php if ($rc['ecart'] !== 0): ?><p class="muted small">Un écart vient en général d'un litige perdu (Stripe garde la commission, nos comptes la rendent), d'un remboursement fait dans Stripe sans « refund application fee », ou d'un paiement de fin de période enregistré le lendemain.</p><?php endif; ?>
+  <?php else: ?><a class="btn ghost" href="<?= h(cu(['rp' => 1])) ?>"><?= ic('search') ?> Comparer avec Stripe</a><?php endif; ?>
+</section>
+<div class="cols">
+<section><h2 class="sec"><?= ic('building') ?> Par organisme</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">Commission</th><th class="num">Frais</th><th class="num">Marge</th></tr></thead><tbody>
+  <?php if (!$lc['orgas']): ?><tr><td colspan="4" class="empty"><p>Rien sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($lc['orgas'] as $r): ?><tr><td data-l="Organisme"><?= h($r['k'] ?? '-') ?></td><td class="num" data-l="Commission"><?= $e($r['com']) ?></td><td class="num" data-l="Frais"><?= $e($r['frais']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td></tr><?php endforeach; ?>
+</tbody></table></div></section>
+<section><h2 class="sec"><?= ic('list') ?> Par mois</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Mois</th><th class="num">Commission</th><th class="num">Frais</th><th class="num">Marge</th></tr></thead><tbody>
+  <?php if (!$lc['mois']): ?><tr><td colspan="4" class="empty"><p>Rien sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($lc['mois'] as $r): ?><tr><td data-l="Mois"><?= h(substr($r['k'], 5, 2) . '/' . substr($r['k'], 0, 4)) ?></td><td class="num" data-l="Commission"><?= $e($r['com']) ?></td><td class="num" data-l="Frais"><?= $e($r['frais']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td></tr><?php endforeach; ?>
+</tbody></table></div></section>
+</div>
+<h2 class="sec"><?= ic('alert') ?> Marge réelle par paiement (les plus faibles d'abord)</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Organisme</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Frais Stripe</th><th class="num">Marge</th></tr></thead><tbody>
+  <?php $mg = compta_marges($pdo, $from, $to, $orgaId); if (!$mg): ?><tr><td colspan="6" class="empty"><p>Aucun paiement avec frais relevés.</p></td></tr><?php endif; ?>
+  <?php foreach ($mg as $r): ?><tr><td data-l="Date"><?= h(adm_date($r['created_at'])) ?></td><td data-l="Organisme"><?= h($r['orga']) ?></td><td class="num" data-l="Payé"><?= $e($r['brut_cents']) ?></td><td class="num" data-l="Commission"><?= $e($r['com']) ?></td><td class="num" data-l="Frais"><?= $e((int)$r['frais'] + (int)$r['litige']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td></tr><?php endforeach; ?>
+</tbody></table></div>
+<h2 class="sec"><?= ic('lock') ?> Journal comptable (50 dernières lignes)</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Type</th><th>Organisme</th><th class="num">Montant</th><th>Référence</th><th>Par</th></tr></thead><tbody>
+  <?php $jl = compta_journal($pdo, $from, $to, $orgaId); if (!$jl): ?><tr><td colspan="6" class="empty"><p>Aucune écriture sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($jl as $r): ?><tr><td data-l="Date"><?= h(adm_date($r['created_at'])) ?></td><td data-l="Type"><?= h($r['libelle'] ?: $r['type']) ?></td><td data-l="Organisme"><?= h($r['orga'] ?? '-') ?></td><td class="num<?= $r['montant_cents'] < 0 ? ' neg' : '' ?>" data-l="Montant"><?= $e($r['montant_cents']) ?></td><td data-l="Référence"><code><?= h($r['reference']) ?></code></td><td data-l="Par"><?= h($r['acteur']) ?></td></tr><?php endforeach; ?>
+</tbody></table></div>
 
 <?php elseif ($v === 'organismes'): $rows = compta_by_orga($pdo, $from, $to); ?>
 <div class="bar"><span class="count"><?= count($rows) ?> organisme<?= count($rows) > 1 ? 's' : '' ?></span><a class="btn ghost" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => 'organismes', 'p' => $pk] + ($pk === 'perso' ? ['du' => substr($from, 0, 10), 'au' => substr($to, 0, 10)] : []))) ?>"><?= ic('list') ?> Exporter (CSV)</a></div>

@@ -139,4 +139,15 @@ $apres = fin_ledger_totaux($pdo, 2);
 ok($apres['rembourse'] - $avant['rembourse'] === 2407 && $apres['commission'] === $avant['commission'], 'annulation : 24,07 EUR rendus, commission conservée au journal');
 ok((int)$pdo->query("SELECT rembourse_cents FROM fin_paiements WHERE inscription_id = 3")->fetchColumn() === 0, 'annulation : le frère ou la sœur n\'est pas touché');
 
+// ---------------------------------------------------------------- 8. admin : commission depuis le journal, rapprochement Stripe
+require __DIR__ . '/../api/compta_lib.php';
+$from = date('Y-m-d 00:00:00', strtotime('-1 day')); $to = date('Y-m-d 23:59:59');
+$lc = compta_ledger_commission($pdo, $from, $to);
+$com = -(int)$pdo->query("SELECT SUM(montant_cents) FROM fin_ledger WHERE type = 'commission' AND created_at BETWEEN '$from' AND '$to'")->fetchColumn();
+ok((int)$lc['tot']['com'] === $com && count($lc['orgas']) === 2 && (int)$lc['tot']['marge'] === $com - (int)$lc['tot']['frais'], 'commission et marge lues dans le journal, par organisme');
+ok(count(compta_journal($pdo, $from, $to, 2)) > 0, 'journal filtré par organisme');
+$GLOBALS['stripe_resp']['applicationFees.all'] = new class { function autoPagingIterator() { return [(object)['currency' => 'eur', 'amount' => 373, 'amount_refunded' => 0], (object)['currency' => 'eur', 'amount' => 155, 'amount_refunded' => 0]]; } };
+$rc = compta_fees_reconcile($pdo, $from, $to);
+ok($rc['n'] === 2 && $rc['ecart'] === $rc['stripe'] - $rc['attendu'], 'rapprochement : commissions Stripe comparées au journal (écart affiché)');
+
 echo "Tout est bon.\n";
