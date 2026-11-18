@@ -87,7 +87,10 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
         $regles[$tid] = $r;
     }
 
-    $anim =!empty($in['gestion_animateur']) ? 1 : 0;
+    if (in_array('autre', options_paiements_valides($in['moyens_paiement'] ?? []), true) && trim((string)($in['paiement_autre'] ?? '')) === '')
+        return [[], [], 'Donnez un nom au moyen de paiement « Autre ».', null];
+
+    $anim = !empty($in['gestion_animateur']) ? 1 : 0;
     $lien = $s('lien_externe', 500);
     if ($lien !== '' && !preg_match('#^https?://#i', $lien)) $lien = 'https://' . $lien;
     $video = $s('video_url', 500);

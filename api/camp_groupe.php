@@ -71,7 +71,7 @@ function camp_snapshot(PDO $pdo, array $c): array {
         'lien_externe' => (string)($c['lien_externe'] ?? ''), 'adresse_retour_dossier' => (string)($c['adresse_retour_dossier'] ?? ''),
         'quota_global' => (string)($c['quota_global'] ?? ''), 'remise_fratrie' => (string)($c['remise_fratrie'] ?? 0),
         'attente_paiement' => !isset($c['attente_paiement']) || !empty($c['attente_paiement']), 'attente_jours' => (string)($c['attente_jours'] ?? ATTENTE_DEFAUT_JOURS),
-        'moyens_paiement[]' => options_paiements_valides($c['moyens_paiement'] ?? ''), 'instructions_paiement' => (string)($c['instructions_paiement'] ?? ''),
+        'moyens_paiement[]' => options_paiements_valides($c['moyens_paiement'] ?? ''), 'instructions_paiement' => (string)($c['instructions_paiement'] ?? ''), 'paiement_autre' => (string)($c['paiement_autre'] ?? ''), 'paiement_autre_logo' => (string)($c['paiement_autre_logo'] ?? ''),
         'champs_requis[]' => options_criteres_valides($c['champs_requis'] ?? '[]'), 'champs_demandes[]' => options_criteres_valides($c['champs_demandes'] ?? '[]'),
         'gestion_animateur' => $b('gestion_animateur'), 'quota_max_anim' => (string)($c['quota_max_anim'] ?? ''), 'quota_anim_fille' => (string)($c['quota_anim_fille'] ?? ''), 'quota_anim_garcon' => (string)($c['quota_anim_garcon'] ?? ''),
         'anim_plus_18' => $b('anim_plus_18'), 'bafa_obligatoire' => $b('bafa_obligatoire'), 'remuneration_anim' => $b('remuneration_anim'), 'anim_doit_payer' => $b('anim_doit_payer'), 'prix_anim' => (string)($c['prix_anim'] ?? ''),

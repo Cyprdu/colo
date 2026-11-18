@@ -233,6 +233,14 @@ $tick = $svg('check', 'w-3 h-3');
                         <label class="ds-opt items-center"><input type="checkbox" name="moyens_paiement[]" value="<?= $code ?>" <?= in_array($code, $moyens, true) ? 'checked' : '' ?>><span class="ds-tick"><?= $tick ?></span><span class="ds-pay-logo"><?= $logo ?></span><span><span class="ds-opt-title block"><?= htmlspecialchars($lib) ?></span><span class="ds-opt-sub block"><?= htmlspecialchars($sub) ?></span></span></label>
                     <?php endforeach; ?>
                 </div>
+                <div id="autreBox" class="ds-sub mt-4 grid sm:grid-cols-[1fr_auto] gap-4 items-end">
+                    <div><label class="ds-label" for="f-autre">Nom du moyen « Autre » *</label><input id="f-autre" name="paiement_autre" maxlength="80" required class="ds-input" value="<?= $val('paiement_autre') ?>" placeholder="Ex : Bons vacances de la mairie"></div>
+                    <div class="flex items-center gap-3">
+                        <img id="autreLogo" alt="" class="h-10 w-16 object-contain rounded-lg border border-[#e5e7eb] bg-white <?= $edit && options_logo_valide($camp['paiement_autre_logo'] ?? '') ? '' : 'hidden' ?>" src="<?= $edit ? htmlspecialchars((string)options_logo_valide($camp['paiement_autre_logo'] ?? '')) : '' ?>">
+                        <label class="ds-btn ds-btn-light ds-btn-sm cursor-pointer">Logo<input type="file" id="f-autre-logo" accept="image/png,image/jpeg,image/webp" class="sr-only"></label>
+                        <input type="hidden" name="paiement_autre_logo" id="f-autre-path" value="<?= $edit ? htmlspecialchars((string)options_logo_valide($camp['paiement_autre_logo'] ?? '')) : '' ?>">
+                    </div>
+                </div>
                 <div class="mt-5"><label class="ds-label" for="f-instr">Consignes de paiement (facultatif)</label><textarea id="f-instr" name="instructions_paiement" rows="2" maxlength="1000" class="ds-textarea" placeholder="Ex : chèques à l'ordre de l'association X, à envoyer avant le 15 juin."><?= $val('instructions_paiement') ?></textarea></div>
                 <?php /* bloc d'aide ciblé : commission sur les paiements hors carte */ require_once __DIR__ . '/../api/finance_lib.php'; ?>
                 <details class="mt-4 text-sm" style="color:#5b4a1c"><summary class="cursor-pointer font-bold" style="color:#26343b">Chèque, espèces, virement : et la commission ? <span aria-hidden="true" style="display:inline-block;width:20px;height:20px;line-height:18px;text-align:center;border:1.5px solid #26343b;border-radius:50%;font-size:12px">?</span></summary>
@@ -449,10 +457,25 @@ function refreshToggles() {
     const am = (document.querySelector('input[name=age_mode]:checked') || {}).value || 'age';
     $('ageBox').classList.toggle('hidden', am === 'tranche');
     $('trancheBox').classList.toggle('hidden', am === 'age');
+    $('autreBox').classList.toggle('hidden', !document.querySelector('input[name="moyens_paiement[]"][value=autre]').checked);
+    const lp = $('f-autre-path').value; $('autreLogo').classList.toggle('hidden', !lp); if (lp) $('autreLogo').src = lp;
 }
 ['toggleOnline', 'quotaToggle', 'attenteToggle'].forEach(i => $(i).addEventListener('change', refreshToggles));
-document.querySelectorAll('input[name=reserve_sexe], input[name=age_mode]').forEach(r => r.addEventListener('change', refreshToggles));
+document.querySelectorAll('input[name=reserve_sexe], input[name=age_mode], input[name="moyens_paiement[]"]').forEach(r => r.addEventListener('change', refreshToggles));
 refreshToggles();
+
+// Logo du moyen « Autre » : envoyé tout de suite, son chemin part avec la session
+$('f-autre-logo').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append('logo', f);
+    try {
+        const r = await fetch('api/paiement_logo.php', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': CSRF } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'Logo refusé.');
+        $('f-autre-path').value = d.path; refreshToggles(); SM.markDirty();
+    } catch (err) { toast(ColoUI.friendly(err)); }
+    e.target.value = '';
+});
 
 // ------------------------------------------------ organismes
 const ORGKW = MotsCles.mount($('orgaKw'), { max: 8, inputId: 'orgaKwInput', placeholder: 'Ex : PAJE, puis Entrée' });
@@ -658,7 +681,7 @@ const HERIT = {
     lieu: { label: 'le lieu et le parcours', f: ['adresse', 'ville', 'cp', 'pays', 'itinerant'], a: ['etapes'] },
     public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'age_mode', 'tranches[]', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
     inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs', 'tarif_regles'] },
-    paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement'] },
+    paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement', 'paiement_autre', 'paiement_autre_logo'] },
     fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]', 'champs_demandes[]'] },
     questions: { label: 'les questions aux familles', a: ['champs'] },
     anim: { label: 'les réglages des animateurs', f: ['gestion_animateur', 'quota_max_anim', 'quota_anim_fille', 'quota_anim_garcon', 'anim_plus_18', 'bafa_obligatoire', 'remuneration_anim', 'anim_doit_payer', 'prix_anim'], a: ['anim'] },

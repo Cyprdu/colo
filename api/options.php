@@ -43,6 +43,7 @@ function options_ensure(PDO $pdo): void {
             'inclus' => "TEXT NULL",
             'a_prevoir' => "TEXT NULL",
             'instructions_paiement' => "TEXT NULL",
+            'paiement_autre' => "VARCHAR(80) NULL", 'paiement_autre_logo' => "VARCHAR(120) NULL",   // moyen « Autre » : libellé et logo choisis par l'organisme
             // colonnes que le formulaire de séjour écrit : créées si une ancienne base ne les a pas
             // description / lieu propres à une session (0 = hérite de la session principale du séjour)
             'heritage' => "TEXT NULL",   // sections que la session reprend de la session principale (JSON), null = hérite seulement description / lieu non personnalisés
@@ -68,6 +69,7 @@ function options_paiements(): array {
         'caf' => ['Aides CAF', 'Aide aux vacances, bons CAF', '<svg viewBox="0 0 48 30" aria-hidden="true"><rect width="48" height="30" rx="5" fill="#fff" stroke="#d3dbe0"/><circle cx="14" cy="15" r="7" fill="#00a0df"/><circle cx="14" cy="15" r="3" fill="#fff"/><text x="25" y="19" ' . $f . ' font-size="9.5" font-weight="800" fill="#0a5ea8">CAF</text></svg>'],
         'msa' => ['Aides MSA', 'Mutualité sociale agricole', '<svg viewBox="0 0 48 30" aria-hidden="true"><rect width="48" height="30" rx="5" fill="#fff" stroke="#d3dbe0"/><path d="M8 20c4-9 8-9 12 0M14 20c4-9 8-9 12 0" fill="none" stroke="#5a9a2f" stroke-width="2.2" stroke-linecap="round"/><text x="28" y="19" ' . $f . ' font-size="9" font-weight="800" fill="#3c7a1c">MSA</text></svg>'],
         'ce' => ["Comité d'entreprise / CSE", 'Participation employeur', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<rect x="12" y="9" width="24" height="14" rx="2" fill="#eef2f4" stroke="#a9b8c6"/><path d="M17 9V7h14v2" fill="none" stroke="#a9b8c6" stroke-width="1.6"/><path d="M12 15h24" stroke="#a9b8c6" stroke-width="1.4"/></svg>'],
+        'autre' => ['Autre', 'Un moyen propre à votre organisme', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<circle cx="16" cy="15" r="2.2" fill="#8fa2b0"/><circle cx="24" cy="15" r="2.2" fill="#8fa2b0"/><circle cx="32" cy="15" r="2.2" fill="#8fa2b0"/></svg>'],
         'pass' => ['Pass / coupons sport & loisirs', 'Dispositifs locaux et municipaux', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<path d="M8 11h32v3a2.5 2.5 0 000 5v3H8v-3a2.5 2.5 0 000-5z" fill="#f3e9d2" stroke="#c9b27a"/><path d="M30 11v11" stroke="#c9b27a" stroke-dasharray="1.6 1.6"/></svg>'],
     ];
 }
@@ -76,6 +78,20 @@ function options_paiements_valides($v): array {
     $ok = array_keys(options_paiements());
     $list = is_array($v) ? $v : explode(',', (string)$v);
     return array_values(array_unique(array_filter(array_map('trim', $list), fn($c) => in_array($c, $ok, true))));
+}
+
+/** Chemin d'un logo « Autre » téléversé (api/paiement_logo.php), ou null */
+function options_logo_valide($p): ?string {
+    $p = (string)$p;
+    return preg_match('#^uploads/paiements/pay_[a-f0-9]{16}\.(png|jpg|webp)$#', $p) && is_file(__DIR__ . '/../' . $p) ? $p : null;
+}
+
+/** [libellé, logo HTML] d'un moyen de paiement pour un séjour (« Autre » : libellé et logo de l'organisme) */
+function options_moyen_affiche(array $camp, string $code): array {
+    $m = options_paiements()[$code] ?? [$code, '', ''];
+    if ($code !== 'autre') return [$m[0], $m[2]];
+    $logo = options_logo_valide($camp['paiement_autre_logo'] ?? '');
+    return [trim((string)($camp['paiement_autre'] ?? '')) ?: $m[0], $logo ? '<img src="' . htmlspecialchars($logo) . '" alt="" style="width:100%;height:30px;object-fit:contain">' : $m[2]];
 }
 
 function options_criteres_valides($v): array {
@@ -90,7 +106,8 @@ function options_enregistrer(PDO $pdo, int $campId, array $in): void {
     $sexe = in_array($sexe, [SEXE_GARCON, SEXE_FILLE], true) ? $sexe : null;
     $txt = function ($k, $n) use ($in) { $v = trim((string)($in[$k] ?? '')); return $v === '' ? null : mb_substr($v, 0, $n); };
     $heb = (string)($in['hebergement'] ?? '');
-    $pdo->prepare("UPDATE camps SET reserve_sexe = ?, champs_requis = ?, champs_demandes = ?, moyens_paiement = ?, hebergement = ?, transport = ?, encadrement = ?, inclus = ?, a_prevoir = ?, instructions_paiement = ? WHERE id = ?")
+    $autre = in_array('autre', options_paiements_valides($in['moyens_paiement'] ?? []), true);
+    $pdo->prepare("UPDATE camps SET reserve_sexe = ?, champs_requis = ?, champs_demandes = ?, moyens_paiement = ?, hebergement = ?, transport = ?, encadrement = ?, inclus = ?, a_prevoir = ?, instructions_paiement = ?, paiement_autre = ?, paiement_autre_logo = ? WHERE id = ?")
         ->execute([
             $sexe,
             json_encode($req = options_criteres_valides($in['champs_requis'] ?? [])),
@@ -98,6 +115,7 @@ function options_enregistrer(PDO $pdo, int $campId, array $in): void {
             implode(',', options_paiements_valides($in['moyens_paiement'] ?? [])),
             isset(HEBERGEMENTS[$heb]) && $heb !== '' ? $heb : null,
             $txt('transport', 255), $txt('encadrement', 255), $txt('inclus', 2000), $txt('a_prevoir', 2000), $txt('instructions_paiement', 1000),
+            $autre ? $txt('paiement_autre', 80) : null, $autre ? options_logo_valide($in['paiement_autre_logo'] ?? '') : null,
             $campId,
         ]);
 }

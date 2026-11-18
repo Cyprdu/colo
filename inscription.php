@@ -100,7 +100,7 @@ try {
     $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
     $retourInscr = urlencode('inscription?camp_t=' . $camp_token);
     require_once 'api/annulation_lib.php';
-    $moyensOk = fin_moyens_du_camp($camp); $libMoyens = options_paiements();
+    $moyensOk = fin_moyens_du_camp($camp);
     $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
 
 } catch (Exception $e) {
@@ -343,8 +343,8 @@ $vaccTxt = function (array $e): string {
                     <?php foreach ($moyensOk as $k => $code): ?>
                         <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white cursor-pointer">
                             <input type="radio" name="moyen" value="<?= htmlspecialchars($code) ?>" <?= $k === 0 ? 'checked' : '' ?> class="moyen-radio" style="accent-color:#2f3d45">
-                            <span class="w-10 flex-none"><?= $libMoyens[$code][2] ?? '' ?></span>
-                            <span class="text-sm"><b class="text-gray-800"><?= htmlspecialchars($libMoyens[$code][0] ?? $code) ?></b><span class="block text-xs text-gray-500"><?= $code === 'carte' ? 'Paiement en ligne immédiat, place confirmée' : 'Votre place est réservée ; vous réglez directement l\'organisateur' ?></span></span>
+                            <span class="w-10 flex-none"><?= options_moyen_affiche($camp, $code)[1] ?></span>
+                            <span class="text-sm"><b class="text-gray-800"><?= htmlspecialchars(options_moyen_affiche($camp, $code)[0]) ?></b><span class="block text-xs text-gray-500"><?= $code === 'carte' ? 'Paiement en ligne immédiat, place confirmée' : 'Votre place est réservée ; vous réglez directement l\'organisateur' ?></span></span>
                         </label>
                     <?php endforeach; ?>
                     </div>
