@@ -44,14 +44,13 @@ require_once 'partials/mk_icons.php';
 <main class="mk-wrap">
     <a href="profile.php" class="mk-back"><?= mk_icon('back', 16) ?> Tableau de bord</a>
 
-    <section class="mk-hero">
-        <p class="ds-eyebrow" style="color:rgba(255,255,255,.75)">Marketing moncamp.fr</p>
-        <h1>Remplissez vos séjours avec les familles qui les cherchent</h1>
-        <p>Votre séjour est déjà visible gratuitement. Les boosts le placent devant les familles au moment où elles comparent, et vous voyez précisément ce que chaque point investi rapporte : impressions, clics, inscriptions et coût par inscription.</p>
+    <section class="mk-hero" style="padding:32px 30px">
+        <h1>Remplissez vos séjours plus vite</h1>
+        <p>Mettez votre séjour en tête des résultats, à partir de 1 €. Vous voyez ce que chaque euro rapporte.</p>
         <div class="mk-actions">
             <?php if ($orga): ?>
-                <button type="button" class="ds-btn mk-btn-inv" onclick="mkOpen()"><?= mk_icon('wallet', 18) ?> Acheter des points</button>
-                <a href="marketing_dashboard.php?id=<?= (int)$orga['id'] ?>" class="ds-btn mk-btn-ghost"><?= mk_icon('chart', 18) ?> Voir mes statistiques</a>
+                <a href="#sejours" class="ds-btn mk-btn-inv"><?= mk_icon('star', 18) ?> Booster un séjour</a>
+                <button type="button" class="ds-btn mk-btn-ghost" onclick="mkOpen()"><?= mk_icon('wallet', 18) ?> Acheter des points</button>
             <?php else: ?>
                 <a href="#organismes" class="ds-btn mk-btn-inv">Choisir mon organisme</a>
             <?php endif; ?>
@@ -93,67 +92,29 @@ require_once 'partials/mk_icons.php';
     <?php endif; ?>
 
     <section class="mk-section">
-        <h2>Trois boosts, trois objectifs</h2>
-        <p class="lead">Chaque boost augmente le poids de votre séjour dans le classement. Il ne remplace pas la pertinence : un séjour qui ne correspond pas à la recherche reste derrière.</p>
-        <div class="mk-grid mk-g3" style="margin-top:22px">
-            <div class="mk-offer">
-                <div class="ico"><?= mk_icon('up') ?></div>
-                <h3><?= $boosts['bump']['label'] ?></h3>
-                <p>Un coup de projecteur immédiat, pour passer devant les séjours similaires aux heures de pointe.</p>
-                <ul><li>Poids du séjour +50 % à l'instant T</li><li>L'effet s'estompe progressivement sur 3 jours</li><li>Cumulable avec les autres boosts</li></ul>
-                <div class="foot"><div class="mk-price"><?= $boosts['bump']['cost'] ?> pts<small><?= mk_money($boosts['bump']['cost'] * MK_POINT_EUR) ?></small></div></div>
-            </div>
-            <div class="mk-offer rec">
-                <span class="tag">Le plus efficace</span>
-                <div class="ico"><?= mk_icon('star') ?></div>
-                <h3><?= $boosts['vedette']['label'] ?></h3>
-                <p>Votre séjour est mis en avant 7 jours dans la recherche et sur l'accueil, avec la mention « Sponsorisé ».</p>
-                <ul><li>Poids du séjour +55 % pendant 7 jours</li><li>Présent dans la rubrique « À la une » de l'accueil</li><li>Reconductible : les jours s'ajoutent</li></ul>
-                <div class="foot"><div class="mk-price"><?= $boosts['vedette']['cost'] ?> pts<small><?= mk_money($boosts['vedette']['cost'] * MK_POINT_EUR) ?> pour 7 jours</small></div></div>
-            </div>
-            <div class="mk-offer">
-                <div class="ico"><?= mk_icon('clock') ?></div>
-                <h3><?= $boosts['urgence']['label'] ?></h3>
-                <p>Pour combler les dernières places d'un séjour qui part bientôt : il ressort quand les familles cherchent un départ proche.</p>
-                <ul><li>Poids du séjour +20 % pendant 3 jours</li><li>Réservé aux séjours qui partent dans moins de 45 jours</li><li>Badge « Dernière minute »</li></ul>
-                <div class="foot"><div class="mk-price"><?= $boosts['urgence']['cost'] ?> pts<small><?= mk_money($boosts['urgence']['cost'] * MK_POINT_EUR) ?> pour 3 jours</small></div></div>
-            </div>
-        </div>
+        <h2>Choisissez votre formule</h2>
+        <p class="lead">Payez en euros, sans abonnement. Appuyez sur « ? » pour le détail.</p>
+        <div style="margin-top:20px"><?php $mkCamp = null; require 'partials/mk_offers.php'; ?></div>
     </section>
 
     <section class="mk-section">
-        <h2>Ce que ça peut rapporter</h2>
-        <div class="mk-grid mk-g3" style="margin-top:18px">
-            <div class="mk-stat">
-                <div class="k">Rentabilité</div>
-                <?php if ($orga && $net > 0): $cost = $boosts['vedette']['cost'] * MK_POINT_EUR; ?>
-                    <div class="v">x<?= number_format($net / $cost, 0, ',', ' ') ?></div>
-                    <div class="s">Prix moyen d'une inscription chez vous : <b><?= mk_money($avgPrice) ?></b>. Une seule inscription de plus rembourse <?= number_format($net / $cost, 1, ',', ' ') ?> fois une Mise à la une (<?= mk_money($cost) ?>).</div>
-                <?php else: ?>
-                    <div class="v">1 inscription</div>
-                    <div class="s">Une Mise à la une coûte <?= mk_money($boosts['vedette']['cost'] * MK_POINT_EUR) ?> : une seule inscription supplémentaire à 250 € la rembourse largement.</div>
-                <?php endif; ?>
-            </div>
-            <div class="mk-stat">
-                <div class="k">Effet mesuré sur moncamp.fr</div>
-                <?php if ($proof): ?>
-                    <div class="v">x<?= number_format($proof['multiplicateur'], 1, ',', ' ') ?></div>
-                    <div class="s">Les séjours boostés reçoivent <?= number_format($proof['multiplicateur'], 1, ',', ' ') ?> fois plus de visites par affichage que les autres (30 derniers jours, <?= number_format($proof['boost_impressions'], 0, ',', ' ') ?> impressions observées).</div>
-                <?php else: ?>
-                    <div class="v">100 % mesuré</div>
-                    <div class="s">Vous voyez l'effet réel de chaque boost sur vos séjours : impressions, visites, inscriptions. Pas de promesse, des chiffres.</div>
-                <?php endif; ?>
-            </div>
-            <div class="mk-stat">
-                <div class="k">Sans risque</div>
-                <div class="v">0 abonnement</div>
-                <div class="s">Vous n'achetez que les points dont vous avez besoin, et vous pouvez les payer avec les gains de vos inscriptions sans sortir un euro de votre poche.</div>
-            </div>
+        <h2>Ce que verront les familles</h2>
+        <div style="margin-top:16px"><?php $mkPreviewName = $camps[0]['nom'] ?? null; require 'partials/mk_preview.php'; ?></div>
+    </section>
+
+    <section class="mk-section">
+        <h2>Un exemple concret</h2>
+        <?php $ex = ($orga && $net > 0) ? $net : 400; $exCost = $boosts['vedette']['cost'] * MK_POINT_EUR; ?>
+        <div class="mk-sum" style="margin-top:14px">
+            <div><b><?= mk_money($exCost) ?></b><span>« À la une » pendant 7 jours</span></div>
+            <div><b><?= mk_money($ex) ?></b><span>net par inscription<?= ($orga && $net > 0) ? ' (prix moyen chez vous)' : ' pour un séjour à 450 €' ?></span></div>
+            <div><b>1 inscription de plus</b><span>rembourse <?= number_format($ex / $exCost, 0, ',', ' ') ?> fois la mise</span></div>
         </div>
+        <p class="mk-note" style="margin-top:8px">Calcul indicatif, pas une promesse : <?= $proof ? 'sur moncamp.fr, les séjours boostés reçoivent ' . number_format($proof['multiplicateur'], 1, ',', ' ') . ' fois plus de visites par affichage (30 jours).' : 'vous suivez l\'effet réel dans vos statistiques.' ?></p>
     </section>
 
     <?php if ($orga): ?>
-    <section class="mk-section">
+    <section class="mk-section" id="sejours">
         <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap">
             <div><h2>Vos séjours</h2><p class="lead">Choisissez le séjour à mettre en avant.</p></div>
             <a class="ds-btn ds-btn-light mk-btn-sm" href="marketing_dashboard.php?id=<?= (int)$orga['id'] ?>"><?= mk_icon('chart', 16) ?> Statistiques détaillées</a>
@@ -188,24 +149,14 @@ require_once 'partials/mk_icons.php';
     </section>
     <?php endif; ?>
 
-    <section class="mk-section" id="classement">
-        <h2>Comment fonctionne le classement</h2>
-        <p class="lead">En toute transparence, pour vous comme pour les familles.</p>
-        <div class="mk-grid mk-g2" style="margin-top:18px">
-            <div class="mk-step"><span class="n">1</span><div><b class="text-[#26343b]">La pertinence d'abord</b><p class="mk-note" style="margin-top:4px;font-size:14px">Recherche, âge, dates, prix et lieu filtrent les séjours. Un boost n'ajoute jamais un séjour hors sujet dans les résultats.</p></div></div>
-            <div class="mk-step"><span class="n">2</span><div><b class="text-[#26343b]">Un score par séjour</b><p class="mk-note" style="margin-top:4px;font-size:14px">Pertinence, places restantes, proximité du départ, taux de visite réel et nouveauté. Un séjour qui plaît aux familles monte seul.</p></div></div>
-            <div class="mk-step"><span class="n">3</span><div><b class="text-[#26343b]">Le boost multiplie ce score</b><p class="mk-note" style="margin-top:4px;font-size:14px">+55 % pour la Mise à la une, +20 % en dernière minute, jusqu'à +50 % qui s'estompe pour la Remontée. Une légère rotation évite que les mêmes séjours occupent toujours le haut de page.</p></div></div>
-            <div class="mk-step"><span class="n">4</span><div><b class="text-[#26343b]">Toujours signalé</b><p class="mk-note" style="margin-top:4px;font-size:14px">Les séjours mis à la une portent la mention « Sponsorisé », conformément à la réglementation sur la transparence du classement.</p></div></div>
-        </div>
-    </section>
-
     <section class="mk-section mk-faq">
         <h2>Questions fréquentes</h2>
         <div style="margin-top:10px">
+            <details><summary>Comment le classement fonctionne-t-il ?</summary><p>La pertinence passe d'abord : recherche, âge, dates, prix et lieu filtrent les séjours, un boost n'en ajoute jamais un hors sujet. Chaque séjour a un score (places restantes, départ proche, taux de visite, nouveauté) que le boost multiplie : +55 % « À la une », +20 % « Dernière minute », jusqu'à +50 % qui s'estompe pour la Remontée. Une légère rotation évite que les mêmes séjours occupent toujours le haut de page. Les séjours à la une portent la mention « Sponsorisé ».</p></details>
+            <details><summary>Comment payer avec mes gains ?</summary><p>Vos inscriptions payées en ligne, nettes de commission, forment votre solde. Vous pouvez l'utiliser pour acheter des points : le montant est déduit de vos prochains versements, sans carte. Une confirmation vous est demandée avant tout débit.</p></details>
             <details><summary>Les points expirent-ils ?</summary><p>Non. Ils restent sur le solde de l'organisme et servent pour tous ses séjours.</p></details>
-            <details><summary>Comment payer avec mes gains ?</summary><p>Si des inscriptions ont été payées en ligne, leur montant net de commission constitue votre solde à recevoir. Vous pouvez l'utiliser pour acheter des points : le montant est déduit du prochain versement, sans paiement par carte.</p></details>
-            <details><summary>Que se passe-t-il si un séjour est complet ?</summary><p>Dans la recherche, un séjour complet est automatiquement rétrogradé, même boosté. Vous ne payez pas pour des places que vous n'avez plus.</p></details>
-            <details><summary>Puis-je être remboursé d'un boost ?</summary><p>Un boost activé ne peut pas être annulé. Les points non dépensés restent disponibles. Pour toute question, <a class="underline" href="contact.php">contactez-nous</a>.</p></details>
+            <details><summary>Et si le séjour est complet ?</summary><p>Il est automatiquement rétrogradé dans la recherche, même boosté.</p></details>
+            <details><summary>Puis-je être remboursé d'un boost ?</summary><p>Un boost activé ne peut pas être annulé. Les points non dépensés restent disponibles. <a class="underline" href="contact.php">Une question ?</a></p></details>
         </div>
     </section>
 </main>
