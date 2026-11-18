@@ -9,12 +9,18 @@ require_once __DIR__ . '/api/gains_lib.php';
 adm_guard();
 fin_ensure($pdo);
 
-$v = in_array($_GET['v'] ?? '', ['synthese', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
+$v = in_array($_GET['v'] ?? '', ['synthese', 'revenus', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
 [$from, $to, $periodLabel, $pk] = compta_period($_GET);
-$orgaTok = preg_match('/^[a-f0-9]{24}$/', (string)($_GET['o'] ?? '')) ? (string)$_GET['o'] : '';
+$orgaTok = preg_match('/^[A-Za-z0-9]{22,24}$/', (string)($_GET['o'] ?? '')) ? (string)$_GET['o'] : ''; // jeton public (22 car.) ou ancien jeton HMAC
 $orgaId = $orgaTok ? fin_orga_from_tok($pdo, $orgaTok) : 0;
 if ($orgaTok && !$orgaId) $orgaTok = '';
 $uid = (int)$_SESSION['user']['id'];
+if ($v === 'revenus' && ($_GET['csv'] ?? '') === 'revenus') { // export comptable mensuel de « Mes revenus »
+    adm_audit('export_revenus', 'fin_ledger', substr($from, 0, 10) . ' / ' . substr($to, 0, 10));
+    compta_csv('revenus-moncamp-' . substr($from, 0, 10) . '-' . substr($to, 0, 10) . '.csv',
+        ['Mois', 'Paiements carte', 'Commissions carte', 'Commissions hors carte', 'Frais Stripe payés par moncamp.fr', 'Marge nette', 'Dettes avancées', 'Dettes recouvrées'],
+        (function () use ($pdo, $from, $to) { foreach (compta_revenus_mois($pdo, $from, $to) as $r) yield [$r['m'], $r['nb'], compta_eur($r['com_carte']), compta_eur($r['com_hors']), compta_eur($r['frais']), compta_eur($r['marge']), compta_eur($r['avance']), compta_eur($r['recouvre'])]; })());
+}
 
 /** URL de la page avec la période / l'organisme courants (aucun identifiant numérique) */
 function cu(array $o = []): string {
@@ -101,7 +107,7 @@ $orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN or
 $e = fn($c) => h(fin_eur((int)$c));
 
 adm_head('Comptabilité', 'admin_compta.php');
-$tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Réglages'];
+$tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 'Commission', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Réglages'];
 ?>
 <nav class="tabs" aria-label="Sections de la comptabilité">
 <?php foreach ($tabs as $k => $l): ?><a class="tab<?= $k === $v ? ' on' : '' ?>" href="<?= h(cu(['v' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
@@ -111,13 +117,14 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
 <div class="note err"><?= ic('alert') ?><div><b><?= $negN ?> paiement<?= $negN > 1 ? 's' : '' ?> à marge négative.</b> La commission ne couvre pas les frais Stripe réels (carte hors Europe, remboursement, litige...). <a class="lnk" href="<?= h(cu(['v' => 'synthese'])) ?>#negatives">Voir le détail</a> · envisagez d'augmenter la part fixe ou le pourcentage (onglet Commission).</div></div>
 <?php endif; ?>
 
-<?php if ($v === 'synthese' || $v === 'commission' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
+<?php if ($v === 'synthese' || $v === 'revenus' || $v === 'commission' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
 <form class="bar" method="get" action="admin_compta.php">
   <input type="hidden" name="v" value="<?= h($v) ?>"><input type="hidden" name="p" value="perso">
   <?php foreach (['mois' => 'Ce mois', 'trimestre' => 'Trimestre', 'annee' => 'Année', 'tout' => 'Tout'] as $k => $l): ?><a class="btn ghost<?= $pk === $k ? ' sel-on' : '' ?>" href="<?= h(cu(['p' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
   <label class="fld-inline">Du <input class="in dt" type="date" name="du" value="<?= h(substr($from, 0, 10)) ?>"></label>
   <label class="fld-inline">au <input class="in dt" type="date" name="au" value="<?= h(substr($to, 0, 10)) ?>"></label>
-  <?php if ($v !== 'organismes'): ?><select class="in sel" name="o" aria-label="Organisme"><option value="">Tous les organismes</option>
+  <?php if ($v === 'revenus'): ?><input type="hidden" name="g" value="<?= h((string)($_GET['g'] ?? 'm')) ?>"><?php endif; ?>
+  <?php if ($v !== 'organismes' && $v !== 'revenus'): ?><select class="in sel" name="o" aria-label="Organisme"><option value="">Tous les organismes</option>
     <?php foreach ($orgList as $o): $t = fin_orga_tok((int)$o['id']); ?><option value="<?= h($t) ?>"<?= $t === $orgaTok ? ' selected' : '' ?>><?= h($o['nom']) ?></option><?php endforeach; ?></select><?php endif; ?>
   <button class="btn" type="submit"><?= ic('search') ?> Appliquer</button>
   <span class="count"><?= h($periodLabel) ?></span>
@@ -174,6 +181,71 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
   </tbody></table></div>
 <p class="muted small">Un remboursement ne restitue pas les frais Stripe : la commission rendue à la famille augmente la perte. Cas normaux à surveiller : cartes hors Europe, litiges (frais fixes élevés).</p>
 <?php endif; ?>
+
+<?php elseif ($v === 'revenus'): $g = in_array($_GET['g'] ?? '', ['j', 's', 'm'], true) ? $_GET['g'] : 'm'; $rv = compta_revenus($pdo, $from, $to, $g); $ps = compta_plateforme_solde();
+  $dl = function (int $c, int $p, bool $up = true) { if (!$p) return $c ? 'nouveau' : '='; $x = (int)round(($c - $p) / abs($p) * 100); return ($x > 0 ? '+' : '') . $x . ' % vs ' . fin_eur($p); };
+  $c = $rv['cur']; $pv = $rv['prev']; ?>
+<p class="muted">Ce que gagne moncamp.fr, lu dans le journal comptable <code>fin_ledger</code>. Comparaison : du <?= h(date('d/m/Y', strtotime($rv['prev_du']))) ?> au <?= h(date('d/m/Y', strtotime($rv['prev_au']))) ?>.</p>
+<section class="kpis">
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($c['com']) ?></b><span>Commissions encaissées</span><small><?= h($dl($c['com'], $pv['com'])) ?> · dont hors carte <?= $e($c['hors']) ?></small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($c['frais']) ?></b><span>Frais Stripe payés par moncamp.fr</span><small><?= h($dl($c['frais'], $pv['frais'])) ?> · paiements en repli destination / anciens</small></div></div>
+  <div class="kpi<?= $c['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($c['marge']) ?></b><span>Marge nette</span><small><?= h($dl($c['marge'], $pv['marge'])) ?></small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= (int)$c['nb'] ?></b><span>Paiements par carte</span><small><?= $c['nb'] ? 'commission moyenne ' . $e(intdiv($c['com'] - $c['hors'], max(1, $c['nb']))) : '' ?></small></div></div>
+</section>
+<div class="bar">
+  <?php foreach (['j' => 'Par jour', 's' => 'Par semaine', 'm' => 'Par mois'] as $k => $l): ?><a class="btn ghost<?= $g === $k ? ' sel-on' : '' ?>" href="<?= h(cu(['g' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
+  <a class="btn" href="<?= h(cu(['csv' => 'revenus'])) ?>"><?= ic('list') ?> Export CSV par mois</a>
+</div>
+<?php $sr = $rv['serie']; $mx = max(1, ...array_map(fn($x) => max($x['com'], $x['frais']), $sr ?: [['com' => 1, 'frais' => 0]])); $n = max(1, count($sr)); $W = 760; $H = 220; $bw = ($W - 20) / $n; ?>
+<section class="card"><h2 class="sec"><?= ic('chart') ?> Commissions encaissées<span class="muted small"> · barres foncées : commissions, claires : frais Stripe</span></h2>
+<?php if (!$sr): ?><p class="muted">Aucune commission sur cette période.</p><?php else: ?>
+<svg viewBox="0 0 <?= $W ?> <?= $H + 24 ?>" width="100%" role="img" aria-label="Commissions encaissées et frais Stripe par période">
+  <line x1="10" x2="<?= $W - 10 ?>" y1="<?= $H ?>" y2="<?= $H ?>" stroke="#d3dbe0"/>
+  <text x="10" y="12" font-size="11" fill="#6b7780"><?= h(fin_eur($mx)) ?></text>
+  <?php foreach ($sr as $i => $x): $x0 = 10 + $i * $bw; $w = max(1, $bw * .42); $hc = max(0, $x['com']) / $mx * ($H - 20); $hf = max(0, $x['frais']) / $mx * ($H - 20); ?>
+  <rect x="<?= round($x0 + $bw * .08, 1) ?>" y="<?= round($H - $hc, 1) ?>" width="<?= round($w, 1) ?>" height="<?= round($hc, 1) ?>" fill="#2f3d45"><title><?= h($x['k'] . ' : ' . fin_eur($x['com'])) ?></title></rect>
+  <rect x="<?= round($x0 + $bw * .08 + $w, 1) ?>" y="<?= round($H - $hf, 1) ?>" width="<?= round($w, 1) ?>" height="<?= round($hf, 1) ?>" fill="#8aa4b8"><title><?= h($x['k'] . ' : frais ' . fin_eur($x['frais'])) ?></title></rect>
+  <?php if ($i % (int)ceil($n / 10) === 0): ?><text x="<?= round($x0 + $bw / 2, 1) ?>" y="<?= $H + 16 ?>" font-size="10" fill="#6b7780" text-anchor="middle"><?= h($g === 'm' ? substr($x['k'], 5, 2) . '/' . substr($x['k'], 2, 2) : ($g === 'j' ? substr($x['k'], 8, 2) . '/' . substr($x['k'], 5, 2) : substr($x['k'], 5))) ?></text><?php endif; ?>
+  <?php endforeach; ?>
+</svg><?php endif; ?>
+</section>
+<div class="cols">
+  <section class="card"><h2 class="sec"><?= ic('building') ?> Meilleurs organismes</h2>
+    <?php if (!$rv['orgas']): ?><p class="muted">Aucun.</p><?php endif; ?>
+    <?php foreach (array_slice($rv['orgas'], 0, 10) as $o): ?><div class="kv"><span><?= h($o['nom']) ?> <small class="muted">· <?= (int)$o['nb'] ?> paiement<?= $o['nb'] > 1 ? 's' : '' ?><?= $c['com'] ? ' · ' . round($o['com'] / $c['com'] * 100) . ' %' : '' ?></small></span><b><?= $e($o['com']) ?></b></div><?php endforeach; ?>
+  </section>
+  <section class="card"><h2 class="sec"><?= ic('bank') ?> Solde Stripe de moncamp.fr</h2>
+    <?php if ($ps): ?>
+    <div class="kv"><span>Disponible</span><b><?= $e($ps['disponible']) ?></b></div>
+    <div class="kv"><span>À venir</span><b><?= $e($ps['a_venir']) ?></b></div>
+    <div class="kv"><span>Prochain virement vers votre banque</span><b><?= $ps['prochain'] ? $e($ps['prochain']['m']) . ' · le ' . h(date('d/m/Y', strtotime($ps['prochain']['arrivee']))) : 'aucun annoncé' ?></b></div>
+    <?php else: ?><p class="muted">Solde Stripe indisponible (Stripe injoignable ou clé non configurée).</p><?php endif; ?>
+    <p class="muted small"><a class="underline" href="https://dashboard.stripe.com/balance/overview" target="_blank" rel="noopener">Page Soldes de Stripe ↗</a> · le solde peut contenir l'argent d'anciens paiements pas encore transférés aux organismes.</p>
+  </section>
+</div>
+<h2 class="sec"><?= ic('list') ?> Par organisme</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">Paiements</th><th class="num">Commissions</th><th class="num">Frais Stripe plateforme</th><th class="num">Marge nette</th></tr></thead><tbody>
+  <?php if (!$rv['orgas']): ?><tr><td colspan="5" class="empty"><p>Aucune commission sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($rv['orgas'] as $o): ?><tr><td data-l="Organisme"><?= h($o['nom']) ?></td><td class="num" data-l="Paiements"><?= (int)$o['nb'] ?></td><td class="num" data-l="Commissions"><?= $e($o['com']) ?></td><td class="num" data-l="Frais"><?= $e($o['frais']) ?></td><td class="num<?= $o['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><?= $e($o['marge']) ?></td></tr><?php endforeach; ?>
+</tbody></table></div>
+<h2 class="sec"><?= ic('list') ?> Par séjour (20 premiers)</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Séjour</th><th>Organisme</th><th class="num">Paiements</th><th class="num">Commissions</th></tr></thead><tbody>
+  <?php if (!$rv['sejours']): ?><tr><td colspan="4" class="empty"><p>Aucun séjour sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($rv['sejours'] as $s): ?><tr><td data-l="Séjour"><?= h($s['camp']) ?></td><td data-l="Organisme"><?= h($s['orga']) ?></td><td class="num" data-l="Paiements"><?= (int)$s['nb'] ?></td><td class="num" data-l="Commissions"><?= $e($s['com']) ?></td></tr><?php endforeach; ?>
+</tbody></table></div>
+<div class="cols">
+  <section class="card"><h2 class="sec"><?= ic('alert') ?> Dettes d'organismes</h2>
+    <div class="kv"><span>Avancées sur la période</span><b><?= $e($c['avance']) ?></b></div>
+    <div class="kv"><span>Recouvrées sur la période</span><b><?= $e($c['recouvre']) ?></b></div>
+    <div class="kv"><span><b>En cours (tous organismes)</b></span><b><?= $e(array_sum(array_column($rv['dettes'], 'du'))) ?></b></div>
+    <?php foreach ($rv['dettes'] as $d): ?><div class="kv"><span><?= h($d['nom']) ?> <small class="muted">· depuis le <?= h(date('d/m/Y', strtotime($d['depuis']))) ?></small></span><b><?= $e($d['du']) ?></b></div><?php endforeach; ?>
+  </section>
+  <section class="card"><h2 class="sec"><?= ic('bank') ?> Virements vers votre banque</h2>
+    <?php if (!$ps || !$ps['historique']): ?><p class="muted">Aucun virement connu.</p><?php else: foreach ($ps['historique'] as $p): ?>
+    <div class="kv"><span><?= $p['arrivee'] ? h(date('d/m/Y', strtotime($p['arrivee']))) : '–' ?> <small class="muted">· <?= h(['paid' => 'arrivé', 'in_transit' => 'en route', 'pending' => 'en préparation', 'failed' => 'échec', 'canceled' => 'annulé'][$p['statut']] ?? $p['statut']) ?></small></span><b><?= $e($p['m']) ?></b></div>
+    <?php endforeach; endif; ?>
+  </section>
+</div>
 
 <?php elseif ($v === 'commission'): $lc = compta_ledger_commission($pdo, $from, $to, $orgaId); $rc = null; $rcErr = null;
   if (!empty($_GET['rp'])) { try { $rc = compta_fees_reconcile($pdo, $from, $to); } catch (Throwable $ex) { $rcErr = 'Stripe injoignable : ' . mb_substr($ex->getMessage(), 0, 160); } } ?>

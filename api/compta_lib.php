@@ -119,15 +119,70 @@ function compta_plateforme_solde(): ?array {
         $s = fin_stripe();
         $b = $s->balance->retrieve();
         $eur = function ($l) { $t = 0; foreach ($l ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $t += (int)$x->amount; return $t; };
-        $r = ['disponible' => $eur($b->available ?? []), 'a_venir' => $eur($b->pending ?? []), 'dernier' => null, 'prochain' => null];
+        $r = ['disponible' => $eur($b->available ?? []), 'a_venir' => $eur($b->pending ?? []), 'dernier' => null, 'prochain' => null, 'historique' => []];
         foreach ($s->payouts->all(['limit' => 20])->data as $po) {
             if (strtolower((string)$po->currency) !== 'eur') continue;
             $p = ['m' => (int)$po->amount, 'arrivee' => $po->arrival_date ? date('Y-m-d', (int)$po->arrival_date) : null, 'statut' => (string)$po->status];
+            $r['historique'][] = $p + ['cree' => !empty($po->created) ? date('Y-m-d', (int)$po->created) : null];
             if ($po->status === 'paid' && !$r['dernier']) $r['dernier'] = $p;
             if (in_array($po->status, ['pending', 'in_transit'], true) && (!$r['prochain'] || $p['arrivee'] < $r['prochain']['arrivee'])) $r['prochain'] = $p;
         }
         return $r;
     } catch (Throwable $e) { error_log('compta_plateforme_solde: ' . $e->getMessage()); return null; }
+}
+
+/**
+ * « Mes revenus » (admin) : ce que gagne moncamp.fr, lu dans le journal fin_ledger (ajout seulement).
+ * Commission encaissée = − lignes « commission » (cartes et hors carte, nettes des commissions rendues) ; frais Stripe payés par la plateforme
+ * = − lignes « frais » (paiements legacy / repli destination ; en direct charges l'organisme paie ses frais) ; marge nette = commission − frais.
+ * Dettes d'organismes : lignes « dette » (avance > 0, recouvrement < 0). $g : j (jour), s (semaine), m (mois).
+ */
+function compta_revenus(PDO $pdo, string $from, string $to, string $g = 'm'): array {
+    $fmt = ['j' => '%Y-%m-%d', 's' => '%x-S%v', 'm' => '%Y-%m'][$g] ?? '%Y-%m';
+    $tot = function (string $a, string $b) use ($pdo): array {
+        $st = $pdo->prepare("SELECT -COALESCE(SUM(IF(type = 'commission', montant_cents, 0)), 0) com,
+                                    -COALESCE(SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)), 0) hors,
+                                    -COALESCE(SUM(IF(type = 'frais', montant_cents, 0)), 0) frais,
+                                    COALESCE(SUM(IF(type = 'paiement', 1, 0)), 0) nb,
+                                    COALESCE(SUM(IF(type = 'dette' AND montant_cents > 0, montant_cents, 0)), 0) avance,
+                                    -COALESCE(SUM(IF(type = 'dette' AND montant_cents < 0, montant_cents, 0)), 0) recouvre
+                             FROM fin_ledger WHERE created_at BETWEEN ? AND ?");
+        $st->execute([$a, $b]);
+        $r = array_map('intval', $st->fetch(PDO::FETCH_ASSOC));
+        return $r + ['marge' => $r['com'] - $r['frais']];
+    };
+    $len = max(1, (int)round((strtotime($to) - strtotime($from)) / 86400));
+    $pto = date('Y-m-d 23:59:59', strtotime($from . ' -1 day')); $pfrom = date('Y-m-d 00:00:00', strtotime($pto . ' -' . ($len - 1) . ' days'));
+    $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '$fmt') k, -SUM(IF(type = 'commission', montant_cents, 0)) com, -SUM(IF(type = 'frais', montant_cents, 0)) frais
+                         FROM fin_ledger WHERE created_at BETWEEN ? AND ? AND type IN ('commission', 'frais') GROUP BY k ORDER BY k");
+    $st->execute([$from, $to]);
+    $serie = array_map(fn($r) => ['k' => $r['k'], 'com' => (int)$r['com'], 'frais' => (int)$r['frais']], $st->fetchAll(PDO::FETCH_ASSOC));
+    $st = $pdo->prepare("SELECT o.id, o.nom, -SUM(IF(l.type = 'commission', l.montant_cents, 0)) com, -SUM(IF(l.type = 'frais', l.montant_cents, 0)) frais, SUM(l.type = 'paiement') nb
+                         FROM fin_ledger l JOIN organisateurs o ON o.id = l.organisateur_id WHERE l.created_at BETWEEN ? AND ? AND l.type IN ('commission', 'frais', 'paiement')
+                         GROUP BY o.id, o.nom HAVING com <> 0 OR frais <> 0 ORDER BY com DESC LIMIT 50");
+    $st->execute([$from, $to]);
+    $orgas = array_map(fn($r) => ['nom' => html_entity_decode((string)$r['nom'], ENT_QUOTES, 'UTF-8'), 'com' => (int)$r['com'], 'frais' => (int)$r['frais'], 'nb' => (int)$r['nb'], 'marge' => (int)$r['com'] - (int)$r['frais']], $st->fetchAll(PDO::FETCH_ASSOC));
+    $st = $pdo->prepare("SELECT c.nom camp, o.nom orga, -SUM(IF(l.type = 'commission', l.montant_cents, 0)) com, SUM(l.type = 'paiement') nb
+                         FROM fin_ledger l JOIN inscriptions i ON l.objet_type = 'inscription' AND i.id = l.objet_id JOIN camps c ON c.id = i.camp_id JOIN organisateurs o ON o.id = c.organisateur_id
+                         WHERE l.created_at BETWEEN ? AND ? AND l.type IN ('commission', 'paiement') GROUP BY c.id, c.nom, o.nom HAVING com <> 0 ORDER BY com DESC LIMIT 20");
+    $st->execute([$from, $to]);
+    $sejours = array_map(fn($r) => ['camp' => html_entity_decode((string)$r['camp'], ENT_QUOTES, 'UTF-8'), 'orga' => html_entity_decode((string)$r['orga'], ENT_QUOTES, 'UTF-8'), 'com' => (int)$r['com'], 'nb' => (int)$r['nb']], $st->fetchAll(PDO::FETCH_ASSOC));
+    $dettes = array_map(fn($r) => ['nom' => html_entity_decode((string)$r['nom'], ENT_QUOTES, 'UTF-8'), 'du' => (int)$r['du'], 'depuis' => $r['depuis']],
+        $pdo->query("SELECT o.nom, SUM(l.montant_cents) du, MIN(l.created_at) depuis FROM fin_ledger l JOIN organisateurs o ON o.id = l.organisateur_id
+                     WHERE l.type = 'dette' GROUP BY o.id, o.nom HAVING du > 0 ORDER BY du DESC")->fetchAll(PDO::FETCH_ASSOC));
+    return ['cur' => $tot($from, $to), 'prev' => $tot($pfrom, $pto), 'prev_du' => $pfrom, 'prev_au' => $pto, 'serie' => $serie, 'orgas' => $orgas, 'sejours' => $sejours, 'dettes' => $dettes];
+}
+
+/** Export comptable mensuel de « Mes revenus » (une ligne par mois) */
+function compta_revenus_mois(PDO $pdo, string $from, string $to): array {
+    $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') m, SUM(type = 'paiement') nb,
+                                -SUM(IF(type = 'commission' AND reference NOT LIKE 'hors:%', montant_cents, 0)) com_carte,
+                                -SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)) com_hors,
+                                -SUM(IF(type = 'frais', montant_cents, 0)) frais,
+                                SUM(IF(type = 'dette' AND montant_cents > 0, montant_cents, 0)) avance, -SUM(IF(type = 'dette' AND montant_cents < 0, montant_cents, 0)) recouvre
+                         FROM fin_ledger WHERE created_at BETWEEN ? AND ? GROUP BY m ORDER BY m");
+    $st->execute([$from, $to]);
+    return array_map(function ($r) { $r = array_map(fn($v) => is_numeric($v) ? (int)$v : $v, $r); $r['marge'] = $r['com_carte'] + $r['com_hors'] - $r['frais']; return $r; }, $st->fetchAll(PDO::FETCH_ASSOC));
 }
 
 function compta_reconcile(PDO $pdo, ?array $stripe): array {
