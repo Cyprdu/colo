@@ -159,7 +159,7 @@ function fin_paiement_charge(PDO $pdo, int $paiementId): ?string {
 
 /** Libellé lisible d'un transfert (séjours, familles, nombre d'inscriptions) pour le Stripe de l'organisme */
 function fin_transfer_libelle(PDO $pdo, int $tid): array {
-    $st = $pdo->prepare("SELECT c.nom camp, e.prenom, e.nom, p.brut_cents, p.commission_cents, p.net_cents FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id
+    $st = $pdo->prepare("SELECT c.nom camp, e.prenom, e.nom, p.brut_cents, p.commission_cents, p.net_cents, COALESCE(p.frais_stripe_cents, 0) frais, p.frais_orga FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id
                          JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id WHERE l.transfert_id = ? ORDER BY c.nom, e.nom");
     $st->execute([$tid]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -167,7 +167,7 @@ function fin_transfer_libelle(PDO $pdo, int $tid): array {
     $eur = fn($c) => number_format(((int)$c) / 100, 2, ',', ' ') . ' €';
     // Une ligne par inscription : « Séjour · Prénom NOM · 125,00 € − 3,43 € = 121,57 € »
     $lignes = array_map(fn($r) => $d($r['camp']) . ' · ' . (trim($d($r['prenom']) . ' ' . mb_strtoupper($d($r['nom']))) ?: 'Équipe') . ' · '
-        . $eur($r['brut_cents']) . ' − ' . $eur($r['commission_cents']) . ' = ' . $eur($r['net_cents']), $rows);
+        . $eur($r['brut_cents']) . ' − commission moncamp.fr ' . $eur($r['commission_cents']) . ((int)$r['frais_orga'] === 1 ? ' − frais de paiement Stripe ' . $eur($r['frais']) : '') . ' = ' . $eur($r['net_cents']), $rows);
     $n = count($rows);
     $meta = ['source' => 'moncamp.fr', 'type' => 'paiements_avant_activation', 'inscriptions' => (string)$n];
     foreach (array_slice($lignes, 0, 40) as $k => $l) $meta['inscription_' . ($k + 1)] = mb_substr($l, 0, 480);
@@ -193,6 +193,10 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
                 $acc = fin_account($pdo, $orgaId);
                 if (!$acc || !fin_account_ready($acc)) { try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { $acc = null; } }
                 if (!fin_account_ready($acc)) { $rep['reportes']++; continue; }
+                // frais Stripe réels à la charge de l'organisme : relevés AVANT le transfert (sinon la ligne attend)
+                $q = $pdo->prepare("SELECT DISTINCT payment_intent FROM fin_paiements WHERE organisateur_id = ? AND mode = 'legacy' AND statut = 'attente' AND frais_orga = 1 AND frais_stripe_cents IS NULL AND payment_intent IS NOT NULL");
+                $q->execute([$orgaId]);
+                foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $piF) { try { fin_sync_fees($pdo, (string)$piF); } catch (Throwable $e) { error_log('frais avant transfert: ' . $e->getMessage()); } }
                 $tids = fin_prepare_transfer($pdo, $orgaId, $acc['account_id'], 'sejour', $force);
                 if (!$tids) { $rep['reportes']++; continue; }
                 foreach ($tids as $tid) {
@@ -226,7 +230,7 @@ function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $
         $st->execute([$orgaId]);
         $pf = (int)round((float)$st->fetchColumn() * 100);
         $st = $pdo->prepare("SELECT id, camp_id, net_cents, net_rembourse_cents, verse_cents, date_deblocage FROM fin_paiements
-                             WHERE organisateur_id = ? AND mode = 'legacy' AND statut = 'attente'" . ($force ? '' : ' AND date_deblocage <= NOW()') . " FOR UPDATE");
+                             WHERE organisateur_id = ? AND mode = 'legacy' AND statut = 'attente' AND (frais_orga = 0 OR frais_stripe_cents IS NOT NULL)" . ($force ? '' : ' AND date_deblocage <= NOW()') . " FOR UPDATE");
         $st->execute([$orgaId]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         if (!$rows) { $pdo->rollBack(); return []; }

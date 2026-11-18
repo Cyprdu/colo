@@ -25,7 +25,8 @@ require_once __DIR__ . '/orga_lib.php';
 //
 // COMMISSION : pourcentage + part fixe en centimes par inscription (réglable dans Administration > Comptabilité). En direct charges, les frais
 // de paiement Stripe sont en plus, débités par Stripe à l'organisme (relevés dans frais_stripe_cents et déduits de net_cents) ; marge moncamp.fr
-// = commission. Paiements destination / legacy : frais payés par moncamp.fr, marge = commission - frais réels (balance_transaction).
+// = commission. RÈGLE : moncamp.fr ne paie jamais les frais Stripe d'un organisme. Nouveaux paiements (frais_orga = 1) : legacy = frais réels déduits
+// avant le transfert ; destination = frais estimés prélevés avec la commission puis ajustés au réel (dette ou remboursement). Anciens : historique inchangé.
 // Réglages facultatifs (api/config.php, valeurs par défaut si rien en base) :
 //   PLATFORM_COMMISSION_PERCENT (défaut 2.5)   PLATFORM_COMMISSION_FIXED_CENTS (défaut 30)   (calendrier des versements : api/versements_lib.php, réglages dans Administration > Comptabilité > Versements)
 //   STRIPE_CONNECT_WEBHOOK_SECRET (endpoint « événements des comptes connectés »)   CRON_SECRET
@@ -230,6 +231,10 @@ function fin_ensure(PDO $pdo): void {
         // Transferts des paiements reçus par moncamp.fr : un Transfer par paiement, adossé à sa charge (source_transaction) pour ne pas exiger
         // de solde disponible ; charge mise en cache, transferts créés selon cette règle marqués (clé d'idempotence par paiement)
         fin_add_col($pdo, 'fin_paiements', 'charge_id', "VARCHAR(64) NULL");
+        // moncamp.fr ne paie JAMAIS les frais Stripe d'un organisme (nouveaux paiements, tous modes) : frais_orga = 1 ; destination : frais estimés
+        // prélevés avec la commission puis ajustés aux frais réels (fin_sync_fees). Historique (frais_orga = 0) inchangé.
+        fin_add_col($pdo, 'fin_paiements', 'frais_orga', "TINYINT(1) NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_paiements', 'frais_estimes_cents', "INT NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_transferts', 'par_paiement', "TINYINT(1) NOT NULL DEFAULT 0");
         $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_payout_auto_v1'");
         $mig->execute();
@@ -292,21 +297,26 @@ function fin_record_lines(PDO $pdo, array $rows, ?string $paymentIntent, string 
     if (!$rows || $sum <= 0 || $amountTotalCents <= 0) return 0;
     $dest = $mode !== 'legacy';
     $left = $amountTotalCents; $n = count($rows); $created = [];
-    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, tva_taux_pct, date_deblocage, mode)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, tva_taux_pct, date_deblocage, mode, frais_orga, frais_estimes_cents)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)");
+    $feLeft = $mode === 'destination' ? fin_frais_estimes($amountTotalCents) : 0; // destination : frais estimés prélevés avec la commission
     foreach (array_values($rows) as $k => $r) {
         $brut = ($k === $n - 1) ? $left : (int)round($amountTotalCents * (float)$r['prix_final'] / $sum);
         $brut = max(0, min($brut, $left)); $left -= $brut;
         if ($brut <= 0 || !$r['organisateur_id']) continue;
-        [$com, , $fixe] = fin_commission_split($brut); $net = $brut - $com;
+        [$com, , $fixe] = fin_commission_split($brut);
+        $fe = ($k === $n - 1) ? $feLeft : (int)round(fin_frais_estimes($amountTotalCents) * $brut / $amountTotalCents);
+        $fe = max(0, min($fe, $feLeft, $brut - $com)); $feLeft -= $fe;
+        $net = $brut - $com - $fe;
         $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, $r['tva'] ?? null,
-                       $dest ? fin_payout_date($r['date_debut']) : fin_release_date($r['date_debut']), $mode]);
+                       $dest ? fin_payout_date($r['date_debut']) : fin_release_date($r['date_debut']), $mode, $fe]);
         if ($ins->rowCount() !== 1) continue;
         $p = ['id' => (int)$pdo->lastInsertId(), 'payment_intent' => $paymentIntent, 'session_id' => $sessionId, 'inscription_id' => (int)$r['id'],
               'organisateur_id' => (int)$r['organisateur_id'], 'brut_cents' => $brut, 'commission_cents' => $com, 'net_cents' => $net, 'mode' => $mode];
         if (!$dest) $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
         fin_audit($pdo, 'paiement_recu', (int)$r['id'] < 0 ? 'equipe' : 'inscription', abs((int)$r['id']), ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent, 'mode' => $mode], 'webhook');
         fin_ledger_paiement($pdo, $p);
+        if ($fe > 0) fin_ledger_add($pdo, 'frais_paiement', (int)$r['organisateur_id'], -$fe, 'fraisest:' . $p['id'], 'paiement', $p['id'], 'Frais de paiement Stripe (estimés)', 'webhook', $mode);
         $created[] = $p;
     }
     // Dette de l'organisme (solde négatif : commission hors carte, dette d'un remboursement legacy...) prélevée avec la commission Stripe de ce paiement.
@@ -339,6 +349,12 @@ function fin_payout_date(?string $dateDebut): string {
  * application_fee_amount = commission de chaque inscription (fin_commission_split) + dette à compenser (solde négatif), jamais plus que le payé moins la commission.
  * Un code promo réduit le montant payé : la commission prélevée en trop est rendue par le webhook (fin_fee_excess_refund).
  */
+/** Frais Stripe estimés d'une charge par carte européenne : 1,5 % + 0,25 € (ajustés ensuite aux frais réels) */
+function fin_frais_estimes(int $cents): int { return $cents > 0 ? (int)round($cents * 0.015) + 25 : 0; }
+
+/** Expression SQL : les frais Stripe de la ligne sont à la charge de l'organisme (direct charges, ou tout paiement récent) */
+function fin_sql_frais_orga(string $a = 'p'): string { return "($a.mode = 'direct' OR $a.frais_orga = 1)"; }
+
 function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     $acc = fin_account($pdo, $orgaId);
     $direct = fin_direct_ok($acc);
@@ -349,9 +365,11 @@ function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     $st->execute([$orgaId]);
     $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com));
     $mode = $direct ? 'direct' : 'destination';
-    $pid = ['application_fee_amount' => $com + $comp, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId]];
+    // destination : moncamp.fr paie les frais Stripe de la charge, l'organisme les rembourse avec la commission (estimés, ajustés aux frais réels ensuite)
+    $fe = $direct ? 0 : min(fin_frais_estimes($total), max(0, $total - $com - $comp));
+    $pid = ['application_fee_amount' => $com + $comp + $fe, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId]];
     if (!$direct) $pid['transfer_data'] = ['destination' => $acc['account_id']];
-    $extra = ['payment_intent_data' => $pid, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp]];
+    $extra = ['payment_intent_data' => $pid, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp, 'frais_estimes' => (string)$fe]];
     if ($direct) $extra['payment_method_types'] = ['card']; // carte (+ Apple Pay / Google Pay) : ne dépend pas de la configuration de moyens de paiement (pmc_) du compte connecté
     return [$extra, $direct ? ['stripe_account' => $acc['account_id']] : []];
 }
@@ -392,7 +410,8 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
             if ($reste < $att) continue; // le remboursement correspondant n'est pas encore notifié
             $reste -= $att;
             $newRef = min($brut, (int)$p['rembourse_cents'] + $att);
-            $newNetRef = min((int)$p['net_cents'], (int)$p['net_rembourse_cents'] + $att);
+            // frais Stripe à la charge de l'organisme (paiement récent) : il rend tout le remboursé, frais non rendus par Stripe compris (son net peut devenir négatif : dette)
+            $newNetRef = (int)($p['frais_orga'] ?? 0) === 1 ? (int)$p['net_rembourse_cents'] + $att : min((int)$p['net_cents'], (int)$p['net_rembourse_cents'] + $att);
             $pdo->prepare("UPDATE fin_paiements SET annul_attendu = 0, annul_com = 1 WHERE id = ?")->execute([$p['id']]);
         } else {
             if ((int)$p['annul_com'] === 1) continue; // inscription déjà annulée par la famille : le prorata ne la concerne plus
@@ -443,25 +462,31 @@ function fin_dispute(PDO $pdo, string $paymentIntent, string $phase, ?int $captu
     fin_audit($pdo, 'litige_' . $phase, 'payment_intent', $paymentIntent, [], 'webhook');
 }
 
-/** Frais de litige Stripe (15 € en général) : répartis au prorata sur les inscriptions du paiement, à la charge de moncamp.fr */
+/** Frais de litige Stripe (15 € en général) : répartis au prorata sur les inscriptions du paiement, à la charge de l'organisme (sauf anciens paiements) */
 function fin_record_dispute_fee(PDO $pdo, string $paymentIntent, int $feeCents): void {
     $st = $pdo->prepare("SELECT id, brut_cents FROM fin_paiements WHERE payment_intent = ? ORDER BY id");
     $st->execute([$paymentIntent]);
     $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR);
     if (!$rows) return;
-    // direct : frais de litige débités à l'organisme par Stripe, donc déduits de son net
-    $up = $pdo->prepare("UPDATE fin_paiements SET net_cents = IF(mode = 'direct', net_cents - (? - frais_litige_cents), net_cents), frais_litige_cents = ? WHERE id = ?");
-    foreach (fin_allocate($feeCents, $rows) as $id => $part) { $up->execute([$part, $part, $id]); fin_ledger_frais($pdo, $id, -$part, 'litige:'); }
+    // à la charge de l'organisme (direct, ou paiement récent) : déduits de son net ; hors direct, moncamp.fr les avance : son solde baisse (dette compensée)
+    $st = $pdo->prepare("SELECT id, mode, frais_orga, frais_litige_cents, organisateur_id FROM fin_paiements WHERE id = ?");
+    $up = $pdo->prepare("UPDATE fin_paiements SET net_cents = IF(" . fin_sql_frais_orga('fin_paiements') . ", net_cents - (? - frais_litige_cents), net_cents), frais_litige_cents = ? WHERE id = ?");
+    foreach (fin_allocate($feeCents, $rows) as $id => $part) {
+        $st->execute([$id]); $p = $st->fetch(PDO::FETCH_ASSOC);
+        $d = $part - (int)$p['frais_litige_cents'];
+        $up->execute([$part, $part, $id]); fin_ledger_frais($pdo, $id, -$part, 'litige:');
+        if ($d > 0 && $p['mode'] !== 'direct' && (int)$p['frais_orga'] === 1) fin_frais_dette($pdo, (int)$p['organisateur_id'], $id, $d, 'litige', 'Frais de litige Stripe à votre charge');
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
 // Frais Stripe RÉELS (balance_transaction de la charge) et marge moncamp.fr
 // ---------------------------------------------------------------------------------------------
-/** Frais Stripe d'une ligne au journal (à la charge de moncamp.fr) */
+/** Frais Stripe d'une ligne au journal : « frais_paiement » à la charge de l'organisme, « frais » payés par moncamp.fr (anciens paiements seulement) */
 function fin_ledger_frais(PDO $pdo, int $paiementId, int $cents, string $prefix): void {
-    $st = $pdo->prepare("SELECT organisateur_id, mode FROM fin_paiements WHERE id = ?"); $st->execute([$paiementId]);
-    [$orga, $mode] = $st->fetch(PDO::FETCH_NUM) ?: [0, ''];
-    fin_ledger_add($pdo, $mode === 'direct' ? 'frais_paiement' : 'frais', (int)$orga, $cents, $prefix . $paiementId, 'paiement', $paiementId, $prefix === 'frais:' ? 'Frais de paiement (Stripe)' : 'Frais de litige (Stripe)', 'systeme', $mode);
+    $st = $pdo->prepare("SELECT organisateur_id, mode, frais_orga FROM fin_paiements WHERE id = ?"); $st->execute([$paiementId]);
+    [$orga, $mode, $fo] = $st->fetch(PDO::FETCH_NUM) ?: [0, '', 0];
+    fin_ledger_add($pdo, ($mode === 'direct' || (int)$fo === 1) ? 'frais_paiement' : 'frais', (int)$orga, $cents, $prefix . $paiementId, 'paiement', $paiementId, $prefix === 'frais:' ? 'Frais de paiement (Stripe)' : 'Frais de litige (Stripe)', 'systeme', $mode);
 }
 /** Frais Stripe réels d'un PaymentIntent, en centimes d'euro (null si indisponible : sera retenté par le cron / la page Comptabilité) */
 function fin_fetch_stripe_fee(string $paymentIntent, ?string $account = null): ?int {
@@ -485,10 +510,45 @@ function fin_sync_fees(PDO $pdo, string $paymentIntent): bool {
     $st->execute([$paymentIntent]);
     $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR);
     if (!$rows) return false;
-    // direct : frais débités à l'organisme par Stripe, déduits UNE fois de son net (net_cents = ce qui arrive sur son compte)
-    $up = $pdo->prepare("UPDATE fin_paiements SET net_cents = IF(mode = 'direct' AND frais_stripe_cents IS NULL, net_cents - ?, net_cents), frais_stripe_cents = ?, frais_maj = NOW() WHERE id = ?");
-    foreach (fin_allocate($fee, $rows) as $id => $part) { $up->execute([$part, $part, $id]); fin_ledger_frais($pdo, $id, -$part, 'frais:'); }
+    $info = $pdo->prepare("SELECT id, mode, frais_orga, frais_estimes_cents, frais_stripe_cents, statut, organisateur_id FROM fin_paiements WHERE id = ?");
+    // À la charge de l'organisme (direct, ou tout paiement récent) : frais RÉELS déduits UNE fois de son net (estimation remplacée par le réel).
+    $up = $pdo->prepare("UPDATE fin_paiements SET net_cents = IF(" . fin_sql_frais_orga('fin_paiements') . " AND frais_stripe_cents IS NULL, net_cents - (? - frais_estimes_cents), net_cents), frais_stripe_cents = ?, frais_maj = NOW() WHERE id = ?");
+    $rendre = 0; $orgaR = 0;
+    foreach (fin_allocate($fee, $rows) as $id => $part) {
+        $info->execute([$id]); $p = $info->fetch(PDO::FETCH_ASSOC);
+        $first = $p['frais_stripe_cents'] === null;
+        $up->execute([$part, $part, $id]);
+        if ((int)$p['frais_estimes_cents'] > 0) { if ($first) fin_ledger_add($pdo, 'frais_paiement', (int)$p['organisateur_id'], (int)$p['frais_estimes_cents'] - $part, 'frais:' . $id, 'paiement', $id, 'Frais de paiement Stripe (ajustement au réel)', 'systeme', $p['mode']); }
+        else fin_ledger_frais($pdo, $id, -$part, 'frais:');
+        if (!$first || (int)$p['frais_orga'] !== 1 || $p['mode'] === 'direct') continue;
+        if ($p['mode'] === 'legacy') { // argent encore chez moncamp.fr : l'organisme recevra brut − commission − frais réels
+            $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$part / 100, $p['organisateur_id']]);
+            if ($p['statut'] === 'verse') fin_frais_dette($pdo, (int)$p['organisateur_id'], $id, $part, 'frais', 'Frais Stripe à votre charge (paiement déjà transféré)');
+            continue;
+        }
+        $d = $part - (int)$p['frais_estimes_cents']; // destination : réel − estimé (déjà prélevé avec la commission)
+        if ($d > 0) fin_frais_dette($pdo, (int)$p['organisateur_id'], $id, $d, 'frais', 'Frais Stripe réels supérieurs à l\'estimation');
+        elseif ($d < 0) { $rendre += -$d; $orgaR = (int)$p['organisateur_id']; }
+    }
+    if ($rendre > 0) fin_frais_rendre($pdo, $paymentIntent, $orgaR, $rendre);
     return true;
+}
+/** Frais Stripe à la charge de l'organisme mais avancés par moncamp.fr : dette (solde négatif, compensée sur ses paiements suivants), journalisée */
+function fin_frais_dette(PDO $pdo, int $orgaId, int $paiementId, int $cents, string $prefix, string $libelle): void {
+    if ($cents <= 0 || !fin_ledger_add($pdo, 'dette', $orgaId, $cents, 'fraisdette:' . $prefix . ':' . $paiementId . ':' . $cents, 'paiement', $paiementId, $libelle, 'systeme')) return;
+    $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$cents / 100, $orgaId]);
+}
+/** Destination : frais estimés > frais réels : la différence est rendue à l'organisme (remboursement partiel de la commission Stripe), sinon créditée à son solde */
+function fin_frais_rendre(PDO $pdo, string $paymentIntent, int $orgaId, int $cents): void {
+    try {
+        $fee = fin_charge_of($paymentIntent)->application_fee ?? null;
+        if (!$fee) throw new Exception('commission Stripe introuvable');
+        fin_stripe()->applicationFees->createRefund(is_object($fee) ? $fee->id : (string)$fee, ['amount' => $cents, 'metadata' => ['raison' => 'frais Stripe réels inférieurs à l\'estimation']], ['idempotency_key' => 'moncamp-frais-rendus-' . $paymentIntent]);
+        fin_audit($pdo, 'frais_estimes_rendus', 'payment_intent', $paymentIntent, ['cents' => $cents, 'organisateur' => $orgaId], 'systeme');
+    } catch (Throwable $e) {
+        $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$cents / 100, $orgaId]);
+        fin_audit($pdo, 'frais_estimes_credites', 'payment_intent', $paymentIntent, ['cents' => $cents, 'erreur' => mb_substr($e->getMessage(), 0, 200)], 'systeme');
+    }
 }
 /** Rattrape les paiements dont les frais ne sont pas encore connus. Retourne [relevés, restants/échecs]. */
 function fin_backfill_fees(PDO $pdo, int $limit = 40): array {
@@ -508,7 +568,7 @@ function fin_sql_com_nette(string $a = 'p'): string { // direct : jamais rendue
 }
 /** Marge nette moncamp.fr d'une ligne = commission conservée - frais Stripe - frais de litige (null si les frais ne sont pas connus) */
 function fin_sql_marge(string $a = 'p'): string {
-    return "(" . fin_sql_com_nette($a) . " - IF($a.mode = 'direct', 0, $a.frais_stripe_cents + $a.frais_litige_cents))"; // direct : frais payés par l'organisme
+    return "(" . fin_sql_com_nette($a) . " - IF(" . fin_sql_frais_orga($a) . ", 0, $a.frais_stripe_cents + $a.frais_litige_cents))"; // frais payés par l'organisme
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -718,7 +778,8 @@ function fin_receipt(PDO $pdo, string $token, int $userId, bool $isAdmin = false
     $v = $st->fetch(PDO::FETCH_ASSOC);
     if ($v) {
         if (!$isAdmin && (int)$v['owner'] !== $userId) return null;
-        $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut, l.montant_cents AS montant_ligne
+        $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut, l.montant_cents AS montant_ligne,
+                                    IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) AS frais_cents
                              FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id JOIN camps c ON c.id = p.camp_id WHERE l.transfert_id = ? ORDER BY c.date_debut, p.inscription_id");
         $st->execute([$v['id']]);
         $lignes = $st->fetchAll(PDO::FETCH_ASSOC);

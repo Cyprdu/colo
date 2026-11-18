@@ -28,8 +28,8 @@ function compta_summary(PDO $pdo, string $from, string $to, int $orgaId = 0): ar
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $sql = "SELECT COUNT(*) nb, COALESCE(SUM(p.brut_cents), 0) brut, COALESCE(SUM(p.rembourse_cents), 0) rembourse,
                 COALESCE(SUM($com), 0) commission,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(p.net_cents - p.net_rembourse_cents), 0) du_total,
                 COALESCE(SUM(p.verse_cents), 0) verse,
                 COALESCE(SUM(CASE WHEN p.statut IN ('attente','bloque','litige','en_cours') THEN GREATEST(0, p.net_cents - p.net_rembourse_cents - p.verse_cents) END), 0) attente,
@@ -56,7 +56,7 @@ function compta_hors_stripe(PDO $pdo, string $from, string $to, int $orgaId = 0)
 function compta_by_orga(PDO $pdo, string $from, string $to): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $st = $pdo->prepare("SELECT o.id, o.nom, COUNT(*) nb, SUM(p.brut_cents - p.rembourse_cents) ca, SUM($com) commission,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(CASE WHEN p.frais_stripe_cents IS NOT NULL THEN $marge END), 0) marge,
                 SUM(p.net_cents - p.net_rembourse_cents) du,
                 COALESCE(SUM(p.verse_cents), 0) verse,
@@ -71,7 +71,7 @@ function compta_by_orga(PDO $pdo, string $from, string $to): array {
 function compta_by_month(PDO $pdo, string $from, string $to, int $orgaId = 0): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $st = $pdo->prepare("SELECT DATE_FORMAT(p.created_at, '%Y-%m') m, COUNT(*) nb, SUM(p.brut_cents - p.rembourse_cents) ca, SUM($com) commission,
-                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
+                COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(" . fin_sql_frais_orga('p') . ", 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(CASE WHEN p.frais_stripe_cents IS NOT NULL THEN $marge END), 0) marge
             FROM fin_paiements p WHERE p.created_at BETWEEN ? AND ?" . ($orgaId ? " AND p.organisateur_id = ?" : "") . " GROUP BY m ORDER BY m DESC");
     $st->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);

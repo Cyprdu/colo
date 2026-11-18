@@ -99,7 +99,7 @@ try {
     $fam = "COALESCE(NULLIF(e.nom, ''), 'Équipe d''animation')";
     $st = $pdo->prepare("SELECT p.id, p.created_at d, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, p.brut_cents brut, p.rembourse_cents remb,
                                 p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, p.mode, p.payment_intent pi, i.reservation_token tok, p.annul_com ann,
-                                IF(p.mode = 'direct', COALESCE(p.frais_stripe_cents, 0) + p.frais_litige_cents, 0) frais, p.compensation_cents comp, p.verse_cents verse, p.tva_taux_pct tva,
+                                IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) frais, (p.mode = 'direct' OR p.frais_orga = 1) fo, p.frais_stripe_cents IS NULL fnc, p.compensation_cents comp, p.verse_cents verse, p.tva_taux_pct tva,
                                 (SELECT t.token FROM fin_transfert_lignes l JOIN fin_transferts t ON t.id = l.transfert_id WHERE l.paiement_id = p.id ORDER BY t.id DESC LIMIT 1) vtok,
                                 (SELECT CONCAT(t.statut, '|', COALESCE(t.arrivee, '')) FROM fin_transfert_lignes l JOIN fin_transferts t ON t.id = l.transfert_id
                                   WHERE l.paiement_id = p.id AND t.type = 'payout' AND t.statut IN ('envoye', 'paye') ORDER BY t.id DESC LIMIT 1) po
@@ -109,7 +109,7 @@ try {
     $st->execute([$orgaId, $dt[0], $dt[1]]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     $st = $pdo->prepare("SELECT i.id, i.date_inscription d, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, ROUND(i.prix_final * 100) brut, 0 remb,
-                                ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv, i.statut_paiement st, NULL dd, 'hors' mode, NULL pi, i.reservation_token tok, 0 ann, 0 frais,
+                                ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv, i.statut_paiement st, NULL dd, 'hors' mode, NULL pi, i.reservation_token tok, 0 ann, 0 frais, 0 fo, 0 fnc,
                                 0 comp, 0 verse, NULL tva, NULL vtok, NULL po, i.moyen_paiement moy
                          FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN users u ON u.id = e.parent_id
                          LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
@@ -140,7 +140,7 @@ try {
         [$sk, $sl] = $etat($r); $card = $r['mode'] !== 'hors'; $moy = $card ? 'carte' : (string)$r['moy'];
         $tx[] = ['k' => ($card ? 'p' : 'h') . $r['id'], 'd' => $r['d'], 'fam' => $txt($r['fam']), 'enf' => $txt($r['enf']), 'parent' => trim($txt($r['pp']) . ' ' . $txt($r['pn'])),
             'camp' => $txt($r['camp']), 'sej' => $campGrp[(int)$r['camp_id']][0] ?? '', 'ses' => $campGrp[(int)$r['camp_id']][1] ?? '', 'sesl' => $sessLab[(int)$r['camp_id']] ?? '',
-            'moy' => $moy, 'moyl' => $lib[$moy] ?? 'Non précisé', 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'], 'frais' => (int)$r['frais'], 'pv' => (int)$r['pv'],
+            'moy' => $moy, 'moyl' => $lib[$moy] ?? 'Non précisé', 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'], 'frais' => (int)$r['frais'], 'fo' => (int)$r['fo'], 'fest' => (int)$r['fo'] && (int)$r['fnc'], 'pv' => (int)$r['pv'],
             'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'] - (int)$r['frais'], 'comp' => (int)$r['comp'], 'verse' => (int)$r['verse'],
             'st' => $sk, 'stl' => $sl, 'dd' => $r['dd'] ? substr($r['dd'], 0, 10) : null, 'mode' => $r['mode'], 'pi' => $r['pi'] ? (string)$r['pi'] : null,
             'tok' => (string)$r['tok'], 'vtok' => $r['vtok'] ? (string)$r['vtok'] : null,

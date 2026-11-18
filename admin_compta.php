@@ -147,7 +147,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
 <?php endif; ?>
 <section class="kpis">
   <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= $e($sum['ca']) ?></b><span>Chiffre d'affaires encaissé</span><small><?= $sum['nb'] ?> paiement<?= $sum['nb'] > 1 ? 's' : '' ?> · remboursé : <?= $e($sum['rembourse']) ?></small></div></div>
-  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions moncamp.fr</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions moncamp.fr</span><small>nettes des remboursements</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($sum['frais'] + $sum['litige']) ?></b><span>Frais Stripe réels</span><small>dont litiges : <?= $e($sum['litige']) ?></small></div></div>
   <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette moncamp.fr</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= $e($hs['commission']) ?></b><span>Commissions hors carte</span><small><?= $hs['nb'] ?> règlement<?= $hs['nb'] > 1 ? 's' : '' ?> (<?= $e($hs['brut']) ?>) · retenues sur les versements par carte</small></div></div>
@@ -189,7 +189,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
 <?php $rr = compta_revenus_rapprochement($pdo, $ps); ?>
 <section class="card"><h2 class="sec"><?= ic('bank') ?> Ce que gagne moncamp.fr <span class="muted small">· depuis le début</span></h2>
   <div class="kv"><span>Commission</span><b><?= $e($rr['com']) ?></b></div>
-  <div class="kv"><span>− frais Stripe payés par moncamp.fr <small class="muted">(paiements en repli destination ou reçus avant l'activation ; en direct, l'organisme paie ses frais)</small></span><b>− <?= $e($rr['frais']) ?></b></div>
+  <div class="kv"><span>− frais Stripe payés par moncamp.fr <small class="muted">(anciens paiements seulement : depuis la règle « frais à la charge de l'organisme », tous les nouveaux paiements, y compris reçus avant l'activation ou en repli destination, sont payés par l'organisme)</small></span><b>− <?= $e($rr['frais']) ?></b></div>
   <div class="kv"><span><b>= net pour moncamp.fr</b></span><b><?= $e($rr['net']) ?></b></div>
   <?php if ($rr['hors']): ?><div class="kv"><span>− commissions hors carte pas encore encaissées <small class="muted">(retenues sur les paiements suivants des organismes)</small></span><b>− <?= $e($rr['hors']) ?></b></div><?php endif; ?>
   <?php if ($rr['points']): ?><div class="kv"><span>+ achats de points par carte</span><b>+ <?= $e($rr['points']) ?></b></div><?php endif; ?>

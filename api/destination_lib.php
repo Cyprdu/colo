@@ -113,7 +113,7 @@ function fin_charge_of(string $paymentIntent, ?string $account = null) {
  * $preleve = application_fee_amount demandé à la création de la session. Hors transaction ; un échec est journalisé et visible dans le rapprochement admin.
  */
 function fin_fee_excess_refund(PDO $pdo, string $paymentIntent, int $preleve): int {
-    $st = $pdo->prepare("SELECT COALESCE(SUM(p.commission_cents + p.compensation_cents), 0), MIN(p.organisateur_id), MAX(IF(p.mode = 'direct', o.stripe_account_id, NULL))
+    $st = $pdo->prepare("SELECT COALESCE(SUM(p.commission_cents + p.compensation_cents + p.frais_estimes_cents), 0), MIN(p.organisateur_id), MAX(IF(p.mode = 'direct', o.stripe_account_id, NULL))
                          FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id WHERE p.payment_intent = ? AND p.mode <> 'legacy'");
     $st->execute([$paymentIntent]);
     [$du, $orga, $acct] = $st->fetch(PDO::FETCH_NUM);

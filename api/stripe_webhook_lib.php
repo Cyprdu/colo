@@ -67,7 +67,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                     $comp = $mode !== 'legacy' ? max(0, (int)($meta->compensation ?? 0)) : 0;
                     $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total, $mode, $comp);
                     if ($pi && $n) $feePI = (string)$pi;
-                    if ($pi && $mode !== 'legacy') $feeAdj = [(string)$pi, (int)($meta->commission ?? 0) + $comp];
+                    if ($pi && $mode !== 'legacy') $feeAdj = [(string)$pi, (int)($meta->commission ?? 0) + $comp + max(0, (int)($meta->frais_estimes ?? 0))];
                     if ($pi && $mode === 'destination') $copie = (string)$pi;
                     fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
                     // Inscription de l'équipe d'animation (adultes, hors inscriptions d'enfants) : mêmes règles de commission
