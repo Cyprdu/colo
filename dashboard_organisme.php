@@ -155,6 +155,10 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 #dbPop { position: absolute; z-index: 90; max-width: 290px; background: var(--ds-btn); color: #fff; font-size: 13px; line-height: 1.45; padding: 11px 13px; border-radius: 11px; box-shadow: 0 12px 30px rgba(31,42,48,.25); display: none; }
 #dbPop.on { display: block; }
 .fd-filters[hidden], #drawer[hidden] { display: none; }
+.fd-stripe { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 14px 0 6px; padding: 18px 22px; border-radius: 16px; background: #fbf3dc; border: 2px solid #d9b65a; color: #5b4a1c; }
+.fd-stripe b { display: block; font-size: 17px; font-weight: 800; color: #4a3b12; }
+.fd-stripe span { font-size: 14px; }
+.fd-stripe .ds-btn { font-size: 16px; padding: 14px 24px; white-space: nowrap; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 1024px) { .fd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fd-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .fd-grid2 { grid-template-columns: minmax(0, 1fr); } .fd-bar { position: static; } .fd-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fd-kpi .v { font-size: 19px; } }
@@ -167,14 +171,20 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     <?php if ($error): ?><div class="ds-alert-err" style="margin:12px 0" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
     <?php if ($success): ?><div class="ds-alert-ok" style="margin:12px 0" role="status"><?= htmlspecialchars($success) ?></div><?php endif; ?>
 
+    <?php if (!$ready): ?>
+    <section class="fd-stripe" role="alert" aria-labelledby="stripeAlertT">
+        <div><b id="stripeAlertT">Votre compte Stripe est à compléter : vous ne pouvez pas recevoir vos paiements</b>
+            <span>Identité et IBAN, environ 5 minutes chez Stripe.<?= $due ? ' Informations restantes : ' . count($due) . '.' : '' ?></span></div>
+        <a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= $orgaTok ?>">Compléter mon compte Stripe</a>
+    </section>
+    <?php endif; ?>
     <header class="fd-top" style="margin-top:10px">
         <div class="fd-id">
             <?php if (!empty($orga['logo_url'])): ?><img src="<?= htmlspecialchars($orga['logo_url']) ?>" alt=""><?php endif; ?>
             <div style="min-width:0"><p class="ds-eyebrow" style="margin:0">Finances</p><h1><?= htmlspecialchars($orga['nom']) ?></h1>
                 <div class="fd-acct"><span class="mk-pill <?= $ready ? 'ok' : 'warn' ?>"><?= $ready ? 'Compte Stripe actif' : 'Compte Stripe à compléter' ?></span>
                     <?= $help($ready ? "Les paiements arrivent sur votre compte Stripe, puis sur votre banque : " . $autoTxt . ". Stripe garde votre IBAN : moncamp.fr ne le voit pas." : "Pour recevoir l'argent des inscriptions, complétez votre compte chez Stripe (identité, IBAN : 5 minutes)." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?>
-                    <?php if (!$ready): ?><a class="underline font-semibold" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= $orgaTok ?>">Compléter</a>
-                    <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="underline" href="api/connect_dashboard.php?o=<?= $orgaTok ?>" target="_blank" rel="noopener">Espace Stripe ↗</a><?php endif; ?>
+                    <?php if ($ready && ($acc['type'] ?? '') === 'express'): ?><a class="underline" href="api/connect_dashboard.php?o=<?= $orgaTok ?>" target="_blank" rel="noopener">Espace Stripe ↗</a><?php endif; ?>
                     <span>· Commission <?= htmlspecialchars($comTxt) ?></span></div>
             </div>
         </div>
