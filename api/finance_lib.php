@@ -329,7 +329,7 @@ function fin_destination_params(PDO $pdo, int $orgaId, array $itemCents): array 
     $st->execute([$orgaId]);
     $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com));
     $pid = ['application_fee_amount' => $com + $comp, 'transfer_data' => ['destination' => $acc['account_id']], 'metadata' => ['mode' => 'destination', 'organisateur_id' => (string)$orgaId]];
-    if (!empty($acc['charges_enabled'])) $pid['on_behalf_of'] = $acc['account_id'];
+    // ponytail: on_behalf_of retiré (la page Checkout échouait « Something went wrong » avec les réglages du compte connecté) ; à réévaluer avec les direct charges
     return ['payment_intent_data' => $pid, 'metadata' => ['mode' => 'destination', 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp]];
 }
 
