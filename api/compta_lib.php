@@ -28,8 +28,8 @@ function compta_summary(PDO $pdo, string $from, string $to, int $orgaId = 0): ar
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $sql = "SELECT COUNT(*) nb, COALESCE(SUM(p.brut_cents), 0) brut, COALESCE(SUM(p.rembourse_cents), 0) rembourse,
                 COALESCE(SUM($com), 0) commission,
-                COALESCE(SUM(p.frais_stripe_cents), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
-                COALESCE(SUM(p.frais_litige_cents), 0) litige,
+                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(p.frais_stripe_cents IS NULL), 0) frais_inconnus,
+                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(p.net_cents - p.net_rembourse_cents), 0) du_total,
                 COALESCE(SUM(p.verse_cents), 0) verse,
                 COALESCE(SUM(CASE WHEN p.statut IN ('attente','bloque','litige','en_cours') THEN GREATEST(0, p.net_cents - p.net_rembourse_cents - p.verse_cents) END), 0) attente,
@@ -56,7 +56,7 @@ function compta_hors_stripe(PDO $pdo, string $from, string $to, int $orgaId = 0)
 function compta_by_orga(PDO $pdo, string $from, string $to): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $st = $pdo->prepare("SELECT o.id, o.nom, COUNT(*) nb, SUM(p.brut_cents - p.rembourse_cents) ca, SUM($com) commission,
-                COALESCE(SUM(p.frais_stripe_cents), 0) frais, COALESCE(SUM(p.frais_litige_cents), 0) litige,
+                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(CASE WHEN p.frais_stripe_cents IS NOT NULL THEN $marge END), 0) marge,
                 SUM(p.net_cents - p.net_rembourse_cents) du,
                 COALESCE(SUM(p.verse_cents), 0) verse,
@@ -71,7 +71,7 @@ function compta_by_orga(PDO $pdo, string $from, string $to): array {
 function compta_by_month(PDO $pdo, string $from, string $to, int $orgaId = 0): array {
     $com = fin_sql_com_nette('p'); $marge = fin_sql_marge('p');
     $st = $pdo->prepare("SELECT DATE_FORMAT(p.created_at, '%Y-%m') m, COUNT(*) nb, SUM(p.brut_cents - p.rembourse_cents) ca, SUM($com) commission,
-                COALESCE(SUM(p.frais_stripe_cents), 0) frais, COALESCE(SUM(p.frais_litige_cents), 0) litige,
+                COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_stripe_cents)), 0) frais, COALESCE(SUM(IF(p.mode = 'direct', 0, p.frais_litige_cents)), 0) litige,
                 COALESCE(SUM(CASE WHEN p.frais_stripe_cents IS NOT NULL THEN $marge END), 0) marge
             FROM fin_paiements p WHERE p.created_at BETWEEN ? AND ?" . ($orgaId ? " AND p.organisateur_id = ?" : "") . " GROUP BY m ORDER BY m DESC");
     $st->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
@@ -290,13 +290,13 @@ function compta_journal(PDO $pdo, string $from, string $to, int $orgaId = 0, int
 }
 
 /**
- * Rapprochement des commissions « destination » avec Stripe (application fees de la période, remboursements de commission déduits).
+ * Rapprochement des commissions « direct » et « destination » avec Stripe (application fees de la période, remboursements de commission déduits).
  * Attendu = commission + dette compensée − commission rendue des paiements destination créés sur la période. Écart ≠ 0 : à contrôler
  * (un litige perdu en crée un normalement : Stripe garde la commission, nos comptes la rendent car le paiement est perdu).
  */
 function compta_fees_reconcile(PDO $pdo, string $from, string $to): array {
-    $st = $pdo->prepare("SELECT COALESCE(SUM(commission_cents + compensation_cents - IF(annul_com = 1, 0, rembourse_cents - net_rembourse_cents)), 0) FROM fin_paiements
-                         WHERE mode = 'destination' AND created_at BETWEEN ? AND ?");
+    $st = $pdo->prepare("SELECT COALESCE(SUM(commission_cents + compensation_cents - IF(annul_com = 1 OR mode = 'direct', 0, rembourse_cents - net_rembourse_cents)), 0) FROM fin_paiements
+                         WHERE mode <> 'legacy' AND created_at BETWEEN ? AND ?");
     $st->execute([$from, $to]);
     $attendu = (int)$st->fetchColumn(); $stripe = 0; $n = 0;
     foreach (fin_stripe()->applicationFees->all(['created' => ['gte' => strtotime($from), 'lte' => strtotime($to)], 'limit' => 100])->autoPagingIterator() as $fee) {

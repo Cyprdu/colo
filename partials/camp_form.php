@@ -179,7 +179,9 @@ $tick = $svg('check', 'w-3 h-3');
                     <label class="ds-switch"><input type="checkbox" name="inscription_en_ligne" id="toggleOnline" <?= $online ? 'checked' : '' ?> aria-label="Activer les inscriptions en ligne"><span></span></label>
                 </div>
                 <div id="tosBox" class="hidden mt-3 ds-alert-err text-sm">
-                    Commission de <b>1 %</b> par transaction en ligne.
+                    <?php require_once __DIR__ . '/../api/finance_lib.php'; ?>
+                    Par inscription payée en ligne : <b>commission moncamp.fr <?= number_format(fin_commission_pct(), 1, ',', ' ') ?> %<?= fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '' ?></b>
+                    et <b>frais de paiement Stripe</b> (tarif réel de Stripe selon la carte, environ 1,5 % + 0,25 € pour une carte européenne). Aucun autre frais.
                     <label class="flex items-center gap-2 mt-2 font-semibold cursor-pointer"><input type="checkbox" id="acceptToS" <?= $edit ? 'checked' : '' ?>> J'accepte ces conditions.</label>
                 </div>
 

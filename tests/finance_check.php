@@ -67,8 +67,8 @@ ok((10000 - 280) - $r === 10000 - 5000, 'organisme : net 97,20 - remboursé 47,2
 // Destination charges : commission prélevée = somme des commissions par inscription (part fixe par inscription), arrondis au centime
 ok(fin_commission_split(2500)[0] + fin_commission_split(10000)[0] === 373, 'panier 25 + 100 EUR : 0,93 + 2,80 = 3,73 EUR prélevés par Stripe');
 ok(fin_commission_split(1)[0] === 1 && fin_commission_split(333)[0] === 38, 'arrondis : jamais plus que le payé, 2,5 % de 3,33 = 0,08 + 0,30');
-ok(fin_refund_params(['mode' => 'destination']) === ['reverse_transfer' => true, 'refund_application_fee' => false], 'annulation destination : l\'organisme est débité, commission conservée');
-ok(fin_refund_params(['mode' => 'destination'], true)['refund_application_fee'] === true && fin_refund_params(['mode' => 'legacy']) === [], 'remboursement hors annulation : commission rendue ; legacy inchangé');
+ok(in_array('frais_paiement', FIN_LEDGER_TYPES, true) && in_array('dette', FIN_LEDGER_TYPES, true), 'journal : frais Stripe de l\'organisme et dette tracés à part');
+ok(strpos(fin_sql_marge('p'), "p.mode = 'direct', 0") !== false, 'direct charges : frais Stripe hors marge moncamp.fr (jamais négative)');
 ok(fin_payout_date('2030-07-10') === '2030-07-13 00:00:00', 'versement bancaire : début du séjour + 3 jours');
 ok(in_array('versement', FIN_LEDGER_TYPES, true) && !in_array('reversement', FIN_LEDGER_TYPES, true), 'journal : les reversements ne sont pas des lignes');
 echo "Tout est bon.\n";
