@@ -70,13 +70,13 @@ Principes : peu de texte, bulles « ? » pour le détail, pas de jargon, une seu
 - Les filtres ne déclenchent aucun rechargement tant qu'on n'a pas cliqué « Appliquer ».
 - Aucune donnée bancaire sur notre serveur ; toutes les écritures d'argent sont journalisées (qui, quand, IP, avant et après).
 
-## 7. Décisions retenues (valeurs par défaut validées, appliquer sans redemander)
+## 7. Décisions du propriétaire (définitives)
 
-1. Le net arrive sur le compte Stripe de l'organisme dès le paiement ; le versement vers sa banque est différé (schedule `manual` piloté par le cron).
-2. Remboursement après versement : supporté par l'organisme, récupéré par compensation sur ses encaissements suivants ; affiché « à compenser ».
-3. Commission en cas d'annulation : conserver la règle actuelle de `annulation_lib.php` (la documenter dans le dashboard et `legal.php`).
+1. Oui : le net arrive sur le compte Stripe de l'organisme dès le paiement ; versement bancaire différé.
+2. Remboursement : pris sur le solde Stripe de l'organisme s'il suffit ; sinon moncamp.fr rembourse la famille et l'organisme a une DETTE envers moncamp.fr, compensée automatiquement sur ses paiements suivants (la commission prélevée sur le prochain paiement est augmentée du montant de la dette, plafonnée au net). Dette et compensations visibles et expliquées dans le dashboard organisme (« Dette en cours », « compensée le … ») et journalisées.
+3. Aucune commission n'est remboursée en cas d'annulation (`refund_application_fee = false`).
 4. Versement bancaire : 3 jours après le début du séjour (réglable dans l'admin).
-5. Commission « tout compris » inchangée (frais hors UE inclus) ; afficher la marge réelle par paiement dans l'admin pour suivre le risque.
+5. Les frais de paiement Stripe sont payés par l'organisme, jamais par moncamp.fr : aucune marge négative possible. Recommandation technique : « direct charges » (Checkout créé sur le compte connecté, en-tête Stripe-Account, `application_fee_amount` = commission moncamp.fr + dette éventuelle) : Stripe débite alors ses frais réels directement à l'organisme, au centime près, visibles des deux côtés. La commission moncamp.fr n'est donc plus « tout compris » : mettre à jour les textes (dashboard, aide, `legal.php`, formulaire de séjour) en affichant clairement « Commission moncamp.fr » et « Frais de paiement (Stripe) » sur deux lignes.
 
 ## 8. Points à valider avec le propriétaire (historique)
 
