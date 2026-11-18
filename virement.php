@@ -29,13 +29,13 @@ require_once 'partials/mk_icons.php';
 
 <?php if ($connect):
     $brut = 0; $com = 0; $net = 0; foreach ($rec['lignes'] as $l) { $brut += $l['brut_cents'] - $l['rembourse_cents']; $com += $l['commission_cents'] - ($l['brut_cents'] ? (int)round($l['commission_cents'] * $l['rembourse_cents'] / $l['brut_cents']) : 0); $net += $l['net_cents'] - $l['net_rembourse_cents']; }
-    $lbl = ['envoye' => ['Envoyé', 'ok'], 'en_cours' => ['En cours d\'envoi', 'info'], 'echec' => ['Échec', 'bad']][$v['statut']] ?? [$v['statut'], '']; ?>
+    $lbl = ['envoye' => [$v['type'] === 'payout' ? 'Virement en cours' : 'Envoyé', 'ok'], 'paye' => ['Arrivé sur votre banque', 'ok'], 'en_cours' => ['En cours d\'envoi', 'info'], 'echec' => ['Échec', 'bad']][$v['statut']] ?? [$v['statut'], '']; ?>
     <div class="mk-grid mk-g3" style="margin-top:22px">
         <div class="mk-stat"><div class="k">Encaissé (brut)</div><div class="v"><?= fin_eur($brut) ?></div><div class="s"><?= count($rec['lignes']) ?> inscription<?= count($rec['lignes']) > 1 ? 's' : '' ?></div></div>
         <div class="mk-stat"><div class="k">Commission moncamp.fr</div><div class="v">- <?= fin_eur($com) ?></div><div class="s">tout compris (frais bancaires inclus), au taux en vigueur à la vente</div></div>
         <div class="mk-stat dark"><div class="k">Versé</div><div class="v"><?= fin_eur((int)$v['montant_cents']) ?></div><div class="s"><span class="mk-pill <?= $lbl[1] ?>" style="background:rgba(255,255,255,.18);color:#fff"><?= $lbl[0] ?></span></div></div>
     </div>
-    <?php if ((int)$v['montant_cents'] !== $net): ?><p class="mk-note" style="margin-top:10px">Le montant versé diffère du net des inscriptions (<?= fin_eur($net) ?>) : une réserve de remboursement a été gardée (elle sera versée dès qu'aucune annulation n'est plus possible), ou des points marketing et des compensations de remboursements ont été déduits du solde.</p><?php endif; ?>
+    <?php if ((int)$v['montant_cents'] !== $net): ?><p class="mk-note" style="margin-top:10px">Le montant versé diffère du net des inscriptions (<?= fin_eur($net) ?>) : <?= $v['type'] === 'payout' ? 'un virement vers votre banque regroupe tout l\'argent disponible sur votre compte Stripe (autres séjours, anciens paiements), moins les remboursements à compenser.' : '' ?> <?php if ($v['type'] !== 'payout'): ?>une réserve de remboursement a été gardée (elle sera versée dès qu'aucune annulation n'est plus possible), ou des points marketing et des compensations de remboursements ont été déduits du solde.<?php endif; ?></p><?php endif; ?>
 
     <div class="mk-table-wrap" style="margin-top:20px"><table class="mk-table" style="min-width:560px">
         <thead><tr><th>Séjour</th><th>Départ</th><th>Inscr.</th><th class="num">Brut</th><th class="num">Commission</th><th class="num">Net</th><th class="num">Versé ce jour</th></tr></thead><tbody>

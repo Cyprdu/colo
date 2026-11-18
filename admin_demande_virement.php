@@ -77,7 +77,7 @@ function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) 
 <main class="mk-wrap" style="max-width:1200px">
     <a href="admin.php" class="mk-back"><?= mk_icon('back', 16) ?> Administration</a>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap">
-        <div><p class="ds-eyebrow">Finances</p><h1 class="ds-h1">Versements aux organismes</h1><p class="ds-lead">Automatiques : chaque organisme est versé un jour fixe par semaine, <?= fin_release_delay_days() ?> jours après le paiement, avec une réserve de <?= number_format(fin_reserve_pct(), 0, ',', ' ') ?> % tant qu'une annulation est possible (réglages : Comptabilité &gt; Versements). Commission : <?= number_format(fin_commission_pct(), 2, ',', ' ') ?> %.</p></div>
+        <div><p class="ds-eyebrow">Finances</p><h1 class="ds-h1">Versements aux organismes</h1><p class="ds-lead">Anciens paiements (gardés par moncamp.fr) : transférés automatiquement sur le compte Stripe de l\'organisme <?= fin_release_delay_days() ?> jours après le paiement (réserve <?= number_format(fin_reserve_pct(), 0, ',', ' ') ?> %), puis versés sur sa banque avec le reste. Nouveaux paiements : voir Comptabilité &gt; Versements.</p></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="ds-btn ds-btn-light" href="admin_commission_stats.php">Commissions</a><?= postbtn('Lancer les déblocages maintenant', 'release_now', 0, $csrf, 'Transférer maintenant tous les fonds dont la date est passée ?', false) ?></div>
     </div>
 
@@ -86,7 +86,7 @@ function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) 
 
     <div class="mk-grid mk-g4" style="margin-top:22px">
         <div class="mk-stat dark"><div class="k">Dû aux organismes</div><div class="v"><?= fin_eur($tot['a_recevoir']) ?></div><div class="s">net, non encore transféré</div></div>
-        <div class="mk-stat"><div class="k">Déblocable maintenant</div><div class="v"><?= fin_eur($tot['deblocable']) ?></div><div class="s">délai de sécurité passé, avant réserve et jour de versement</div></div>
+        <div class="mk-stat"><div class="k">Déblocable maintenant</div><div class="v"><?= fin_eur($tot['deblocable']) ?></div><div class="s">délai de sécurité passé, avant réserve</div></div>
         <div class="mk-stat"><div class="k">Transferts en échec</div><div class="v"><?= $nbEchec ?></div><div class="s">sur les 30 derniers</div></div>
         <div class="mk-stat"><div class="k">En cours d'envoi</div><div class="v"><?= $nbCours ?></div><div class="s">rejoués automatiquement</div></div>
     </div>
