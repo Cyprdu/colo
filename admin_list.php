@@ -1,6 +1,7 @@
 <?php
 // admin_list.php?e=<entité> : liste générique (recherche, filtres, pagination, actions) pour tous les objets métier.
 require_once __DIR__ . '/admin_lib.php';
+require_once __DIR__ . '/api/orga_lib.php';
 adm_guard();
 
 $ents = adm_entities();
@@ -34,8 +35,11 @@ $qs = fn(array $o) => 'admin_list.php?' . http_build_query(array_filter(array_me
 function cell(string $col, string $type, array $r): string {
     $v = $r[$col] ?? null;
     switch ($type) {
-        case 'id': return '<span class="muted">#' . (int)$v . '</span>';
-        case 'name': $s = trim((string)$v . ' ' . ($r['prenom'] ?? '')); return '<b>' . h($s !== '' ? $s : '—') . '</b>';
+        case 'name':
+            $s = trim((string)$v . ' ' . ($r['prenom'] ?? ''));
+            $o = '<b>' . h($s !== '' ? $s : '—') . '</b>';
+            if (($r['_fiche'] ?? '') !== '') $o = '<a class="lnk-q" href="' . h($r['_fiche']) . '">' . $o . '</a>';
+            return $o . (!empty($r['bloque']) ? ' <span class="pill bad">Bloqué</span>' : '');
         case 'camp': return '<b>' . h($v) . '</b>' . (!empty($r['token']) ? ' <a class="ext" href="camp_details.php?t=' . h(rawurlencode((string)$r['token'])) . '" target="_blank" rel="noopener noreferrer" title="Voir la page publique">' . ic('external', 'ic ic-sm') . '</a>' : '');
         case 'money': return adm_money($v);
         case 'int': return (string)(int)$v;
@@ -82,14 +86,17 @@ adm_head($E['label']);
   <?php foreach ($rows as $r):
       if ($key === 'virements') $r['commission'] = (float)$r['montant_total'] - (float)$r['montant_apres_commission'];
       $id = (int)$r['id'];
+      $tok = adm_tok('t:' . $E['table'], $id);
+      $r['_fiche'] = ($E['fiche'] ?? '') === 'user' && adm_can('users.read') ? 'admin_user.php?t=' . adm_tok('u', $id) : ((($E['fiche'] ?? '') === 'orga' && adm_can('orgas.read')) ? 'admin_orga.php?t=' . fin_orga_tok($id) : '');
   ?>
     <tr>
       <?php foreach ($E['cols'] as $col => [$label, $type]): ?><td data-l="<?= h($label) ?>"><?= cell($col, $type, $r) ?></td><?php endforeach; ?>
       <td class="acts">
-        <?php if (!empty($E['edit'])): ?><a class="ib" href="admin_db.php?t=<?= h(rawurlencode($E['table'])) ?>&amp;pk=<?= $id ?>" title="Éditer la fiche" aria-label="Éditer"><?= ic('edit') ?></a><?php endif; ?>
+        <?php if ($r['_fiche'] !== ''): ?><a class="ib" href="<?= h($r['_fiche']) ?>" title="Ouvrir la fiche" aria-label="Ouvrir la fiche"><?= ic('eye') ?></a><?php endif; ?>
+        <?php if (!empty($E['edit']) && adm_can('tech.db')): ?><a class="ib" href="admin_db.php?t=<?= h(rawurlencode($E['table'])) ?>&amp;pk=<?= $id ?>" title="Éditer la fiche" aria-label="Éditer"><?= ic('edit') ?></a><?php endif; ?>
         <?php foreach ($E['actions'] as [$act, $label, $icon, $tone, $cond, $sens, $confirm]):
             if (!$cond($r)) continue; ?>
-          <button type="button" class="ib <?= h($tone) ?>" data-act="<?= h($act) ?>" data-id="<?= $id ?>" data-e="<?= h($key) ?>" title="<?= h($label) ?>" aria-label="<?= h($label) ?>"
+          <button type="button" class="ib <?= h($tone) ?>" data-act="<?= h($act) ?>" data-id="<?= h($tok) ?>" data-e="<?= h($key) ?>" title="<?= h($label) ?>" aria-label="<?= h($label) ?>"
             <?= $confirm !== '' ? 'data-confirm="' . h($confirm) . '"' : '' ?>
             <?= $act === 'contact.reply' ? 'data-from="' . h(trim($r['prenom'] . ' ' . $r['nom']) . ' <' . $r['email'] . '>') . '" data-msg="' . h($r['message']) . '"' : '' ?>
             <?= $act === 'virement.iban' ? 'data-name="' . h($r['nom_organisme']) . '"' : '' ?>><?= ic($icon) ?></button>

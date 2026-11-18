@@ -184,7 +184,7 @@
   function listActions() {
     document.querySelectorAll('button[data-act]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var act = b.dataset.act, id = +b.dataset.id, e = b.dataset.e;
+        var act = b.dataset.act, id = b.dataset.id, e = b.dataset.e;
         var run = function (extra) {
           b.disabled = true;
           return api(Object.assign({ a: 'act', act: act, id: id, e: e }, extra || {})).then(function (j) { b.disabled = false; return j; }, function (err) { b.disabled = false; throw err; });

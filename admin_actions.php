@@ -90,6 +90,43 @@ function act_mois(array $in): string {
 }
 
 return [
+    'user.verify' => ['users.write', false, function (array $in) {
+        global $pdo;
+        $u = act_user($in);
+        $pdo->prepare("UPDATE users SET is_verified = 1 WHERE id = ?")->execute([$u['id']]);
+        adm_audit('user.verify', 'users#' . $u['id'], $u['email'], ['is_verified' => 0], ['is_verified' => 1]);
+        return ['msg' => 'Compte marqué comme vérifié.'];
+    }],
+    'user.block' => ['users.write', true, function (array $in) {
+        global $pdo;
+        $u = act_user($in);
+        if ((int)$u['id'] === (int)$_SESSION['user']['id'] || (int)$u['is_admin'] === 1) throw new AdmUserError('Retirez d’abord ce compte de l’équipe.');
+        $n = (int)$u['bloque'] ? 0 : 1;
+        $pdo->prepare("UPDATE users SET bloque = ?, remember_token = NULL WHERE id = ?")->execute([$n, $u['id']]);
+        adm_audit('user.block', 'users#' . $u['id'], $u['email'], ['bloque' => (int)$u['bloque']], ['bloque' => $n]);
+        return ['msg' => $n ? 'Compte bloqué.' : 'Compte débloqué.'];
+    }],
+    'user.rgpd_unlock' => ['users.rgpd', true, function (array $in) { return []; }],
+    'user.rgpd_delete' => ['users.rgpd', true, function (array $in) {
+        global $pdo;
+        require_once __DIR__ . '/api/rgpd_lib.php';
+        $u = act_user($in);
+        if ($o = rgpd_obstacle($pdo, (int)$u['id'])) throw new AdmUserError($o);
+        $snap = adm_snap('users', 'id', (int)$u['id'], ['email', 'nom', 'prenom', 'created_at']);
+        rgpd_delete_account($pdo, (int)$u['id']);
+        adm_audit('rgpd_suppression_admin', 'users#' . $u['id'], null, $snap, null);
+        return ['msg' => 'Compte supprimé.'];
+    }],
+    'orga.sync' => ['orgas.write', false, function (array $in) {
+        global $pdo;
+        require_once __DIR__ . '/api/finance_lib.php';
+        require_once __DIR__ . '/api/orga_lib.php';
+        $oid = fin_orga_from_tok($pdo, (string)($in['o'] ?? ''));
+        if (!$oid) throw new AdmUserError('Organisme introuvable.');
+        $acc = fin_sync_account($pdo, $oid);
+        adm_audit('orga_stripe_sync', "organisateurs#$oid");
+        return ['msg' => $acc ? 'Statut Stripe mis à jour.' : 'Pas de compte Stripe ou Stripe injoignable.'];
+    }],
     'compta.close' => ['compta.close', true, function (array $in) {
         global $pdo;
         require_once __DIR__ . '/api/compta_lib.php';

@@ -31,7 +31,7 @@ function adm_err(Throwable $e): string {
     }
     return 'Opération impossible.';
 }
-function need_id(array $in): int { $id = (int)($in['id'] ?? 0); if ($id <= 0) throw new AdmUserError('Identifiant manquant.'); return $id; }
+function need_id(array $in, string $table): int { $id = adm_untok('t:' . $table, (string)($in['id'] ?? '')); if ($id <= 0) throw new AdmUserError('Élément introuvable.'); return $id; }
 function ok(array $extra = []) { adm_json(['ok' => true] + $extra); }
 
 /* -------------------------------------------------------- base de données */
@@ -108,7 +108,8 @@ try {
         if (in_array($act, ['user.block', 'row.delete', 'camp.delete', 'virement.done', 'virement.iban'], true)) adm_need_reauth_api();
         if (adm_limited('write', 'u' . $uid, 90, 1)) adm_json(['error' => 'Trop d\'actions en peu de temps. Patientez une minute.'], 429);
         adm_hit('write', 'u' . $uid);
-        $id = need_id($in);
+        $tbl = ['user' => 'users', 'camp' => 'camps', 'boost' => 'camps', 'virement' => 'virements', 'contact' => 'contact_messages'][explode('.', $act)[0]] ?? (($ents[(string)($in['e'] ?? '')] ?? [])['table'] ?? '');
+        $id = need_id($in, $tbl);
         $snapT = ['user' => ['users', ['is_directeur', 'demande_en_cours', 'is_refused', 'is_verified']], 'camp' => ['camps', ['valide', 'en_attente', 'refuse', 'prive', 'supprime']],
                   'boost' => ['camps', ['boost_vedette_fin', 'boost_urgence_fin', 'date_bump']], 'virement' => ['virements', ['effectue', 'date_virement_effectue']]][explode('.', $act)[0]] ?? null;
         $snapBefore = $snapT ? adm_snap($snapT[0], 'id', $id, $snapT[1]) : null;
