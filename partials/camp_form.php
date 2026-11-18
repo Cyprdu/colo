@@ -364,8 +364,9 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+const CSRF = (document.querySelector('meta[name=csrf]') || {}).content || '';
 async function api(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify(body) });
     let d = {}; try { d = await r.json(); } catch (e) {}
     if (!r.ok) throw new Error(d.error || d.message || 'Une erreur est survenue.');
     return d;
@@ -820,13 +821,13 @@ async function envoyer(confirmInscrits) {
             const e = SM.eff(s), inh = !s.principal && s.herit.visuels;
             const mode = inh ? 'inherit' : (s.img ? 'file' : 'keep');
             if (mode === 'file') fd.append('image_' + s.key, s.img);
-            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, champs: e.champs, etapes: e.etapes, image: mode, image_url: (s.snap.image_url || '') };
+            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, champs: e.champs, etapes: e.etapes, anim: e.anim || null, image: mode, image_url: (s.snap.image_url || '') };
         });
         const openTok = SM.list.map(s => s.token).find(Boolean) || '';
         fd.set('payload', JSON.stringify({ common: { nom: $('f-nom').value, organisateur_id: $('orga-select').value, categories: CP.value() }, sessions, confirm_inscrits: !!confirmInscrits }));
         fd.set('token', openTok);
         SM.saving = true;
-        const r = await fetch(openTok ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
+        const r = await fetch(openTok ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': CSRF } });
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (r.status === 409 && d.confirm) {
             SM.saving = false; btn.disabled = false; btn.textContent = label;
@@ -834,14 +835,6 @@ async function envoyer(confirmInscrits) {
             return;
         }
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
-        // Réglages des animateurs : par session (recrutement moncamp.fr, inscription de l'équipe), une fois les sessions enregistrées
-        if (window.AnimModes) {
-            for (const s of SM.list) {
-                const tk = d.tokens && d.tokens[s.key]; if (!tk) continue;
-                try { const e = SM.eff(s); if (e.anim) { $('am-recrute').checked = false; $('am-equipe').checked = false; AnimModes.load(clone(e.anim)); await AnimModes.save(tk); } }
-                catch (animErr) { await ColoUI.alert(ColoUI.friendly(animErr) + ' Vous pouvez les régler dans « Gestion des animateurs ».', { tone: 'err' }); }
-            }
-        }
         const go = () => { location.href = 'mes_camps.php?ok=' + (openTok ? 'updated' : 'created'); };
         if ((d.motscles_refuses || []).length) { msg.textContent = 'Séjour enregistré. Mots-clés refusés : ' + d.motscles_refuses.map(r => '« ' + r.label + ' » (' + r.raison + ')').join(' ; '); setTimeout(go, 4500); } else go();
     } catch (err) {

@@ -135,23 +135,26 @@ function equipe_config(PDO $pdo, array $camp): array {
 /** Enregistre la configuration (A + B) d'un séjour DÉJÀ vérifié comme appartenant au directeur. Retourne un message d'erreur ou null. */
 function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
     equipe_ensure($pdo);
-    $campId = (int)$camp['id'];
+    $p = equipe_preparer($in);
+    if (is_string($p)) return $p;
+    try { equipe_ecrire($pdo, (int)$camp['id'], $p); }
+    catch (Throwable $ex) { error_log('equipe_enregistrer: ' . $ex->getMessage()); return 'Enregistrement impossible.'; }
+    return null;
+}
 
-    // (A) recrutement via moncamp.fr
+/** Valide la configuration (A + B) sans rien écrire : tableau prêt pour equipe_ecrire(), ou message d'erreur. */
+function equipe_preparer(array $in): array|string {
+    $out = ['A' => null, 'B' => null];
     if (array_key_exists('recrute', $in)) {
         $rem = null;
         if (!empty($in['recrute']) && isset($in['remuneration']) && $in['remuneration'] !== '' && $in['remuneration'] !== null) {
             if (!is_numeric($in['remuneration']) || (float)$in['remuneration'] < 0 || (float)$in['remuneration'] > 100000) return 'Rémunération invalide.';
             $rem = round((float)$in['remuneration'], 2);
         }
-        $r = !empty($in['recrute']) ? 1 : 0;
-        $pdo->prepare("UPDATE camps SET recrute_animateurs = ?, gestion_animateur = ?, anim_mode = ?, anim_remuneration = ? WHERE id = ?")
-            ->execute([$r, $r, $r ? 'recrute' : 'aucun', $rem, $campId]);
+        $out['A'] = [!empty($in['recrute']) ? 1 : 0, $rem];
     }
-
-    // (B) inscription de l'équipe
     $e = $in['equipe'] ?? null;
-    if (!is_array($e)) return null;
+    if (!is_array($e)) return $out;
     $active = !empty($e['active']) ? 1 : 0;
     $visib = ($e['visibilite'] ?? 'prive') === 'public' ? 'public' : 'prive';
     $ageMin = isset($e['age_min']) && is_numeric($e['age_min']) && (int)$e['age_min'] > 0 ? min((int)$e['age_min'], 99) : null;
@@ -185,11 +188,24 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
         }
         $cleanC[] = [(int)($c['id'] ?? 0), $lib, $type, $opts, !empty($c['obligatoire']) ? 1 : 0, $i];
     }
+    $out['B'] = compact('active', 'visib', 'ageMin', 'quota', 'infos', 'cleanT', 'cleanC') + ['renouveler' => !empty($e['renouveler_lien'])];
+    return $out;
+}
 
-    $pdo->beginTransaction();
+/** Écrit une configuration validée par equipe_preparer() ; s'insère dans la transaction en cours s'il y en a une (création du séjour). */
+function equipe_ecrire(PDO $pdo, int $campId, array $p): void {
+    if ($p['A']) {
+        [$r, $rem] = $p['A'];
+        $pdo->prepare("UPDATE camps SET recrute_animateurs = ?, gestion_animateur = ?, anim_mode = ?, anim_remuneration = ? WHERE id = ?")
+            ->execute([$r, $r, $r ? 'recrute' : 'aucun', $rem, $campId]);
+    }
+    if (!$p['B']) return;
+    extract($p['B']);
+    $own = !$pdo->inTransaction();
+    if ($own) $pdo->beginTransaction();
     try {
         $pdo->prepare("UPDATE camps SET equipe_active = ?, equipe_age_min = ?, equipe_quota = ?, equipe_visibilite = ?, equipe_infos = ? WHERE id = ?")->execute([$active, $ageMin, $quota, $visib, json_encode($infos), $campId]);
-        if ($active) equipe_lien_principal($pdo, $campId, $visib, !empty($e['renouveler_lien']));
+        if ($active) equipe_lien_principal($pdo, $campId, $visib, $renouveler);
         else $pdo->prepare("UPDATE animateur_liens SET actif = 0 WHERE token = (SELECT equipe_lien FROM camps WHERE id = ?) AND camp_id = ?")->execute([$campId, $campId]);
         // Tarifs : on remplace tout (les inscriptions existantes gardent le nom et le prix payés)
         $pdo->prepare("DELETE FROM equipe_tarifs WHERE camp_id = ?")->execute([$campId]);
@@ -209,13 +225,11 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
         }
         $del = array_diff($exist, $keep);
         if ($del) $pdo->prepare("DELETE FROM equipe_champs WHERE camp_id = ? AND id IN (" . implode(',', array_fill(0, count($del), '?')) . ")")->execute(array_merge([$campId], array_values($del)));
-        $pdo->commit();
+        if ($own) $pdo->commit();
     } catch (Throwable $ex) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log('equipe_enregistrer: ' . $ex->getMessage());
-        return 'Enregistrement impossible.';
+        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        throw $ex;
     }
-    return null;
 }
 
 /** Paiement confirmé (webhook) : marque les inscriptions d'équipe et alimente la comptabilité. Retourne le nombre de lignes comptabilisées. */

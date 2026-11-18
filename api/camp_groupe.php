@@ -128,6 +128,7 @@ function camp_libelle_session(array $data): string {
 function camp_sauver_groupe(PDO $pdo, int $uid, string $openToken, array $p): array {
     options_ensure($pdo); attente_ensure($pdo); etapes_ensure($pdo); champs_ensure($pdo);
     require_once __DIR__ . '/geocode.php'; geo_ensure($pdo);
+    require_once __DIR__ . '/animateurs.php'; require_once __DIR__ . '/equipe.php'; anim_ensure($pdo); equipe_ensure($pdo);
 
     $common = (array)($p['common'] ?? []);
     $sessions = array_values((array)($p['sessions'] ?? []));
@@ -161,7 +162,9 @@ function camp_sauver_groupe(PDO $pdo, int $uid, string $openToken, array $p): ar
         [$data, $tarifIds, $err, $classement] = camp_lire_formulaire($pdo, $uid, $in);
         if ($err) throw new CampException(count($sessions) > 1 ? 'Session ' . camp_libelle_session(['date_debut' => $in['date_debut'] ?? '']) . ' : ' . $err : $err);
         try { camp_valider_champs($s['champs'] ?? []); } catch (InvalidArgumentException $e) { throw new CampException('Session ' . camp_libelle_session($data) . ' : ' . $e->getMessage()); }
-        $prep[$key] = ['s' => $s, 'in' => $in, 'data' => $data, 'tarifs' => $tarifIds, 'classement' => $classement, 'row' => $row, 'key' => $key];
+        $anim = is_array($s['anim'] ?? null) ? equipe_preparer($s['anim']) : null;
+        if (is_string($anim)) throw new CampException('Animateurs, session ' . camp_libelle_session($data) . ' : ' . $anim);
+        $prep[$key] = ['s' => $s, 'in' => $in, 'data' => $data, 'tarifs' => $tarifIds, 'classement' => $classement, 'row' => $row, 'key' => $key, 'anim' => $anim];
         if (!empty($classement['motscles']['refus'])) $refus = array_merge($refus, $classement['motscles']['refus']);
     }
     if ($principalKey === null) $principalKey = array_key_first($prep);
@@ -243,6 +246,7 @@ function camp_sauver_groupe(PDO $pdo, int $uid, string $openToken, array $p): ar
             etapes_enregistrer($pdo, $id, !empty($data['itinerant']), $x['in']['etapes'] ?? '[]');
             camp_enregistrer_classement($pdo, $id, $x['classement']);
             champs_enregistrer($pdo, $id, (array)($x['s']['champs'] ?? []));
+            if ($x['anim']) equipe_ecrire($pdo, $id, $x['anim']);
             $ids[] = $id;
             $tokens[$key] = $row ? $row['token'] : $data['token'];
         }

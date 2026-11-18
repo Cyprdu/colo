@@ -9,6 +9,8 @@ header('Content-Type: application/json; charset=utf-8');
 function fin(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d); exit; }
 if (empty($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) fin(['success' => false, 'message' => 'Accès interdit.'], 403);
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fin(['success' => false, 'message' => 'Méthode non autorisée.'], 405);
+require_once 'security.php';
+if (!csrf_check()) fin(['success' => false, 'message' => 'Session expirée : rechargez la page puis réessayez.'], 403);
 
 try {
     $p = json_decode((string)($_POST['payload'] ?? ''), true);

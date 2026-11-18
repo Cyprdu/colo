@@ -54,7 +54,7 @@ document.getElementById('create-org-form').addEventListener('submit', async func
     try {
         const response = await fetch('api/create_organisateur.php', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (document.querySelector('meta[name=csrf]') || {}).content || '' },
             body: JSON.stringify(formData)
         });
         const result = await response.json();
