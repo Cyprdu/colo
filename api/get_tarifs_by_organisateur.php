@@ -5,6 +5,7 @@ if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Non connecté'], 40
 
 require_once 'orga_lib.php';
 $organisateurId = !empty($_GET['o']) ? fin_orga_from_tok($pdo, (string)$_GET['o'], (int)$_SESSION['user']['id']) : null; // jeton public
+if (!empty($_GET['o']) && !$organisateurId) sendJson([]); // jeton inconnu ou organisme d'un autre utilisateur
 
 try {
     require_once 'tarifs.php';

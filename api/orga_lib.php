@@ -54,21 +54,22 @@ function fin_orga_from_tok(PDO $pdo, string $tok, ?int $userId = null): int {
 }
 
 /**
- * Organisme demandé par la page (?o=jeton), réservé à son propriétaire ou à un admin ; 404 sinon.
+ * Organisme demandé par la page (?o=jeton, ou champ POST o), réservé à son propriétaire ou à un admin ; 404 sinon.
  * Ancienne URL numérique (?$legacy=13) : 404 pour un non-admin, redirection vers l'URL à jeton pour un admin.
  */
 function fin_orga_request(PDO $pdo, string $legacy = 'organisateur_id'): int {
     $userId = (int)($_SESSION['user']['id'] ?? 0);
     $admin = !empty($_SESSION['user']['is_admin']);
     $num = $_GET[$legacy] ?? null;
-    if ($num !== null && ctype_digit((string)$num) && !isset($_GET['o'])) {
+    $tok = (string)($_GET['o'] ?? $_POST['o'] ?? '');
+    if ($num !== null && ctype_digit((string)$num) && $tok === '') {
         if ($admin && ($t = fin_orga_tok((int)$num, $pdo)) !== '') {
             $q = $_GET; unset($q[$legacy]); $q = ['o' => $t] + $q;
             header('Location: ' . strtok($_SERVER['REQUEST_URI'] ?? '', '?') . '?' . http_build_query($q), true, 302); exit;
         }
         fin_orga_404();
     }
-    $id = $userId ? fin_orga_from_tok($pdo, (string)($_GET['o'] ?? ''), $admin ? null : $userId) : 0;
+    $id = $userId ? fin_orga_from_tok($pdo, $tok, $admin ? null : $userId) : 0;
     if (!$id) fin_orga_404();
     return $id;
 }
