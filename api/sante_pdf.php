@@ -52,7 +52,7 @@ function fiche_pdf_officielle(array $val, callable $t, ?string $signature): stri
         try { file_put_contents($tmp, $signature); $pdf->Image($tmp, $x, $y, $w, $h, 'JPG'); } finally { @unlink($tmp); }
     }
     $pdf->SetFont('Arial', 'I', 6); $pdf->SetTextColor(120, 120, 120); $pdf->SetXY(165, $H - 6);
-    $pdf->Cell(125, 3, $t('Signée en ligne sur ColoMap le ' . $val['date'] . ' par ' . $val['signataire']), 0, 0, 'R');
+    $pdf->Cell(125, 3, $t('Signée en ligne sur moncamp.fr le ' . $val['date'] . ' par ' . $val['signataire']), 0, 0, 'R');
     return $pdf->Output('S');
 }
 

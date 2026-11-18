@@ -35,7 +35,7 @@ if ($is_director) {
     $tiles[] = ['mes_camps.php', 'fa-campground', 'Mes séjours', 'Sessions, inscrits et visibilité'];
 }
 ?>
-<title>Mon espace - ColoMap</title>
+<title>Mon espace - moncamp.fr</title>
 
 <main class="ds-page">
     <section class="flex flex-wrap items-center gap-5">

@@ -116,7 +116,7 @@ function pct($v) { return $v === null ? '-' : number_format($v * 100, 1, ',', ' 
             </table>
         </div>
         <p class="mk-note" style="margin-top:12px">Les termes sont agrégés et anonymes : aucun visiteur n'est identifiable. Un terme fréquent qui ne vous amène personne peut devenir un <b>mot-clé</b> de votre séjour (dans « Modifier le séjour »).
-            <?php if ($sansResultat): ?> Termes souvent tapés sur ColoMap sans résultat : <?= htmlspecialchars(implode(', ', array_column($sansResultat, 'terme'))) ?>.<?php endif; ?></p>
+            <?php if ($sansResultat): ?> Termes souvent tapés sur moncamp.fr sans résultat : <?= htmlspecialchars(implode(', ', array_column($sansResultat, 'terme'))) ?>.<?php endif; ?></p>
     </section>
 
     <section class="mk-section" style="margin-top:28px">

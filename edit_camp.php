@@ -41,6 +41,6 @@ $paysList = ["France", "Belgique", "Suisse", "Espagne", "Italie", "Royaume-Uni",
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Modifier le séjour - ColoMap</title>
+<title>Modifier le séjour - moncamp.fr</title>
 <?php include 'partials/camp_form.php'; ?>
 <?php require_once 'partials/footer.php'; ?>

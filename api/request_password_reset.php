@@ -32,7 +32,7 @@ try {
         // 4. Envoyer l'email
         $server = $_SERVER['SERVER_NAME'];
         $link = "https://" . $server . "/reset_password.php?t=" . $token;
-        $logoUrl = "https://veyret.freeboxos.fr:45474/share/PSu2SneCf_lg32kW/favico.png";
+        $logoUrl = "https://moncamp.fr/favico.png";
         $prenom = htmlspecialchars($user['prenom']);
 
         $subject = "Réinitialisation de votre mot de passe";
@@ -53,7 +53,7 @@ try {
         <body>
             <div class='container'>
                 <div class='header'>
-                    <img src='$logoUrl' alt='ColoMap'>
+                    <img src='$logoUrl' alt='moncamp.fr'>
                 </div>
                 <div class='content'>
                     <h2>Mot de passe oublié ?</h2>
@@ -61,7 +61,7 @@ try {
                     <a href='$link' class='btn'>Changer mon mot de passe</a>
                     <p style='font-size:13px; color:#777;'>Ce lien est valide pendant 1 heure.<br>Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>
                 </div>
-                <div class='footer'>&copy; ColoMap " . date('Y') . "</div>
+                <div class='footer'>&copy; moncamp.fr " . date('Y') . "</div>
             </div>
         </body>
         </html>
@@ -71,7 +71,7 @@ try {
             sendMailGmail($email, "$prenom " . $user['nom'], $subject, $body);
         } else {
             // Fallback
-            $headers = "MIME-Version: 1.0\r\nContent-type:text/html;charset=UTF-8\r\nFrom: ColoMap <no-reply@$server>";
+            $headers = "MIME-Version: 1.0\r\nContent-type:text/html;charset=UTF-8\r\nFrom: moncamp.fr <no-reply@$server>";
             mail($email, $subject, $body, $headers);
         }
     }

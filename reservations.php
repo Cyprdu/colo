@@ -62,7 +62,7 @@ function resaImg($url) {
     return (preg_match('#^(https?:)?//#', $url) || strpos($url, 'uploads/') === 0) ? $url : 'uploads/camps/' . ltrim($url, '/');
 }
 ?>
-<title>Mes réservations - ColoMap</title>
+<title>Mes réservations - moncamp.fr</title>
 <style>
     .rs-tab { padding:10px 18px; border-radius:9999px; font-size:14px; font-weight:700; color:#3b4a54; border:1.5px solid #e5e7eb; background:#fff; transition:all .15s ease; }
     .rs-tab:hover { background:#f1f3f5; }

@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
-<title>Nous contacter - ColoMap</title>
+<title>Nous contacter - moncamp.fr</title>
 <style>
     .faq-item { border: 1.5px solid #e5e7eb; border-radius: 16px; background: #fff; transition: border-color .15s ease, box-shadow .2s ease; }
     .faq-item[open] { border-color: #a9b8c6; box-shadow: 0 8px 24px rgba(38, 52, 59, .07); }
@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </details>
             <details class="faq-item">
                 <summary><span>Je suis un organisateur, comment proposer mes séjours ?</span><span class="chev"><i class="fa-solid fa-chevron-down"></i></span></summary>
-                <div class="faq-answer">ColoMap est ouvert aux organisateurs professionnels. Vous devez créer un compte "Directeur" ou faire une demande pour le devenir. 
+                <div class="faq-answer">moncamp.fr est ouvert aux organisateurs professionnels. Vous devez créer un compte "Directeur" ou faire une demande pour le devenir. 
                         Rendez-vous dans la section <a href="organisateurs.php" class="font-bold underline text-[#3d6a8e]">Espace Organisateur</a> pour en savoir plus et commencer vos démarches.</div>
             </details>
             <details class="faq-item">

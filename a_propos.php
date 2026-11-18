@@ -3,13 +3,13 @@
 $ads_enabled = true;
 require_once 'partials/header3.php';
 ?>
-<title>À propos de ColoMap - Colonies de vacances et séjours pour enfants</title>
-<meta name="description" content="ColoMap aide les familles à trouver et réserver une colonie de vacances en toute confiance, et les organisateurs à gérer leurs inscriptions.">
+<title>À propos de moncamp.fr - Colonies de vacances et séjours pour enfants</title>
+<meta name="description" content="moncamp.fr aide les familles à trouver et réserver une colonie de vacances en toute confiance, et les organisateurs à gérer leurs inscriptions.">
 
 <main class="flex-1 w-full max-w-3xl mx-auto px-6 py-14">
     <p class="text-[13px] font-bold uppercase tracking-widest text-[#3d6a8e]">À propos</p>
     <h1 class="mt-2 text-[34px] md:text-[42px] font-extrabold text-[#26343b] leading-tight">Trouver la bonne colonie, sans prise de tête</h1>
-    <p class="mt-4 text-[18px] text-[#4b5964] leading-relaxed">ColoMap rassemble les séjours de vacances pour enfants et adolescents (colonies, camps, stages) et met les familles directement en relation avec les organisateurs. Notre idée : que choisir, réserver et suivre un séjour soit aussi simple et rassurant que possible, pour les parents comme pour les équipes qui l'organisent.</p>
+    <p class="mt-4 text-[18px] text-[#4b5964] leading-relaxed">moncamp.fr rassemble les séjours de vacances pour enfants et adolescents (colonies, camps, stages) et met les familles directement en relation avec les organisateurs. Notre idée : que choisir, réserver et suivre un séjour soit aussi simple et rassurant que possible, pour les parents comme pour les équipes qui l'organisent.</p>
 
     <h2 class="mt-12 text-[24px] font-extrabold text-[#26343b]">Comment ça marche</h2>
     <ol class="mt-5 space-y-5">
@@ -21,7 +21,7 @@ require_once 'partials/header3.php';
     <h2 class="mt-12 text-[24px] font-extrabold text-[#26343b]">Ce que nous garantissons</h2>
     <ul class="mt-5 grid sm:grid-cols-2 gap-4">
         <li class="rounded-2xl bg-[#f8f5ea] p-5"><b class="block text-[#26343b]">Des séjours vérifiés</b><span class="text-[14.5px] text-[#4b5964]">Chaque séjour est examiné avant sa publication et peut être signalé ou retiré en cas de manquement.</span></li>
-        <li class="rounded-2xl bg-[#f8f5ea] p-5"><b class="block text-[#26343b]">Des paiements sécurisés</b><span class="text-[14.5px] text-[#4b5964]">Les cartes sont traitées par Stripe ; ColoMap ne conserve aucune donnée bancaire.</span></li>
+        <li class="rounded-2xl bg-[#f8f5ea] p-5"><b class="block text-[#26343b]">Des paiements sécurisés</b><span class="text-[14.5px] text-[#4b5964]">Les cartes sont traitées par Stripe ; moncamp.fr ne conserve aucune donnée bancaire.</span></li>
         <li class="rounded-2xl bg-[#f8f5ea] p-5"><b class="block text-[#26343b]">Des données protégées</b><span class="text-[14.5px] text-[#4b5964]">Les informations de l'enfant ne sont transmises qu'à l'organisateur du séjour réservé. <a class="underline" href="legal#confidentialite">En savoir plus</a>.</span></li>
         <li class="rounded-2xl bg-[#f8f5ea] p-5"><b class="block text-[#26343b]">Une équipe joignable</b><span class="text-[14.5px] text-[#4b5964]">Une question, un problème ? <a class="underline" href="contact">Écrivez-nous</a>, nous répondons.</span></li>
     </ul>
@@ -32,7 +32,7 @@ require_once 'partials/header3.php';
     <p class="mt-4 text-[#3b4a54] leading-relaxed">Les organismes publient leurs séjours, définissent leurs tarifs, leurs sessions et leurs propres questions d'inscription, suivent les dossiers des enfants et échangent avec les familles depuis un seul tableau de bord. Les animateurs (BAFA ou non) peuvent consulter les missions ouvertes et se porter candidats. Voir l'<a class="text-[#3d6a8e] underline" href="aide#organisateurs">aide pour les organisateurs</a>.</p>
 
     <h2 class="mt-12 text-[24px] font-extrabold text-[#26343b]">Financement du site</h2>
-    <p class="mt-4 text-[#3b4a54] leading-relaxed">ColoMap est gratuit pour les familles. Le service est financé par la publicité affichée sur les pages d'information, avec votre consentement pour les annonces personnalisées, et par les services proposés aux organisateurs. Les annonces publicitaires sont toujours signalées comme telles et n'influencent pas le classement des séjours. En revanche, un organisateur peut sponsoriser son séjour pour le mettre en avant : ces séjours portent la mention « Sponsorisé » et peuvent apparaître mieux placés, en plus de la pertinence, de la disponibilité et de la date.</p>
+    <p class="mt-4 text-[#3b4a54] leading-relaxed">moncamp.fr est gratuit pour les familles. Le service est financé par la publicité affichée sur les pages d'information, avec votre consentement pour les annonces personnalisées, et par les services proposés aux organisateurs. Les annonces publicitaires sont toujours signalées comme telles et n'influencent pas le classement des séjours. En revanche, un organisateur peut sponsoriser son séjour pour le mettre en avant : ces séjours portent la mention « Sponsorisé » et peuvent apparaître mieux placés, en plus de la pertinence, de la disponibilité et de la date.</p>
 
     <div class="mt-12 rounded-3xl bg-[#2f3d45] text-white p-8 text-center">
         <p class="text-[22px] font-extrabold">Prêt à trouver le séjour idéal ?</p>

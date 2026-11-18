@@ -2,7 +2,7 @@
 // api/animateurs.php : bibliothèque de la gestion des animateurs (aucun point d'entrée HTTP).
 //
 // Deux options INDÉPENDANTES par séjour, choisies par le directeur :
-//   (A) camps.recrute_animateurs = 1 : « Recruter des animateurs via ColoMap » -> le séjour apparaît dans le catalogue réservé
+//   (A) camps.recrute_animateurs = 1 : « Recruter des animateurs via moncamp.fr » -> le séjour apparaît dans le catalogue réservé
 //       aux animateurs, candidatures à valider, rémunération éventuelle (camps.anim_remuneration, NULL = non rémunéré)
 //   (B) camps.equipe_active = 1 : « Inscription de mon équipe d'animation » -> formulaire réservé à SES animateurs (api/equipe.php),
 //       accessible par lien (table animateur_liens : jeton aléatoire, privé ou public, révocable), jamais listé dans le catalogue.

@@ -1,5 +1,5 @@
 <?php
-// mes_donnees.php : mes données personnelles (RGPD) : ce que ColoMap conserve, export, suppression du compte.
+// mes_donnees.php : mes données personnelles (RGPD) : ce que moncamp.fr conserve, export, suppression du compte.
 require_once 'api/config.php';
 require_once 'api/security.php';
 require_once 'api/rgpd_lib.php';
@@ -38,7 +38,7 @@ try {
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Mes données personnelles - ColoMap</title>
+<title>Mes données personnelles - moncamp.fr</title>
 <main class="ds-page" style="max-width:820px">
     <a href="edit_profile" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

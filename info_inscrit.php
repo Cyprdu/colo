@@ -56,7 +56,7 @@ $steps = [['Inscription', date('d/m/Y', strtotime($m['date_inscription']))], ['V
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Dossier de <?= htmlspecialchars($m['enfant_prenom']) ?> - ColoMap</title>
+<title>Dossier de <?= htmlspecialchars($m['enfant_prenom']) ?> - moncamp.fr</title>
 <style>
     .ii-card { background:#fff; border:1px solid #e5e7eb; border-radius:24px; }
     .ii-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#6b7780; }

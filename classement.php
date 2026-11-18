@@ -5,7 +5,7 @@ require_once 'api/search_lib.php';
 
 $ads_enabled = false;
 $body_class = 'bg-white';
-$page_title = 'Comment sont classés les séjours - ColoMap';
+$page_title = 'Comment sont classés les séjours - moncamp.fr';
 require_once 'partials/header.php';
 
 $champs = [

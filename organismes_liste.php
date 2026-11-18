@@ -27,11 +27,11 @@ function ol_logo($u) { return str_replace(chr(92), '/', trim((string)$u)); }
 
 $ads_enabled = false;
 $body_class = 'bg-white';
-$page_title = 'Organismes de colonies de vacances et séjours pour enfants - ColoMap';
+$page_title = 'Organismes de colonies de vacances et séjours pour enfants - moncamp.fr';
 $base_href = '/';
 require_once 'partials/header.php';
 ?>
-<meta name="description" content="Annuaire des organismes qui proposent des colonies de vacances, camps et stages pour enfants et adolescents sur ColoMap : séjours, villes et thématiques.">
+<meta name="description" content="Annuaire des organismes qui proposent des colonies de vacances, camps et stages pour enfants et adolescents sur moncamp.fr : séjours, villes et thématiques.">
 <link rel="canonical" href="https://moncamp.fr/organisme">
 <main class="max-w-[1100px] mx-auto px-5 sm:px-8 py-10">
     <p class="text-[12px] font-bold uppercase tracking-widest text-[#3d6a8e]">Annuaire</p>

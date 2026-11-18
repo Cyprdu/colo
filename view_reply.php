@@ -14,7 +14,7 @@ if ($token) {
 }
 ?>
 
-<title>Réponse du support - ColoMap</title>
+<title>Réponse du support - moncamp.fr</title>
 <style>
     .reply-content a { color: var(--ds-accent); text-decoration: underline; font-weight: 600; }
     .reply-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
@@ -38,7 +38,7 @@ if ($token) {
 
     <section class="ds-card overflow-hidden" aria-label="Réponse de l'équipe">
         <div class="bg-[#2f3d45] px-6 py-4 text-white">
-            <h2 class="font-extrabold text-lg leading-tight">L'équipe ColoMap</h2>
+            <h2 class="font-extrabold text-lg leading-tight">L'équipe moncamp.fr</h2>
             <p class="text-xs text-white/70">Répondu le <?= date('d/m/Y à H:i', strtotime($message['replied_at'])) ?></p>
         </div>
         <div class="p-6 sm:p-8">

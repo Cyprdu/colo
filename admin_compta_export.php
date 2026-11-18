@@ -1,7 +1,7 @@
 <?php
 // admin_compta_export.php : exports CSV de la comptabilité (Excel FR : « ; », UTF-8 avec BOM).
 // Même garde que tout le back-office (admin vérifié en base, session liée) + ré-authentification récente exigée (données financières complètes).
-// Paramètres : t = paiements | transferts | organismes | payouts | journal ; p/du/au = période ; o = jeton d'organisme (jamais d'identifiant numérique).
+// Paramètres : t = paiements | transferts | organismes | payouts | journal | gains ; p/du/au = période ; o = jeton d'organisme (jamais d'identifiant numérique).
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
 adm_guard();

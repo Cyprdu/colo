@@ -8,7 +8,7 @@
 
             <!-- Marque -->
             <div>
-                <a href="./" class="font-display inline-block text-[24px] font-bold text-white leading-none">ColoMap</a>
+                <a href="./" aria-label="moncamp.fr, accueil"><?php require_once __DIR__ . '/logo.php'; echo mc_logo('light', true, 32); ?></a>
                 <p class="mt-3 text-[15px] leading-snug text-white/90 max-w-[230px]">Prêt à trouver une nouvelle aventure pour vos enfants ?</p>
                 <div class="mt-5 flex flex-wrap gap-2.5">
                     <button type="button" data-soon class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white hover:bg-[#161616] hover:border-white/60 transition cursor-pointer" aria-label="Télécharger dans l'App Store (bientôt disponible)">
@@ -23,8 +23,8 @@
             </div>
 
             <!-- À propos -->
-            <nav aria-label="À propos de ColoMap">
-                <h2 class="text-[16px] font-bold mb-4">À propos de ColoMap</h2>
+            <nav aria-label="À propos de moncamp.fr">
+                <h2 class="text-[16px] font-bold mb-4">À propos de moncamp.fr</h2>
                 <ul class="space-y-3 text-[15px] text-white/85">
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="a_propos">Qui sommes-nous ?</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Contactez-nous</a></li>
@@ -42,7 +42,7 @@
                 <ul class="space-y-3 text-[15px] text-white/85">
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#parents">Comment inscrire mon enfant ?</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#organisateurs">Comment puis-je devenir organisateur ?</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#paiements">Quels sont les coûts de ColoMap ?</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#paiements">Quels sont les coûts de moncamp.fr ?</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="classement">Comment sont classés les séjours ?</a></li>
                 </ul>
             </nav>
@@ -61,7 +61,7 @@
             </nav>
         </div>
 
-        <p class="mt-12 pt-6 border-t border-white/15 text-[12px] text-white/60">&copy; <?= date('Y') ?> ColoMap. Tous droits réservés.</p>
+        <p class="mt-12 pt-6 border-t border-white/15 text-[12px] text-white/60">&copy; <?= date('Y') ?> moncamp.fr. Tous droits réservés.</p>
     </div>
 </footer>
 <div id="soon-toast" role="status" aria-live="polite" class="fixed left-1/2 bottom-8 z-[100] -translate-x-1/2 translate-y-4 opacity-0 pointer-events-none transition-all duration-300 rounded-full bg-[#26343b] px-6 py-3 text-[14px] font-semibold text-white shadow-2xl">Bientôt disponible ;)</div>

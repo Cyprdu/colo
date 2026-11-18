@@ -1,6 +1,6 @@
 <?php
 // partials/anim_modes.php : réglages « animateurs » d'un séjour, en DEUX blocs distincts.
-//   (A) Recruter des animateurs via ColoMap       -> catalogue des animateurs, candidatures à valider, rémunération éventuelle
+//   (A) Recruter des animateurs via moncamp.fr       -> catalogue des animateurs, candidatures à valider, rémunération éventuelle
 //   (B) Inscription de mon équipe d'animation     -> formulaire réservé à SES animateurs, par lien privé ou public (jamais listé), participation éventuelle
 // Utilisé par partials/camp_form.php (dans le formulaire du séjour) et par demandes-animation.php (onglet « Réglages »).
 // Variables attendues : $animLegacy (bool : afficher les quotas / exigences historiques du bloc A, postés avec le formulaire du séjour),
@@ -25,10 +25,10 @@ $tk = $tick ?? '';
     <div class="rounded-2xl border-2 border-[#e5e7eb] p-5" id="am-a">
         <div class="ds-row">
             <div>
-                <div class="ds-opt-title">A. Recruter via ColoMap <details class="ds-help"><summary>?</summary><div>Le séjour apparaît dans le catalogue des animateurs inscrits sur ColoMap (avec ou sans BAFA) et vous validez leurs candidatures.<br>Exemple : un séjour sportif d'été qui cherche 6 animateurs qu'il ne connaît pas encore.</div></details></div>
-                <p class="ds-opt-sub">Les animateurs de ColoMap postulent, vous validez.</p>
+                <div class="ds-opt-title">A. Recruter via moncamp.fr <details class="ds-help"><summary>?</summary><div>Le séjour apparaît dans le catalogue des animateurs inscrits sur moncamp.fr (avec ou sans BAFA) et vous validez leurs candidatures.<br>Exemple : un séjour sportif d'été qui cherche 6 animateurs qu'il ne connaît pas encore.</div></details></div>
+                <p class="ds-opt-sub">Les animateurs de moncamp.fr postulent, vous validez.</p>
             </div>
-            <label class="ds-switch"><input type="checkbox" id="am-recrute" <?= $animLegacy ? 'name="gestion_animateur"' : '' ?> <?= $animCfg['recrute'] || ($animLegacy && !empty($camp['gestion_animateur'])) ? 'checked' : '' ?> aria-label="Recruter des animateurs via ColoMap"><span></span></label>
+            <label class="ds-switch"><input type="checkbox" id="am-recrute" <?= $animLegacy ? 'name="gestion_animateur"' : '' ?> <?= $animCfg['recrute'] || ($animLegacy && !empty($camp['gestion_animateur'])) ? 'checked' : '' ?> aria-label="Recruter des animateurs via moncamp.fr"><span></span></label>
         </div>
         <div id="am-a-body" class="mt-4 space-y-4 hidden">
             <div class="max-w-xs"><label class="ds-label" for="am-rem">Rémunération par animateur (€)</label><input id="am-rem" type="number" min="0" step="0.01" class="ds-input" placeholder="Vide = non rémunéré"></div>

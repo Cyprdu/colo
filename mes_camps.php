@@ -109,7 +109,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
 ?>
-<title>Mes séjours - ColoMap</title>
+<title>Mes séjours - moncamp.fr</title>
 <main class="ds-page" style="max-width:1200px">
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
@@ -123,7 +123,7 @@ $flash = ($_GET['ok'] ?? $_GET['success'] ?? '');
     </div>
 
     <?php if ($flash === 'created' || $flash === 'updated'): ?>
-        <div class="ds-alert-ok mb-6 font-semibold" role="status"><?= $flash === 'created' ? 'Séjour enregistré. Il sera visible sur le site dès sa validation par l’équipe ColoMap (statut « En validation » en attendant).' : 'Séjour mis à jour.' ?></div>
+        <div class="ds-alert-ok mb-6 font-semibold" role="status"><?= $flash === 'created' ? 'Séjour enregistré. Il sera visible sur le site dès sa validation par l’équipe moncamp.fr (statut « En validation » en attendant).' : 'Séjour mis à jour.' ?></div>
     <?php endif; ?>
     <?php if ($error): ?><div class="ds-alert-err mb-6" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 

@@ -9,7 +9,7 @@ if (!isset($_SESSION['user']) || !$_SESSION['user']['is_directeur']) {
 }
 ?>
 
-<title>Créer un organisme - ColoMap</title>
+<title>Créer un organisme - moncamp.fr</title>
 
 <main class="ds-page" style="max-width:680px">
     <a href="public_infos.php" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">

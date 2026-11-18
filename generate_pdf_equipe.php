@@ -25,13 +25,13 @@ class RecuEquipe extends FPDF {
     public $ref = '';
     function Header() {
         $this->SetFillColor(38, 52, 59); $this->Rect(0, 0, 210, 30, 'F');
-        $this->SetTextColor(255, 255, 255); $this->SetFont('Arial', 'B', 20); $this->SetXY(15, 9); $this->Cell(80, 10, 'ColoMap', 0, 0, 'L');
+        $this->SetTextColor(255, 255, 255); $this->SetFont('Arial', 'B', 20); $this->SetXY(15, 9); $this->Cell(80, 10, 'moncamp.fr', 0, 0, 'L');
         $this->SetFont('Arial', '', 10); $this->SetXY(95, 11); $this->Cell(100, 8, enc('Réf. ' . $this->ref), 0, 0, 'R');
         $this->SetTextColor(38, 52, 59); $this->SetY(40);
     }
     function Footer() {
         $this->SetY(-14); $this->SetFont('Arial', 'I', 8); $this->SetTextColor(120, 130, 138);
-        $this->Cell(0, 8, enc('ColoMap · moncamp.fr · Page ' . $this->PageNo()), 0, 0, 'C');
+        $this->Cell(0, 8, enc('moncamp.fr · moncamp.fr · Page ' . $this->PageNo()), 0, 0, 'C');
     }
     function Section(string $t) {
         $this->Ln(4); $this->SetFont('Arial', 'B', 11); $this->SetTextColor(107, 119, 128); $this->Cell(0, 7, enc(mb_strtoupper($t)), 0, 1);
@@ -67,6 +67,6 @@ $pdf->Row('Tarif', $e['tarif_nom'] ?: 'Participation gratuite');
 $pdf->Row($e['statut_paiement'] === 'PAYE' ? 'Montant réglé' : 'Montant', (float)$e['prix_final'] > 0 ? eur((float)$e['prix_final']) : 'Gratuit');
 if ($e['statut_paiement'] === 'PAYE') $pdf->Row('Moyen de paiement', 'Carte bancaire');
 $pdf->Ln(6); $pdf->SetFont('Arial', 'I', 9); $pdf->SetTextColor(107, 119, 128);
-$pdf->MultiCell(0, 5, enc('Ce document atteste de votre inscription à l\'équipe d\'animation du séjour. Le paiement est encaissé pour le compte de l\'organisateur par ColoMap.'), 0, 'L');
+$pdf->MultiCell(0, 5, enc('Ce document atteste de votre inscription à l\'équipe d\'animation du séjour. Le paiement est encaissé pour le compte de l\'organisateur par moncamp.fr.'), 0, 'L');
 
 $pdf->Output('I', 'recu-animateur-' . $ref . '.pdf');

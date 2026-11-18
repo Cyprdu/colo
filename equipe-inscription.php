@@ -6,7 +6,7 @@ require_once 'partials/header.php';
 $l = (string)($_GET['l'] ?? '');
 if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlencode('equipe-inscription.php?l=' . $l)); exit; }
 ?>
-<title>Inscription de l'équipe d'animation - ColoMap</title>
+<title>Inscription de l'équipe d'animation - moncamp.fr</title>
 <meta name="robots" content="noindex, nofollow">
 <main class="ds-page" style="max-width:760px">
     <p class="ds-eyebrow">Équipe d'animation</p>

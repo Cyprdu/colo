@@ -86,7 +86,7 @@ try {
         'success_url' => $site . '/inscription_confirmation.php?success=1&camp_t=' . urlencode($first['camp_token']),
         'cancel_url'  => $back,   // annulation : la réservation reste en l'état, on revient dessus
         'metadata' => ['reservation_token' => $tokensString, 'camp_id' => (string)$first['camp_id'], 'user_id' => (string)$userId, 'type' => 'multi_inscription'],
-        'payment_intent_data' => ['description' => 'ColoMap · ' . mb_substr($first['camp_nom'], 0, 120) . ' · ' . $label, 'metadata' => ['reservation_token' => $tokensString]],
+        'payment_intent_data' => ['description' => 'moncamp.fr · ' . mb_substr($first['camp_nom'], 0, 120) . ' · ' . $label, 'metadata' => ['reservation_token' => $tokensString]],
     ];
     if (!empty($_SESSION['user']['email'])) $params['customer_email'] = $_SESSION['user']['email'];
 

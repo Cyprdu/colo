@@ -5,7 +5,7 @@ require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redirect=' . urlencode('profil-animateur.php')); exit; }
 $back = (isset($_GET['retour']) && preg_match('/^[a-z0-9_.\-?=&]{1,200}$/i', $_GET['retour'])) ? $_GET['retour'] : '';
 ?>
-<title>Mon profil d'animateur - ColoMap</title>
+<title>Mon profil d'animateur - moncamp.fr</title>
 <main class="ds-page" style="max-width:760px">
     <p class="ds-eyebrow">Espace animateur</p>
     <h1 class="ds-h1">Mon profil de candidature</h1>

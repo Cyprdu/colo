@@ -153,7 +153,7 @@ if (isset($_GET['error']) && $_GET['error'] == 'google_auth_failed') {
 }
 
 // 5. Page d'entrée (écran partagé : scène de colonie + formulaire)
-$auth_title    = 'Connexion - ColoMap';
+$auth_title    = 'Connexion - moncamp.fr';
 $scene_kicker  = 'Bon retour parmi nous';
 $scene_title   = "Entrez dans l'aventure.";
 $scene_text    = 'Retrouvez vos séjours, vos favoris et vos échanges avec les organisateurs, là où vous les avez laissés.';

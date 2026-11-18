@@ -139,7 +139,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
 
-<title>Modifier l'organisme - ColoMap</title>
+<title>Modifier l'organisme - moncamp.fr</title>
 
 <?php mc_ensure($pdo); $aliasInit = $organisateur ? (mc_lire($pdo, 'orga', [(int)$organisateurId])[(int)$organisateurId] ?? []) : []; ?>
 <link rel="stylesheet" href="assets/css/colomap-search.css">

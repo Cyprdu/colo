@@ -61,12 +61,12 @@ try {
     consent_log($pdo, (int)$pdo->lastInsertId(), 'cgu_confidentialite');   // preuve de l'acceptation des CGU / politique de confidentialité
 
     // --- CONSTRUCTION DE L'EMAIL (Design Corrigé) ---
-    $subject = "Activez votre compte ColoMap";
+    $subject = "Activez votre compte moncamp.fr";
     
     $server = $_SERVER['SERVER_NAME'];
     $linkValidate = "https://" . $server . "/validation.php?t=" . $urlToken . "&code=" . $verificationCode;
     $linkCancel = "https://" . $server . "/api/cancel_registration.php?t=" . $urlToken;
-    $logoUrl = "https://veyret.freeboxos.fr:45474/share/PSu2SneCf_lg32kW/favico.png";
+    $logoUrl = "https://moncamp.fr/favico.png";
 
     $body = "
     <!DOCTYPE html>
@@ -102,8 +102,8 @@ try {
     <body>
        <div class='container'>
          <div class='header'>
-           <img src='$logoUrl' alt='ColoMap'>
-           <h1>Bienvenue sur ColoMap</h1>
+           <img src='$logoUrl' alt='moncamp.fr'>
+           <h1>Bienvenue sur moncamp.fr</h1>
          </div>
          <div class='content'>
            <h2 class='h2-title'>Bonjour $prenom,</h2>
@@ -119,7 +119,7 @@ try {
          <div class='footer'>
            <p style='margin-bottom:10px;'>Vous n'avez pas demandé cette inscription ? <br>
            <a href='$linkCancel' class='cancel-link'>Cliquez ici pour supprimer vos données</a>.</p>
-           &copy; " . date('Y') . " ColoMap.
+           &copy; " . date('Y') . " moncamp.fr.
          </div>
        </div>
     </body>
@@ -131,7 +131,7 @@ try {
     } else {
          $headers = "MIME-Version: 1.0" . "\r\n";
          $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-         $headers .= "From: ColoMap <no-reply@" . $server . ">";
+         $headers .= "From: moncamp.fr <no-reply@" . $server . ">";
          mail($email, $subject, $body, $headers);
     }
 

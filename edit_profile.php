@@ -74,7 +74,7 @@ $csrf = $_SESSION['csrf_profil'];
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Mes informations - ColoMap</title>
+<title>Mes informations - moncamp.fr</title>
 
 <main class="ds-page ds-fade" style="max-width:760px">
     <a href="profile" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">

@@ -36,7 +36,7 @@ function pi_logo($url) {
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Mes organismes - ColoMap</title>
+<title>Mes organismes - moncamp.fr</title>
 
 <main class="ds-page" style="max-width:920px">
     <a href="organisateurs" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">

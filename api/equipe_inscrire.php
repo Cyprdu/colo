@@ -32,7 +32,7 @@ function eq_stripe(PDO $pdo, array $camp, array $row, int $uid): string {
             'quantity' => 1]],
         'success_url' => $site . '/reservations?equipe=ok', 'cancel_url' => $site . '/reservations?equipe=annule',
         'metadata' => ['reservation_token' => $row['token'], 'camp_id' => (string)$camp['id'], 'user_id' => (string)$uid, 'type' => 'equipe_inscription'],
-        'payment_intent_data' => ['description' => 'ColoMap · Équipe d\'animation · ' . mb_substr($camp['nom'], 0, 120), 'metadata' => ['reservation_token' => $row['token'], 'camp_id' => (string)$camp['id']]],
+        'payment_intent_data' => ['description' => 'moncamp.fr · Équipe d\'animation · ' . mb_substr($camp['nom'], 0, 120), 'metadata' => ['reservation_token' => $row['token'], 'camp_id' => (string)$camp['id']]],
     ]);
     $pdo->prepare("UPDATE equipe_inscriptions SET stripe_session_id = ? WHERE id = ?")->execute([$co->id, $row['id']]);
     return $co->url;

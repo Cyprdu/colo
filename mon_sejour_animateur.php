@@ -38,7 +38,7 @@ $demande = false;
 try { $q = $pdo->prepare("SELECT 1 FROM equipe_alertes WHERE equipe_id = ?"); $q->execute([$e['id']]); $demande = (bool)$q->fetchColumn(); } catch (Throwable $x) {}
 $statutTxt = $annule ? 'Inscription annulée' : ($paid ? 'Inscription confirmée' : 'Paiement en attente');
 ?>
-<title>Mon séjour d'animateur - ColoMap</title>
+<title>Mon séjour d'animateur - moncamp.fr</title>
 <meta name="robots" content="noindex, nofollow">
 <main class="ds-page" style="max-width:860px">
     <p class="ds-eyebrow">Espace animateur<?= $role !== 'animateur' ? ' · vue ' . ($role === 'directeur' ? 'directeur' : 'admin') : '' ?></p>

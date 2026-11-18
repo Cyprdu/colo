@@ -11,11 +11,11 @@ $FAQ = json_decode(<<<'JSON_END'
     "qa": [
       {
         "q": "Comment inscrire mon enfant à un camp ?",
-        "a": "L'inscription sur ColoMap est conçue pour être simple et rapide. Commencez par créer un compte parent gratuitement. Une fois connecté, vous pouvez ajouter le profil de vos enfants (nom, prénom, âge, allergies éventuelles). Ensuite, naviguez à travers notre catalogue de séjours en utilisant les filtres (âge, thème, lieu). Une fois le camp idéal trouvé, cliquez sur \"Réserver\". Vous devrez alors sélectionner l'enfant concerné et procéder au paiement de l'acompte ou de la totalité du séjour selon les conditions de l'organisateur. Un email de confirmation vous sera envoyé immédiatement avec le dossier d'inscription complet."
+        "a": "L'inscription sur moncamp.fr est conçue pour être simple et rapide. Commencez par créer un compte parent gratuitement. Une fois connecté, vous pouvez ajouter le profil de vos enfants (nom, prénom, âge, allergies éventuelles). Ensuite, naviguez à travers notre catalogue de séjours en utilisant les filtres (âge, thème, lieu). Une fois le camp idéal trouvé, cliquez sur \"Réserver\". Vous devrez alors sélectionner l'enfant concerné et procéder au paiement de l'acompte ou de la totalité du séjour selon les conditions de l'organisateur. Un email de confirmation vous sera envoyé immédiatement avec le dossier d'inscription complet."
       },
       {
         "q": "Les colonies sont-elles vérifiées ?",
-        "a": "Absolument. La sécurité est notre priorité numéro un. Chaque organisateur souhaitant publier sur ColoMap doit passer par un processus de validation strict. Nous vérifions leur numéro d'agrément Jeunesse et Sports, leur assurance responsabilité civile professionnelle ainsi que leur projet éducatif. De plus, nous encourageons vivement les parents à laisser des avis après chaque séjour pour maintenir un niveau de transparence total au sein de la communauté."
+        "a": "Absolument. La sécurité est notre priorité numéro un. Chaque organisateur souhaitant publier sur moncamp.fr doit passer par un processus de validation strict. Nous vérifions leur numéro d'agrément Jeunesse et Sports, leur assurance responsabilité civile professionnelle ainsi que leur projet éducatif. De plus, nous encourageons vivement les parents à laisser des avis après chaque séjour pour maintenir un niveau de transparence total au sein de la communauté."
       },
       {
         "q": "Que faire si mon enfant a un problème de santé ?",
@@ -30,12 +30,12 @@ $FAQ = json_decode(<<<'JSON_END'
     "title": "Espace Organisateurs",
     "qa": [
       {
-        "q": "Comment référencer mes séjours sur ColoMap ?",
+        "q": "Comment référencer mes séjours sur moncamp.fr ?",
         "a": "Pour devenir partenaire, créez un compte \"Organisateur\". Vous devrez fournir les justificatifs légaux de votre structure (association, entreprise, collectivité). Une fois votre compte validé par notre équipe (sous 24 à 48h), vous aurez accès à un tableau de bord complet. De là, vous pourrez créer des fiches détaillées pour chacun de vos séjours : description, photos, dates, tarifs, âges requis, et nombre de places disponibles."
       },
       {
         "q": "Quels sont les coûts pour les organisateurs ?",
-        "a": "L'inscription et la publication des annonces sont entièrement gratuites. ColoMap se rémunère uniquement via une commission de service prélevée lors d'une réservation confirmée. Ce modèle \"gagnant-gagnant\" vous permet de bénéficier d'une visibilité nationale sans risque financier initial. Aucun frais caché, tout est transparent dès la création de votre compte."
+        "a": "L'inscription et la publication des annonces sont entièrement gratuites. moncamp.fr se rémunère uniquement via une commission de service prélevée lors d'une réservation confirmée. Ce modèle \"gagnant-gagnant\" vous permet de bénéficier d'une visibilité nationale sans risque financier initial. Aucun frais caché, tout est transparent dès la création de votre compte."
       },
       {
         "q": "Comment gérer les inscriptions et les paiements ?",
@@ -51,7 +51,7 @@ $FAQ = json_decode(<<<'JSON_END'
     "qa": [
       {
         "q": "Je cherche un poste d'animateur, comment faire ?",
-        "a": "ColoMap dispose d'une section dédiée à l'emploi. Créez votre profil \"Animateur\", renseignez vos qualifications (BAFA, BAFD, PSC1, SB...), vos expériences passées et vos disponibilités. Vous pourrez alors postuler directement aux offres publiées par les organisateurs ou rendre votre CV visible dans la CVthèque consultée par les directeurs de séjours."
+        "a": "moncamp.fr dispose d'une section dédiée à l'emploi. Créez votre profil \"Animateur\", renseignez vos qualifications (BAFA, BAFD, PSC1, SB...), vos expériences passées et vos disponibilités. Vous pourrez alors postuler directement aux offres publiées par les organisateurs ou rendre votre CV visible dans la CVthèque consultée par les directeurs de séjours."
       },
       {
         "q": "Faut-il obligatoirement le BAFA ?",
@@ -67,7 +67,7 @@ $FAQ = json_decode(<<<'JSON_END'
     "qa": [
       {
         "q": "Le paiement en ligne est-il sécurisé ?",
-        "a": "Oui, totalement. ColoMap utilise la technologie <strong>Stripe</strong>, leader mondial des paiements en ligne, utilisé par des entreprises comme Amazon ou Booking. Vos informations bancaires sont cryptées (protocole SSL/TLS) et ne sont jamais stockées sur nos serveurs. Nous prenons également en charge l'authentification forte (3D Secure) pour éviter toute fraude."
+        "a": "Oui, totalement. moncamp.fr utilise la technologie <strong>Stripe</strong>, leader mondial des paiements en ligne, utilisé par des entreprises comme Amazon ou Booking. Vos informations bancaires sont cryptées (protocole SSL/TLS) et ne sont jamais stockées sur nos serveurs. Nous prenons également en charge l'authentification forte (3D Secure) pour éviter toute fraude."
       },
       {
         "q": "Acceptez-vous les Chèques Vacances (ANCV) ou les aides CAF ?",
@@ -75,7 +75,7 @@ $FAQ = json_decode(<<<'JSON_END'
       },
       {
         "q": "Quelle est la politique d'annulation ?",
-        "a": "Chaque organisateur définit ses propres conditions générales de vente (CGV). Elles sont consultables avant toute validation de commande. En général, plus l'annulation est proche de la date de départ, moins le remboursement est important. ColoMap propose également une option \"Assurance Annulation\" lors du paiement pour vous couvrir en cas d'imprévu majeur (maladie, accident, etc.)."
+        "a": "Chaque organisateur définit ses propres conditions générales de vente (CGV). Elles sont consultables avant toute validation de commande. En général, plus l'annulation est proche de la date de départ, moins le remboursement est important. moncamp.fr propose également une option \"Assurance Annulation\" lors du paiement pour vous couvrir en cas d'imprévu majeur (maladie, accident, etc.)."
       }
     ]
   }
@@ -87,7 +87,7 @@ $body_class = 'bg-white';
 $ads_enabled = true;
 require_once 'partials/header.php';
 ?>
-<title>Centre d'aide - ColoMap</title>
+<title>Centre d'aide - moncamp.fr</title>
 <style>
     .faq-item { border: 1.5px solid #e5e7eb; border-radius: 16px; background: #fff; transition: border-color .15s ease, box-shadow .2s ease; }
     .faq-item[open] { border-color: #a9b8c6; box-shadow: 0 8px 24px rgba(38, 52, 59, .07); }
@@ -104,7 +104,7 @@ require_once 'partials/header.php';
 <main class="ds-page">
     <div class="text-center max-w-2xl mx-auto">
         <h1 class="ds-h1">Centre d'aide</h1>
-        <p class="ds-lead">Tout ce qu'il faut savoir sur ColoMap, que vous soyez parent, organisateur ou animateur.</p>
+        <p class="ds-lead">Tout ce qu'il faut savoir sur moncamp.fr, que vous soyez parent, organisateur ou animateur.</p>
         <div class="relative mt-8">
             <svg class="absolute left-4 top-1/2 -translate-y-1/2 text-[#9aa3ab]" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
             <input id="faq-search" type="search" placeholder="Rechercher une question…" autocomplete="off" class="ds-input" style="padding-left:44px;height:54px;border-radius:16px;font-size:16px" aria-label="Rechercher dans l'aide">

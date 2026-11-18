@@ -73,44 +73,8 @@ require_once 'partials/mk_icons.php';
 
     <section class="mk-section" style="margin-top:28px">
         <div id="boostFeedback" class="ds-alert-err" style="display:none;margin-bottom:16px" role="alert"></div>
-        <div class="mk-grid mk-g3">
-            <div class="mk-offer">
-                <div class="ico"><?= mk_icon('up') ?></div>
-                <h3><?= $boosts['bump']['label'] ?></h3>
-                <p>Repositionne ce séjour en haut des résultats maintenant. Idéal pour capter le trafic du jour.</p>
-                <ul><li>Poids du séjour +50 % à l'instant T</li><li>S'estompe sur 3 jours</li></ul>
-                <div class="foot">
-                    <div class="mk-price"><?= $boosts['bump']['cost'] ?> pts<small><?= number_format($boosts['bump']['cost'] * MK_POINT_EUR, 2, ',', ' ') ?> €</small></div>
-                    <?php if ($bumpOn): ?><span class="mk-pill info">Effet en cours</span><?php endif; ?>
-                    <button type="button" class="ds-btn ds-btn-light mk-btn-sm" <?= $blocked ? 'disabled' : '' ?> onclick="mkBoost('bump', <?= $boosts['bump']['cost'] ?>, this)">Activer</button>
-                </div>
-            </div>
-            <div class="mk-offer rec">
-                <span class="tag">Le plus efficace</span>
-                <div class="ico"><?= mk_icon('star') ?></div>
-                <h3><?= $boosts['vedette']['label'] ?></h3>
-                <p>Mise en avant 7 jours dans la recherche et dans « À la une » sur l'accueil, avec la mention « Sponsorisé ».</p>
-                <ul><li>Poids du séjour +55 % pendant 7 jours</li><li>Déjà actif ? les jours s'ajoutent</li></ul>
-                <div class="foot">
-                    <div class="mk-price"><?= $boosts['vedette']['cost'] ?> pts<small><?= number_format($boosts['vedette']['cost'] * MK_POINT_EUR, 2, ',', ' ') ?> €</small></div>
-                    <?php if ($vedetteOn): ?><span class="mk-pill ok">Actif jusqu'au <?= date('d/m', strtotime($camp['boost_vedette_fin'])) ?></span><?php endif; ?>
-                    <button type="button" class="ds-btn mk-btn-sm" <?= $blocked ? 'disabled' : '' ?> onclick="mkBoost('vedette', <?= $boosts['vedette']['cost'] ?>, this)"><?= $vedetteOn ? 'Prolonger' : 'Activer' ?></button>
-                </div>
-            </div>
-            <div class="mk-offer">
-                <div class="ico"><?= mk_icon('clock') ?></div>
-                <h3><?= $boosts['urgence']['label'] ?></h3>
-                <p>Pour combler les dernières places d'un séjour qui part bientôt, avec le badge « Dernière minute ».</p>
-                <ul><li>Poids du séjour +20 % pendant 3 jours</li><li>Séjours qui partent dans moins de 45 jours</li></ul>
-                <?php $urgOk = $daysToStart <= 45; ?>
-                <div class="foot">
-                    <div class="mk-price"><?= $boosts['urgence']['cost'] ?> pts<small><?= number_format($boosts['urgence']['cost'] * MK_POINT_EUR, 2, ',', ' ') ?> €</small></div>
-                    <?php if ($urgenceOn): ?><span class="mk-pill ok">Actif jusqu'au <?= date('d/m', strtotime($camp['boost_urgence_fin'])) ?></span><?php endif; ?>
-                    <button type="button" class="ds-btn ds-btn-light mk-btn-sm" <?= ($blocked || !$urgOk) ? 'disabled' : '' ?> <?= !$urgOk ? 'title="Disponible à moins de 45 jours du départ"' : '' ?> onclick="mkBoost('urgence', <?= $boosts['urgence']['cost'] ?>, this)"><?= $urgenceOn ? 'Prolonger' : 'Activer' ?></button>
-                </div>
-                <?php if (!$urgOk): ?><p class="mk-note" style="margin-top:8px">Disponible à moins de 45 jours du départ.</p><?php endif; ?>
-            </div>
-        </div>
+        <?php $mkCamp = ['blocked' => $blocked, 'bumpOn' => $bumpOn, 'vedetteOn' => $vedetteOn, 'urgenceOn' => $urgenceOn, 'vedetteFin' => $camp['boost_vedette_fin'], 'urgenceFin' => $camp['boost_urgence_fin'], 'urgOk' => $daysToStart <= 45]; require 'partials/mk_offers.php'; ?>
+        <div style="margin-top:28px"><p class="ds-eyebrow" style="margin-bottom:10px">Ce que verront les familles</p><?php $mkPreviewName = $camp['nom']; require 'partials/mk_preview.php'; ?></div>
         <p class="mk-note" style="margin-top:14px">Le boost augmente le poids du séjour dans le classement sans remplacer la pertinence. Un séjour complet est rétrogradé. Les séjours à la une portent la mention « Sponsorisé ». <a class="underline" href="marketing.php?id=<?= (int)$camp['orga_id'] ?>#classement">En savoir plus</a></p>
     </section>
 </main>

@@ -5,7 +5,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redirect=' . urlencode('preferences-animateur.php')); exit; }
 ?>
-<title>Mes préférences - Espace animateur - ColoMap</title>
+<title>Mes préférences - Espace animateur - moncamp.fr</title>
 <main class="ds-page" style="max-width:820px">
     <p class="ds-eyebrow">Espace animateur</p>
     <h1 class="ds-h1">Mes préférences</h1>

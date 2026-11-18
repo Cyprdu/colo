@@ -107,7 +107,7 @@ function compta_sync_payouts(PDO $pdo): int {
 }
 
 /**
- * Rapprochement : ce que ColoMap DOIT avoir chez Stripe d'après la base, comparé au solde Stripe + virements déjà faits vers la banque.
+ * Rapprochement : ce que moncamp.fr DOIT avoir chez Stripe d'après la base, comparé au solde Stripe + virements déjà faits vers la banque.
  * $stripe = ['disponible' => cents, 'en_attente' => cents] ou null si Stripe est injoignable.
  */
 function compta_reconcile(PDO $pdo, ?array $stripe): array {
@@ -129,7 +129,7 @@ function compta_reconcile(PDO $pdo, ?array $stripe): array {
         $r['solde_stripe'] = $solde;
         $r['reel'] = $solde + $payouts;
         $r['ecart'] = $r['reel'] - $theorique;
-        // Ce qui appartient à ColoMap dans le solde Stripe = solde - ce qui est dû aux organismes (jamais à virer en banque)
+        // Ce qui appartient à moncamp.fr dans le solde Stripe = solde - ce qui est dû aux organismes (jamais à virer en banque)
         $r['versable'] = max(0, $stripe['disponible'] - (int)$a['du']);
     }
     return $r;
@@ -165,7 +165,7 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
                 WHERE p.created_at BETWEEN ? AND ?" . ($orgaId ? " AND p.organisateur_id = ?" : "") . " ORDER BY p.created_at, p.id");
         $q->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
         $h = ['Date', 'Inscription', 'Organisme', 'Séjour', 'Référence paiement Stripe', 'Brut payé (€)', 'Remboursé (€)', 'Taux commission (%)', 'Part fixe (€)', 'Commission (€)', 'Commission nette des remboursements (€)',
-              'Frais Stripe réels (€)', 'Frais de litige (€)', 'Marge nette ColoMap (€)', 'Net dû à l\'organisme (€)', 'Net remboursé (€)', 'Statut', 'Date de déblocage'];
+              'Frais Stripe réels (€)', 'Frais de litige (€)', 'Marge nette moncamp.fr (€)', 'Net dû à l\'organisme (€)', 'Net remboursé (€)', 'Statut', 'Date de déblocage'];
         $gen = (function () use ($q, $dt) {
             foreach ($q as $p) {
                 $known = $p['frais_stripe_cents'] !== null;
@@ -196,7 +196,7 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
         $q = $pdo->prepare("SELECT h.*, o.nom orga, c.nom camp FROM fin_commissions_hors h JOIN organisateurs o ON o.id = h.organisateur_id JOIN camps c ON c.id = h.camp_id
                 WHERE h.created_at BETWEEN ? AND ?" . ($orgaId ? " AND h.organisateur_id = ?" : "") . " ORDER BY h.created_at, h.id");
         $q->execute($orgaId ? [$from, $to, $orgaId] : [$from, $to]);
-        $h = ['Date', 'Inscription', 'Organisme', 'Séjour', 'Moyen de paiement', 'Montant réglé (€)', 'Taux (%)', 'Commission ColoMap (€)'];
+        $h = ['Date', 'Inscription', 'Organisme', 'Séjour', 'Moyen de paiement', 'Montant réglé (€)', 'Taux (%)', 'Commission moncamp.fr (€)'];
         $gen = (function () use ($q, $dt) { foreach ($q as $r) yield [$dt($r['created_at']), $r['inscription_id'], $r['orga'], $r['camp'], $r['moyen'], compta_eur((int)$r['brut_cents']), number_format((float)$r['pct'], 2, ',', ''), compta_eur((int)$r['commission_cents'])]; })();
         return [$h, $gen];
     }
@@ -205,6 +205,15 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
         $q->execute([$from, $to]);
         $h = ['Date de création', 'Arrivée en banque', 'Montant (€)', 'Statut', 'Référence Stripe'];
         $gen = (function () use ($q, $dt) { foreach ($q as $p) yield [$dt($p['date_creation']), $dt($p['date_arrivee']), compta_eur((int)$p['montant_cents']), $p['statut'], $p['payout_id']]; })();
+        return [$h, $gen];
+    }
+    if ($type === 'gains') {
+        require_once __DIR__ . '/gains_lib.php';
+        gains_ensure($pdo);
+        $q = $pdo->prepare("SELECT j.*, o.nom AS orga FROM fin_gains_journal j LEFT JOIN organisateurs o ON o.id = j.organisateur_id WHERE j.created_at BETWEEN ? AND ? ORDER BY j.id");
+        $q->execute([$from, $to]);
+        $h = ['Réf.', 'Date', 'Organisme', 'Utilisateur', 'IP', 'Achat', 'Montant (€)', 'Solde avant (€)', 'Solde après (€)', 'Statut', 'Empreinte'];
+        $gen = (function () use ($q) { foreach ($q as $g) yield ['G-' . $g['id'], date('d/m/Y H:i:s', strtotime($g['created_at'])), $g['orga'], $g['user_id'], $g['ip'], $g['libelle'], compta_eur((int)$g['montant_cents']), compta_eur((int)$g['solde_avant_cents']), compta_eur((int)$g['solde_apres_cents']), $g['statut'], $g['hash']]; })();
         return [$h, $gen];
     }
     if ($type === 'journal') {

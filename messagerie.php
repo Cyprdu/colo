@@ -12,7 +12,7 @@ $isDirecteur = !empty($_SESSION['user']['is_directeur']);
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Messagerie - ColoMap</title>
+<title>Messagerie - moncamp.fr</title>
 <style>
     .msg-scroll::-webkit-scrollbar { width: 8px; }
     .msg-scroll::-webkit-scrollbar-thumb { background: #d3dbe0; border-radius: 8px; }

@@ -32,7 +32,7 @@ adm_head('Tableau de contrôle', 'tableau_de_controle');
 <h2 class="sec">Tutoriel : réparer la connexion Google</h2>
 <div class="card"><p class="muted">Lancez d'abord les tests « Connexion Google » ci-dessus : ils disent lequel de ces points casse.</p>
 <ol class="steps">
-<li><b>Ouvrez Google Cloud Console</b> (console.cloud.google.com), choisissez le projet de ColoMap, puis <i>API et services &gt; Identifiants</i>.</li>
+<li><b>Ouvrez Google Cloud Console</b> (console.cloud.google.com), choisissez le projet de moncamp.fr, puis <i>API et services &gt; Identifiants</i>.</li>
 <li><b>Client OAuth 2.0 (type « Application Web »)</b> : s'il n'existe plus (« client supprimé »), créez-en un. Sinon ouvrez-le.</li>
 <li><b>URI de redirection autorisés</b> : ajoutez exactement <code><?= h($site) ?>/api/google_callback.php</code> (https, sans « / » final). Une différence d'un caractère donne « redirect_uri_mismatch ».</li>
 <li><b>Origines JavaScript autorisées</b> : <code><?= h($site) ?></code>.</li>

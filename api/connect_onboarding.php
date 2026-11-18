@@ -1,6 +1,6 @@
 <?php
 // api/connect_onboarding.php?o=<jeton> : ouvre (ou reprend) l'inscription Stripe de l'organisme.
-// Compte Connect EXPRESS : Stripe collecte lui-même l'identité, les justificatifs et l'IBAN (rien ne transite par ColoMap).
+// Compte Connect EXPRESS : Stripe collecte lui-même l'identité, les justificatifs et l'IBAN (rien ne transite par moncamp.fr).
 // Sans compte, on passe d'abord par connect_statut.php (choix du statut : particulier, micro, association, société) qui crée le compte pré-rempli.
 // Ancien paramètre organisateur_id accepté pour les liens déjà envoyés.
 require_once 'config.php';

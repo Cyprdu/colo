@@ -76,3 +76,22 @@
 .mk-seg { display: inline-flex; background: var(--ds-soft); border-radius: 12px; padding: 3px; }
 .mk-seg a { padding: 7px 14px; font-size: 13px; font-weight: 700; color: #3b4a54; border-radius: 9px; }
 .mk-seg a.on { background: #fff; box-shadow: 0 1px 3px rgba(38,52,59,.15); color: var(--ds-ink); }
+
+/* formules : lignes comparables, bulle « ? », aperçu parents */
+.mk-rows { margin-top: 16px; border-top: 1px solid var(--ds-line); }
+.mk-rows > div { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #f0f2f4; font-size: 13.5px; }
+.mk-rows dt { color: var(--ds-muted); } .mk-rows dd { font-weight: 700; color: var(--ds-ink); text-align: right; }
+.mk-help { position: relative; flex: none; }
+.mk-help summary { list-style: none; cursor: pointer; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--ds-line); color: var(--ds-muted); font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.mk-help summary::-webkit-details-marker { display: none; }
+.mk-help[open] summary, .mk-help summary:hover { background: var(--ds-btn); border-color: var(--ds-btn); color: #fff; }
+.mk-help > div { position: absolute; right: 0; top: 34px; z-index: 5; width: 250px; background: var(--ds-ink); color: #fff; font-size: 12.5px; line-height: 1.5; padding: 12px 14px; border-radius: 12px; box-shadow: 0 12px 30px rgba(38,52,59,.25); }
+.mk-pv-box { background: var(--ds-soft); border-radius: 18px; padding: 10px; display: grid; gap: 8px; }
+.mk-pv-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--ds-line); border-radius: 12px; padding: 9px 10px; }
+.mk-pv-row.me { border-color: var(--ds-accent); }
+.mk-pv-row.hot { border-color: var(--ds-btn); box-shadow: 0 6px 16px rgba(38,52,59,.14); }
+.mk-pv-img { width: 44px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #c9d6de, #e4ebef); flex: none; }
+.mk-pv-txt { min-width: 0; flex: 1; display: block; } .mk-pv-txt b { display: block; font-size: 13px; color: var(--ds-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mk-pv-txt i { font-style: normal; font-size: 11.5px; color: var(--ds-muted); }
+.mk-pv-badge { font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 9999px; background: var(--ds-btn); color: #fff; white-space: nowrap; }
+.mk-sum { display: flex; flex-wrap: wrap; gap: 10px 28px; padding: 16px 20px; border: 1px solid var(--ds-line); border-radius: 18px; background: #fff; }
+.mk-sum div { min-width: 120px; } .mk-sum b { display: block; font-size: 22px; font-weight: 800; color: var(--ds-ink); } .mk-sum span { font-size: 12px; color: var(--ds-muted); }

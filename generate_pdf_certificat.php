@@ -46,7 +46,7 @@ class RecuPDF extends FPDF {
         $this->SetTextColor(255, 255, 255);
         $this->SetFont('Arial', 'B', 20);
         $this->SetXY(15, 9);
-        $this->Cell(80, 10, 'ColoMap', 0, 0, 'L');
+        $this->Cell(80, 10, 'moncamp.fr', 0, 0, 'L');
         $this->SetFont('Arial', '', 10);
         $this->SetXY(95, 11);
         $this->Cell(100, 8, enc('Réf. ' . $this->ref), 0, 0, 'R');
@@ -57,7 +57,7 @@ class RecuPDF extends FPDF {
         $this->SetY(-14);
         $this->SetFont('Arial', 'I', 8);
         $this->SetTextColor(120, 130, 138);
-        $this->Cell(0, 8, enc('ColoMap · moncamp.fr · Page ' . $this->PageNo()), 0, 0, 'C');
+        $this->Cell(0, 8, enc('moncamp.fr · moncamp.fr · Page ' . $this->PageNo()), 0, 0, 'C');
     }
     function Section(string $title) {
         $this->Ln(4);
@@ -153,7 +153,7 @@ if ($bk) {
     $pdf->SetTextColor(38, 52, 59);
     $pdf->Ln(2);
     $pdf->Row('Prix payé (TTC)', $c($bk['paye']));
-    $pdf->Row('dont commission ColoMap', $c($bk['commission']) . ' (' . number_format($bk['pct'], 1, ',', ' ') . ' %' . ($bk['fixe'] > 0 ? ' + ' . $c($bk['fixe']) . ' par inscription' : '') . ', frais de paiement par carte et de gestion inclus)', false);
+    $pdf->Row('dont commission moncamp.fr', $c($bk['commission']) . ' (' . number_format($bk['pct'], 1, ',', ' ') . ' %' . ($bk['fixe'] > 0 ? ' + ' . $c($bk['fixe']) . ' par inscription' : '') . ', frais de paiement par carte et de gestion inclus)', false);
     $pdf->Row('dont TVA', $bk['taux'] ? $c($bk['tva']) . ' (TVA ' . number_format($bk['taux'], 1, ',', ' ') . ' % incluse dans le prix)' : 'Non applicable (organisateur non assujetti)', false);
     $pdf->Row('Part de l\'organisateur', $c($bk['organisateur']) . ' (reversée à ' . $first['orga_nom'] . ')', false);
 }
@@ -162,8 +162,8 @@ if ($bk) {
 $pdf->Ln(10);
 $pdf->SetFont('Arial', 'I', 9);
 $pdf->SetTextColor(120, 130, 138);
-$pdf->MultiCell(0, 5, enc("Ce document a été généré automatiquement par ColoMap et fait foi de l'inscription des participants ci-dessus"
+$pdf->MultiCell(0, 5, enc("Ce document a été généré automatiquement par moncamp.fr et fait foi de l'inscription des participants ci-dessus"
     . ($isPaid ? ' et du paiement enregistré.' : '. Le paiement n\'est pas encore finalisé.')
-    . " Pour toute question, contactez l'organisateur du séjour ou ColoMap."), 0, 'L');
+    . " Pour toute question, contactez l'organisateur du séjour ou moncamp.fr."), 0, 'L');
 
 $pdf->Output('I', 'Recu_' . $ref . '.pdf');

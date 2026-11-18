@@ -75,8 +75,10 @@ try {
     $stmtFr = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND statut_paiement = 'PAYE' AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule')");
     $stmtFr->execute([$camp['id'], $_SESSION['user']['id']]);
     $dejaInscritsNb = (int)$stmtFr->fetchColumn();
-    $enfantsJson = json_encode($enfants);
-    $tarifsJson = json_encode($tarifs);
+    // JSON injecté dans <script> : champs utiles seulement (id, prénom, nom : jamais de colonnes santé/binaires, qui feraient échouer json_encode et casser toute la page), balises échappées
+    $jf = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP;
+    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? ''], $enfants), $jf) ?: '[]';
+    $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
     require_once 'api/annulation_lib.php';
     $moyensOk = fin_moyens_du_camp($camp); $libMoyens = options_paiements();
     $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));

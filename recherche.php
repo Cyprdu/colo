@@ -10,7 +10,7 @@ $is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
 $user_favorites = $_SESSION['user']['favorites'] ?? [];
 $q = trim((string)($_GET['name'] ?? ''));
 ?>
-<title>Rechercher une colonie de vacances - ColoMap</title>
+<title>Rechercher une colonie de vacances - moncamp.fr</title>
 <meta name="description" content="Comparez les colonies de vacances, camps et stages pour enfants et adolescents : filtrez par ville, âge, dates, budget et thématique, puis réservez en ligne.">
 
 <style>
@@ -430,7 +430,7 @@ $q = trim((string)($_GET['name'] ?? ''));
         var date = n > 1 ? n + ' sessions · dès le ' + shortDate(c.date_debut, c.date_fin) : range(c.date_debut, c.date_fin);
         var age = (c.age_min != null && c.age_max != null) ? c.age_min + '–' + c.age_max + ' ans' : '';
         return '<article class="camp-card fade-in-anim" style="animation-delay:' + Math.min(i, 11) * 25 + 'ms">' +
-            (c.organisateur_slug ? '<a href="organisme/' + esc(c.organisateur_slug) + '" class="camp-org" aria-label="Voir les séjours de ' + esc(c.organisateur_nom) + '">' : '<div class="camp-org">') + '<span class="camp-avatar">' + logo + '</span><span class="camp-org-name">' + esc(c.organisateur_nom || 'ColoMap') + '</span>' + (c.organisateur_slug ? '</a>' : '</div>') +
+            (c.organisateur_slug ? '<a href="organisme/' + esc(c.organisateur_slug) + '" class="camp-org" aria-label="Voir les séjours de ' + esc(c.organisateur_nom) + '">' : '<div class="camp-org">') + '<span class="camp-avatar">' + logo + '</span><span class="camp-org-name">' + esc(c.organisateur_nom || 'moncamp.fr') + '</span>' + (c.organisateur_slug ? '</a>' : '</div>') +
             '<div class="camp-mediawrap"><a href="' + href + '" class="camp-media" aria-label="' + esc(c.nom) + '"><img src="' + esc(img) + '" alt="' + esc(c.nom) + '" loading="lazy" decoding="async"></a>' +
             (c.badge ? '<span class="camp-badge">' + esc(c.badge) + '</span>' : '') +
             (age ? '<span class="camp-age">' + age + '</span>' : '') +
@@ -451,7 +451,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     function title(total) {
         var nm = $('f-name').value.trim(), city = $('f-city').value.trim();
         $('r-title').textContent = nm ? 'Résultats pour « ' + nm + ' »' : (state.cats.length === 1 ? catName(state.cats[0]) : (state.themes.length === 1 ? state.themes[0] : (city ? 'Séjours autour de ' + city : 'Tous les séjours')));
-        document.title = (nm ? nm + ' – ' : '') + 'Rechercher une colonie de vacances - ColoMap';
+        document.title = (nm ? nm + ' – ' : '') + 'Rechercher une colonie de vacances - moncamp.fr';
     }
     async function search(reset) {
         if (reset) state.page = 1;

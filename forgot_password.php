@@ -1,6 +1,6 @@
 <?php
 // forgot_password.php : demande d'un lien de réinitialisation du mot de passe
-$auth_title   = 'Mot de passe oublié - ColoMap';
+$auth_title   = 'Mot de passe oublié - moncamp.fr';
 $scene_kicker = 'Pas de panique';
 $scene_title  = 'On retrouve le chemin ensemble.';
 $scene_text   = "Indiquez votre adresse email : nous vous envoyons un lien pour choisir un nouveau mot de passe, et vous repartez à l'aventure.";

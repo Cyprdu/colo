@@ -6,7 +6,7 @@ require_once 'partials/header.php';
 $t = (string)($_GET['t'] ?? '');
 if (empty($_SESSION['user']['id'])) { header('Location: login.php?redirect=' . urlencode('equipe_gestion.php?t=' . $t)); exit; }
 ?>
-<title>Infos pour mon équipe - ColoMap</title>
+<title>Infos pour mon équipe - moncamp.fr</title>
 <meta name="robots" content="noindex, nofollow">
 <main class="ds-page" style="max-width:820px">
     <a href="mes_camps.php" class="text-[14px] text-[#6b7780]">← Mes séjours</a>

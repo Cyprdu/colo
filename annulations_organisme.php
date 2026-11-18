@@ -42,10 +42,10 @@ require_once 'partials/header.php';
 $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 $stl = ['demande' => 'En attente', 'acceptee' => 'Acceptée', 'refusee' => 'Refusée'];
 ?>
-<title>Demandes d'annulation - ColoMap</title>
+<title>Demandes d'annulation - moncamp.fr</title>
 <main class="ds-page" style="max-width:960px">
   <h1 class="ds-h1">Annulations</h1>
-  <p class="ds-lead">Les familles annulent elles-mêmes, selon vos conditions ci-dessous ; le remboursement est automatique. La commission ColoMap est conservée : seul votre net remboursé est déduit de votre solde (compensé sur vos prochains versements si vous avez déjà été payé).</p>
+  <p class="ds-lead">Les familles annulent elles-mêmes, selon vos conditions ci-dessous ; le remboursement est automatique. La commission moncamp.fr est conservée : seul votre net remboursé est déduit de votre solde (compensé sur vos prochains versements si vous avez déjà été payé).</p>
   <?php if ($msg): ?><div class="ds-alert-ok" style="margin:16px 0" role="status"><?= $h($msg) ?></div><?php endif; ?>
   <?php if ($err): ?><div class="ds-alert-err" style="margin:16px 0" role="alert"><?= $h($err) ?></div><?php endif; ?>
 
@@ -58,7 +58,7 @@ $stl = ['demande' => 'En attente', 'acceptee' => 'Acceptée', 'refusee' => 'Refu
         <span class="ds-lead"><?= $h(date('d/m/Y', strtotime($a['created_at']))) ?></span>
       </div>
       <p class="mt-1">Motif : <?= $h(FIN_ANNUL_MOTIFS[$a['motif']] ?? $a['motif']) ?><?= $a['commentaire'] ? ' — « ' . $h($a['commentaire']) . ' »' : '' ?></p>
-      <p class="mt-1">Remboursé à la famille (<?= (int)$a['pct'] ?> %) : <b><?= $h(fin_eur((int)$a['rembourse_cents'])) ?></b> · commission ColoMap retenue : <?= $h(fin_eur((int)$a['commission_retenue_cents'])) ?></p>
+      <p class="mt-1">Remboursé à la famille (<?= (int)$a['pct'] ?> %) : <b><?= $h(fin_eur((int)$a['rembourse_cents'])) ?></b> · commission moncamp.fr retenue : <?= $h(fin_eur((int)$a['commission_retenue_cents'])) ?></p>
     </div>
   <?php endforeach; ?>
   </div>

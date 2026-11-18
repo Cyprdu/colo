@@ -5,7 +5,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redirect=' . urlencode('missions.php')); exit; }
 ?>
-<title>Missions - Espace animateur - ColoMap</title>
+<title>Missions - Espace animateur - moncamp.fr</title>
 <main class="ds-page">
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
