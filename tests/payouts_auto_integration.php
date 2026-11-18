@@ -69,7 +69,7 @@ $r = fin_release_pending_now($pdo, 1);
 $tr = $GLOBALS['fake_transfers']->calls;
 ok($r['transferts'] === 1 && $r['montant_cents'] === 29220 && count($tr) === 1 && $tr[0][2]['idempotency_key'] === 'moncamp-tr-paiement-' . $pdo->query("SELECT id FROM fin_paiements WHERE inscription_id = 201")->fetchColumn() . '-' . $pdo->query("SELECT MAX(id) FROM fin_transferts WHERE type = 'sejour'")->fetchColumn()
    && $tr[0][1]['source_transaction'] === 'ch_L', 'compte prêt : tout le net transféré tout de suite, adossé à la charge (fonds en attente acceptés), clé par paiement');
-ok(strpos($tr[0][1]['description'], 'Été (Durand)') !== false && $tr[0][1]['metadata']['type'] === 'paiements_avant_activation', 'description lisible dans le Stripe de l\'organisme : ' . $tr[0][1]['description']);
+ok(strpos($tr[0][1]['description'], 'Été · Tom DURAND · 300,00 € − 7,80 € = 292,20 €') !== false && $tr[0][1]['metadata']['type'] === 'paiements_avant_activation', 'description lisible dans le Stripe de l\'organisme : ' . $tr[0][1]['description']);
 ok($pdo->query("SELECT statut FROM fin_paiements WHERE inscription_id = 201")->fetchColumn() === 'verse', 'ligne transférée');
 ok((int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'transfert'")->fetchColumn() === 29220 && fin_ledger_totaux($pdo, 1)['verse'] === $before['verse'], 'journal : transfert tracé, pas compté comme versement bancaire (le payout automatique le sera)');
 ok(fin_release_pending_now($pdo, 1)['transferts'] === 0 && count($GLOBALS['fake_transfers']->calls) === 1, 'rejeu : aucun second transfert');
@@ -97,4 +97,18 @@ ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")
 $GLOBALS['stripe_calls'] = [];
 try { fin_dette_checkout($pdo, 1, 7); $err = ''; } catch (Exception $e) { $err = $e->getMessage(); }
 ok($err !== '' && !$GLOBALS['stripe_calls'], 'plus de dette : pas de session de paiement');
+// ---- prochain virement : virement en route (date Stripe), sinon solde du compte connecté (disponible, ou date available_on)
+$pdo->exec("UPDATE fin_transferts SET statut = 'paye' WHERE type = 'payout' AND statut = 'envoye'");
+$GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 0, 'currency' => 'eur']], 'pending' => [(object)['amount' => 4000, 'currency' => 'eur']]];
+$GLOBALS['stripe_resp']['balanceTransactions.all'] = (object)['data' => [
+    (object)['status' => 'pending', 'currency' => 'eur', 'net' => 1500, 'available_on' => strtotime('+4 days')],
+    (object)['status' => 'pending', 'currency' => 'eur', 'net' => 2500, 'available_on' => strtotime('+2 days')],
+    (object)['status' => 'available', 'currency' => 'eur', 'net' => 999, 'available_on' => strtotime('-3 days')]]];
+$pv = fin_prochain_virement($pdo, 1);
+ok($pv && $pv['m'] === 2500 && $pv['d'] === date('Y-m-d', strtotime('+2 days')) && $pv['etat'] === 'attente', 'prochain virement : 25 EUR le ' . date('d/m', strtotime('+2 days')) . ' (date de disponibilité Stripe)');
+$GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 700, 'currency' => 'eur']], 'pending' => []];
+ok(fin_prochain_virement($pdo, 1)['etat'] === 'dispo' && fin_prochain_virement($pdo, 1)['m'] === 700, 'fonds disponibles : virement imminent');
+fin_payout_record($pdo, (object)['id' => 'po_9', 'amount' => 3300, 'currency' => 'eur', 'status' => 'in_transit', 'arrival_date' => strtotime('+3 days'), 'created' => time()], 'acct_A');
+$pv = fin_prochain_virement($pdo, 1);
+ok($pv['etat'] === 'route' && $pv['m'] === 3300 && $pv['d'] === date('Y-m-d', strtotime('+3 days')), 'virement en route : montant et date d\'arrivée du payout');
 echo "Tout est bon.\n";

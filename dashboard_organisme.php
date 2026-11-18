@@ -221,7 +221,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             <?php foreach ([['brut', 'Encaissé brut', 'Paiements par carte reçus sur la période (avant commission, frais et remboursements).'], ['net', 'Net pour vous', 'Encaissé − commission − frais Stripe − remboursements (± ajustements).', 'dark'],
                             ['com', 'Commission moncamp.fr', "Commission : $comTxt par inscription. Jamais rendue en cas d'annulation."], ['frais', 'Frais Stripe', "Frais réels de Stripe pour chaque paiement (et litige), débités par Stripe sur votre compte."],
                             ['remb', 'Remboursé', 'Montants rendus aux familles sur la période.'], ['attente', 'En attente de versement', "Déjà sur votre compte Stripe (ou chez moncamp.fr avant l'activation de votre compte), $autoTxt. Montant à ce jour."],
-                            ['prochain', 'Prochain versement', "Versement en route vers votre banque, avec la date d'arrivée annoncée par Stripe."], ['dette', 'Dette compensée', "Remboursement avancé par moncamp.fr quand votre solde Stripe ne suffisait pas. Retenu automatiquement sur vos prochains paiements."]] as $k): ?>
+                            ['prochain', 'Prochain virement', "Montant et date du prochain virement vers votre banque, d'après votre solde Stripe (date de disponibilité des fonds) ou le virement déjà en route (date d'arrivée annoncée par Stripe)."], ['dette', 'Dette compensée', "Remboursement avancé par moncamp.fr quand votre solde Stripe ne suffisait pas. Retenu automatiquement sur vos prochains paiements."]] as $k): ?>
                 <div class="fd-kpi <?= $k[3] ?? '' ?>" id="kp-<?= $k[0] ?>"><div class="k"><?= $k[1] ?><?= $help($k[2]) ?></div><div class="v"><span class="sk" style="width:60%"></span></div><div class="s"></div></div>
             <?php endforeach; ?>
         </div>
@@ -246,10 +246,13 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             <button type="button" class="fd-btn" id="tExpSel" data-fmt="xlsx" disabled>Exporter la sélection · Excel</button>
             <button type="button" class="fd-btn" id="tExpSelCsv" data-fmt="csv" disabled>CSV</button>
         </div>
+        <p style="font-size:12.5px;color:var(--ds-muted);margin:10px 0 0;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center">Où est l'argent :
+            <span class="mk-pill info">Sur votre compte Stripe</span> → <span class="mk-pill info">Virement en cours</span> → <span class="mk-pill ok">Versé sur votre banque</span>
+            <?= $help("Sur votre compte Stripe : le paiement est reçu, Stripe le garde le temps que les fonds soient disponibles. Virement en cours : Stripe a lancé le virement, avec sa date d'arrivée prévue. Versé sur votre banque : le virement est arrivé. Le passage d'un statut à l'autre est automatique.") ?></p>
         <div id="tFilt" class="fd-filters" hidden>
             <label><span>Séjour</span><select id="fSej" class="ds-select"><option value="">Tous</option></select></label>
             <label><span>Session</span><select id="fSes" class="ds-select"><option value="">Toutes</option></select></label>
-            <label><span>Statut</span><select id="fSt" class="ds-select"><option value="">Tous</option><option value="attente">En attente de versement</option><option value="en_cours">Versement en cours</option><option value="verse">Versé</option><option value="partiel">Remboursé en partie</option><option value="rembourse">Remboursé</option><option value="annule">Annulé</option><option value="litige">Litige</option><option value="bloque">Suspendu</option><option value="PAYE">Reçu hors carte</option><option value="A_REGLER">À encaisser</option></select></label>
+            <label><span>Statut</span><select id="fSt" class="ds-select"><option value="">Tous</option><option value="stripe">Sur votre compte Stripe</option><option value="route">Virement en cours</option><option value="banque">Versé sur votre banque</option><option value="moncamp">Chez moncamp.fr</option><option value="partiel">Remboursé en partie</option><option value="rembourse">Remboursé</option><option value="annule">Annulé</option><option value="litige">Litige</option><option value="bloque">Suspendu</option><option value="PAYE">Reçu hors carte</option><option value="A_REGLER">À encaisser</option></select></label>
             <label><span>Moyen</span><select id="fMoy" class="ds-select"><option value="">Tous</option></select></label>
             <label><span>Du</span><input id="fDu" type="date" class="ds-input"></label>
             <label><span>Au</span><input id="fAu" type="date" class="ds-input"></label>
@@ -342,7 +345,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     var iso = function (d) { return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
     var dfr = function (s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : ''; };
     var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    var PILL = { attente: 'info', en_cours: 'info', verse: 'ok', partiel: 'warn', rembourse: 'bad', annule: 'bad', litige: 'bad', bloque: 'warn', PAYE: 'ok', A_REGLER: 'warn' };
+    var PILL = { moncamp: 'warn', stripe: 'info', route: 'info', banque: 'ok', partiel: 'warn', rembourse: 'bad', annule: 'bad', litige: 'bad', bloque: 'warn', PAYE: 'ok', A_REGLER: 'warn' };
     var D = null, GRAN = '', seq = 0;
 
     // ---------- période
@@ -398,7 +401,8 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         kpi('frais', eur(c.frais), delta(c.frais, p.frais, false));
         kpi('remb', eur(c.remb), delta(c.remb, p.remb, false));
         kpi('attente', eur(D.kpi.en_attente), 'à ce jour');
-        kpi('prochain', D.kpi.prochain ? eur(D.kpi.prochain.m) : '–', D.kpi.prochain ? 'arrivée prévue le ' + dfr(D.kpi.prochain.d) : 'automatique, dès que disponible');
+        var P = D.kpi.prochain, PE = { route: 'en route, arrivée prévue le ', dispo: 'virement lancé par Stripe le ', attente: 'fonds disponibles le ' };
+        kpi('prochain', P ? eur(P.m) + ' le ' + dfr(P.d).slice(0, 5) : '–', P ? PE[P.etat] + dfr(P.d) : 'aucun montant en attente');
         kpi('dette', eur(c.compense), D.kpi.dette > 0 ? '<b style="color:#b42318">Reste dû : ' + eur(D.kpi.dette) + '</b>' : 'aucune dette en cours');
         $('kp-dette').classList.toggle('alert', D.kpi.dette > 0);
         $('pCmp').textContent = 'Comparé au ' + dfr(D.periode.prev_du) + ' – ' + dfr(D.periode.prev_au);
@@ -415,7 +419,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             var act = r[3] ? ' role="button" tabindex="0" data-wf="' + r[3] + '" style="cursor:pointer"' : '';
             return '<div class="l' + (tot ? ' tot' : '') + '"' + act + '><span class="bar ' + (r[2] === 'tot' ? '' : r[2]) + '" style="width:' + w + 'px"></span><span' + (neg ? ' class="neg"' : '') + '>' + (tot ? '<b>' + r[0] + '</b>' : esc(r[0])) + '</span></div><div class="a' + (tot ? ' tot' : '') + (neg ? ' neg' : '') + '">' + (neg ? '− ' + eur(-r[1]) : eur(r[1])) + '</div>';
         }).join('');
-        $('wfNote').textContent = (D.prochains.length ? 'Versement en route : ' + eur(D.prochains[0].m) + ', arrivée prévue le ' + dfr(D.prochains[0].d) + '. ' : '') + 'Versé automatiquement par Stripe dès que les fonds sont disponibles (2 à 7 jours ouvrés).';
+        $('wfNote').textContent = (D.kpi.prochain ? 'Prochain virement : ' + eur(D.kpi.prochain.m) + ' le ' + dfr(D.kpi.prochain.d).slice(0, 5) + '. ' : '') + 'Versé automatiquement par Stripe dès que les fonds sont disponibles (2 à 7 jours ouvrés).';
     }
     $('wf').addEventListener('click', function (e) { var b = e.target.closest('[data-wf]'); if (!b) return; wfGo(b.dataset.wf); });
     $('wf').addEventListener('keydown', function (e) { var b = e.target.closest('[data-wf]'); if (b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); wfGo(b.dataset.wf); } });
@@ -548,7 +552,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             + '<div class="fd-sub">Montants</div><dl class="fd-dl">' + row('Payé par la famille', eur(r.brut)) + row('Commission moncamp.fr', '− ' + eur(r.com)) + (card ? row('Frais Stripe', r.frais ? '− ' + eur(r.frais) : (r.mode === 'direct' ? 'en attente de Stripe' : 'inclus dans la commission')) : '')
             + (r.remb ? row('Remboursé', '− ' + eur(r.remb)) : '') + '<span class="sep"></span>' + row('<b>Net pour vous</b>', '<b>' + eur(r.pv) + '</b>')
             + (r.comp ? row('Dette compensée sur ce paiement', eur(r.comp)) : '') + (r.tva ? row('dont TVA incluse', eur(r.tva)) : '') + '</dl>';
-        if (card) h += '<div class="fd-sub">Versement</div><dl class="fd-dl">' + row('Déjà versé', eur(r.verse)) + (r.st === 'attente' ? row('Versement', 'automatique, dès que disponible') : '') + (r.vtok ? row('Justificatif', '<a class="underline" href="virement.php?t=' + encodeURIComponent(r.vtok) + '">Voir le versement</a>') : '') + '</dl>';
+        if (card) h += '<div class="fd-sub">Versement</div><dl class="fd-dl">' + row('Déjà versé', eur(r.verse)) + (r.st === 'stripe' ? row('Versement', 'automatique, dès que disponible') : '') + (r.vtok ? row('Justificatif', '<a class="underline" href="virement.php?t=' + encodeURIComponent(r.vtok) + '">Voir le versement</a>') : '') + '</dl>';
         h += '<div class="fd-sub">Documents</div><div style="display:flex;gap:8px;flex-wrap:wrap">'
             + (r.tok ? '<a class="fd-btn" href="generate_pdf_certificat.php?r=' + encodeURIComponent(r.tok) + '" target="_blank" rel="noopener">Reçu PDF</a>' : '')
             + (card && EXPRESS ? '<a class="fd-btn" href="api/connect_dashboard.php?o=' + encodeURIComponent(ORGA) + '" target="_blank" rel="noopener">Ouvrir dans Stripe ↗</a>' : '')

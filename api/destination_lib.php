@@ -331,6 +331,38 @@ function fin_dette_notifier(PDO $pdo, array $r): void {
     } catch (Throwable $e) { error_log('fin_dette_notifier: ' . $e->getMessage()); }
 }
 
+/**
+ * Prochain virement vers la banque de l'organisme : un virement déjà en route (payout envoyé : date d'arrivée Stripe), sinon le solde Stripe
+ * du compte connecté (API balance : disponible = virement imminent ; à venir = date available_on des mouvements en attente).
+ * ['m' => centimes, 'd' => Y-m-d, 'etat' => 'route' | 'dispo' | 'attente'] ou null. Mis en cache 5 minutes dans la session.
+ */
+function fin_prochain_virement(PDO $pdo, int $orgaId): ?array {
+    $st = $pdo->prepare("SELECT montant_cents m, COALESCE(arrivee, DATE(created_at)) d FROM fin_transferts WHERE organisateur_id = ? AND type = 'payout' AND statut = 'envoye' ORDER BY d LIMIT 1");
+    $st->execute([$orgaId]);
+    if ($r = $st->fetch(PDO::FETCH_ASSOC)) return ['m' => (int)$r['m'], 'd' => $r['d'], 'etat' => 'route'];
+    $acc = fin_account($pdo, $orgaId);
+    if (!$acc || empty($acc['account_id'])) return null;
+    $k = 'prochain_vir_' . $orgaId;
+    if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION[$k]) && $_SESSION[$k]['t'] > time() - 300) return $_SESSION[$k]['v'];
+    $v = null;
+    try {
+        $opt = ['stripe_account' => $acc['account_id']];
+        $eur = function ($l) { $t = 0; foreach ($l ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $t += (int)$x->amount; return $t; };
+        $b = fin_stripe()->balance->retrieve([], $opt);
+        $dispo = $eur($b->available ?? []);
+        if ($dispo > 0) $v = ['m' => $dispo, 'd' => date('Y-m-d'), 'etat' => 'dispo'];
+        elseif ($eur($b->pending ?? []) > 0) {
+            $par = [];
+            foreach (fin_stripe()->balanceTransactions->all(['limit' => 100], $opt)->data as $t)
+                if (($t->status ?? '') === 'pending' && strtolower((string)$t->currency) === 'eur' && !empty($t->available_on)) { $d = date('Y-m-d', (int)$t->available_on); $par[$d] = ($par[$d] ?? 0) + (int)$t->net; }
+            ksort($par);
+            foreach ($par as $d => $m) if ($m > 0) { $v = ['m' => $m, 'd' => $d, 'etat' => 'attente']; break; }
+        }
+    } catch (Throwable $e) { error_log('fin_prochain_virement: ' . $e->getMessage()); return null; }
+    if (session_status() === PHP_SESSION_ACTIVE) $_SESSION[$k] = ['t' => time(), 'v' => $v];
+    return $v;
+}
+
 /** Délai (jours après le début du séjour) avant le versement bancaire ; recalcule la date des paiements pas encore versés. Journalisé. */
 function fin_set_payout_jours(PDO $pdo, int $jours, string $acteur): void {
     fin_ensure($pdo);
