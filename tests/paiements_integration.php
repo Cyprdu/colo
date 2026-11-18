@@ -98,4 +98,33 @@ $rev = array_values(array_filter($GLOBALS['fake_transfers']->calls, fn($c) => $c
 ok($rev && $rev[0][1] === 'tr_pi_E' && $rev[0][2]['amount'] === $rep && (int)$pdo->query("SELECT SUM(a_reprendre_cents) FROM fin_paiements")->fetchColumn() === 0, 'reprise : reversement du transfert de la charge, rien ne reste à reprendre');
 ok(fin_ledger_totaux($pdo, 2)['rembourse'] === 11250 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference LIKE 'litige:%'")->fetchColumn() === 2, 'litige perdu : tout est remboursé au journal, frais de litige à la charge de moncamp.fr');
 
+// ---------------------------------------------------------------- 5. versements bancaires (Payout manuel N jours après le début du séjour)
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (6, 3, 6, 'En attente', 50.00, 'EN_ATTENTE', 'tokG')");
+fin_record_checkout($pdo, ['tokG'], 'pi_G', 'cs_G', 5000, 'destination');
+$bal = fn(int $a, int $p) => $GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => $a, 'currency' => 'eur']], 'pending' => [(object)['amount' => $p, 'currency' => 'eur']]];
+$bal(4845, 11627); // G (séjour commencé il y a 5 jours) disponible ; D (séjour dans 40 jours) encore en attente chez Stripe
+$po = 0; $GLOBALS['stripe_resp']['payouts.create'] = function () use (&$po) { return (object)['id' => 'po_' . (++$po)]; };
+$GLOBALS['stripe_calls'] = [];
+$rep = fin_payouts_run($pdo);
+$c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'payouts.create'));
+ok($rep['payouts'] === 1 && $rep['montant_cents'] === 4845, 'versement de 48,45 EUR (séjour commencé), le séjour à venir reste sur le compte Stripe');
+ok($c[0][1][1] === ['stripe_account' => 'acct_D', 'idempotency_key' => 'moncamp-payout-' . $pdo->query("SELECT MAX(id) FROM fin_transferts")->fetchColumn()], 'payout sur le compte connecté, clé d\'idempotence');
+ok((int)$pdo->query("SELECT payout_manuel FROM stripe_comptes WHERE organisateur_id = 2")->fetchColumn() === 1 && in_array('accounts.update', array_column($GLOBALS['stripe_calls'], 0), true), 'compte passé en versements manuels avant le premier versement');
+ok($pdo->query("SELECT statut FROM fin_paiements WHERE payment_intent = 'pi_G'")->fetchColumn() === 'verse' && fin_ledger_totaux($pdo, 2)['verse'] === 4845, 'ligne versée, journal : 48,45 EUR versés');
+$bal(0, 11627);
+ok(fin_payouts_run($pdo)['payouts'] === 0, 'second passage (double clic) : rien de plus');
+stripe_webhook_process($pdo, $ev('evt_5', 'payout.failed', ['id' => 'po_1', 'amount' => 4845, 'failure_message' => 'IBAN invalide'], 'acct_D'));
+ok($pdo->query("SELECT CONCAT(statut, '|', erreur) FROM fin_transferts WHERE stripe_transfer_id = 'po_1'")->fetchColumn() === 'echec|IBAN invalide' && $pdo->query("SELECT statut FROM fin_paiements WHERE payment_intent = 'pi_G'")->fetchColumn() === 'attente', 'payout refusé : raison affichée, ligne remise en attente');
+ok(fin_ledger_totaux($pdo, 2)['verse'] === 0, 'journal : versement annulé');
+$bal(4845, 11627);
+fin_payouts_run($pdo);
+stripe_webhook_process($pdo, $ev('evt_6', 'payout.paid', ['id' => 'po_2', 'amount' => 4845], 'acct_D'));
+ok($pdo->query("SELECT statut FROM fin_transferts WHERE stripe_transfer_id = 'po_2'")->fetchColumn() === 'paye', 'nouveau versement, puis payé');
+// remboursement après versement : le solde Stripe devient négatif, rien n'est versé tant qu'il n'est pas compensé
+stripe_webhook_process($pdo, $ev('evt_7', 'charge.refunded', ['id' => 'ch_G', 'payment_intent' => 'pi_G', 'amount_refunded' => 5000, 'amount' => 5000]));
+$t = fin_ledger_totaux($pdo, 2);
+ok($t['en_attente'] === (12500 - 373) - (5000 - 155), 'remboursé après versement : en attente = séjour à venir − part déjà versée (à compenser)');
+$bal(-4845, 11627);
+ok(fin_payouts_run($pdo)['payouts'] === 0, 'solde Stripe négatif : aucun versement');
+
 echo "Tout est bon.\n";

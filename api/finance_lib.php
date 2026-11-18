@@ -217,6 +217,7 @@ function fin_ensure(PDO $pdo): void {
         // Destination charges : modèle de chaque paiement, dette de l'organisme compensée sur ce paiement
         fin_add_col($pdo, 'fin_paiements', 'mode', "VARCHAR(12) NOT NULL DEFAULT 'legacy'");
         fin_add_col($pdo, 'fin_paiements', 'compensation_cents', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'stripe_comptes', 'payout_manuel', "TINYINT(1) NOT NULL DEFAULT 0"); // versements bancaires pilotés par fin_payouts_run
         fin_add_col($pdo, 'fin_paiements', 'a_reprendre_cents', "INT NOT NULL DEFAULT 0"); // litige perdu : net à reprendre à l'organisme (fin_reprises_run)
         fin_ledger_ensure($pdo);
         fin_ledger_backfill($pdo);
@@ -473,13 +474,14 @@ function fin_store_account(PDO $pdo, int $orgaId, $a): array {
         'payouts_enabled' => !empty($a->payouts_enabled) ? 1 : 0,
         'transfers_actif' => (($cap['transfers'] ?? '') === 'active') ? 1 : 0,
         'exigences' => json_encode(is_array($due) ? $due : (array)$due),
+        'payout_manuel' => (($a->settings->payouts->schedule->interval ?? '') === 'manual') ? 1 : 0,
     ];
-    $pdo->prepare("INSERT INTO stripe_comptes (organisateur_id, account_id, type, details_submitted, charges_enabled, payouts_enabled, transfers_actif, exigences, maj)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    $pdo->prepare("INSERT INTO stripe_comptes (organisateur_id, account_id, type, details_submitted, charges_enabled, payouts_enabled, transfers_actif, exigences, payout_manuel, maj)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                    ON DUPLICATE KEY UPDATE account_id = VALUES(account_id), type = VALUES(type), details_submitted = VALUES(details_submitted),
                    charges_enabled = VALUES(charges_enabled), payouts_enabled = VALUES(payouts_enabled), transfers_actif = VALUES(transfers_actif),
-                   exigences = VALUES(exigences), maj = NOW()")
-        ->execute([$orgaId, $row['account_id'], $row['type'], $row['details_submitted'], $row['charges_enabled'], $row['payouts_enabled'], $row['transfers_actif'], $row['exigences']]);
+                   exigences = VALUES(exigences), payout_manuel = VALUES(payout_manuel), maj = NOW()")
+        ->execute([$orgaId, $row['account_id'], $row['type'], $row['details_submitted'], $row['charges_enabled'], $row['payouts_enabled'], $row['transfers_actif'], $row['exigences'], $row['payout_manuel']]);
     return $row;
 }
 
@@ -516,6 +518,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
         'business_type' => $statuts[$statut][2],
         'capabilities' => ['transfers' => ['requested' => true], 'card_payments' => ['requested' => true]], // card_payments : on_behalf_of
         'business_profile' => $profile,
+        'settings' => ['payouts' => ['schedule' => ['interval' => 'manual']]], // versements bancaires déclenchés par moncamp.fr (fin_payouts_run)
         'metadata' => ['organisateur_id' => (string)$orgaId, 'statut' => $statut],
     ];
     if ($statuts[$statut][2] !== 'individual') $params['company'] = ['name' => mb_substr((string)$orga['nom'], 0, 100)];
@@ -536,7 +539,8 @@ function fin_sync_account(PDO $pdo, int $orgaId): ?array {
     $st->execute([$orgaId]);
     $acct = $st->fetchColumn();
     if (!$acct) return null;
-    fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
+    $row = fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
+    if (!$row['payout_manuel'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct); // comptes créés avant les destination charges
     return fin_account($pdo, $orgaId);
 }
 
@@ -570,7 +574,7 @@ function fin_transfer_legacy(PDO $pdo, int $orgaId, string $acteur): ?int {
         $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
         $st->execute([$orgaId]);
         $pf = (int)round((float)$st->fetchColumn() * 100);
-        $st = $pdo->prepare("SELECT COALESCE(SUM(net_cents - net_rembourse_cents), 0) FROM fin_paiements WHERE organisateur_id = ? AND statut IN ('attente','bloque','litige','en_cours')");
+        $st = $pdo->prepare("SELECT COALESCE(SUM(net_cents - net_rembourse_cents), 0) FROM fin_paiements WHERE organisateur_id = ? AND mode = 'legacy' AND statut IN ('attente','bloque','litige','en_cours')");
         $st->execute([$orgaId]);
         $hist = $pf - (int)$st->fetchColumn();
         $net = $hist - fin_commission_cents($hist, 0); // ancien solde : pourcentage seul (pas de part fixe par paiement)

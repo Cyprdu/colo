@@ -1,5 +1,7 @@
 <?php
 // api/versements_lib.php : calendrier des versements aux organismes (inclus par finance_lib.php).
+// ANCIEN MODÈLE (fin_paiements.mode = 'legacy') seulement, conservé tant qu'il reste des paiements legacy. Les paiements « destination »
+// sont versés par fin_payouts_run (api/destination_lib.php). Le jour de versement hebdomadaire n'est plus utilisé (cron horaire, tous les organismes).
 //
 // MODÈLE
 //  - Un jour de versement HEBDOMADAIRE fixe par organisme (lundi à samedi, jamais dimanche), attribué automatiquement au jour le moins chargé
@@ -137,7 +139,7 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
         fin_process_reversals($pdo, $rep);
         $days = $respectDay ? fin_days_due($pdo) : null;
         $rows = $pdo->query("SELECT DISTINCT p.organisateur_id, o.jour_versement FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id
-                             WHERE p.statut = 'attente'" . ($force ? '' : ' AND p.date_deblocage <= NOW()'))->fetchAll(PDO::FETCH_ASSOC);
+                             WHERE p.mode = 'legacy' AND p.statut = 'attente'" . ($force ? '' : ' AND p.date_deblocage <= NOW()'))->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $o) {
             $orgaId = (int)$o['organisateur_id'];
             if ($onlyOrga && $orgaId !== $onlyOrga) continue;
@@ -177,7 +179,7 @@ function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $
         $st->execute([$orgaId]);
         $pf = (int)round((float)$st->fetchColumn() * 100);
         $st = $pdo->prepare("SELECT id, camp_id, net_cents, net_rembourse_cents, verse_cents, date_deblocage FROM fin_paiements
-                             WHERE organisateur_id = ? AND statut = 'attente'" . ($force ? '' : ' AND date_deblocage <= NOW()') . " FOR UPDATE");
+                             WHERE organisateur_id = ? AND mode = 'legacy' AND statut = 'attente'" . ($force ? '' : ' AND date_deblocage <= NOW()') . " FOR UPDATE");
         $st->execute([$orgaId]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         if (!$rows) { $pdo->rollBack(); return null; }
@@ -226,8 +228,13 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
     $t = $st->fetch(PDO::FETCH_ASSOC);
     if (!$t || $t['statut'] !== 'en_cours') return $t['statut'] ?? 'echec';
     $pdo->prepare("UPDATE fin_transferts SET tentatives = tentatives + 1 WHERE id = ?")->execute([$tid]);
+    $payout = $t['type'] === 'payout';
     try {
-        $tr = fin_stripe()->transfers->create([
+        $tr = $payout ? fin_stripe()->payouts->create([
+            'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'statement_descriptor' => 'MONCAMP.FR',
+            'description' => 'moncamp.fr : versement de vos séjours (réf. ' . substr($t['token'], 0, 10) . ')',
+            'metadata' => ['transfert_id' => (string)$tid, 'organisateur_id' => (string)$t['organisateur_id']],
+        ], ['stripe_account' => $t['stripe_account_id'], 'idempotency_key' => 'moncamp-payout-' . $tid]) : fin_stripe()->transfers->create([
             'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'destination' => $t['stripe_account_id'],
             'transfer_group' => 'ORGA' . $t['organisateur_id'],
             'description' => 'moncamp.fr : reversement des inscriptions (réf. ' . substr($t['token'], 0, 10) . ')',
@@ -242,7 +249,9 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
         // Transferts d'avant le calendrier hebdomadaire (sans lignes) : tout était versé
         $pdo->prepare("UPDATE fin_paiements SET statut = 'verse', verse_cents = GREATEST(0, net_cents - net_rembourse_cents) WHERE transfert_id = ? AND statut = 'en_cours'")->execute([$tid]);
         fin_audit($pdo, 'transfert_envoye', 'transfert', $tid, ['stripe' => $tr->id, 'cents' => (int)$t['montant_cents']], $acteur);
-        fin_ledger_add($pdo, 'versement', (int)$t['organisateur_id'], -(int)$t['montant_cents'], $tr->id, 'transfert', $tid, 'Versement', $acteur, 'legacy');
+        // Journal : un payout est un versement vers la banque ; un transfert legacy aussi, sauf si le compte est en versements manuels (le payout comptera)
+        $manuel = (int)$pdo->query("SELECT COALESCE(MAX(payout_manuel), 0) FROM stripe_comptes WHERE account_id = " . $pdo->quote((string)$t['stripe_account_id']))->fetchColumn();
+        if ($payout || !$manuel) fin_ledger_add($pdo, 'versement', (int)$t['organisateur_id'], -(int)$t['montant_cents'], $tr->id, 'transfert', $tid, 'Versement', $acteur, $payout ? 'destination' : 'legacy');
         $pdo->commit();
         return 'envoye';
     } catch (\Stripe\Exception\ApiErrorException $e) {
@@ -260,7 +269,7 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
                        SET p.verse_cents = p.verse_cents - l.montant_cents, p.statut = 'attente', p.transfert_id = NULL
                        WHERE l.transfert_id = ? AND p.statut = 'en_cours'")->execute([$tid]);
         $pdo->prepare("UPDATE fin_paiements SET statut = 'attente', transfert_id = NULL WHERE transfert_id = ? AND statut = 'en_cours'")->execute([$tid]);
-        $pdo->prepare("UPDATE organisateurs SET portefeuille = portefeuille + ? WHERE id = ?")->execute([(int)($t['brut_cents'] ?: $t['montant_cents']) / 100, $t['organisateur_id']]);
+        if (!$payout) $pdo->prepare("UPDATE organisateurs SET portefeuille = portefeuille + ? WHERE id = ?")->execute([(int)($t['brut_cents'] ?: $t['montant_cents']) / 100, $t['organisateur_id']]);
         fin_audit($pdo, 'transfert_echec', 'transfert', $tid, ['erreur' => $e->getMessage()], $acteur);
         $pdo->commit();
         return 'echec';
@@ -420,7 +429,7 @@ function fin_reversal_retenter(PDO $pdo, int $revId, string $acteur): bool {
 /** Lignes de paiement non soldées d'un organisme (ou de tous si $orgaId = 0), avec les données du séjour */
 function fin_pending_rows(PDO $pdo, int $orgaId = 0): array {
     $sql = "SELECT p.id, p.organisateur_id, p.camp_id, p.net_cents, p.net_rembourse_cents, p.verse_cents, p.date_deblocage, p.statut, c.nom camp, c.date_debut, c.annul_jours_moitie jm
-            FROM fin_paiements p JOIN camps c ON c.id = p.camp_id WHERE p.statut IN ('attente','bloque','litige','en_cours')" . ($orgaId ? " AND p.organisateur_id = ?" : "");
+            FROM fin_paiements p JOIN camps c ON c.id = p.camp_id WHERE p.mode = 'legacy' AND p.statut IN ('attente','bloque','litige','en_cours')" . ($orgaId ? " AND p.organisateur_id = ?" : "");
     $st = $pdo->prepare($sql);
     $st->execute($orgaId ? [$orgaId] : []);
     return $st->fetchAll(PDO::FETCH_ASSOC);

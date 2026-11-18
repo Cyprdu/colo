@@ -233,29 +233,25 @@ function compta_dettes_count(PDO $pdo): int {
     try { return (int)$pdo->query("SELECT COUNT(*) FROM fin_reversals WHERE statut = 'dette'")->fetchColumn(); } catch (Throwable $e) { return 0; }
 }
 
-/** Charge par jour de la semaine, situation par organisme (versable / réserve / délai), dettes et soldes négatifs */
+/** Situation par organisme (destination : à verser / à venir / litige ; anciens paiements legacy), derniers versements bancaires, dettes */
 function compta_versements(PDO $pdo): array {
     fin_ensure($pdo);
-    $pct = fin_reserve_pct(); $now = date('Y-m-d H:i:s');
     $orgs = [];
-    foreach ($pdo->query("SELECT id, nom, jour_versement, portefeuille FROM organisateurs ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC) as $o)
-        $orgs[(int)$o['id']] = $o + ['ok' => 0, 'held' => 0, 'wait' => 0, 'suspendu' => 0];
-    foreach (fin_pending_rows($pdo) as $r) {
-        $id = (int)$r['organisateur_id']; if (!isset($orgs[$id]) || $r['statut'] === 'en_cours') continue;
-        $left = max(0, (int)$r['net_cents'] - (int)$r['net_rembourse_cents'] - (int)$r['verse_cents']);
-        if ($r['statut'] !== 'attente') { $orgs[$id]['suspendu'] += $left; continue; }
-        $p = fin_row_parts($r, $pct, $now);
-        $orgs[$id]['ok'] += $p['ok']; $orgs[$id]['held'] += $p['held']; $orgs[$id]['wait'] += $p['wait'];
+    foreach ($pdo->query("SELECT id, nom, portefeuille FROM organisateurs ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC) as $o)
+        $orgs[(int)$o['id']] = $o + ['ok' => 0, 'futur' => 0, 'litige' => 0, 'legacy' => 0];
+    $reste = "GREATEST(0, net_cents - net_rembourse_cents - verse_cents)";
+    foreach ($pdo->query("SELECT organisateur_id o, mode, SUM(IF(statut = 'attente' AND date_deblocage <= NOW(), $reste, 0)) ok, SUM(IF(statut = 'attente' AND date_deblocage > NOW(), $reste, 0)) futur,
+                                 SUM(IF(statut IN ('litige', 'bloque'), $reste, 0)) litige, SUM(IF(statut <> 'en_cours', $reste, 0)) tout
+                          FROM fin_paiements WHERE statut IN ('attente', 'bloque', 'litige', 'en_cours') GROUP BY organisateur_id, mode")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $id = (int)$r['o']; if (!isset($orgs[$id])) continue;
+        if ($r['mode'] === 'legacy') { $orgs[$id]['legacy'] += (int)$r['tout']; continue; }
+        foreach (['ok', 'futur', 'litige'] as $k) $orgs[$id][$k] += (int)$r[$k];
     }
-    $jours = [];
-    foreach (FIN_JOURS as $n => $nom) $jours[$n] = ['nom' => $nom, 'orgas' => 0, 'ok' => 0, 'held' => 0];
-    foreach ($orgs as $o) {
-        $j = (int)$o['jour_versement']; if (!isset($jours[$j])) continue;
-        $jours[$j]['orgas']++; $jours[$j]['ok'] += max(0, min($o['ok'], (int)round($o['portefeuille'] * 100))); $jours[$j]['held'] += $o['held'];
-    }
+    $payouts = $pdo->query("SELECT t.created_at, t.montant_cents, t.statut, t.erreur, o.nom orga FROM fin_transferts t JOIN organisateurs o ON o.id = t.organisateur_id
+                            WHERE t.type = 'payout' ORDER BY t.id DESC LIMIT 30")->fetchAll(PDO::FETCH_ASSOC);
     $dettes = $pdo->query("SELECT r.id, r.montant_cents, r.recupere_cents, r.created_at, o.nom orga, p.inscription_id
                            FROM fin_reversals r JOIN organisateurs o ON o.id = r.organisateur_id JOIN fin_paiements p ON p.id = r.paiement_id
                            WHERE r.statut = 'dette' ORDER BY r.id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
     $negatifs = array_values(array_filter($orgs, fn($o) => (float)$o['portefeuille'] < -0.004));
-    return ['jours' => $jours, 'orgas' => array_values($orgs), 'dettes' => $dettes, 'negatifs' => $negatifs];
+    return ['orgas' => array_values($orgs), 'payouts' => $payouts, 'dettes' => $dettes, 'negatifs' => $negatifs, 'legacy' => array_sum(array_column($orgs, 'legacy'))];
 }

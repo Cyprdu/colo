@@ -1,7 +1,7 @@
 <?php
 // api/cron_tout.php : UN seul cron (toutes les heures) qui lance les trois tâches planifiées, quand l'hébergement limite le nombre de crons.
 //   HTTP : https://moncamp.fr/api/cron_tout.php?key=CRON_SECRET   (même clé que les autres crons)
-// Chaque tâche sait déjà ne rien faire quand ce n'est pas son heure (virements : jour de versement ; alertes : fréquence de chaque animateur ;
+// Chaque tâche sait déjà ne rien faire quand ce n'est pas son heure (virements : séjours éligibles ; alertes : fréquence de chaque animateur ;
 // purge RGPD : seuls les dossiers échus sont touchés), donc les lancer toutes les heures est sans risque.
 require_once 'config.php';
 
