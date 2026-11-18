@@ -21,6 +21,29 @@ $is_logged_in = isset($_SESSION['user']);
 $is_director = $is_logged_in && ($_SESSION['user']['is_directeur'] ?? false);
 $is_admin = $is_logged_in && ($_SESSION['user']['is_admin'] ?? false);
 $is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
+$adm_todo = []; $adm_unread = 0; $adm_links = [];
+if ($is_logged_in) {
+    try {
+        require_once __DIR__ . '/../api/config.php';
+        require_once __DIR__ . '/../api/adm_core.php';
+        global $pdo;
+        if (isset($pdo) && time() - (int)($_SESSION['bloque_chk'] ?? 0) > 300) {
+            $_SESSION['bloque_chk'] = time();
+            $q = $pdo->prepare("SELECT COALESCE(bloque, 0) FROM users WHERE id = ?");
+            $q->execute([(int)$_SESSION['user']['id']]);
+            if ((int)$q->fetchColumn() === 1) { $_SESSION = []; session_destroy(); header('Location: /login.php?suspendu=1'); exit; }
+        }
+        if ($is_admin && isset($pdo)) {
+            $is_admin = adm_is_staff();
+            if ($is_admin) {
+                $adm_todo = adm_todo_counts();
+                $adm_unread = adm_notif_unread();
+                foreach (adm_todo_types() as $k => [$l, $perm, $href]) if (adm_can($perm)) $adm_links[] = [$l, '/' . $href, (int)$adm_todo[$k]];
+            }
+        }
+    } catch (Throwable $e) { error_log('header admin: ' . $e->getMessage()); }
+}
+$adm_total = array_sum($adm_todo);
 
 // Compte animateur : expérience dédiée (onglets Missions, Candidatures, Profil, Préférences). Un compte animateur qui est AUSSI parent
 // (a au moins une fiche enfant) choisit son mode dans le menu du compte ; le choix est gardé en session (api/anim_mode.php).
@@ -175,19 +198,43 @@ if ('serviceWorker' in navigator) {
 
 
                     <?php if ($is_director): ?>
-                        <a href="organisateurs" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Organisateurs</a>
+                        <a href="organisateurs" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors"><?php echo $is_admin ? 'Organisateur' : 'Organisateurs'; ?></a>
                     <?php endif; ?>
 
-                                        <?php if ($is_logged_in && !$anim_ui): ?>
-                        <a href="favorites" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Favoris</a>
+                    <?php if ($is_logged_in && !$anim_ui): ?>
+                        <?php if (!$is_admin): ?><a href="favorites" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Favoris</a><?php endif; ?>
                         <a href="reservations" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Réservations</a>
                     <?php endif; ?>
 
+                    <?php if ($is_admin): ?>
+                        <div class="relative nav-dd py-2">
+                            <a href="/admin.php" class="inline-flex items-center gap-1.5 text-[#26343b] px-2.5 py-2 text-[14px] font-bold">Administration<?php if ($adm_total): ?><span class="min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-[#c0392b] text-white text-[11px] font-bold"><?php echo $adm_total; ?></span><?php endif; ?></a>
+                            <div class="dropdown-menu absolute right-0 top-full w-72 pt-3 z-50">
+                                <div class="bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden py-1">
+                                    <div class="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">À traiter</div>
+                                    <?php foreach ($adm_links as [$l, $href, $n]): ?>
+                                    <a href="<?php echo htmlspecialchars($href); ?>" class="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"><span><?php echo htmlspecialchars($l); ?></span><span class="min-w-[24px] h-6 px-2 inline-flex items-center justify-center rounded-full text-xs font-bold <?php echo $n ? 'bg-[#faf1dc] text-[#8a5a12]' : 'bg-gray-100 text-gray-500'; ?>"><?php echo $n; ?></span></a>
+                                    <?php endforeach; ?>
+                                    <div class="border-t border-gray-100 mt-1 pt-1">
+                                        <a href="/admin.php" class="block px-4 py-2 text-sm font-bold text-[#26343b] hover:bg-gray-50">Tableau de bord</a>
+                                        <a href="/admin_notifs.php" class="block px-4 py-2 text-sm font-bold text-[#26343b] hover:bg-gray-50">Notifications</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php else: ?>
                     <a href="contact" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Contact</a>
                     <a href="aide" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Aide</a>
+                    <?php endif; ?>
                 </div>
 
                 <div class="hidden md:flex items-center gap-3 flex-shrink-0 transition-all duration-300" id="user-actions">
+                    <?php if ($is_admin): ?>
+                        <a href="/admin_notifs.php" class="relative text-gray-700 hover:text-gray-900 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" title="Notifications d'administration" aria-label="Notifications d'administration<?php echo $adm_unread ? ' (' . $adm_unread . ' non lues)' : ''; ?>">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2z"/><path d="M10 20a2 2 0 004 0"/></svg>
+                            <?php if ($adm_unread): ?><span class="absolute top-0.5 right-0 min-w-[16px] h-4 px-1 flex items-center justify-center bg-red-600 text-white text-[10px] font-bold rounded-full"><?php echo $adm_unread > 99 ? '99+' : $adm_unread; ?></span><?php endif; ?>
+                        </a>
+                    <?php endif; ?>
                     <?php if ($is_logged_in): ?>
                         <a href="messagerie" class="relative text-gray-700 hover:text-gray-900 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" title="Messagerie" aria-label="Messagerie">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M4 7.5l8 6 8-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -219,9 +266,11 @@ if ('serviceWorker' in navigator) {
                                     <a href="children" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-children w-6 text-center mr-2 text-gray-400"></i> Gérer mes enfants
                                     </a>
+                                    <?php if (!$is_admin): ?>
                                     <a href="favorites" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-heart w-6 text-center mr-2 text-gray-400"></i> Favoris
                                     </a>
+                                    <?php endif; ?>
                                     <?php endif; ?>
                                     <a href="reservations" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-file-invoice w-6 text-center mr-2 text-gray-400"></i> <?php echo $anim_ui ? 'Mes inscriptions (équipe)' : 'Réservations'; ?>
@@ -267,11 +316,11 @@ if ('serviceWorker' in navigator) {
                                 <?php if ($is_admin): ?>
                                 <div class="border-t border-gray-100 py-1">
                                     <div class="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Administration</div>
-                                    <a href="admin.php" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
-                                        <i class="fa-solid fa-gauge-high w-6 text-center mr-2"></i> Dashboard Admin
+                                    <a href="/admin.php" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
+                                        <i class="fa-solid fa-gauge-high w-6 text-center mr-2"></i> Tableau de bord
                                     </a>
-                                    <a href="admin_messages" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
-                                        <i class="fa-solid fa-envelope-open-text w-6 text-center mr-2"></i> Réponse Contact
+                                    <a href="/admin_notifs.php" class="flex items-center px-4 py-2 text-sm text-[#26343b] hover:bg-gray-50 font-bold">
+                                        <i class="fa-solid fa-bell w-6 text-center mr-2"></i> Notifications<?php if ($adm_unread): ?> <span class="ml-auto text-xs bg-red-600 text-white rounded-full px-2"><?php echo $adm_unread; ?></span><?php endif; ?>
                                     </a>
                                 </div>
                                 <?php endif; ?>
@@ -357,16 +406,21 @@ if ('serviceWorker' in navigator) {
 
                 <?php if ($is_admin): ?>
                     <div class="px-3 pt-4 pb-1 text-xs font-bold text-gray-400 uppercase">Administration</div>
-                    <a href="admin" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Dashboard Admin</a>
-                    <a href="admin_messages" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Réponse Contact</a>
+                    <a href="/admin.php" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Tableau de bord<?php if ($adm_total): ?> <span class="ml-1 text-xs bg-red-600 text-white rounded-full px-2"><?php echo $adm_total; ?></span><?php endif; ?></a>
+                    <?php foreach ($adm_links as [$l, $href, $n]): if (!$n) continue; ?>
+                    <a href="<?php echo htmlspecialchars($href); ?>" class="text-gray-700 hover:bg-gray-100 flex justify-between px-3 py-2.5 rounded-md text-sm font-medium"><span><?php echo htmlspecialchars($l); ?></span><span class="text-xs font-bold bg-[#faf1dc] text-[#8a5a12] rounded-full px-2"><?php echo $n; ?></span></a>
+                    <?php endforeach; ?>
+                    <a href="/admin_notifs.php" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Notifications<?php if ($adm_unread): ?> <span class="ml-1 text-xs bg-red-600 text-white rounded-full px-2"><?php echo $adm_unread; ?></span><?php endif; ?></a>
                 <?php endif; ?>
                 
                 <?php if ($is_logged_in): ?>
                     <a href="messagerie" class="relative text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium"><span>Messagerie</span><span id="unread-badge-mobile" class="absolute top-3 left-32 w-5 h-5 flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full hidden"></span></a>
                 <?php endif; ?>
                 
+                <?php if (!$is_admin): ?>
                 <a href="contact" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Contact</a>
                 <a href="aide" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Aide</a>
+                <?php endif; ?>
                 <?php if (!$is_logged_in || $is_director): ?>
                 <?php endif; ?>
                 
