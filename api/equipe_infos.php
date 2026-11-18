@@ -71,7 +71,7 @@ try {
         $blocs = [];
         foreach (array_slice(is_array($in['blocs'] ?? null) ? $in['blocs'] : [], 0, EQUIPE_BLOCS_MAX) as $b) {
             $t = anim_txt($b['titre'] ?? '', 120); $x = mb_substr(trim(strip_tags((string)($b['texte'] ?? ''))), 0, 4000);
-            if ($t !== '' || $x !== '') $blocs[] = ['titre' => $t, 'texte' => $x];
+            if ($x !== '') $blocs[] = ['titre' => $t, 'texte' => $x];
         }
         $msg = mb_substr(trim(strip_tags((string)($in['message'] ?? ''))), 0, 2000);
         $dv = DateTime::createFromFormat('Y-m-d', (string)($in['date_versement'] ?? ''));
