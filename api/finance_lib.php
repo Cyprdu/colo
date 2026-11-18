@@ -203,6 +203,8 @@ function fin_ensure(PDO $pdo): void {
             UNIQUE KEY uq_ins (inscription_id), KEY idx_orga (organisateur_id), KEY idx_date (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         fin_assign_jours($pdo);
+        fin_ledger_ensure($pdo);
+        fin_ledger_backfill($pdo);
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
     }
@@ -263,6 +265,7 @@ function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, st
         if ($ins->rowCount() === 1) {
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
             fin_audit($pdo, 'paiement_recu', 'inscription', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent], 'webhook');
+            fin_ledger_paiement($pdo, ['payment_intent' => $paymentIntent, 'session_id' => $sessionId, 'inscription_id' => $r['id'], 'organisateur_id' => $r['organisateur_id'], 'brut_cents' => $brut, 'commission_cents' => $com, 'mode' => 'legacy']);
             $created++;
         }
     }
@@ -300,6 +303,7 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
         $full = $newRef >= $brut && (int)$p['annul_com'] === 0 && $att === 0;
         $statut = ($full && in_array($p['statut'], ['attente', 'bloque', 'litige'], true)) ? 'rembourse' : $p['statut'];
         $pdo->prepare("UPDATE fin_paiements SET rembourse_cents = ?, net_rembourse_cents = ?, statut = ? WHERE id = ?")->execute([$newRef, $newNetRef, $statut, $p['id']]);
+        fin_ledger_remboursement($pdo, $p, (int)$p['rembourse_cents'], $newRef, (int)$p['net_rembourse_cents'], $newNetRef);
         fin_reversal_demander($pdo, $p, $newNetRef); // part déjà versée à l'organisme : à récupérer par reversement Stripe, sinon dette
         // Solde de l'organisme : même si le net a déjà été transféré, le solde devient négatif et sera compensé sur ses prochains séjours
         $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$delta / 100, $p['organisateur_id']]);
@@ -333,12 +337,17 @@ function fin_record_dispute_fee(PDO $pdo, string $paymentIntent, int $feeCents):
     $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR);
     if (!$rows) return;
     $up = $pdo->prepare("UPDATE fin_paiements SET frais_litige_cents = ? WHERE id = ?");
-    foreach (fin_allocate($feeCents, $rows) as $id => $part) $up->execute([$part, $id]);
+    foreach (fin_allocate($feeCents, $rows) as $id => $part) { $up->execute([$part, $id]); fin_ledger_frais($pdo, $id, -$part, 'litige:'); }
 }
 
 // ---------------------------------------------------------------------------------------------
 // Frais Stripe RÉELS (balance_transaction de la charge) et marge moncamp.fr
 // ---------------------------------------------------------------------------------------------
+/** Frais Stripe d'une ligne au journal (à la charge de moncamp.fr) */
+function fin_ledger_frais(PDO $pdo, int $paiementId, int $cents, string $prefix): void {
+    $st = $pdo->prepare("SELECT organisateur_id FROM fin_paiements WHERE id = ?"); $st->execute([$paiementId]);
+    fin_ledger_add($pdo, 'frais', (int)$st->fetchColumn(), $cents, $prefix . $paiementId, 'paiement', $paiementId, $prefix === 'frais:' ? 'Frais Stripe' : 'Frais de litige Stripe');
+}
 /** Frais Stripe réels d'un PaymentIntent, en centimes d'euro (null si indisponible : sera retenté par le cron / la page Comptabilité) */
 function fin_fetch_stripe_fee(string $paymentIntent): ?int {
     $pi = fin_stripe()->paymentIntents->retrieve($paymentIntent, ['expand' => ['latest_charge.balance_transaction']]);
@@ -357,7 +366,7 @@ function fin_sync_fees(PDO $pdo, string $paymentIntent): bool {
     $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR);
     if (!$rows) return false;
     $up = $pdo->prepare("UPDATE fin_paiements SET frais_stripe_cents = ?, frais_maj = NOW() WHERE id = ?");
-    foreach (fin_allocate($fee, $rows) as $id => $part) $up->execute([$part, $id]);
+    foreach (fin_allocate($fee, $rows) as $id => $part) { $up->execute([$part, $id]); fin_ledger_frais($pdo, $id, -$part, 'frais:'); }
     return true;
 }
 /** Rattrape les paiements dont les frais ne sont pas encore connus. Retourne [relevés, restants/échecs]. */
@@ -624,4 +633,5 @@ function fin_pdf_txt($s): string {
 }
 
 require_once __DIR__ . '/versements_lib.php';
+require_once __DIR__ . '/ledger_lib.php';
 require_once __DIR__ . '/moyens_paiement_lib.php';

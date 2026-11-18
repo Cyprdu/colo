@@ -247,6 +247,7 @@ function equipe_confirmer(PDO $pdo, array $tokens, ?string $paymentIntent, strin
         if ($ins->rowCount() === 1) {
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
             fin_audit($pdo, 'paiement_recu', 'equipe', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent], 'webhook');
+            fin_ledger_paiement($pdo, ['payment_intent' => $paymentIntent, 'session_id' => $sessionId, 'inscription_id' => -(int)$r['id'], 'organisateur_id' => $r['organisateur_id'], 'brut_cents' => $brut, 'commission_cents' => $com, 'mode' => 'legacy']);
             $created++;
         }
     }

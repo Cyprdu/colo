@@ -242,6 +242,7 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
         // Transferts d'avant le calendrier hebdomadaire (sans lignes) : tout était versé
         $pdo->prepare("UPDATE fin_paiements SET statut = 'verse', verse_cents = GREATEST(0, net_cents - net_rembourse_cents) WHERE transfert_id = ? AND statut = 'en_cours'")->execute([$tid]);
         fin_audit($pdo, 'transfert_envoye', 'transfert', $tid, ['stripe' => $tr->id, 'cents' => (int)$t['montant_cents']], $acteur);
+        fin_ledger_add($pdo, 'versement', (int)$t['organisateur_id'], -(int)$t['montant_cents'], $tr->id, 'transfert', $tid, 'Versement', $acteur, 'legacy');
         $pdo->commit();
         return 'envoye';
     } catch (\Stripe\Exception\ApiErrorException $e) {

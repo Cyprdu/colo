@@ -57,8 +57,10 @@ function fin_marquer_recu(PDO $pdo, string $resaToken, int $userId): array {
         $pdo->prepare("UPDATE inscriptions SET statut_paiement = 'PAYE', statut = 'Confirmé', montant_paye = prix_final WHERE id = ? AND statut_paiement = 'A_REGLER'")->execute([$i['id']]);
         $ins = $pdo->prepare("INSERT IGNORE INTO fin_commissions_hors (inscription_id, organisateur_id, camp_id, moyen, brut_cents, commission_cents, pct) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $ins->execute([$i['id'], $i['organisateur_id'], $i['camp_id'], $i['moyen_paiement'], $brut, $com, $pct]);
-        if ($ins->rowCount() === 1 && $com > 0) // déduite des prochains versements par carte : le solde peut devenir négatif (compensé par les paiements suivants)
+        if ($ins->rowCount() === 1 && $com > 0) { // déduite des prochains versements par carte : le solde peut devenir négatif (compensé par les paiements suivants)
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$com / 100, $i['organisateur_id']]);
+            fin_ledger_add($pdo, 'commission', (int)$i['organisateur_id'], -$com, 'hors:' . $i['id'], 'inscription', $i['id'], 'Commission paiement hors carte', 'user:' . $userId);
+        }
         fin_audit($pdo, 'paiement_hors_stripe_recu', 'inscription', $i['id'], ['moyen' => $i['moyen_paiement'], 'brut' => $brut, 'commission' => $com, 'pct' => $pct], 'user:' . $userId);
         $pdo->commit();
         return [true, 'Règlement enregistré. Commission moncamp.fr de ' . fin_eur($com) . ' déduite de vos prochains versements par carte.'];
