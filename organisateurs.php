@@ -1,6 +1,7 @@
 <?php
 // organisateurs.php : page d'accueil de l'espace organisateur (accès rapides + chiffres clés).
 require_once 'api/config.php';
+require_once 'api/orga_lib.php';
 
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
     header('Location: index.php');
@@ -28,7 +29,7 @@ try {
     error_log('organisateurs: ' . $e->getMessage());
     $statsOk = false;
 }
-$financeHref = $st['orgas'] === 1 ? 'dashboard_organisme.php?organisateur_id=' . $orgaIds[0] : 'public_infos.php';
+$financeHref = $st['orgas'] === 1 ? 'dashboard_organisme.php?o=' . fin_orga_tok((int)$orgaIds[0]) : 'public_infos.php?finances=1';
 
 $ico = [
     'sejours'  => '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',

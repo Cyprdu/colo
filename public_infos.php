@@ -1,6 +1,7 @@
 <?php
 // public_infos.php : « Mes organismes » : choix de l'organisme à gérer (directeur de plusieurs structures).
 require_once 'api/config.php';
+require_once 'api/orga_lib.php';
 
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
     header('Location: index.php');
@@ -25,6 +26,8 @@ try {
     error_log('public_infos: ' . $e->getMessage());
     $error = true;
 }
+// « Finances et versements » (?finances=1) : un seul organisme, pas de choix, on ouvre directement son tableau de bord
+if (isset($_GET['finances']) && count($organisateurs) === 1) { header('Location: dashboard_organisme.php?o=' . fin_orga_tok((int)$organisateurs[0]['id'])); exit; }
 
 function pi_logo($url) {
     $url = trim((string)$url);
@@ -55,12 +58,12 @@ require_once 'partials/header.php';
     <div class="mt-8 grid gap-5 sm:grid-cols-2">
         <?php foreach ($organisateurs as $o):
             $logo = pi_logo($o['logo_url']);
-            $oid = (int)$o['id'];
+            $oid = (int)$o['id']; $otok = htmlspecialchars(fin_orga_tok($oid));
             $nbSej = $nb[$oid] ?? 0;
             $init = mb_strtoupper(mb_substr(trim((string)$o['nom']), 0, 1)) ?: 'O';
         ?>
         <article class="ds-card p-0 overflow-hidden flex flex-col transition hover:shadow-lg">
-            <a href="dashboard_organisme.php?organisateur_id=<?= $oid ?>" class="block p-6 flex-1" aria-label="Ouvrir le tableau de bord de <?= htmlspecialchars($o['nom']) ?>">
+            <a href="dashboard_organisme.php?o=<?= $otok ?>" class="block p-6 flex-1" aria-label="Ouvrir le tableau de bord de <?= htmlspecialchars($o['nom']) ?>">
                 <div class="flex items-start gap-4">
                     <span class="w-14 h-14 flex-none rounded-2xl bg-[#eef2f4] border border-[#e5e7eb] flex items-center justify-center overflow-hidden text-[#3a4852] font-extrabold text-[22px]">
                         <?php if ($logo): ?><img src="<?= htmlspecialchars($logo) ?>" alt="" class="w-full h-full object-cover" loading="lazy" onerror="this.remove()"><?php else: ?><?= htmlspecialchars($init) ?><?php endif; ?>
@@ -91,8 +94,8 @@ require_once 'partials/header.php';
             </a>
 
             <div class="border-t border-[#e5e7eb] bg-[#fbfbfa] px-4 py-3 flex flex-wrap gap-2">
-                <a href="dashboard_organisme.php?organisateur_id=<?= $oid ?>" class="ds-btn" style="padding:9px 16px;font-size:13.5px">Tableau de bord</a>
-                <a href="marketing_dashboard.php?id=<?= $oid ?>" class="ds-btn ds-btn-light" style="padding:9px 16px;font-size:13.5px">Marketing</a>
+                <a href="dashboard_organisme.php?o=<?= $otok ?>" class="ds-btn" style="padding:9px 16px;font-size:13.5px">Tableau de bord</a>
+                <a href="marketing_dashboard.php?o=<?= $otok ?>" class="ds-btn ds-btn-light" style="padding:9px 16px;font-size:13.5px">Marketing</a>
                 <a href="mes_camps" class="ds-btn ds-btn-light" style="padding:9px 16px;font-size:13.5px">Mes séjours</a>
             </div>
         </article>

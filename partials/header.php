@@ -249,6 +249,9 @@ if ('serviceWorker' in navigator) {
                                     <a href="public_infos" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
                                         <i class="fa-solid fa-building w-6 text-center mr-2 text-[#64748b]"></i> Mes organismes
                                     </a>
+                                    <a href="public_infos.php?finances=1" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
+                                        <i class="fa-solid fa-euro-sign w-6 text-center mr-2 text-[#64748b]"></i> Finances et versements
+                                    </a>
                                     <a href="mes_camps" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#26343b]">
                                         <i class="fa-solid fa-campground w-6 text-center mr-2 text-[#64748b]"></i> Gérer mes camps
                                     </a>

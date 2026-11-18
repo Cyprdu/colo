@@ -24,6 +24,7 @@ namespace Stripe {
     class FakeService {
         public $name;
         public function __construct($name) { $this->name = $name; }
+        public function __get($n) { return new FakeService($this->name . '.' . $n); } // ex. checkout->sessions
         public function __call($m, $args) {
             $k = $this->name . '.' . $m;
             $GLOBALS['stripe_calls'][] = [$k, $args];

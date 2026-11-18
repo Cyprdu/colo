@@ -125,6 +125,7 @@ try {
         unset($camp['geo_hash']);
         require_once 'etapes.php';
         $camp['etapes'] = !empty($camp['itinerant']) ? etapes_du_camp($pdo, (int)$camp['id']) : [];
+        unset($camp['organisateur_id']); // jamais d'id numérique d'organisme vers le navigateur
         echo json_encode($camp);
     } else {
         http_response_code(404);

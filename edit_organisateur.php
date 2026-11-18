@@ -2,6 +2,7 @@
 // 1. CONFIG
 require_once 'api/config.php';
 require_once 'api/motscles.php';
+require_once 'api/orga_lib.php';
 
 // 2. SÉCURITÉ
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
@@ -10,7 +11,8 @@ if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) {
 }
 
 // 3. LOGIQUE - Récupération des données existantes
-$organisateurId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?? filter_input(INPUT_POST, 'organisateur_id', FILTER_VALIDATE_INT);
+$organisateurId = fin_orga_request($pdo, 'id'); // propriétaire ou admin, sinon 404
+$orgaTok = fin_orga_tok($organisateurId);
 $userId = $_SESSION['user']['id'];
 $organisateur = null;
 $message = [];
@@ -21,8 +23,8 @@ if (!$organisateurId) {
 } else {
     try {
         // Fetch Organisateur Data
-        $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
-        $stmt->execute([$organisateurId, $userId]);
+        $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ?");
+        $stmt->execute([$organisateurId]);
         $organisateur = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$organisateur) {
@@ -106,14 +108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $organisateur && $organisateurId) {
                             logo_url = ?, iban = ?, bic_swift = ?, 
                             adresse_complete = ?, code_postal_orga = ?, 
                             ville_orga = ?, pays_orga = ?, statut_legal = ?
-                          WHERE id = ? AND user_id = ?";
+                          WHERE id = ?";
             
             $stmtUpdate = $pdo->prepare($updateSql);
             $stmtUpdate->execute([
                 $nom, $email, $tel, $web, $logo_url, 
                 $iban, $bic_swift, $adresse_complete, $code_postal_orga, 
                 $ville_orga, $pays_orga, $statut_legal,
-                $organisateurId, $userId
+                $organisateurId
             ]);
 
             $message['success'] = "Les informations de l'organisme ont été mises à jour avec succès.";
@@ -124,8 +126,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $organisateur && $organisateurId) {
             }
             
             // Recharger les données pour afficher les nouvelles valeurs
-            $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
-            $stmt->execute([$organisateurId, $userId]);
+            $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ?");
+            $stmt->execute([$organisateurId]);
             $organisateur = $stmt->fetch(PDO::FETCH_ASSOC);
 
         } catch (Exception $e) {
@@ -144,7 +146,7 @@ require_once 'partials/header.php';
 <?php mc_ensure($pdo); $aliasInit = $organisateur ? (mc_lire($pdo, 'orga', [(int)$organisateurId])[(int)$organisateurId] ?? []) : []; ?>
 <link rel="stylesheet" href="assets/css/colomap-search.css">
 <main class="ds-page" style="max-width:860px">
-    <a href="dashboard_organisme.php?organisateur_id=<?= (int)$organisateurId ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+    <a href="dashboard_organisme.php?o=<?= htmlspecialchars($orgaTok) ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Tableau de bord
     </a>
@@ -157,8 +159,7 @@ require_once 'partials/header.php';
         <?php if (isset($message['success'])): ?><div class="ds-alert-ok mt-6 font-semibold" role="status"><?= htmlspecialchars($message['success']) ?></div><?php endif; ?>
         <?php if (isset($message['error'])): ?><div class="ds-alert-err mt-6 font-semibold" role="alert"><?= htmlspecialchars($message['error']) ?></div><?php endif; ?>
 
-        <form action="edit_organisateur.php?id=<?= (int)$organisateurId ?>" method="POST" enctype="multipart/form-data" class="mt-8 space-y-6">
-            <input type="hidden" name="organisateur_id" value="<?= (int)$organisateurId ?>">
+        <form action="edit_organisateur.php?o=<?= htmlspecialchars($orgaTok) ?>" method="POST" enctype="multipart/form-data" class="mt-8 space-y-6">
 
             <section class="ds-card ds-sec">
                 <div class="ds-sec-head"><span class="ds-sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6"/></svg></span><div><h2 class="ds-sec-title">Informations générales</h2><p class="ds-sec-desc">Ce que les familles voient sur vos séjours.</p></div></div>

@@ -5,6 +5,7 @@ require_once __DIR__ . '/../api/options.php';
 require_once __DIR__ . '/../api/champs.php';
 require_once __DIR__ . '/../api/catalogue.php';
 require_once __DIR__ . '/../api/motscles.php';
+require_once __DIR__ . '/../api/orga_lib.php';
 
 $att = $att ?? []; $edit = is_array($camp);
 $val = fn($k, $d = '') => htmlspecialchars((string)($edit ? ($camp[$k] ?? $d) : $d), ENT_QUOTES);
@@ -85,7 +86,7 @@ $tick = $svg('check', 'w-3 h-3');
                     <select id="orga-select" name="organisateur_id" class="ds-select" required>
                         <option value="">Choisir un organisme</option>
                         <?php foreach ($organisateurs as $o): ?>
-                            <option value="<?= (int)$o['id'] ?>" <?= $edit && (int)$o['id'] === (int)$camp['organisateur_id'] ? 'selected' : '' ?>><?= htmlspecialchars($o['nom']) ?></option>
+                            <option value="<?= htmlspecialchars(fin_orga_tok((int)$o['id'])) ?>" <?= $edit && (int)$o['id'] === (int)$camp['organisateur_id'] ? 'selected' : '' ?>><?= htmlspecialchars($o['nom']) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <button type="button" class="ds-btn ds-btn-light" onclick="Orga.open()">Gérer</button>
@@ -349,9 +350,9 @@ const IS_EDIT = <?= $edit ? 'true' : 'false' ?>;
 const CAMP_ID = <?= $edit ? (int)$camp['id'] : 0 ?>;
 const CHAMP_TYPES = <?= json_encode(CHAMPS_TYPES, JSON_UNESCAPED_UNICODE) ?>;
 const ICON = { edit: <?= json_encode($svg('edit')) ?>, trash: <?= json_encode($svg('trash')) ?>, up: <?= json_encode($svg('up')) ?>, down: <?= json_encode($svg('down')) ?>, close: <?= json_encode($svg('close')) ?> };
-let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => (int)$o['id'], 'nom' => $o['nom'], 'email' => $o['email'] ?? '', 'tel' => $o['tel'] ?? '', 'web' => $o['web'] ?? '', 'motscles' => $orgaKw[(int)$o['id']] ?? []], $organisateurs), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => fin_orga_tok((int)$o['id']), 'nom' => $o['nom'], 'email' => $o['email'] ?? '', 'tel' => $o['tel'] ?? '', 'web' => $o['web'] ?? '', 'motscles' => $orgaKw[(int)$o['id']] ?? []], $organisateurs), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 let SELECTED = <?= json_encode(array_map(fn($t) => (int)$t['id'], $currentTarifs ?? [])) ?>;
-let TARIFS = <?= json_encode(array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'montant_libre' => (int)$t['montant_libre'], 'montant_min' => $t['montant_min'] ?? null, 'organisateur_id' => (int)($t['organisateur_id'] ?? 0)], $currentTarifs ?? []), JSON_UNESCAPED_UNICODE) ?>;
+let TARIFS = <?= json_encode(array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'montant_libre' => (int)$t['montant_libre'], 'montant_min' => $t['montant_min'] ?? null, 'organisateur_id' => fin_orga_tok((int)($t['organisateur_id'] ?? 0))], $currentTarifs ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let CHAMPS = <?= json_encode(array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], $champsActuels ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'lieu' => $e['lieu'], 'description' => (string)$e['description']], $etapesActuelles ?? []), JSON_UNESCAPED_UNICODE) ?>;
 const CATALOGUE = <?= json_encode(cat_pour_js($catalogue), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
@@ -451,7 +452,7 @@ const Orga = {
         const cur = $('orga-select').value;
         $('orgaItems').innerHTML = ORGAS.length ? ORGAS.map(o => `
             <div class="ds-row !py-3"><div class="min-w-0"><p class="ds-opt-title truncate">${esc(o.nom)}${String(o.id) === cur ? ' <span class="ds-badge ml-1">Choisi</span>' : ''}</p><p class="ds-opt-sub truncate">${esc(o.email)}${o.tel ? ' · ' + esc(o.tel) : ''}</p></div>
-            <div class="flex items-center gap-1 flex-none"><button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="Orga.pick(${o.id})">Choisir</button><button type="button" class="ds-iconbtn" aria-label="Modifier ${esc(o.nom)}" onclick="Orga.form(${o.id})">${ICON.edit}</button></div></div>`).join('')
+            <div class="flex items-center gap-1 flex-none"><button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="Orga.pick('${o.id}')">Choisir</button><button type="button" class="ds-iconbtn" aria-label="Modifier ${esc(o.nom)}" onclick="Orga.form('${o.id}')">${ICON.edit}</button></div></div>`).join('')
             : '<p class="text-sm text-[#6b7780]">Aucun organisme pour le moment.</p>';
     },
     pick(id) { $('orga-select').value = id; $('orga-select').dispatchEvent(new Event('change')); this.close(); toast('Organisme sélectionné.'); },
@@ -472,8 +473,8 @@ $('orgaForm').addEventListener('submit', async e => {
         if (!body.nom || !body.email) throw new Error('Le nom et l\'email sont obligatoires.');
         let o, refus = [];
         if (Orga.editing) { const d = await api('api/gerer_orga_tarifs.php', { action: 'orga_update', id: Orga.editing, ...body }); o = d.organisme; o.motscles = d.motscles || []; refus = d.motscles_refuses || []; }
-        else { const d = await api('api/create_organisateur.php', body); o = { id: parseInt(d.id), nom: body.nom, email: body.email, tel: body.tel, web: body.web, motscles: d.motscles || [] }; refus = d.motscles_refuses || []; }
-        o.id = parseInt(o.id);
+        else { const d = await api('api/create_organisateur.php', body); o = { id: String(d.id), nom: body.nom, email: body.email, tel: body.tel, web: body.web, motscles: d.motscles || [] }; refus = d.motscles_refuses || []; }
+        o.id = String(o.id);
         const i = ORGAS.findIndex(x => x.id === o.id);
         if (i >= 0) ORGAS[i] = o; else ORGAS.push(o);
         const sel = $('orga-select'), opt = [...sel.options].find(x => x.value == o.id);
@@ -492,12 +493,12 @@ const Tarifs = {
         const id = $('orga-select').value;
         if (!id) { TARIFS = TARIFS.filter(t => SELECTED.includes(t.id)); return; }
         try {
-            const r = await fetch('api/get_tarifs_by_organisateur.php?organisateur_id=' + encodeURIComponent(id));
+            const r = await fetch('api/get_tarifs_by_organisateur.php?o=' + encodeURIComponent(id));
             const list = await r.json();
             if (Array.isArray(list)) {
                 // on garde aussi les tarifs déjà retenus (autre organisme possible)
                 const keep = TARIFS.filter(t => SELECTED.includes(t.id) && !list.some(l => parseInt(l.id) === t.id));
-                TARIFS = list.map(t => ({ id: parseInt(t.id), nom: t.nom, prix: parseFloat(t.prix), montant_libre: parseInt(t.montant_libre), montant_min: t.montant_min, organisateur_id: parseInt(t.organisateur_id) })).concat(keep);
+                TARIFS = list.map(t => ({ id: parseInt(t.id), nom: t.nom, prix: parseFloat(t.prix), montant_libre: parseInt(t.montant_libre), montant_min: t.montant_min, organisateur_id: String(t.organisateur_id) })).concat(keep);
             }
         } catch (e) {}
     },
@@ -544,7 +545,7 @@ $('tarifForm').addEventListener('submit', async e => {
         let t;
         if (Tarifs.editing) t = (await api('api/gerer_orga_tarifs.php', { action: 'tarif_update', id: Tarifs.editing, ...body })).tarif;
         else { const d = await api('api/create_tarif.php', { ...body, organisateur_id: $('orga-select').value }); t = { id: d.id, nom: body.nom, prix: body.prix, montant_libre: libre, montant_min: d.montant_min, organisateur_id: d.organisateur_id }; }
-        t = { id: parseInt(t.id), nom: t.nom, prix: parseFloat(t.prix) || 0, montant_libre: parseInt(t.montant_libre), montant_min: t.montant_min, organisateur_id: parseInt(t.organisateur_id) };
+        t = { id: parseInt(t.id), nom: t.nom, prix: parseFloat(t.prix) || 0, montant_libre: parseInt(t.montant_libre), montant_min: t.montant_min, organisateur_id: String(t.organisateur_id) };
         const i = TARIFS.findIndex(x => x.id === t.id);
         if (i >= 0) TARIFS[i] = t; else { TARIFS.push(t); SELECTED.push(t.id); }
         renderSelectedTarifs(); Tarifs.back(); Tarifs.render(); toast(Tarifs.editing ? 'Tarif mis à jour.' : 'Tarif créé et ajouté au séjour.');
@@ -561,7 +562,7 @@ function renderSelectedTarifs() {
 }
 $('orga-select').addEventListener('change', async () => {
     await Tarifs.load();
-    SELECTED = SELECTED.filter(id => TARIFS.some(t => t.id === id && t.organisateur_id === parseInt($('orga-select').value)));
+    SELECTED = SELECTED.filter(id => TARIFS.some(t => t.id === id && t.organisateur_id === $('orga-select').value));
     renderSelectedTarifs();
 });
 renderSelectedTarifs();

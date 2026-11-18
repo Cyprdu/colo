@@ -22,7 +22,7 @@ require_once 'partials/mk_icons.php';
     <div class="ds-alert-err"><?= htmlspecialchars($error) ?></div>
     <a class="mk-back" style="margin-top:14px" href="public_infos.php"><?= mk_icon('back', 16) ?> Mes organismes</a>
 <?php else: $v = $rec['v']; $connect = $rec['type'] === 'connect'; ?>
-    <a href="dashboard_organisme.php?organisateur_id=<?= (int)$v['organisateur_id'] ?>" class="mk-back"><?= mk_icon('back', 16) ?> Tableau de bord</a>
+    <a href="dashboard_organisme.php?o=<?= htmlspecialchars(fin_orga_tok((int)$v['organisateur_id'])) ?>" class="mk-back"><?= mk_icon('back', 16) ?> Tableau de bord</a>
     <p class="ds-eyebrow">Justificatif de versement</p>
     <h1 class="ds-h1"><?= htmlspecialchars($v['orga_nom']) ?></h1>
     <p class="ds-lead">Référence <b><?= htmlspecialchars(substr($v['token'], 0, 12)) ?></b></p>

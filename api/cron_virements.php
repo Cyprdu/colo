@@ -1,6 +1,6 @@
 <?php
-// api/cron_virements.php : job des versements (toutes les heures, via api/cron_tout.php) : transferts legacy, versements bancaires des organismes
-// (Payout N jours après le début du séjour), reprises après litige perdu, frais Stripe réels.
+// api/cron_virements.php : job des versements (toutes les heures, via api/cron_tout.php) : transferts immédiats des paiements reçus avant
+// l'activation du compte (legacy), reprises après litige perdu, frais Stripe réels. Les versements bancaires sont AUTOMATIQUES chez Stripe.
 //   CLI :  php api/cron_virements.php
 //   HTTP : https://moncamp.fr/api/cron_virements.php?key=CRON_SECRET   (clé définie dans api/config.php)
 require_once 'config.php';
@@ -14,8 +14,7 @@ if (!$cli) {
 }
 try {
     fin_ensure($pdo);
-    $rep = fin_release_due($pdo, 'cron'); // anciens paiements (legacy) : plus de jour de versement, chaque heure
-    $rep['bancaire'] = fin_payouts_run($pdo, 'cron');
+    $rep = fin_release_due($pdo, 'cron', null, false, true); // paiements reçus avant l'activation : tout le net dès que le compte est prêt
     $rep['reprises'] = fin_reprises_run($pdo);
     [$rep['frais_releves'], $rep['frais_restants']] = fin_backfill_fees($pdo); // frais Stripe réels non encore relevés
     fin_audit($pdo, 'cron_deblocage', 'job', date('c'), $rep, 'cron');

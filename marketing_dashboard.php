@@ -1,17 +1,19 @@
 <?php
-// marketing_dashboard.php?id=<organisme>&jours=30 : statistiques marketing par séjour
+// marketing_dashboard.php?o=<jeton organisme>&jours=30 : statistiques marketing par séjour
 // (impressions, visites, inscriptions, coût par inscription) + évolution quotidienne + conseils.
 require_once 'api/config.php';
 require_once 'api/marketing_lib.php';
 require_once 'api/search_stats.php';
+require_once 'api/orga_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) { header('Location: login.php'); exit; }
 
-$orgaId = (int)($_GET['id'] ?? 0);
+$orgaId = fin_orga_request($pdo, 'id');
+$orgaTok = htmlspecialchars(fin_orga_tok($orgaId));
 $jours = in_array((int)($_GET['jours'] ?? 30), [7, 30, 90], true) ? (int)$_GET['jours'] : 30;
 mk_ensure($pdo);
-$st = $pdo->prepare("SELECT id, nom, solde_points FROM organisateurs WHERE id = ? AND user_id = ?");
-$st->execute([$orgaId, $_SESSION['user']['id']]);
+$st = $pdo->prepare("SELECT id, nom, solde_points FROM organisateurs WHERE id = ?");
+$st->execute([$orgaId]);
 $orga = $st->fetch(PDO::FETCH_ASSOC);
 if (!$orga) { header('Location: marketing.php'); exit; }
 
@@ -66,11 +68,11 @@ function pct($v) { return $v === null ? '-' : number_format($v * 100, 1, ',', ' 
 <link rel="stylesheet" href="assets/mk.css?v=1">
 
 <main class="mk-wrap">
-    <a href="marketing.php?id=<?= $orgaId ?>" class="mk-back"><?= mk_icon('back', 16) ?> Marketing</a>
+    <a href="marketing.php?o=<?= $orgaTok ?>" class="mk-back"><?= mk_icon('back', 16) ?> Marketing</a>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
         <div><p class="ds-eyebrow">Statistiques</p><h1 class="ds-h1"><?= htmlspecialchars($orga['nom']) ?></h1><p class="ds-lead">L'effet réel de votre visibilité, séjour par séjour.</p></div>
         <div class="mk-seg" role="tablist" aria-label="Période">
-            <?php foreach ([7, 30, 90] as $j): ?><a href="?id=<?= $orgaId ?>&jours=<?= $j ?>" class="<?= $j === $jours ? 'on' : '' ?>"><?= $j ?> jours</a><?php endforeach; ?>
+            <?php foreach ([7, 30, 90] as $j): ?><a href="?o=<?= $orgaTok ?>&jours=<?= $j ?>" class="<?= $j === $jours ? 'on' : '' ?>"><?= $j ?> jours</a><?php endforeach; ?>
         </div>
     </div>
 

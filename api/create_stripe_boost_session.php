@@ -17,7 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !mk_same_origin()) { http_response_
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
 $packKey = (string)($input['pack'] ?? '');
 $token = $input['token'] ?? null;
-$organisateurId = (int)($input['organisateur_id'] ?? 0);
+require_once 'orga_lib.php';
+$orgaTok = (string)($input['o'] ?? '');
+$organisateurId = $orgaTok !== '' && !empty($_SESSION['user']['id']) ? fin_orga_from_tok($pdo, $orgaTok, (int)$_SESSION['user']['id']) : 0;
 
 $packs = mk_packs();
 if (!isset($packs[$packKey]) || (!$token && !$organisateurId)) {
@@ -35,8 +37,8 @@ try {
     } else {
         $stmt = $pdo->prepare("SELECT id, nom FROM organisateurs WHERE id = ? AND user_id = ?");
         $stmt->execute([$organisateurId, $_SESSION['user']['id']]);
-        $success = $baseUrl . '/marketing.php?id=' . $organisateurId . '&success=true';
-        $cancel = $baseUrl . '/marketing.php?id=' . $organisateurId;
+        $success = $baseUrl . '/marketing.php?o=' . urlencode($orgaTok) . '&success=true';
+        $cancel = $baseUrl . '/marketing.php?o=' . urlencode($orgaTok);
     }
     $orga = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$orga) throw new Exception('Organisme introuvable ou non autorisé');

@@ -3,6 +3,7 @@
 // Actions : orga_update, tarif_update, tarif_delete. (La création passe par create_organisateur.php et create_tarif.php.)
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/tarifs.php';
+require_once __DIR__ . '/orga_lib.php';
 header('Content-Type: application/json; charset=utf-8');
 
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -18,6 +19,7 @@ $action = (string)($in['action'] ?? '');
 try {
     tarifs_ensure($pdo);
     if ($action === 'orga_update') {
+        $id = fin_orga_from_tok($pdo, (string)($in['id'] ?? ''), $uid); // jeton public de l'organisme
         $nom = mb_substr(trim((string)($in['nom'] ?? '')), 0, 150);
         $mail = trim((string)($in['email'] ?? ''));
         if ($nom === '' || !filter_var($mail, FILTER_VALIDATE_EMAIL)) out(['error' => 'Un nom et un email valide sont obligatoires.'], 400);
@@ -31,6 +33,7 @@ try {
         require_once __DIR__ . '/motscles.php';
         if (array_key_exists('motscles', $in)) $alias = mc_sauver_orga($pdo, $id, $nom, $in['motscles']);
         else { mc_ensure($pdo); $alias['motscles'] = mc_lire($pdo, 'orga', [$id])[$id] ?? []; }
+        $o['id'] = fin_orga_tok((int)$o['id']);
         out(['ok' => true, 'organisme' => $o] + $alias);
     }
 
@@ -47,7 +50,7 @@ try {
         $min = $libre && (float)($in['montant_min'] ?? 0) > 0 ? round((float)$in['montant_min'], 2) : null;
         $prix = max(0, round((float)($in['prix'] ?? 0), 2));
         $pdo->prepare("UPDATE tarifs SET nom = ?, prix = ?, montant_libre = ?, montant_min = ? WHERE id = ?")->execute([$nom, $prix, $libre, $min, $id]);
-        out(['ok' => true, 'tarif' => ['id' => $id, 'nom' => $nom, 'prix' => $prix, 'montant_libre' => $libre, 'montant_min' => $min, 'organisateur_id' => (int)$t['organisateur_id']]]);
+        out(['ok' => true, 'tarif' => ['id' => $id, 'nom' => $nom, 'prix' => $prix, 'montant_libre' => $libre, 'montant_min' => $min, 'organisateur_id' => fin_orga_tok((int)$t['organisateur_id'])]]);
     }
 
     if ($action === 'tarif_delete') {

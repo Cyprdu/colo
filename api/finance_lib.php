@@ -1,12 +1,14 @@
 <?php
+require_once __DIR__ . '/orga_lib.php';
 // api/finance_lib.php : flux d'argent entre les familles, moncamp.fr et les organismes (Stripe Connect).
 //
 // ARCHITECTURE (depuis 2026-11) : « direct charges » sur les comptes Connect EXPRESS (fin_paiements.mode = 'direct')
 //   1. la session Checkout est créée SUR le compte de l'organisme (en-tête Stripe-Account, fin_checkout_params) avec
 //      application_fee_amount = commission moncamp.fr (+ dette éventuelle) : l'argent est sur SON solde Stripe dès le paiement,
 //      Stripe lui facture directement ses frais réels (frais de paiement, litiges) et verse la commission à moncamp.fr ;
-//   2. versements bancaires en mode « manual » : le cron crée un Payout `payout_jours` (défaut 3) jours après le début du séjour
-//      (fin_payouts_run, api/destination_lib.php) ; aucune réserve sur notre solde ;
+//   2. versements bancaires AUTOMATIQUES (Stripe, quotidiens, délai minimal) : l'organisme reçoit l'argent avant le séjour, sans retenue ;
+//      chaque Payout est relevé (webhook payout.*, ou fin_payouts_sync à l'ouverture du tableau de bord) avec sa date d'arrivée Stripe,
+//      réparti sur les paiements en attente et journalisé (fin_payout_record, api/destination_lib.php) ;
 //   3. remboursement (fin_refund) : pris sur le solde Stripe de l'organisme ; s'il ne suffit pas, moncamp.fr avance le manque
 //      (transfert) et l'organisme a une DETTE (organisateurs.portefeuille négatif, lignes « dette » du journal), prélevée avec la
 //      commission de ses paiements suivants (plafonnée au net). Aucune commission n'est jamais rendue (refund_application_fee = false).
@@ -31,7 +33,7 @@
 
 const FIN_DEFAULT_PCT = 2.5;
 const FIN_DEFAULT_FIXE_CENTS = 30;
-const FIN_DEFAULT_PAYOUT_JOURS = 3; // versement bancaire N jours après le début du séjour (destination charges)
+const FIN_DEFAULT_PAYOUT_JOURS = 3; // ancien réglage (versement N jours après le début du séjour) : plus utilisé, versements automatiques Stripe
 
 /** Réglages de commission : base (admin) > constantes api/config.php > défauts. Mis en cache pour la requête. */
 function fin_reglages(bool $refresh = false): array {
@@ -222,6 +224,15 @@ function fin_ensure(PDO $pdo): void {
         fin_add_col($pdo, 'fin_paiements', 'compensation_cents', "INT NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'stripe_comptes', 'payout_manuel', "TINYINT(1) NOT NULL DEFAULT 0"); // versements bancaires pilotés par fin_payouts_run
         fin_add_col($pdo, 'fin_paiements', 'a_reprendre_cents', "INT NOT NULL DEFAULT 0"); // litige perdu : net à reprendre à l'organisme (fin_reprises_run)
+        // Versements automatiques Stripe (quotidiens) : plus de retenue jusqu'au début du séjour ; date d'arrivée donnée par Stripe
+        fin_add_col($pdo, 'stripe_comptes', 'payout_auto', "TINYINT(1) NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_transferts', 'arrivee', "DATE NULL");
+        $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_payout_auto_v1'");
+        $mig->execute();
+        if (!(int)$mig->fetchColumn()) {
+            $pdo->exec("UPDATE fin_paiements SET date_deblocage = created_at WHERE statut = 'attente' AND date_deblocage > created_at");
+            $pdo->exec("INSERT IGNORE INTO fin_reglages (cle, valeur, par) VALUES ('migr_payout_auto_v1', '1', 'migration')");
+        }
         fin_ledger_ensure($pdo);
         fin_ledger_backfill($pdo);
     } catch (Throwable $e) {
@@ -312,9 +323,9 @@ function fin_record_lines(PDO $pdo, array $rows, ?string $paymentIntent, string 
     return count($created);
 }
 
-/** Date de versement bancaire d'une ligne « destination » : début du séjour + payout_jours (réglage admin) */
+/** Date de versement d'une ligne « direct » / « destination » : immédiate (versements automatiques Stripe, aucune retenue avant le séjour) */
 function fin_payout_date(?string $dateDebut): string {
-    return date('Y-m-d 00:00:00', strtotime(($dateDebut ?: 'today') . ' +' . fin_reglages()['payout_jours'] . ' day'));
+    return date('Y-m-d H:i:s');
 }
 
 /**
@@ -511,6 +522,7 @@ function fin_store_account(PDO $pdo, int $orgaId, $a): array {
         'transfers_actif' => (($cap['transfers'] ?? '') === 'active') ? 1 : 0,
         'exigences' => json_encode(is_array($due) ? $due : (array)$due),
         'payout_manuel' => (($a->settings->payouts->schedule->interval ?? '') === 'manual') ? 1 : 0,
+        'payout_auto' => (($a->settings->payouts->schedule->interval ?? '') === 'daily') ? 1 : 0,
     ];
     $pdo->prepare("INSERT INTO stripe_comptes (organisateur_id, account_id, type, details_submitted, charges_enabled, payouts_enabled, transfers_actif, exigences, payout_manuel, maj)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
@@ -518,6 +530,7 @@ function fin_store_account(PDO $pdo, int $orgaId, $a): array {
                    charges_enabled = VALUES(charges_enabled), payouts_enabled = VALUES(payouts_enabled), transfers_actif = VALUES(transfers_actif),
                    exigences = VALUES(exigences), payout_manuel = VALUES(payout_manuel), maj = NOW()")
         ->execute([$orgaId, $row['account_id'], $row['type'], $row['details_submitted'], $row['charges_enabled'], $row['payouts_enabled'], $row['transfers_actif'], $row['exigences'], $row['payout_manuel']]);
+    $pdo->prepare("UPDATE stripe_comptes SET payout_auto = ? WHERE organisateur_id = ?")->execute([$row['payout_auto'], $orgaId]);
     return $row;
 }
 
@@ -554,7 +567,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
         'business_type' => $statuts[$statut][2],
         'capabilities' => ['transfers' => ['requested' => true], 'card_payments' => ['requested' => true]], // card_payments : on_behalf_of
         'business_profile' => $profile,
-        'settings' => ['payouts' => ['schedule' => ['interval' => 'manual']]], // versements bancaires déclenchés par moncamp.fr (fin_payouts_run)
+        'settings' => ['payouts' => ['schedule' => ['interval' => 'daily', 'delay_days' => 'minimum']]], // versements automatiques Stripe
         'metadata' => ['organisateur_id' => (string)$orgaId, 'statut' => $statut],
     ];
     if ($statuts[$statut][2] !== 'individual') $params['company'] = ['name' => mb_substr((string)$orga['nom'], 0, 100)];
@@ -576,8 +589,10 @@ function fin_sync_account(PDO $pdo, int $orgaId): ?array {
     $acct = $st->fetchColumn();
     if (!$acct) return null;
     $row = fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
-    if (!$row['payout_manuel'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct); // comptes créés avant les destination charges
-    return fin_account($pdo, $orgaId);
+    if (!$row['payout_auto'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct); // passage en versements automatiques quotidiens
+    $acc = fin_account($pdo, $orgaId);
+    if (fin_account_ready($acc)) fin_release_pending_now($pdo, $orgaId); // paiements reçus avant l'activation : transférés tout de suite
+    return $acc;
 }
 
 function fin_account(PDO $pdo, int $orgaId): ?array {
@@ -628,20 +643,6 @@ function fin_transfer_legacy(PDO $pdo, int $orgaId, string $acteur): ?int {
     }
 }
 
-
-/** Jeton opaque (HMAC) d'un organisme pour les URLs : aucun identifiant numérique exposé */
-function fin_orga_tok(int $orgaId): string {
-    $k = (defined('STRIPE_SECRET_KEY') ? STRIPE_SECRET_KEY : '') . '|' . (defined('CRON_SECRET') ? CRON_SECRET : '') . '|colomap-orga';
-    return substr(hash_hmac('sha256', 'orga:' . $orgaId, $k), 0, 24);
-}
-/** Retrouve l'organisme d'un jeton parmi ceux de $userId (ou tous si $userId = null, usage administration). Retourne l'id ou 0. */
-function fin_orga_from_tok(PDO $pdo, string $tok, ?int $userId = null): int {
-    if (!preg_match('/^[a-f0-9]{24}$/', $tok)) return 0;
-    if ($userId === null) $ids = $pdo->query("SELECT id FROM organisateurs")->fetchAll(PDO::FETCH_COLUMN);
-    else { $st = $pdo->prepare("SELECT id FROM organisateurs WHERE user_id = ?"); $st->execute([$userId]); $ids = $st->fetchAll(PDO::FETCH_COLUMN); }
-    foreach ($ids as $id) if (hash_equals(fin_orga_tok((int)$id), $tok)) return (int)$id;
-    return 0;
-}
 
 /** Taux de TVA acceptés pour un organisme (clé '' = non applicable) */
 function fin_tva_taux_permis(): array { return ['' => 'Non applicable (pas de TVA)', '5.5' => '5,5 %', '10' => '10 %', '20' => '20 %']; }

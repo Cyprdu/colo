@@ -1,7 +1,7 @@
 <?php
 // api/versements_lib.php : calendrier des versements aux organismes (inclus par finance_lib.php).
 // ANCIEN MODÈLE (fin_paiements.mode = 'legacy') seulement, conservé tant qu'il reste des paiements legacy. Les paiements « destination »
-// sont versés par fin_payouts_run (api/destination_lib.php). Le jour de versement hebdomadaire n'est plus utilisé (cron horaire, tous les organismes).
+// sont versés automatiquement par Stripe (versements quotidiens, relevés par fin_payout_record). Le jour de versement hebdomadaire n'est plus utilisé (cron horaire, tous les organismes).
 //
 // MODÈLE
 //  - Un jour de versement HEBDOMADAIRE fixe par organisme (lundi à samedi, jamais dimanche), attribué automatiquement au jour le moins chargé
@@ -130,6 +130,31 @@ function fin_row_parts(array $r, float $reservePct, string $asOf): array {
  * Verse aux organismes ce qui est versable. $respectDay = true (cron) : seuls les organismes dont c'est le jour (ou un jour manqué) sont traités ;
  * false (administrateur) : tous / l'organisme demandé, quel que soit le jour. Verrou global : un seul passage à la fois.
  */
+/**
+ * Compte devenu prêt (webhook account.updated, ouverture du tableau de bord, cron) : tout le net des paiements reçus par moncamp.fr avant
+ * l'activation (mode legacy) part tout de suite sur le compte Stripe de l'organisme, sans délai ni réserve. Transfer idempotent, journalisé
+ * (fin_ledger « transfert »), description lisible recopiée sur le paiement côté organisme. Sans effet s'il n'y a rien en attente.
+ */
+function fin_release_pending_now(PDO $pdo, int $orgaId): array {
+    $st = $pdo->prepare("SELECT COUNT(*) FROM fin_paiements WHERE organisateur_id = ? AND mode = 'legacy' AND statut = 'attente'");
+    $st->execute([$orgaId]);
+    if (!(int)$st->fetchColumn() || $pdo->inTransaction()) return ['transferts' => 0, 'montant_cents' => 0];
+    return fin_release_due($pdo, 'systeme', $orgaId, false, true);
+}
+
+/** Libellé lisible d'un transfert (séjours, familles, nombre d'inscriptions) pour le Stripe de l'organisme */
+function fin_transfer_libelle(PDO $pdo, int $tid): array {
+    $st = $pdo->prepare("SELECT c.nom camp, COALESCE(NULLIF(e.nom, ''), 'Équipe') fam, p.inscription_id FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id
+                         JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id WHERE l.transfert_id = ? ORDER BY c.nom, fam");
+    $st->execute([$tid]);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    $par = []; foreach ($rows as $r) $par[html_entity_decode((string)$r['camp'], ENT_QUOTES, 'UTF-8')][] = html_entity_decode((string)$r['fam'], ENT_QUOTES, 'UTF-8');
+    $txt = implode(' ; ', array_map(fn($c, $f) => $c . ' (' . implode(', ', array_unique($f)) . ')', array_keys($par), $par));
+    $n = count($rows);
+    return [mb_substr('moncamp.fr · ' . ($n ? $n . ' inscription' . ($n > 1 ? 's' : '') . ' payée' . ($n > 1 ? 's' : '') . ' avant l\'activation · ' . $txt : 'reversement des inscriptions'), 0, 350),
+            ['source' => 'moncamp.fr', 'type' => 'paiements_avant_activation', 'inscriptions' => (string)$n, 'sejours' => mb_substr(implode(', ', array_keys($par)), 0, 450)]];
+}
+
 function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = null, bool $respectDay = false, bool $force = false): array {   // $force : test administrateur, ignore délai de sécurité et réserve
     fin_ensure($pdo);
     $rep = ['transferts' => 0, 'montant_cents' => 0, 'reportes' => 0, 'erreurs' => 0, 'hors_jour' => 0, 'reversements' => 0];
@@ -229,6 +254,7 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
     if (!$t || $t['statut'] !== 'en_cours') return $t['statut'] ?? 'echec';
     $pdo->prepare("UPDATE fin_transferts SET tentatives = tentatives + 1 WHERE id = ?")->execute([$tid]);
     $payout = $t['type'] === 'payout';
+    [$lib, $libMeta] = $payout ? ['', []] : fin_transfer_libelle($pdo, $tid);
     try {
         $tr = $payout ? fin_stripe()->payouts->create([
             'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'statement_descriptor' => 'MONCAMP.FR',
@@ -237,8 +263,8 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
         ], ['stripe_account' => $t['stripe_account_id'], 'idempotency_key' => 'moncamp-payout-' . $tid]) : fin_stripe()->transfers->create([
             'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'destination' => $t['stripe_account_id'],
             'transfer_group' => 'ORGA' . $t['organisateur_id'],
-            'description' => 'moncamp.fr : reversement des inscriptions (réf. ' . substr($t['token'], 0, 10) . ')',
-            'metadata' => ['transfert_id' => (string)$tid, 'organisateur_id' => (string)$t['organisateur_id'], 'type' => $t['type']],
+            'description' => $lib,
+            'metadata' => array_merge(['transfert_id' => (string)$tid, 'organisateur_id' => (string)$t['organisateur_id'], 'type' => $t['type']], $libMeta),
         ], ['idempotency_key' => 'colomap-transfer-' . $tid]);
         $pdo->beginTransaction();
         $pdo->prepare("UPDATE fin_transferts SET statut = 'envoye', stripe_transfer_id = ?, erreur = NULL WHERE id = ?")->execute([$tr->id, $tid]);
@@ -251,8 +277,17 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
         fin_audit($pdo, 'transfert_envoye', 'transfert', $tid, ['stripe' => $tr->id, 'cents' => (int)$t['montant_cents']], $acteur);
         // Journal : un payout est un versement vers la banque ; un transfert legacy aussi, sauf si le compte est en versements manuels (le payout comptera)
         $manuel = (int)$pdo->query("SELECT COALESCE(MAX(payout_manuel), 0) FROM stripe_comptes WHERE account_id = " . $pdo->quote((string)$t['stripe_account_id']))->fetchColumn();
+        // Versements automatiques : un transfert vers le compte Stripe n'est pas encore un versement bancaire (le payout relevé le sera)
+        $manuel = $manuel || (int)$pdo->query("SELECT COALESCE(MAX(payout_auto), 0) FROM stripe_comptes WHERE account_id = " . $pdo->quote((string)$t['stripe_account_id']))->fetchColumn();
+        if (!$payout) fin_ledger_add($pdo, 'transfert', (int)$t['organisateur_id'], (int)$t['montant_cents'], $tr->id, 'transfert', $tid, 'Transfert sur votre compte Stripe (paiements reçus avant activation)', $acteur, 'legacy');
         if ($payout || !$manuel) fin_ledger_add($pdo, 'versement', (int)$t['organisateur_id'], -(int)$t['montant_cents'], $tr->id, 'transfert', $tid, 'Versement', $acteur, $payout ? 'destination' : 'legacy');
         $pdo->commit();
+        // Le paiement reçu par l'organisme (py_…) n'hérite pas de la description du Transfer : on la recopie (idempotent, un échec est seulement journalisé)
+        if (!$payout && !empty($tr->destination_payment)) {
+            try { fin_stripe()->charges->update(is_object($tr->destination_payment) ? $tr->destination_payment->id : (string)$tr->destination_payment, ['description' => $lib, 'metadata' => $libMeta],
+                    ['stripe_account' => (string)$t['stripe_account_id'], 'idempotency_key' => 'moncamp-libelle-' . $tid]); }
+            catch (Throwable $e) { fin_audit($pdo, 'libelle_transfert_echec', 'transfert', $tid, ['erreur' => mb_substr($e->getMessage(), 0, 200)], $acteur); }
+        }
         return 'envoye';
     } catch (\Stripe\Exception\ApiErrorException $e) {
         $code = (int)$e->getHttpStatus();

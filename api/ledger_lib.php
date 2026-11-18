@@ -12,7 +12,8 @@
 // Idempotence : (type, reference) unique ; la référence part de l'objet Stripe (pi_, po_, tr_...) : un webhook rejoué n'écrit rien.
 // Les reversements ne sont PAS des lignes : le remboursement a déjà réduit « pour vous ».
 
-const FIN_LEDGER_TYPES = ['paiement', 'commission', 'frais_paiement', 'remboursement', 'ajustement', 'versement', 'frais', 'dette'];
+const FIN_LEDGER_TYPES = ['paiement', 'commission', 'frais_paiement', 'remboursement', 'ajustement', 'versement', 'frais', 'dette', 'transfert'];
+// 'transfert' : argent reçu par moncamp.fr avant l'activation du compte, transféré ensuite sur le compte Stripe de l'organisme (informatif : n'entre pas dans le net)
 
 function fin_ledger_ensure(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS fin_ledger (

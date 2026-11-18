@@ -3,7 +3,9 @@ require_once 'config.php';
 
 if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Non connecté'], 403); }
 
-$organisateurId = $_GET['organisateur_id'] ?? null;
+require_once 'orga_lib.php';
+$organisateurId = !empty($_GET['o']) ? fin_orga_from_tok($pdo, (string)$_GET['o'], (int)$_SESSION['user']['id']) : null; // jeton public
+if (!empty($_GET['o']) && !$organisateurId) sendJson([]); // jeton inconnu ou organisme d'un autre utilisateur
 
 try {
     require_once 'tarifs.php';
@@ -23,7 +25,7 @@ try {
         $stmt->execute([$_SESSION['user']['id']]);
     }
     
-    $tarifs = $stmt->fetchAll();
+    $tarifs = array_map(function ($t) { $t['organisateur_id'] = fin_orga_tok((int)$t['organisateur_id']); return $t; }, $stmt->fetchAll(PDO::FETCH_ASSOC));
 
     // On renvoie les données brutes. Le JS mis à jour saura les lire.
     sendJson($tarifs);

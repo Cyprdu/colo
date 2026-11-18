@@ -110,12 +110,87 @@ function compta_sync_payouts(PDO $pdo): int {
  * Rapprochement : ce que moncamp.fr DOIT avoir chez Stripe d'après la base, comparé au solde Stripe + virements déjà faits vers la banque.
  * $stripe = ['disponible' => cents, 'en_attente' => cents] ou null si Stripe est injoignable.
  */
+/**
+ * Encart « Vos commissions » : solde Stripe de la plateforme (disponible / à venir, EUR) et virements vers le compte bancaire de moncamp.fr
+ * (dernier arrivé, prochain annoncé). Lecture seule, aucune règle de commission. null si Stripe est injoignable.
+ */
+function compta_plateforme_solde(): ?array {
+    try {
+        $s = fin_stripe();
+        $b = $s->balance->retrieve();
+        $eur = function ($l) { $t = 0; foreach ($l ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $t += (int)$x->amount; return $t; };
+        $r = ['disponible' => $eur($b->available ?? []), 'a_venir' => $eur($b->pending ?? []), 'dernier' => null, 'prochain' => null, 'historique' => []];
+        foreach ($s->payouts->all(['limit' => 20])->data as $po) {
+            if (strtolower((string)$po->currency) !== 'eur') continue;
+            $p = ['m' => (int)$po->amount, 'arrivee' => $po->arrival_date ? date('Y-m-d', (int)$po->arrival_date) : null, 'statut' => (string)$po->status];
+            $r['historique'][] = $p + ['cree' => !empty($po->created) ? date('Y-m-d', (int)$po->created) : null];
+            if ($po->status === 'paid' && !$r['dernier']) $r['dernier'] = $p;
+            if (in_array($po->status, ['pending', 'in_transit'], true) && (!$r['prochain'] || $p['arrivee'] < $r['prochain']['arrivee'])) $r['prochain'] = $p;
+        }
+        return $r;
+    } catch (Throwable $e) { error_log('compta_plateforme_solde: ' . $e->getMessage()); return null; }
+}
+
+/**
+ * « Mes revenus » (admin) : ce que gagne moncamp.fr, lu dans le journal fin_ledger (ajout seulement).
+ * Commission encaissée = − lignes « commission » (cartes et hors carte, nettes des commissions rendues) ; frais Stripe payés par la plateforme
+ * = − lignes « frais » (paiements legacy / repli destination ; en direct charges l'organisme paie ses frais) ; marge nette = commission − frais.
+ * Dettes d'organismes : lignes « dette » (avance > 0, recouvrement < 0). $g : j (jour), s (semaine), m (mois).
+ */
+function compta_revenus(PDO $pdo, string $from, string $to, string $g = 'm'): array {
+    $fmt = ['j' => '%Y-%m-%d', 's' => '%x-S%v', 'm' => '%Y-%m'][$g] ?? '%Y-%m';
+    $tot = function (string $a, string $b) use ($pdo): array {
+        $st = $pdo->prepare("SELECT -COALESCE(SUM(IF(type = 'commission', montant_cents, 0)), 0) com,
+                                    -COALESCE(SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)), 0) hors,
+                                    -COALESCE(SUM(IF(type = 'frais', montant_cents, 0)), 0) frais,
+                                    COALESCE(SUM(IF(type = 'paiement', 1, 0)), 0) nb,
+                                    COALESCE(SUM(IF(type = 'dette' AND montant_cents > 0, montant_cents, 0)), 0) avance,
+                                    -COALESCE(SUM(IF(type = 'dette' AND montant_cents < 0, montant_cents, 0)), 0) recouvre
+                             FROM fin_ledger WHERE created_at BETWEEN ? AND ?");
+        $st->execute([$a, $b]);
+        $r = array_map('intval', $st->fetch(PDO::FETCH_ASSOC));
+        return $r + ['marge' => $r['com'] - $r['frais']];
+    };
+    $len = max(1, (int)round((strtotime($to) - strtotime($from)) / 86400));
+    $pto = date('Y-m-d 23:59:59', strtotime($from . ' -1 day')); $pfrom = date('Y-m-d 00:00:00', strtotime($pto . ' -' . ($len - 1) . ' days'));
+    $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '$fmt') k, -SUM(IF(type = 'commission', montant_cents, 0)) com, -SUM(IF(type = 'frais', montant_cents, 0)) frais
+                         FROM fin_ledger WHERE created_at BETWEEN ? AND ? AND type IN ('commission', 'frais') GROUP BY k ORDER BY k");
+    $st->execute([$from, $to]);
+    $serie = array_map(fn($r) => ['k' => $r['k'], 'com' => (int)$r['com'], 'frais' => (int)$r['frais']], $st->fetchAll(PDO::FETCH_ASSOC));
+    $st = $pdo->prepare("SELECT o.id, o.nom, -SUM(IF(l.type = 'commission', l.montant_cents, 0)) com, -SUM(IF(l.type = 'frais', l.montant_cents, 0)) frais, SUM(l.type = 'paiement') nb
+                         FROM fin_ledger l JOIN organisateurs o ON o.id = l.organisateur_id WHERE l.created_at BETWEEN ? AND ? AND l.type IN ('commission', 'frais', 'paiement')
+                         GROUP BY o.id, o.nom HAVING com <> 0 OR frais <> 0 ORDER BY com DESC LIMIT 50");
+    $st->execute([$from, $to]);
+    $orgas = array_map(fn($r) => ['nom' => html_entity_decode((string)$r['nom'], ENT_QUOTES, 'UTF-8'), 'com' => (int)$r['com'], 'frais' => (int)$r['frais'], 'nb' => (int)$r['nb'], 'marge' => (int)$r['com'] - (int)$r['frais']], $st->fetchAll(PDO::FETCH_ASSOC));
+    $st = $pdo->prepare("SELECT c.nom camp, o.nom orga, -SUM(IF(l.type = 'commission', l.montant_cents, 0)) com, SUM(l.type = 'paiement') nb
+                         FROM fin_ledger l JOIN inscriptions i ON l.objet_type = 'inscription' AND i.id = l.objet_id JOIN camps c ON c.id = i.camp_id JOIN organisateurs o ON o.id = c.organisateur_id
+                         WHERE l.created_at BETWEEN ? AND ? AND l.type IN ('commission', 'paiement') GROUP BY c.id, c.nom, o.nom HAVING com <> 0 ORDER BY com DESC LIMIT 20");
+    $st->execute([$from, $to]);
+    $sejours = array_map(fn($r) => ['camp' => html_entity_decode((string)$r['camp'], ENT_QUOTES, 'UTF-8'), 'orga' => html_entity_decode((string)$r['orga'], ENT_QUOTES, 'UTF-8'), 'com' => (int)$r['com'], 'nb' => (int)$r['nb']], $st->fetchAll(PDO::FETCH_ASSOC));
+    $dettes = array_map(fn($r) => ['nom' => html_entity_decode((string)$r['nom'], ENT_QUOTES, 'UTF-8'), 'du' => (int)$r['du'], 'depuis' => $r['depuis']],
+        $pdo->query("SELECT o.nom, SUM(l.montant_cents) du, MIN(l.created_at) depuis FROM fin_ledger l JOIN organisateurs o ON o.id = l.organisateur_id
+                     WHERE l.type = 'dette' GROUP BY o.id, o.nom HAVING du > 0 ORDER BY du DESC")->fetchAll(PDO::FETCH_ASSOC));
+    return ['cur' => $tot($from, $to), 'prev' => $tot($pfrom, $pto), 'prev_du' => $pfrom, 'prev_au' => $pto, 'serie' => $serie, 'orgas' => $orgas, 'sejours' => $sejours, 'dettes' => $dettes];
+}
+
+/** Export comptable mensuel de « Mes revenus » (une ligne par mois) */
+function compta_revenus_mois(PDO $pdo, string $from, string $to): array {
+    $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') m, SUM(type = 'paiement') nb,
+                                -SUM(IF(type = 'commission' AND reference NOT LIKE 'hors:%', montant_cents, 0)) com_carte,
+                                -SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)) com_hors,
+                                -SUM(IF(type = 'frais', montant_cents, 0)) frais,
+                                SUM(IF(type = 'dette' AND montant_cents > 0, montant_cents, 0)) avance, -SUM(IF(type = 'dette' AND montant_cents < 0, montant_cents, 0)) recouvre
+                         FROM fin_ledger WHERE created_at BETWEEN ? AND ? GROUP BY m ORDER BY m");
+    $st->execute([$from, $to]);
+    return array_map(function ($r) { $r = array_map(fn($v) => is_numeric($v) ? (int)$v : $v, $r); $r['marge'] = $r['com_carte'] + $r['com_hors'] - $r['frais']; return $r; }, $st->fetchAll(PDO::FETCH_ASSOC));
+}
+
 function compta_reconcile(PDO $pdo, ?array $stripe): array {
     $a = $pdo->query("SELECT COALESCE(SUM(brut_cents - rembourse_cents), 0) ca, COALESCE(SUM(frais_stripe_cents), 0) frais, COALESCE(SUM(frais_litige_cents), 0) litige,
                 COALESCE(SUM(frais_stripe_cents IS NULL), 0) inconnus,
                 COALESCE(SUM(CASE WHEN statut IN ('attente','bloque','litige','en_cours') THEN GREATEST(0, net_cents - net_rembourse_cents - verse_cents) END), 0) du
             FROM fin_paiements")->fetch(PDO::FETCH_ASSOC);
-    $transferts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents - reverse_cents), 0) FROM fin_transferts WHERE statut = 'envoye'")->fetchColumn(); // net des reversements
+    $transferts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents - reverse_cents), 0) FROM fin_transferts WHERE statut = 'envoye' AND type <> 'payout'")->fetchColumn(); // net des reversements ; les payouts des comptes connectés ne sortent pas de notre solde
     $points = 0;
     try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid','in_transit','pending')")->fetchColumn();
@@ -153,6 +228,45 @@ function compta_csv(string $filename, array $headers, iterable $rows): void {
     header('Cache-Control: no-store');
     echo "\xEF\xBB\xBF" . implode(';', array_map('compta_cell', $headers)) . "\r\n";
     foreach ($rows as $r) echo implode(';', array_map('compta_cell', $r)) . "\r\n";
+    exit;
+}
+
+/** Classeur Excel .xlsx minimal (une feuille, en-têtes en gras) écrit à la main : ZIP sans compression, aucune extension PHP requise.
+ *  Nombres (int/float) en cellules numériques, textes en chaînes en ligne (formules impossibles). */
+function compta_xlsx(string $filename, array $headers, iterable $rows): void {
+    $x = fn($v) => htmlspecialchars((string)$v, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+    $col = function (int $i): string { $s = ''; for ($i++; $i > 0; $i = intdiv($i - 1, 26)) $s = chr(65 + ($i - 1) % 26) . $s; return $s; };
+    $row = function (array $r, int $n, bool $b) use ($x, $col): string {
+        $o = '<row r="' . $n . '">';
+        foreach (array_values($r) as $i => $v) {
+            $ref = $col($i) . $n;
+            $o .= (is_int($v) || is_float($v)) ? '<c r="' . $ref . '"' . ($b ? ' s="1"' : '') . '><v>' . $v . '</v></c>'
+                : '<c r="' . $ref . '" t="inlineStr"' . ($b ? ' s="1"' : '') . '><is><t xml:space="preserve">' . $x($v) . '</t></is></c>';
+        }
+        return $o . '</row>';
+    };
+    $data = $row($headers, 1, true); $n = 1;
+    foreach ($rows as $r) $data .= $row($r, ++$n, false);
+    $files = [
+        '[Content_Types].xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+        '_rels/.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+        'xl/workbook.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Export" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        'xl/_rels/workbook.xml.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+        'xl/styles.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf fontId="0" xfId="0"/><xf fontId="1" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+        'xl/worksheets/sheet1.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>' . $data . '</sheetData></worksheet>',
+    ];
+    $zip = ''; $cd = ''; $t = (int)(((date('Y') - 1980) << 25) | (date('n') << 21) | (date('j') << 16) | (date('G') << 11) | ((int)date('i') << 5) | ((int)date('s') >> 1));
+    foreach ($files as $name => $body) {
+        $h = pack('vvvVVVVvv', 20, 0, 0, $t, crc32($body), strlen($body), strlen($body), strlen($name), 0);
+        $cd .= pack('V', 0x02014b50) . pack('v', 20) . $h . pack('vvvVV', 0, 0, 0, 0, strlen($zip)) . $name;
+        $zip .= pack('V', 0x04034b50) . $h . $name . $body;
+    }
+    $out = $zip . $cd . pack('VvvvvVVv', 0x06054b50, 0, 0, count($files), count($files), strlen($cd), strlen($zip), 0);
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . preg_replace('/[^a-z0-9_.-]/i', '_', $filename) . '"');
+    header('Content-Length: ' . strlen($out));
+    header('Cache-Control: no-store');
+    echo $out;
     exit;
 }
 

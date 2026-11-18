@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once 'orga_lib.php';
 
 if (!isset($_SESSION['user']['id'])) { sendJson(['error' => 'Non connecté'], 403); }
 
@@ -17,7 +18,7 @@ try {
 
     $output = array_map(function($o) {
         return [
-            'id' => $o['id'],
+            'id' => fin_orga_tok((int)$o['id']),
             'nom' => $o['nom'],
             'tel' => $o['tel'],
             'mail' => $o['email'],

@@ -13,6 +13,9 @@ if (empty($input['nom']) || empty($input['organisateur_id'])) {
 
 try {
     require_once 'tarifs.php';
+    require_once 'orga_lib.php';
+    $orgaTok = (string)$input['organisateur_id'];
+    $input['organisateur_id'] = fin_orga_from_tok($pdo, $orgaTok, (int)$_SESSION['user']['id']); // jeton public -> id
     tarifs_ensure($pdo);
     // l'organisateur doit appartenir à l'utilisateur connecté
     $own = $pdo->prepare("SELECT id FROM organisateurs WHERE id = ? AND user_id = ?");
@@ -38,7 +41,7 @@ try {
         'prix' => $input['prix'] ?? 0,
         'montant_libre' => $libre,
         'montant_min' => $min,
-        'organisateur_id' => $input['organisateur_id']
+        'organisateur_id' => $orgaTok
     ], 201);
 
 } catch (Exception $e) {

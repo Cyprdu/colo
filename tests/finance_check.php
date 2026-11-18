@@ -16,7 +16,7 @@ ok(fin_commission_split(2500, 1.0, 0)[0] === 25, 'taux explicite 1 % : 0,25 EUR 
 // Répartition des frais : somme exacte
 ok(array_sum(fin_allocate(63, [1 => 1000, 2 => 1000, 3 => 1000])) === 63, 'répartition de 63 c sur 3 lignes : somme exacte');
 ok(array_sum(fin_allocate(5, [1 => 0, 2 => 0])) === 5, 'répartition avec poids nuls : le reste va à la dernière ligne');
-ok(fin_orga_tok(7) !== fin_orga_tok(8) && strlen(fin_orga_tok(7)) === 24, 'jeton organisme opaque');
+ok(preg_match('/^[A-Za-z0-9]{22}$/', fin_orga_tok_new()) === 1 && fin_orga_tok_new() !== fin_orga_tok_new(), 'jeton organisme : 22 caractères base62 aléatoires');
 // TVA incluse dans un prix TTC : 100 EUR a 20 % -> 16,67 EUR (pas 20), non applicable -> 0
 ok(fin_tva_incluse(10000, 20) === 1667, 'TVA incluse 20 % sur 100 EUR TTC = 16,67 EUR');
 ok(fin_tva_incluse(10000, 5.5) === 521, 'TVA incluse 5,5 % sur 100 EUR TTC = 5,21 EUR');
@@ -69,6 +69,6 @@ ok(fin_commission_split(2500)[0] + fin_commission_split(10000)[0] === 373, 'pani
 ok(fin_commission_split(1)[0] === 1 && fin_commission_split(333)[0] === 38, 'arrondis : jamais plus que le payé, 2,5 % de 3,33 = 0,08 + 0,30');
 ok(in_array('frais_paiement', FIN_LEDGER_TYPES, true) && in_array('dette', FIN_LEDGER_TYPES, true), 'journal : frais Stripe de l\'organisme et dette tracés à part');
 ok(strpos(fin_sql_marge('p'), "p.mode = 'direct', 0") !== false, 'direct charges : frais Stripe hors marge moncamp.fr (jamais négative)');
-ok(fin_payout_date('2030-07-10') === '2030-07-13 00:00:00', 'versement bancaire : début du séjour + 3 jours');
+ok(abs(strtotime(fin_payout_date('2030-07-10')) - time()) < 5, 'versement : immédiat (versements automatiques Stripe, plus de retenue avant le séjour)');
 ok(in_array('versement', FIN_LEDGER_TYPES, true) && !in_array('reversement', FIN_LEDGER_TYPES, true), 'journal : les reversements ne sont pas des lignes');
 echo "Tout est bon.\n";

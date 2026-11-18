@@ -1,6 +1,7 @@
 <?php
+require_once __DIR__ . '/../api/orga_lib.php';
 // partials/mk_shop.php : fenêtre d'achat de points (carte ou chiffre d'affaires) + petites fonctions JS communes.
-// Variables attendues : $mkOrgaId (int), $mkWalletCents (int, solde utilisable), $mkCampToken (string, facultatif : retour sur boost.php)
+// Variables attendues : $mkOrgaId (int, jamais affiché : seul son jeton public part au navigateur), $mkWalletCents (int, solde utilisable), $mkCampToken (string, facultatif : retour sur boost.php)
 $mkCampToken = $mkCampToken ?? '';
 $mkWalletCents = max(0, (int)($mkWalletCents ?? 0));
 require_once __DIR__ . '/../api/marketing_lib.php';
@@ -48,7 +49,7 @@ require_once __DIR__ . '/../api/marketing_lib.php';
 <script src="https://js.stripe.com/v3/"></script>
 <script>
 (function () {
-    var ORGA = <?= (int)$mkOrgaId ?>, TOKEN = <?= json_encode($mkCampToken) ?>;
+    var ORGA = <?= json_encode(fin_orga_tok((int)$mkOrgaId)) ?>, TOKEN = <?= json_encode($mkCampToken) ?>;
     function toast(msg, err) { var t = document.getElementById('mkToast'); t.textContent = msg; t.className = 'mk-toast show' + (err ? ' err' : ''); clearTimeout(window.__mkT); window.__mkT = setTimeout(function () { t.className = 'mk-toast'; }, 4500); }
     function post(url, body) {
         return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
@@ -60,7 +61,7 @@ require_once __DIR__ . '/../api/marketing_lib.php';
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') mkClose(); });
     window.mkBuyCard = function (pack, btn) {
         btn.disabled = true;
-        post('api/create_stripe_boost_session.php', TOKEN ? { pack: pack, token: TOKEN } : { pack: pack, organisateur_id: ORGA })
+        post('api/create_stripe_boost_session.php', TOKEN ? { pack: pack, token: TOKEN } : { pack: pack, o: ORGA })
             .then(function (d) { if (d.url) { location.href = d.url; } else { toast(d.error || 'Paiement indisponible.', true); btn.disabled = false; } })
             .catch(function () { toast('Erreur réseau.', true); btn.disabled = false; });
     };
@@ -77,7 +78,7 @@ require_once __DIR__ . '/../api/marketing_lib.php';
         if (!ok) { busy = false; return; }
         btn.disabled = true;
         // un jeton d'idempotence par confirmation : un double envoi ne peut jamais débiter deux fois
-        fetch('api/buy_points_wallet.php', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }, credentials: 'same-origin', body: JSON.stringify({ pack: pack, organisateur_id: ORGA, idem: newIdem() }) })
+        fetch('api/buy_points_wallet.php', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }, credentials: 'same-origin', body: JSON.stringify({ pack: pack, o: ORGA, idem: newIdem() }) })
             .then(function (r) { return r.json(); })
             .then(function (d) { if (d.success) { toast('Paiement confirmé (' + d.ref + '). Un reçu vous est envoyé par e-mail.'); setTimeout(function () { location.reload(); }, 1200); } else { toast(d.message || 'Achat impossible.', true); btn.disabled = false; busy = false; } })
             .catch(function () { toast('Erreur réseau : vérifiez votre historique avant de réessayer.', true); btn.disabled = false; busy = false; });

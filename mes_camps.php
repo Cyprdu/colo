@@ -3,6 +3,7 @@
 require_once 'api/config.php';
 require_once 'api/sessions.php';
 require_once 'api/options.php';
+require_once 'api/orga_lib.php';
 
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 
@@ -83,7 +84,7 @@ foreach ($groupsRaw as $list) {
         'eq' => $eq,
         'ts' => $ongoing ? 'cours' : ($upcoming ? 'avenir' : 'passe'),
         'val' => $anyRefused ? 'refuse' : ($anyPending ? 'attente' : 'ok'),
-        'orga' => (int)$rep['organisateur_id'], 'orgaNom' => $orgaNoms[(int)$rep['organisateur_id']] ?? '',
+        'orga' => fin_orga_tok((int)$rep['organisateur_id']), 'orgaNom' => $orgaNoms[(int)$rep['organisateur_id']] ?? '',
         'theme' => trim((string)($rep['theme'] ?? '')),
         'start' => $list[0]['_start']->format('Y-m-d'), 'end' => $list[count($list) - 1]['_end']->format('Y-m-d'),
         'pmax' => $prices ? max($prices) : (float)$rep['prix'],

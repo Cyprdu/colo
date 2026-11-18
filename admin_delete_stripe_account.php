@@ -3,6 +3,7 @@
 
 // 1. CONFIGURATION
 require_once 'api/config.php';
+require_once 'api/orga_lib.php';
 
 use Stripe\Stripe;
 use Stripe\Account;
@@ -19,7 +20,7 @@ $messageType = ''; // 'success' or 'error'
 
 // 3. TRAITEMENT DE LA SUPPRESSION (POST)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_organisateur_id'])) {
-    $orgaIdToDelete = intval($_POST['delete_organisateur_id']);
+    $orgaIdToDelete = fin_orga_from_tok($pdo, (string)$_POST['delete_organisateur_id']); // jeton public
 
     try {
         // A. Récupérer l'ID Stripe en base
@@ -132,7 +133,7 @@ require_once 'partials/header.php';
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <form method="POST" data-confirm="ATTENTION : cette action est irréversible et supprimera la liaison.&#10;&#10;Êtes-vous sûr ?" data-danger>
-                                            <input type="hidden" name="delete_organisateur_id" value="<?= $orga['id'] ?>">
+                                            <input type="hidden" name="delete_organisateur_id" value="<?= htmlspecialchars(fin_orga_tok((int)$orga['id'])) ?>">
                                             <button type="submit" class="text-red-600 hover:text-red-900 font-bold bg-red-50 hover:bg-red-100 px-3 py-1 rounded transition">
                                                 Forcer la suppression
                                             </button>

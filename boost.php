@@ -39,7 +39,7 @@ require_once 'partials/mk_icons.php';
 <link rel="stylesheet" href="assets/mk.css?v=1">
 
 <main class="mk-wrap">
-    <a href="marketing.php?id=<?= (int)$camp['orga_id'] ?>" class="mk-back"><?= mk_icon('back', 16) ?> Marketing</a>
+    <a href="marketing.php?o=<?= htmlspecialchars(fin_orga_tok((int)$camp['orga_id'])) ?>" class="mk-back"><?= mk_icon('back', 16) ?> Marketing</a>
 
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
         <div>
@@ -75,7 +75,7 @@ require_once 'partials/mk_icons.php';
         <div id="boostFeedback" class="ds-alert-err" style="display:none;margin-bottom:16px" role="alert"></div>
         <?php $mkCamp = ['blocked' => $blocked, 'bumpOn' => $bumpOn, 'vedetteOn' => $vedetteOn, 'urgenceOn' => $urgenceOn, 'vedetteFin' => $camp['boost_vedette_fin'], 'urgenceFin' => $camp['boost_urgence_fin'], 'urgOk' => $daysToStart <= 45]; require 'partials/mk_offers.php'; ?>
         <div style="margin-top:28px"><p class="ds-eyebrow" style="margin-bottom:10px">Ce que verront les familles</p><?php $mkPreviewName = $camp['nom']; require 'partials/mk_preview.php'; ?></div>
-        <p class="mk-note" style="margin-top:14px">Le boost augmente le poids du séjour dans le classement sans remplacer la pertinence. Un séjour complet est rétrogradé. Les séjours à la une portent la mention « Sponsorisé ». <a class="underline" href="marketing.php?id=<?= (int)$camp['orga_id'] ?>#classement">En savoir plus</a></p>
+        <p class="mk-note" style="margin-top:14px">Le boost augmente le poids du séjour dans le classement sans remplacer la pertinence. Un séjour complet est rétrogradé. Les séjours à la une portent la mention « Sponsorisé ». <a class="underline" href="marketing.php?o=<?= htmlspecialchars(fin_orga_tok((int)$camp['orga_id'])) ?>#classement">En savoir plus</a></p>
     </section>
 </main>
 
