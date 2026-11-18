@@ -123,7 +123,7 @@ $negN = compta_negative_count($pdo);
 $orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id ORDER BY o.nom")->fetchAll(PDO::FETCH_ASSOC);
 $e = fn($c) => h(fin_eur((int)$c));
 
-adm_head('Comptabilité', 'admin_compta.php');
+adm_head('Comptabilité');
 $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 'Commission', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Réglages'];
 ?>
 <nav class="tabs" aria-label="Sections de la comptabilité">

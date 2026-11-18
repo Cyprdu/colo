@@ -285,6 +285,17 @@ function adm_sprite(): string {
      'play'=>'<path d="M7 4l13 8-13 8V4z"/>',
      'external'=>'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
      'user-check'=>'<circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c0-3.600 2.900-6 6.500-6 1.500 0 2.900.4 4 1.200M15 18l2 2 4-4"/>',
+     'bell'=>'<path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2z"/><path d="M10 20a2 2 0 004 0"/>',
+     'bug'=>'<rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7a3 3 0 016 0M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 19l3-2M20 19l-3-2M12 11v9"/>',
+     'download'=>'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+     'inbox'=>'<path d="M3 13l3-8h12l3 8v6H3v-6z"/><path d="M3 13h5l1 2h6l1-2h5"/>',
+     'archive'=>'<rect x="3" y="4" width="18" height="5" rx="1.500"/><path d="M5 9v10h14V9M10 13h4"/>',
+     'flag'=>'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+     'reply'=>'<path d="M10 8L4 13l6 5M4 13h11a5 5 0 015 5v1"/>',
+     'filter'=>'<path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/>',
+     'note'=>'<path d="M5 4h10l4 4v12H5V4z"/><path d="M14 4v5h5M8 13h8M8 17h5"/>',
+     'send'=>'<path d="M21 3L10 14M21 3l-7 18-4-7-7-4 18-7z"/>',
+     'dot3'=>'<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
     ];
     $o = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>';
     foreach ($p as $k => $v) $o .= '<symbol id="i-' . $k . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round">' . $v . '</symbol>';
@@ -293,72 +304,137 @@ function adm_sprite(): string {
 
 /* ------------------------------------------------------------------ gabarit */
 function adm_badges(): array {
-    return [
-        'users'    => (int)adm_one("SELECT COUNT(*) FROM users WHERE is_directeur = 0 AND demande_en_cours = 1"),
-        'camps'    => (int)adm_one("SELECT COUNT(*) FROM camps WHERE en_attente = 1 AND valide = 0 AND refuse = 0"),
-        'virements'=> (int)adm_one("SELECT COUNT(*) FROM virements WHERE effectue = 0"),
-        'contacts' => (int)adm_one("SELECT COUNT(*) FROM contact_messages WHERE statut = 'En attente'"),
-    ];
+    $t = adm_todo_counts();
+    return ['users' => $t['demande'], 'camps' => $t['sejour'], 'virements' => 0, 'contacts' => $t['contact']];
 }
 
 function adm_nav(): array {
     return [
-        'Pilotage' => [['admin.php', 'home', 'Tableau de bord', '', '']],
-        'Gestion'  => [
-            ['admin_list.php?e=users', 'users', 'Utilisateurs', 'users', 'users.read'],
+        'Pilotage' => [
+            ['admin.php', 'home', 'Tableau de bord', '', ''],
+            ['admin_notifs.php', 'bell', 'Notifications', 'notifs', ''],
+        ],
+        'Support' => [
+            ['admin_contacts.php', 'mail', 'Messages de contact', 'contact', 'contacts.read'],
+            ['admin_demandes.php', 'user-check', 'Demandes organisateur', 'demande', 'demandes.read'],
+        ],
+        'Catalogue' => [
+            ['admin_list.php?e=camps', 'tent', 'Séjours', 'sejour', 'camps.read'],
             ['admin_list.php?e=organismes', 'building', 'Organismes', '', 'orgas.read'],
-            ['admin_list.php?e=camps', 'tent', 'Séjours', 'camps', 'camps.read'],
-            ['admin_list.php?e=inscriptions', 'ticket', 'Inscriptions', '', 'inscriptions.read'],
-            ['admin_list.php?e=paiements', 'card', 'Paiements', '', 'paiements.read'],
-            ['admin_list.php?e=virements', 'bank', 'Virements', 'virements', 'versements.read'],
             ['admin_list.php?e=boosts', 'bolt', 'Boosts', '', 'camps.read'],
-            ['admin_list.php?e=contacts', 'mail', 'Messages de contact', 'contacts', 'contacts.read'],
+        ],
+        'Clients' => [
+            ['admin_list.php?e=users', 'users', 'Utilisateurs', '', 'users.read'],
+            ['admin_list.php?e=inscriptions', 'ticket', 'Inscriptions', '', 'inscriptions.read'],
         ],
         'Finances' => [
             ['admin_compta.php', 'euro', 'Comptabilité', '', 'compta.read'],
-            ['admin_demande_virement.php', 'bank', 'Versements aux organismes', '', 'versements.write'],
+            ['admin_compta.php?v=paiements', 'card', 'Paiements', 'litige', 'paiements.read'],
+            ['admin_compta.php?v=versements', 'bank', 'Versements', 'versement', 'versements.read'],
+            ['admin_list.php?e=virements', 'list', 'Anciens virements', '', 'versements.read'],
         ],
-        'Données'  => [
+        'Technique' => [
+            ['admin_erreurs.php', 'bug', 'Erreurs', 'erreur', 'tech.logs'],
+            ['admin_tech.php?v=crons', 'clock', 'Tâches planifiées', '', 'tech.crons'],
+            ['admin_tech.php?v=securite', 'shield', 'Sécurité', '', 'tech.security'],
+            ['tableau_de_controle.php', 'check', 'Tableau de contrôle', '', 'tech.security'],
+            ['admin_tech.php?v=sauvegardes', 'download', 'Sauvegardes', '', 'tech.backup'],
             ['admin_db.php', 'database', 'Base de données', '', 'tech.db'],
             ['admin_sql.php', 'terminal', 'Console SQL', '', 'tech.sql'],
         ],
-        'Sécurité' => [['tableau_de_controle.php', 'shield', 'Tableau de contrôle', '', 'tech.security'], ['admin_audit.php', 'shield', "Journal d'audit", '', 'audit.read'], ['admin_equipe.php', 'key', 'Équipe et rôles', '', 'supreme']],
+        'Administration' => [
+            ['admin_audit.php', 'list', "Journal d'audit", '', 'audit.read'],
+            ['admin_equipe.php', 'key', 'Équipe et rôles', '', 'supreme'],
+        ],
     ];
 }
 
+function adm_nav_ok(string $perm): bool { return $perm === 'supreme' ? adm_is_supreme() : ($perm === '' || adm_can($perm)); }
+
 function adm_help(string $t): string { return '<span class="help" tabindex="0" role="note" aria-label="' . h($t) . '" data-tip="' . h($t) . '">?</span>'; }
 
-function adm_head(string $title, string $active = '', array $crumbs = []): void {
-    $b = adm_badges();
+function adm_site_bar(array $todo, int $unread): string {
     $me = $_SESSION['user'] ?? [];
-    $name = trim(($me['prenom'] ?? '') . ' ' . ($me['nom'] ?? ''));
+    $ini = mb_strtoupper(mb_substr((string)($me['prenom'] ?? 'A'), 0, 1));
+    $total = array_sum($todo);
+    $o = '<header class="sitebar"><a class="logo" href="index.php" aria-label="moncamp.fr, accueil">' . mc_logo('dark', true, 28) . '</a>'
+       . '<nav class="sitenav" aria-label="Site"><a class="hide-m" href="index.php">Accueil</a>';
+    if (!empty($me['is_directeur'])) $o .= '<a class="hide-m" href="organisateurs.php">Organisateur</a>';
+    $o .= '<a class="hide-m" href="reservations.php">Réservations</a>'
+        . '<details class="dd"><summary class="on">Administration' . ($total ? ' <span class="cnt-i">' . $total . '</span>' : '') . '</summary><div class="dd-menu"><div class="dd-h">À traiter</div>';
+    foreach (adm_todo_types() as $k => [$label, $perm, $href, $icon]) {
+        if (!adm_can($perm)) continue;
+        $o .= '<a href="' . h($href) . '">' . ic($icon) . '<span>' . h($label) . '</span>' . ($todo[$k] ? '<b class="pill warn">' . $todo[$k] . '</b>' : '<b class="pill">0</b>') . '</a>';
+    }
+    $o .= '<hr><a href="admin.php">' . ic('home') . '<span>Tableau de bord</span></a><a href="admin_notifs.php">' . ic('bell') . '<span>Notifications</span></a></div></details>'
+        . '<a class="bell" href="admin_notifs.php" title="Notifications" aria-label="Notifications' . ($unread ? ' (' . $unread . ' non lues)' : '') . '">' . ic('bell') . ($unread ? '<b>' . ($unread > 99 ? '99+' : $unread) . '</b>' : '') . '</a>'
+        . '<details class="dd"><summary class="av-s" aria-label="Mon compte"><span class="avatar">' . h($ini) . '</span></summary><div class="dd-menu">'
+        . '<div class="dd-who"><b>' . h(trim(($me['prenom'] ?? '') . ' ' . ($me['nom'] ?? ''))) . '</b><small>' . h($me['email'] ?? '') . '</small></div><hr>'
+        . '<a href="profile.php">' . ic('users') . '<span>Mon profil</span></a><a href="messagerie.php">' . ic('mail') . '<span>Messagerie</span></a>'
+        . '<a href="#" data-keys>' . ic('key') . '<span>Raccourcis clavier</span><kbd>?</kbd></a><hr><a href="api/logout.php">' . ic('out') . '<span>Déconnexion</span></a></div></details></nav></header>';
+    return $o;
+}
+
+function adm_head(string $title, string $active = '', array $crumbs = []): void {
+    global $pdo;
+    adm_notif_sync($pdo);
+    $todo = adm_todo_counts();
+    $unread = adm_notif_unread();
+    $b = $todo + ['notifs' => $unread];
+    $self = basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php') . (isset($_GET['e']) ? '?e=' . $_GET['e'] : (isset($_GET['v']) ? '?v=' . $_GET['v'] : ''));
+    $active = $active !== '' ? $active : $self;
     echo '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="robots" content="noindex,nofollow"><meta name="csrf" content="' . h(adm_csrf()) . '">'
        . '<title>' . h($title) . ' · Administration moncamp.fr</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">'
        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
        . '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
-       . '<link rel="stylesheet" href="assets/admin.css?v=3"></head><body>' . adm_sprite()
-       . '<div class="adm" id="adm"><aside class="side" id="side"><a class="brand" href="admin.php">' . mc_logo('light', false, 30) . '<span>moncamp.fr<small>Administration</small></span></a><nav>';
+       . '<link rel="stylesheet" href="assets/admin.css?v=10"></head><body>' . adm_sprite() . adm_site_bar($todo, $unread)
+       . '<aside class="side" id="side" aria-label="Administration"><nav>';
+    $best = ''; $bestLen = 0;
+    foreach (adm_nav() as $items) foreach ($items as $it) if (strpos($active, $it[0]) === 0 && strlen($it[0]) > $bestLen) { $best = $it[0]; $bestLen = strlen($it[0]); }
+    $section = '';
     foreach (adm_nav() as $grp => $items) {
+        $items = array_filter($items, fn($it) => adm_nav_ok($it[4]));
+        if (!$items) continue;
         echo '<div class="grp">' . h($grp) . '</div>';
-        foreach ($items as [$href, $icon, $label, $badge, $perm]) {
-            if ($perm === 'supreme' ? !adm_is_supreme() : ($perm !== '' && !adm_can($perm))) continue;
-            $on = ($active !== '' && strpos($href, $active) !== false) ? ' on' : '';
-            echo '<a class="nav' . $on . '" href="' . h($href) . '">' . ic($icon) . '<span>' . h($label) . '</span>'
-               . (($badge !== '' && !empty($b[$badge])) ? '<b class="pill">' . (int)$b[$badge] . '</b>' : '') . '</a>';
+        foreach ($items as [$href, $icon, $label, $badge]) {
+            $on = $href === $best;
+            if ($on) $section = $grp;
+            $n = $badge !== '' ? (int)($b[$badge] ?? 0) : 0;
+            echo '<a class="nav' . ($on ? ' on' : '') . '" href="' . h($href) . '"' . ($on ? ' aria-current="page"' : '') . '>' . ic($icon) . '<span>' . h($label) . '</span>' . ($n ? '<b class="pill">' . $n . '</b>' : '') . '</a>';
         }
     }
-    echo '</nav><div class="side-foot"><a class="nav" href="index.php">' . ic('external') . '<span>Voir le site</span></a>'
-       . '<a class="nav" href="api/logout.php">' . ic('out') . '<span>Déconnexion</span></a></div></aside>'
-       . '<div class="main"><header class="top"><button class="icon-btn menu" id="menu" type="button" aria-label="Menu">' . ic('menu') . '</button>'
-       . '<h1>' . h($title) . '</h1><div class="top-r"><span class="lockst" id="lockst" title="Ré-authentification">' . ic('lock') . '<span id="locktxt">Verrouillé</span></span>'
-       . '<span class="who">' . ic('user-check') . h($name !== '' ? $name : 'Admin') . '</span></div></header><main class="content">';
+    echo '</nav></aside><div class="overlay" id="overlay"></div><div class="main"><div class="subbar">'
+       . '<button class="ib menu" id="menu" type="button" aria-label="Menu" aria-controls="side">' . ic('menu') . '</button><nav class="crumbs" aria-label="Fil d’Ariane"><a href="admin.php">Administration</a>';
+    if (!$crumbs && !in_array($section, ['', 'Pilotage', 'Administration'], true)) $crumbs = [[$section, '']];
+    foreach ($crumbs as [$l, $u]) echo '<span>›</span>' . ($u !== '' ? '<a href="' . h($u) . '">' . h($l) . '</a>' : '<span>' . h($l) . '</span>');
+    echo '<span>›</span><b>' . h($title) . '</b></nav>'
+       . '<div class="gsearch" role="search"><span class="gs-i">' . ic('search') . '</span><input class="in" id="gs" type="search" autocomplete="off" placeholder="Rechercher partout…" aria-label="Recherche globale" maxlength="80"><kbd>/</kbd><div class="gres" id="gres" hidden></div></div>'
+       . '<span class="lockst" id="lockst" title="Ré-authentification">' . ic('lock') . '<span id="locktxt">Verrouillé</span></span></div>'
+       . '<main class="content" id="content"><div class="page-h"><h1>' . h($title) . '</h1></div>';
     $f = $_SESSION['adm_flash'] ?? null; unset($_SESSION['adm_flash']);
     if ($f) echo '<div class="note ' . ($f[0] === 'ok' ? 'ok' : 'err') . '">' . h($f[1]) . '</div>';
 }
 
+function adm_empty(string $icon, string $text): string { return '<div class="empty-st">' . ic($icon, 'ic ic-xl') . '<p>' . h($text) . '</p></div>'; }
+
+function adm_pager(int $page, int $pages, callable $url): string {
+    if ($pages < 2) return '';
+    $o = '<nav class="pager" aria-label="Pagination">';
+    if ($page > 1) $o .= '<a class="btn ghost sm" href="' . h($url($page - 1)) . '">' . ic('back') . ' Précédent</a>';
+    $o .= '<span>Page ' . $page . ' / ' . $pages . '</span>';
+    if ($page < $pages) $o .= '<a class="btn ghost sm" href="' . h($url($page + 1)) . '">Suivant ' . ic('next') . '</a>';
+    return $o . '</nav>';
+}
+
 function adm_foot(array $page = []): void {
-    echo '</main></div></div>'
+    echo '</main></div>'
+       . '<div class="modal" id="m-keys" hidden><div class="dlg"><h3>' . ic('key') . ' Raccourcis clavier</h3><div class="keys">'
+       . '<div><span><kbd>/</kbd> <kbd>Ctrl K</kbd></span>Recherche globale</div><div><span><kbd>g</kbd> <kbd>d</kbd></span>Tableau de bord</div>'
+       . '<div><span><kbd>g</kbd> <kbd>n</kbd></span>Notifications</div><div><span><kbd>g</kbd> <kbd>m</kbd></span>Messages de contact</div>'
+       . '<div><span><kbd>g</kbd> <kbd>o</kbd></span>Demandes organisateur</div><div><span><kbd>g</kbd> <kbd>c</kbd></span>Comptabilité</div>'
+       . '<div><span><kbd>g</kbd> <kbd>u</kbd></span>Utilisateurs</div><div><span><kbd>g</kbd> <kbd>s</kbd></span>Séjours</div><div><span><kbd>Échap</kbd></span>Fermer</div></div>'
+       . '<div class="row"><button class="btn" type="button" data-close>Fermer</button></div></div></div>'
        . '<div class="modal" id="m-reauth" hidden><div class="dlg"><h3>' . ic('lock') . ' Confirmez votre identité</h3>'
        . '<p>Cette action est sensible. Saisissez votre mot de passe administrateur (valable 10 minutes).</p>'
        . '<form id="re-form" method="post" autocomplete="on">'   // vrai formulaire : Chrome associe identifiant + mot de passe ici et plus à un champ de recherche
@@ -370,7 +446,7 @@ function adm_foot(array $page = []): void {
        . '<div class="row"><button class="btn ghost" type="button" data-close>Annuler</button><button class="btn" type="button" id="cf-go">Confirmer</button></div></div></div>'
        . '<div class="toast" id="toast" role="status"></div>'
        . '<script type="application/json" id="adm-data">' . json_encode($page + ['reauth' => adm_reauth_ok() ? max(0, ADM_REAUTH_TTL - (time() - (int)$_SESSION['adm_reauth'])) : 0], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '</script>'
-       . '<script src="assets/admin.js?v=3"></script>' . (!empty($page['js']) && preg_match('/^[a-z_]+$/', $page['js']) ? '<script src="assets/' . $page['js'] . '.js?v=1"></script>' : '') . '</body></html>';
+       . '<script src="assets/admin.js?v=10"></script>' . (!empty($page['js']) && preg_match('/^[a-z_]+$/', $page['js']) ? '<script src="assets/' . $page['js'] . '.js?v=1"></script>' : '') . '</body></html>';
 }
 
 /* ----------------------------------------------------------------- entités */

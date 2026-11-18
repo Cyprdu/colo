@@ -2,7 +2,7 @@
 // test_stripe.php : diagnostic de la configuration (Stripe, webhooks, tâches planifiées, sécurité).
 // Réservé aux administrateurs. LECTURE SEULE : aucune action financière, aucun secret affiché (seulement leur présence et leur mode).
 require_once __DIR__ . '/admin_lib.php';
-adm_guard();
+adm_guard(false, 'tech.security');
 
 $checks = [];   // [section, libellé, statut ok|warn|bad, détail]
 $add = function (string $sec, string $label, string $st, string $detail = '') use (&$checks) { $checks[] = [$sec, $label, $st, $detail]; };

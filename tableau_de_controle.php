@@ -18,7 +18,7 @@ if ($run !== '' || isset($_GET['list'])) {
 adm_guard(false, 'tech.security');
 adm_audit('controle_ouvert', 'tableau_de_controle');
 $site = ctl_site();
-adm_head('Tableau de contrôle', 'tableau_de_controle');
+adm_head('Tableau de contrôle');
 ?>
 <div class="note" id="ctl-sum"><span>Tests en attente…</span></div>
 <div class="bar"><button class="btn" type="button" id="ctl-run">Relancer tous les tests</button>

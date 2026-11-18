@@ -31,7 +31,7 @@ function eq_perms(array $cat, array $on, string $name = 'perms[]', bool $ro = fa
     return $o . '</div>';
 }
 
-adm_head('Équipe et rôles', 'admin_equipe.php', [['Réglages', ''], ['Équipe et rôles', '']]);
+adm_head('Équipe et rôles');
 ?>
 <section class="card">
   <h2 class="sec"><?= ic('plus') ?> Ajouter un membre <?= adm_help("La personne doit déjà avoir un compte sur moncamp.fr. Elle accède ensuite à l'administration avec son mot de passe habituel.") ?></h2>

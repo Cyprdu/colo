@@ -63,7 +63,7 @@ function cell(string $col, string $type, array $r): string {
     }
 }
 
-adm_head($E['label'], 'e=' . $key);
+adm_head($E['label']);
 ?>
 <form class="bar" method="get" action="admin_list.php">
   <input type="hidden" name="e" value="<?= h($key) ?>">
