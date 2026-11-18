@@ -51,6 +51,8 @@ if ($v === 'crons'):
 <?php endforeach; ?></tbody></table></div>
 
 <?php elseif ($v === 'securite'):
+    require_once __DIR__ . '/api/security.php';
+    sec_ensure($pdo);
     $att = adm_rows("SELECT kind, COUNT(*) n, COUNT(DISTINCT who) w FROM admin_attempts WHERE created_at > (NOW() - INTERVAL 1 DAY) GROUP BY kind ORDER BY n DESC");
     $sec = adm_rows("SELECT type, COUNT(*) n FROM sec_tentatives WHERE created_at > (NOW() - INTERVAL 1 DAY) GROUP BY type ORDER BY n DESC");
     $evt = adm_rows("SELECT created_at, email, ip, action, cible, detail FROM admin_audit WHERE action IN ('acces_refuse', 'csrf_refuse', 'reauth_echec', 'reauth_bloque', 'session_invalide', 'session_expiree', 'sql_echec') ORDER BY id DESC LIMIT 40");
