@@ -2,6 +2,7 @@
 // api/dossier_inscrit.php : dossier complet d'un inscrit, pour le panneau de gestion_camp.php et la page child_details.php.
 //   GET ?r=<jeton de réservation>  -> enfant (identité, parents, santé, documents, autorisations, paiement, réponses, historique)
 //   GET ?a=<jeton d'inscription animateur> -> animateur
+//   + &format=pdf : le même dossier en PDF (FPDF, 1 à 2 pages A4) ; &dl=1 pour le télécharger
 // Accès : propriétaire de l'organisme du séjour, ou administrateur. L'ouverture d'un dossier enfant est journalisée (table acces_sante).
 // Les documents ne sont jamais servis ici : seulement des liens vers api/secure_file.php (déchiffrement + journal à chaque ouverture).
 require_once 'config.php';
@@ -9,10 +10,51 @@ require_once 'security.php';
 require_once 'sante.php';
 require_once 'champs.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-function dossier_fin(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }
+function dossier_fin(array $d, int $code = 200): void {
+    if ($code === 200 && ($_GET['format'] ?? '') === 'pdf') dossier_pdf($d);
+    http_response_code($code); header('Content-Type: application/json; charset=utf-8'); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit;
+}
+
+/** Dossier en PDF : tableaux compacts, 1 à 2 pages A4 */
+function dossier_pdf(array $d): void {
+    require_once __DIR__ . '/pdf_lib.php';
+    $oui = fn($b) => $b ? 'Oui' : 'Non';
+    $statut = fn($p) => trim(($p['statut'] ?? '') . ' · ' . pdf_eur($p['paye'] ?? 0) . ' payé' . (isset($p['prix']) ? ' / ' . pdf_eur($p['prix']) : ''), ' ·');
+    if ($d['type'] === 'animateur') {
+        $pdf = new MoncampPdf('Dossier animateur : ' . $d['nom'], $d['camp']);
+        $pdf->section('Identité');
+        $pdf->kv(['Nom' => $d['nom'], 'Naissance' => pdf_date($d['date_naissance']), 'E-mail' => $d['email'], 'Téléphone' => $d['tel'], 'BAFA' => $d['bafa'], 'Diplôme' => $d['diplome'], 'Statut' => $d['statut']]);
+        $pdf->section('Santé et urgence');
+        $pdf->kv(['Allergies' => $d['allergies'], 'Régime' => $d['regime'], 'Urgence' => trim(($d['urgence']['nom'] ?? '') . ' ' . ($d['urgence']['tel'] ?? ''))]);
+        $pdf->section('Paiement');
+        $pdf->kv(['Tarif' => $d['paiement']['tarif'], 'Paiement' => $statut($d['paiement'])]);
+        if ($d['reponses']) { $pdf->section('Réponses au formulaire'); $pdf->table(['Question', 'Réponse'], array_map(fn($r) => [$r['libelle'], $r['valeur']], $d['reponses']), [70, 120]); }
+        $pdf->envoyer('Dossier_' . $d['nom'] . '.pdf', empty($_GET['dl']));
+    }
+    $e = $d['enfant']; $s = $d['sante']; $v = (array)($s['vaccins'] ?? []);
+    $vacc = [];
+    foreach (FICHE_VACCINS as $k => $l) { $st = $v["v_$k"] ?? ''; if ($st !== '') $vacc[] = $l . ($st === 'oui' ? (!empty($v["d_$k"]) ? ' ' . fiche_date_fr($v["d_$k"]) : ' oui') : ' : non'); }
+    if (!$vacc && !empty($v['dtp'])) $vacc[] = 'DTP ' . $v['dtp'];
+    $pdf = new MoncampPdf('Dossier : ' . $e['prenom'] . ' ' . $e['nom'], $d['camp'] . ($d['ville'] ? ' · ' . $d['ville'] : '') . ' · du ' . implode(' au ', array_map('pdf_date', explode(' → ', $d['dates']))));
+    $pdf->section('Enfant');
+    $pdf->kv(['Nom' => $e['prenom'] . ' ' . $e['nom'], 'Naissance' => pdf_date($e['date_naissance']), 'Sexe' => ['Homme' => 'Garçon', 'Femme' => 'Fille'][$e['sexe'] ?? ''] ?? ($e['sexe'] ?? ''),
+        'Adresse' => trim(($e['adresse'] ?? '') . ' ' . ($e['pays'] ?? '')), 'E-mail' => $e['email'], 'Téléphone' => $e['tel']]);
+    $pdf->section('Responsables légaux');
+    $pdf->table(['Responsable', 'Lien', 'Téléphone', 'E-mail', 'Profession'], array_map(fn($p) => [trim(($p['civilite'] ?? '') . ' ' . ($p['prenom'] ?? '') . ' ' . ($p['nom'] ?? '')), $p['lien'], $p['tel'], $p['email'], $p['profession']], $d['parents']), [48, 24, 30, 54, 34]);
+    $pdf->section('Santé');
+    $pdf->kv(['Allergies' => $s['allergies'], 'Problème de santé' => $s['infos'], 'Traitement' => $s['traitements'], 'Régime' => $s['regime'],
+        'Antécédents' => $v['antecedents'] ?? null, 'Recommandations' => $v['reco'] ?? null, 'Taille / poids' => trim(($s['taille'] ? $s['taille'] . ' cm' : '') . ($s['poids'] ? ' / ' . $s['poids'] . ' kg' : '')),
+        'Médecin' => $s['medecin'], 'Urgence' => trim(($s['urgence']['nom'] ?? '') . ' ' . (($s['urgence']['lien'] ?? '') ? '(' . $s['urgence']['lien'] . ') ' : '') . ($s['urgence']['tel'] ?? '')), 'Vaccins' => implode(', ', $vacc)]);
+    $pdf->section('Autorisations, documents et paiement');
+    $a = $d['autorisations'];
+    $pdf->kv(['Accord parental' => $oui($a['accord_parental']), "Droit à l'image" => $oui($a['droit_image']), 'Contact direct' => $oui($a['contact']), 'CGV' => $oui($a['cgv']),
+        'Documents' => $d['documents'] ? implode(', ', array_column($d['documents'], 'label')) . ' (en ligne)' : 'Aucun', 'Tarif' => $d['paiement']['tarif'], 'Paiement' => $statut($d['paiement'])]);
+    if ($d['reponses']) { $pdf->section("Questions de l'organisateur"); $pdf->table(['Question', 'Réponse'], array_map(fn($r) => [$r['libelle'] ?? $r['question'] ?? '', $r['valeur'] ?? $r['reponse'] ?? ''], $d['reponses']), [70, 120]); }
+    if ($d['commentaires']) { $pdf->section('Commentaires de la famille'); $pdf->kv(['' => $d['commentaires']], 1); }
+    $pdf->envoyer('Dossier_' . $e['prenom'] . '_' . $e['nom'] . '.pdf', empty($_GET['dl']));
+}
 if (empty($_SESSION['user']['id'])) dossier_fin(['error' => 'Connectez-vous pour continuer.'], 401);
 $uid = (int)$_SESSION['user']['id'];
 $admin = !empty($_SESSION['user']['is_admin']);
