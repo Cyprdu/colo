@@ -46,6 +46,19 @@ try {
         if ($b['sexe'] || $b['manque'] || $b['age']) $bloques[(int)$e['id']] = $b;
     }
 
+    // Tranche (collège, lycée…) déclarée pour chaque enfant : dernière déclaration, sinon déduite de l'âge
+    require_once 'api/regles.php';
+    require_once 'api/security.php';
+    regles_ensure($pdo);
+    $besoinTranche = regles_besoin_tranche($camp);
+    $trancheDe = [];
+    if ($enfants) {
+        $st = $pdo->prepare("SELECT enfant_id, tranche FROM inscriptions WHERE tranche IS NOT NULL AND enfant_id IN (" . implode(',', array_fill(0, count($enfants), '?')) . ") ORDER BY id");
+        $st->execute(array_map(fn($e) => (int)$e['id'], $enfants));
+        foreach ($st->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) $trancheDe[(int)$k] = $v;
+        foreach ($enfants as $e) $trancheDe[(int)$e['id']] ??= tranche_par_age(age_au($e['date_naissance'] ?? null, $camp['date_debut']));
+    }
+
     // 3. Enfants déjà inscrits
     $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND " . attente_clause($camp));
     $stmtDeja->execute([$camp['id']]);
@@ -126,6 +139,7 @@ $vaccTxt = function (array $e): string {
 
         <form id="mainForm" action="api/create_stripe_session_multi.php" method="POST" class="bg-white rounded-3xl border border-[#e5e7eb] shadow-[0_8px_30px_rgba(38,52,59,.07)] overflow-hidden min-h-[400px]">
             <input type="hidden" name="camp_t" value="<?= htmlspecialchars($camp_token) ?>">
+            <?= csrf_field() ?>
 
             <div id="step-1" class="p-6 md:p-8 fade-in">
                 <h2 class="text-xl font-bold text-gray-800 mb-6">1. Qui participe au séjour ?</h2>
@@ -163,6 +177,12 @@ $vaccTxt = function (array $e): string {
                                     <?php if (!$blq || !$blq['manque']): $sg = options_enfant_souhaites($camp, $enfant); if ($sg): ?>
                                         <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>&retour=<?= $retourInscr ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
                                     <?php endif; endif; ?>
+                                    <?php if ($besoinTranche): ?>
+                                        <select name="tranche[<?= (int)$enfant['id'] ?>]" class="tranche-sel mt-2 border border-gray-300 rounded-lg p-1.5 text-sm bg-white" data-child="<?= (int)$enfant['id'] ?>" aria-label="Classe ou situation de <?= htmlspecialchars($enfant['prenom']) ?> pendant le séjour">
+                                            <option value="">Classe / situation pendant le séjour…</option>
+                                            <?php foreach (TRANCHES as $k => [$t]): ?><option value="<?= $k ?>" <?= ($trancheDe[(int)$enfant['id']] ?? '') === $k ? 'selected' : '' ?>><?= $t ?></option><?php endforeach; ?>
+                                        </select>
+                                    <?php endif; ?>
                                 </div>
                             </label>
                         <?php endforeach; ?>
@@ -350,6 +370,7 @@ $vaccTxt = function (array $e): string {
     const tariffs = <?= $tarifsJson ?>;
     const remisePercent = <?= $remise_pourcent ?>;
     const alreadyRegistered = <?= (int)$dejaInscritsNb ?>;
+    const CAMP_CRIT = <?= json_encode(regles_crit_camp($camp) + ['libelle' => tranches_libelles(regles_crit_camp($camp)['tranches'])], $jf) ?>;
 
     let selectedChildIds = [];
     let selections = {}; 
@@ -391,6 +412,10 @@ $vaccTxt = function (array $e): string {
             const checkboxes = document.querySelectorAll('.child-check:checked');
             if (checkboxes.length === 0) { ColoUI.alert("Sélectionnez au moins un enfant pour continuer."); return; }
             selectedChildIds = Array.from(checkboxes).map(cb => cb.value);
+            if (CAMP_CRIT.mode !== 'age') for (const id of selectedChildIds) {
+                const s = document.querySelector(`.tranche-sel[data-child="${id}"]`), c = allChildren.find(x => x.id == id);
+                if (!s || !CAMP_CRIT.tranches.includes(s.value)) { ColoUI.alert('Ce séjour accueille : ' + CAMP_CRIT.libelle + '. Vérifiez la classe ou la situation de ' + c.prenom + '.'); return; }
+            }
             initStep2();
         }
         if (step === 3) { initStep3(); showCustomFields(); }

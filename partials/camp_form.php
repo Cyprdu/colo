@@ -6,8 +6,12 @@ require_once __DIR__ . '/../api/champs.php';
 require_once __DIR__ . '/../api/catalogue.php';
 require_once __DIR__ . '/../api/motscles.php';
 require_once __DIR__ . '/../api/orga_lib.php';
+require_once __DIR__ . '/../api/regles.php';
 
+regles_ensure($pdo);
 $att = $att ?? []; $edit = is_array($camp);
+$ageMode = $edit ? age_mode($camp) : 'age';
+$tranchesSel = $edit ? tranches_valides($camp['tranches'] ?? '') : [];
 $val = fn($k, $d = '') => htmlspecialchars((string)($edit ? ($camp[$k] ?? $d) : $d), ENT_QUOTES);
 $chk = fn($k) => $edit && !empty($camp[$k]) ? 'checked' : '';
 $reserve = $edit ? (string)($camp['reserve_sexe'] ?? '') : '';
@@ -147,12 +151,23 @@ $tick = $svg('check', 'w-3 h-3');
             </section>
 
 
-            <?= $sec('s-public', 'users', 'Public et places', 'Séjour mixte ou réservé, quotas par sexe : à vous de choisir.') ?>
-                <div class="max-w-sm mb-6">
+            <?= $sec('s-public', 'users', 'Public et places', 'Âges ou tranches, mixité et quotas : à vous de choisir.') ?>
+                <div class="ds-label">Qui est accueilli ? <details class="ds-help"><summary>?</summary><div><strong>Âge exact</strong> : l'âge de l'enfant au premier jour de la session. <strong>Tranches</strong> : la famille indique la classe ou la situation (collège, lycée, études…) ; utile quand l'âge ne suffit pas (un lycéen de 15 ans, un étudiant de 17 ans). <strong>Les deux</strong> : il faut remplir les deux conditions.</div></details></div>
+                <div class="grid sm:grid-cols-3 gap-3 mb-4" id="ageModes">
+                    <?php foreach (AGE_MODES as $k => $t): ?>
+                        <label class="ds-opt items-center"><input type="radio" name="age_mode" value="<?= $k ?>" <?= $ageMode === $k ? 'checked' : '' ?>><span class="ds-tick"><?= $tick ?></span><span class="ds-opt-title"><?= $t ?></span></label>
+                    <?php endforeach; ?>
+                </div>
+                <div id="ageBox" class="max-w-sm mb-4">
                     <div class="grid grid-cols-2 gap-3">
-                        <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="30" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
-                        <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="30" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
+                        <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="99" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
+                        <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="99" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
                     </div>
+                </div>
+                <div id="trancheBox" class="flex flex-wrap gap-2 mb-6">
+                    <?php foreach (TRANCHES as $k => [$t]): ?>
+                        <label class="ds-chip cursor-pointer"><input type="checkbox" name="tranches[]" value="<?= $k ?>" class="accent-[#2f3d45]" <?= in_array($k, $tranchesSel, true) ? 'checked' : '' ?>> <?= $t ?></label>
+                    <?php endforeach; ?>
                 </div>
                 <p class="ds-label">Qui peut s'inscrire ?</p>
                 <div class="grid sm:grid-cols-3 gap-3" id="reserveOpts">
@@ -429,9 +444,12 @@ function refreshToggles() {
     const reserve = document.querySelector('input[name=reserve_sexe]:checked').value;
     $('quotaWrap').classList.toggle('hidden', reserve !== '');
     if (reserve !== '') $('quotaToggle').checked = false;
+    const am = (document.querySelector('input[name=age_mode]:checked') || {}).value || 'age';
+    $('ageBox').classList.toggle('hidden', am === 'tranche');
+    $('trancheBox').classList.toggle('hidden', am === 'age');
 }
 ['toggleOnline', 'quotaToggle', 'attenteToggle'].forEach(i => $(i).addEventListener('change', refreshToggles));
-document.querySelectorAll('input[name=reserve_sexe]').forEach(r => r.addEventListener('change', refreshToggles));
+document.querySelectorAll('input[name=reserve_sexe], input[name=age_mode]').forEach(r => r.addEventListener('change', refreshToggles));
 refreshToggles();
 
 // ------------------------------------------------ organismes
@@ -600,7 +618,7 @@ Etapes.render();
 const HERIT = {
     description: { label: 'la description et les mots-clés', f: ['description'], a: ['tags'] },
     lieu: { label: 'le lieu et le parcours', f: ['adresse', 'ville', 'cp', 'pays', 'itinerant'], a: ['etapes'] },
-    public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
+    public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'age_mode', 'tranches[]', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
     inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs'] },
     paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement'] },
     fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]', 'champs_demandes[]'] },

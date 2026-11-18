@@ -61,7 +61,7 @@ function camp_snapshot(PDO $pdo, array $c): array {
     $online = !empty($c['inscription_en_ligne']);
     $b = fn($k) => !empty($c[$k]);
     $f = [
-        'age_min' => (string)($c['age_min'] ?? ''), 'age_max' => (string)($c['age_max'] ?? ''),
+        'age_min' => (string)($c['age_min'] ?? ''), 'age_max' => (string)($c['age_max'] ?? ''), 'age_mode' => age_mode($c), 'tranches[]' => tranches_valides($c['tranches'] ?? ''),
         'reserve_sexe' => (string)($c['reserve_sexe'] ?? ''),
         'quotas_sexe_actifs' => (int)($c['quota_fille'] ?? 0) > 0 || (int)($c['quota_garcon'] ?? 0) > 0,
         'quota_fille' => (string)($c['quota_fille'] ?? ''), 'quota_garcon' => (string)($c['quota_garcon'] ?? ''),
@@ -128,7 +128,7 @@ function camp_libelle_session(array $data): string {
 function camp_sauver_groupe(PDO $pdo, int $uid, string $openToken, array $p): array {
     options_ensure($pdo); attente_ensure($pdo); etapes_ensure($pdo); champs_ensure($pdo);
     require_once __DIR__ . '/geocode.php'; geo_ensure($pdo);
-    require_once __DIR__ . '/animateurs.php'; require_once __DIR__ . '/equipe.php'; anim_ensure($pdo); equipe_ensure($pdo);
+    require_once __DIR__ . '/animateurs.php'; require_once __DIR__ . '/equipe.php'; anim_ensure($pdo); equipe_ensure($pdo); regles_ensure($pdo);
 
     $common = (array)($p['common'] ?? []);
     $sessions = array_values((array)($p['sessions'] ?? []));

@@ -7,6 +7,7 @@ require_once __DIR__ . '/catalogue.php';
 require_once __DIR__ . '/motscles.php';
 require_once __DIR__ . '/sessions.php';
 require_once __DIR__ . '/champs.php';
+require_once __DIR__ . '/regles.php';
 
 /**
  * Valide $in (le POST du formulaire) pour le directeur $uid.
@@ -40,8 +41,8 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     if ($nom === '') return [[], [], 'Le nom du séjour est obligatoire.', null];
     if (!$debut || !$fin) return [[], [], 'Les dates du séjour sont obligatoires.', null];
     if ($fin < $debut) return [[], [], 'La date de fin doit suivre la date de début.', null];
-    $ageMin = $i('age_min'); $ageMax = $i('age_max');
-    if ($ageMax < $ageMin) return [[], [], "L'âge maximum doit être supérieur ou égal à l'âge minimum.", null];
+    [$ageMode, $tranches, $ageMin, $ageMax, $errAge] = regles_age_lire($in);
+    if ($errAge) return [[], [], $errAge, null];
     $limite = $day($s('date_limite_inscription'));
     if ($limite && $limite > $debut) return [[], [], "La date limite d'inscription doit précéder le début du séjour.", null];
 
@@ -89,7 +90,7 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
         'type' => $mc !== null ? mb_substr(implode(', ', array_column($mc['ok'], 'label')), 0, 500) : $s('type', 500), 'pays' => $s('pays', 80) ?: 'France',
         'itinerant' => !empty($in['itinerant']) ? 1 : 0, 'video_url' => $video,
         'ville' => $s('ville', 120), 'adresse' => $s('adresse', 255), 'code_postal' => $s('cp', 20),
-        'age_min' => $ageMin, 'age_max' => $ageMax, 'date_debut' => $debut, 'date_fin' => $fin,
+        'age_min' => $ageMin, 'age_max' => $ageMax, 'age_mode' => $ageMode, 'tranches' => implode(',', $tranches) ?: null, 'date_debut' => $debut, 'date_fin' => $fin,
         'prive' => !empty($in['prive']) ? 1 : 0,
         'inscription_en_ligne' => $enLigne, 'inscription_hors_ligne' => $enLigne ? 0 : 1, 'prix' => $prix,
         'lien_externe' => $lien, 'adresse_retour_dossier' => $s('adresse_retour_dossier', 500),

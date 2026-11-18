@@ -137,7 +137,7 @@ function options_enfant_souhaites(array $camp, array $enfant): array {
  * L'âge est calculé au premier jour de la session. Retourne un message, ou null si tout va bien.
  */
 function options_age_probleme(array $camp, array $enfant): ?string {
-    if (empty($enfant['date_naissance']) || !isset($camp['age_min'], $camp['age_max'])) return null;
+    if (empty($enfant['date_naissance']) || !isset($camp['age_min'], $camp['age_max']) || ($camp['age_mode'] ?? '') === 'tranche') return null;
     try {
         $ref = new DateTime(!empty($camp['date_debut']) ? $camp['date_debut'] : 'now');
         $age = (new DateTime($enfant['date_naissance']))->diff($ref)->y;
