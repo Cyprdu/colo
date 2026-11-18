@@ -1,6 +1,6 @@
 <?php
 // partials/logos_paiement.php : bandeau « paiement sécurisé » avec les moyens proposés par Stripe Checkout (carte CB / Visa / Mastercard, Apple Pay, Google Pay, Link).
-// Marques en SVG intégré (aucun hébergeur externe). Affichage : <?= logos_paiement() ?>. Le choix réel des moyens (selon l'appareil et le pays) est fait par Stripe.
+// Marques en SVG intégré (aucun hébergeur externe). Affichage : echo logos_paiement(). Le choix réel des moyens (selon l'appareil et le pays) est fait par Stripe.
 if (!function_exists('logos_paiement')) {
     function logos_paiement(bool $note = true): string {
         $b = 'class="h-7 w-auto flex-none" role="img" viewBox="0 0 48 30"';
