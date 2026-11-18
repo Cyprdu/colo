@@ -53,7 +53,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <?php if (!empty($base_href)) echo '<base href="' . htmlspecialchars($base_href) . '">'; /* pages dans un sous-dossier d'adresse (/organisme/xxx) */ ?>
     <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
 
@@ -125,8 +125,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-    <link rel="stylesheet" href="/assets/ds.css?v=7">
-    <script src="/assets/ui.js?v=1"></script>
+    <link rel="stylesheet" href="/assets/ds.css?v=8">
+    <script src="/assets/ui.js?v=2"></script>
 </head>
 <body class="<?php echo htmlspecialchars($body_class); ?><?php echo $body_class === 'bg-gray-100' ? ' ds-legacy' : ''; ?> text-gray-800 flex flex-col min-h-screen">
 

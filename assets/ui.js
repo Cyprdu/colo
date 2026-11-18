@@ -136,3 +136,18 @@
         });
     }, true);
 })();
+
+/* Tableaux : sur écran étroit, chaque tableau défile horizontalement dans son cadre au lieu de déborder de la page */
+(function () {
+    function wrap(root) {
+        (root.querySelectorAll ? root.querySelectorAll('table') : []).forEach(function (t) {
+            if (t.__w || t.closest('.ds-tablewrap,[class*="overflow-x"],[data-nowrap-table]')) { t.__w = 1; return; }
+            var p = t.parentNode, w = document.createElement('div');
+            if (!p) return;
+            t.__w = 1; w.className = 'ds-tablewrap';
+            p.insertBefore(w, t); w.appendChild(t);
+        });
+    }
+    function go() { wrap(document); if (window.MutationObserver) new MutationObserver(function (m) { m.forEach(function (r) { r.addedNodes.forEach(function (n) { if (n.nodeType === 1) wrap(n.tagName === 'TABLE' ? { querySelectorAll: function () { return [n]; } } : n); }); }); }).observe(document.body, { childList: true, subtree: true }); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();

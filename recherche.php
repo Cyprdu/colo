@@ -95,6 +95,10 @@ $q = trim((string)($_GET['name'] ?? ''));
         #filters .fbody { flex:1; overflow-y:auto; padding:0 20px; }
     }
     @media (min-width:1024px) { #filters .fhead, #filters .ffoot { display:none; } }
+    #filters .ffoot { padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
+    #filters .fbody { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+    @media (max-width:1023px) { .finput { font-size:16px; padding:12px; } #f-apply { min-height:48px; } }
+    @media (pointer:coarse) { .cat, .pill { min-height:44px; display:inline-flex; align-items:center; } .chk { min-height:44px; } .tag button { width:28px; height:28px; } }
 </style>
 
 <link rel="stylesheet" href="assets/css/colomap-search.css">
