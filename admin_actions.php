@@ -83,7 +83,57 @@ function act_demande_decide(array $d, string $statut, ?string $motif): void {
     demande_mail_user($pdo, $d, $mail[0], $mail[1]);
 }
 
+function act_mois(array $in): string {
+    $m = (string)($in['mois'] ?? '');
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $m)) throw new AdmUserError('Mois invalide.');
+    return $m;
+}
+
 return [
+    'compta.close' => ['compta.close', true, function (array $in) {
+        global $pdo;
+        require_once __DIR__ . '/api/compta_lib.php';
+        $m = act_mois($in);
+        if ($m >= date('Y-m')) throw new AdmUserError('On ne clôture qu’un mois terminé.');
+        $c = adm_rows("SELECT * FROM compta_clotures WHERE mois = ?", [$m])[0] ?? null;
+        if ($c && !$c['rouvert_at']) throw new AdmUserError('Ce mois est déjà clôturé.');
+        $tot = compta_cloture_totaux($pdo, $m);
+        $emp = compta_cloture_empreinte($pdo, $m);
+        $nb = array_sum(array_column($tot, 'n'));
+        $pdo->prepare("REPLACE INTO compta_clotures (mois, totaux, empreinte, nb, par, par_nom, created_at, rouvert_par, rouvert_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NULL, NULL)")
+            ->execute([$m, json_encode($tot), $emp, $nb, (int)$_SESSION['user']['id'], act_me()]);
+        adm_audit('compta_cloture', "mois:$m", "$nb écritures", null, ['totaux' => $tot, 'empreinte' => $emp]);
+        return ['msg' => "Mois $m clôturé."];
+    }],
+    'compta.reopen' => ['supreme', true, function (array $in) {
+        global $pdo;
+        $m = act_mois($in);
+        $c = adm_rows("SELECT * FROM compta_clotures WHERE mois = ? AND rouvert_at IS NULL", [$m])[0] ?? null;
+        if (!$c) throw new AdmUserError('Ce mois n’est pas clôturé.');
+        $pdo->prepare("UPDATE compta_clotures SET rouvert_par = ?, rouvert_at = NOW() WHERE mois = ?")->execute([(int)$_SESSION['user']['id'], $m]);
+        adm_audit('compta_reouverture', "mois:$m", null, ['empreinte' => $c['empreinte'], 'totaux' => json_decode($c['totaux'], true)], null);
+        return ['msg' => "Mois $m rouvert."];
+    }],
+    'pay.stripe' => ['paiements.read', false, function (array $in) {
+        require_once __DIR__ . '/api/finance_lib.php';
+        $id = adm_untok('pay', (string)($in['t'] ?? ''));
+        $p = $id ? adm_rows("SELECT p.*, s.account_id FROM fin_paiements p LEFT JOIN stripe_comptes s ON s.organisateur_id = p.organisateur_id WHERE p.id = ?", [$id])[0] ?? null : null;
+        if (!$p || !$p['payment_intent']) throw new AdmUserError('Pas de paiement Stripe associé.');
+        $opt = $p['mode'] === 'direct' && $p['account_id'] ? ['stripe_account' => $p['account_id']] : [];
+        try {
+            $pi = fin_stripe()->paymentIntents->retrieve($p['payment_intent'], ['expand' => ['latest_charge.balance_transaction', 'latest_charge.refunds']], $opt);
+        } catch (Throwable $e) { error_log('pay.stripe: ' . $e->getMessage()); throw new AdmUserError('Stripe ne répond pas ou ne connaît pas ce paiement.'); }
+        $ch = is_object($pi->latest_charge ?? null) ? $pi->latest_charge : null;
+        $bt = $ch && is_object($ch->balance_transaction ?? null) ? $ch->balance_transaction : null;
+        $eur = fn($c) => number_format(((int)$c) / 100, 2, ',', ' ') . ' €';
+        $l = ['Statut' => (string)$pi->status, 'Montant' => $eur($pi->amount), 'Reçu' => $eur($pi->amount_received), 'Charge' => $ch ? (string)$ch->id : '—',
+              'Remboursé' => $ch ? $eur($ch->amount_refunded) : '—', 'Litige' => $ch && !empty($ch->disputed) ? 'oui' : 'non',
+              'Frais Stripe' => $bt ? $eur($bt->fee) : '—', 'Net Stripe' => $bt ? $eur($bt->net) : '—', 'Commission (application fee)' => isset($pi->application_fee_amount) ? $eur($pi->application_fee_amount) : '—',
+              'Carte' => $ch && isset($ch->payment_method_details->card) ? strtoupper((string)$ch->payment_method_details->card->brand) . ' · ' . (string)$ch->payment_method_details->card->country : '—',
+              'Créé chez Stripe' => date('d/m/Y H:i', (int)$pi->created)];
+        adm_audit('paiement_stripe_consulte', 'fin_paiements#' . $id);
+        return ['stripe' => $l];
+    }],
     'demande.valider' => ['demandes.write', false, function (array $in) {
         act_demande_decide(act_demande($in), 'validee', null);
         return ['msg' => 'Accès organisateur accordé. Le demandeur est prévenu.'];

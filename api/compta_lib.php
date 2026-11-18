@@ -445,3 +445,105 @@ function compta_fees_reconcile(PDO $pdo, string $from, string $to): array {
     }
     return ['attendu' => $attendu, 'stripe' => $stripe, 'ecart' => $stripe - $attendu, 'n' => $n];
 }
+
+function compta_cloture_empreinte(PDO $pdo, string $mois): string {
+    $st = $pdo->prepare("SELECT id, type, organisateur_id, montant_cents, reference, created_at FROM fin_ledger WHERE created_at >= ? AND created_at < (? + INTERVAL 1 MONTH) ORDER BY id");
+    $st->execute([$mois . '-01', $mois . '-01']);
+    $h = hash_init('sha256');
+    foreach ($st->fetchAll(PDO::FETCH_NUM) as $r) hash_update($h, implode('|', $r) . "\n");
+    return hash_final($h);
+}
+
+function compta_cloture_totaux(PDO $pdo, string $mois): array {
+    $st = $pdo->prepare("SELECT type, COUNT(*) n, SUM(montant_cents) s FROM fin_ledger WHERE created_at >= ? AND created_at < (? + INTERVAL 1 MONTH) GROUP BY type ORDER BY type");
+    $st->execute([$mois . '-01', $mois . '-01']);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function compta_ledger_filtre(array $g, string $from, string $to, int $orgaId): array {
+    $w = 'l.created_at BETWEEN ? AND ?'; $p = [$from, $to];
+    if ($orgaId) { $w .= ' AND l.organisateur_id = ?'; $p[] = $orgaId; }
+    if (in_array($g['ty'] ?? '', FIN_LEDGER_TYPES, true)) { $w .= ' AND l.type = ?'; $p[] = $g['ty']; }
+    $mo = (string)($g['mo'] ?? '');
+    if ($mo === 'hors') $w .= " AND l.reference LIKE 'hors:%'";
+    elseif (in_array($mo, ['direct', 'destination', 'legacy'], true)) { $w .= ' AND l.mode = ?'; $p[] = $mo; }
+    foreach (['min' => '>=', 'max' => '<='] as $k => $op) {
+        $x = str_replace(',', '.', (string)($g[$k] ?? ''));
+        if (is_numeric($x)) { $w .= " AND ABS(l.montant_cents) $op ?"; $p[] = abs((int)round(100 * (float)$x)); }
+    }
+    $q = mb_substr(trim((string)($g['q'] ?? '')), 0, 80);
+    if ($q !== '') { $lk = '%' . addcslashes($q, '%_\\') . '%'; $w .= ' AND (l.reference LIKE ? OR l.libelle LIKE ? OR l.acteur LIKE ? OR o.nom LIKE ?)'; array_push($p, $lk, $lk, $lk, $lk); }
+    return [$w, $p];
+}
+
+function compta_fec_lignes(array $r): array {
+    $m = (int)$r['montant_cents'];
+    $aux = 'O' . substr((string)$r['public_id'], 0, 16);
+    $st = ['467100', 'Stripe compte d’attente', '', ''];
+    $org = ['467200', 'Organismes', $aux, (string)$r['orga']];
+    switch ($r['type']) {
+        case 'commission': return $m < 0 ? [$st, ['706000', 'Commissions moncamp.fr', '', '']] : [['706000', 'Commissions moncamp.fr', '', ''], $st];
+        case 'frais': return $m < 0 ? [['627800', 'Frais bancaires Stripe', '', ''], $st] : [$st, ['627800', 'Frais bancaires Stripe', '', '']];
+        case 'dette': return $m > 0 ? [$org, $st] : [$st, $org];
+        default: return $m > 0 ? [['658000', 'Charges diverses de gestion', '', ''], $org] : [$org, ['758000', 'Produits divers de gestion', '', '']];
+    }
+}
+
+function compta_export_plus(PDO $pdo, string $type, string $from, string $to, int $orgaId, array $g): ?array {
+    $dt = fn($v) => $v ? date('d/m/Y H:i', strtotime($v)) : '';
+    $in = ['paiement', 'commission', 'frais_paiement', 'remboursement', 'ajustement', 'versement'];
+    if ($type === 'ledger' || $type === 'grandlivre') {
+        [$w, $p] = compta_ledger_filtre($type === 'ledger' ? $g : [], $from, $to, $orgaId);
+        $st = $pdo->prepare("SELECT l.*, o.nom orga, o.public_id FROM fin_ledger l LEFT JOIN organisateurs o ON o.id = l.organisateur_id WHERE $w ORDER BY l.created_at, l.id");
+        $st->execute($p);
+        $solde = 0;
+        if ($type === 'grandlivre' && $orgaId) {
+            $o = $pdo->prepare("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_ledger WHERE organisateur_id = ? AND created_at < ? AND type IN ('" . implode("','", $in) . "')");
+            $o->execute([$orgaId, $from]); $solde = (int)$o->fetchColumn();
+        }
+        $h = ['Date', 'Organisme', 'Identifiant organisme', 'Type', 'Libellé', 'Référence', 'Mode', 'Acteur', 'Débit (€)', 'Crédit (€)', 'Montant (€)'];
+        if ($type === 'grandlivre') $h[] = 'Solde (€)';
+        $gen = (function () use ($st, $dt, $type, $solde, $in) {
+            foreach ($st as $r) {
+                $m = (int)$r['montant_cents'];
+                $row = [$dt($r['created_at']), $r['orga'], $r['public_id'], $r['type'], $r['libelle'], $r['reference'], $r['mode'], $r['acteur'], $m < 0 ? compta_eur(-$m) : '', $m > 0 ? compta_eur($m) : '', compta_eur($m)];
+                if ($type === 'grandlivre') { if (in_array($r['type'], $in, true)) $solde += $m; $row[] = compta_eur($solde); }
+                yield $row;
+            }
+        })();
+        return [$h, $gen];
+    }
+    if ($type === 'fec') {
+        $st = $pdo->prepare("SELECT l.*, o.nom orga, o.public_id FROM fin_ledger l LEFT JOIN organisateurs o ON o.id = l.organisateur_id
+                             WHERE l.created_at BETWEEN ? AND ? AND l.type IN ('commission', 'frais', 'dette', 'ajustement') AND l.montant_cents <> 0" . ($orgaId ? ' AND l.organisateur_id = ' . (int)$orgaId : '') . " ORDER BY l.created_at, l.id");
+        $st->execute([$from, $to]);
+        $h = ['JournalCode', 'JournalLib', 'EcritureNum', 'EcritureDate', 'CompteNum', 'CompteLib', 'CompAuxNum', 'CompAuxLib', 'PieceRef', 'PieceDate', 'EcritureLib', 'Debit', 'Credit', 'EcritureLet', 'DateLet', 'ValidDate', 'Montantdevise', 'Idevise'];
+        $gen = (function () use ($st) {
+            $n = 0;
+            $fmt = fn(int $c) => number_format($c / 100, 2, ',', '');
+            foreach ($st as $r) {
+                $n++;
+                $d = date('Ymd', strtotime($r['created_at']));
+                $a = abs((int)$r['montant_cents']);
+                $lib = mb_substr((string)($r['libelle'] ?: $r['type']), 0, 100);
+                $piece = mb_substr((string)$r['reference'], 0, 60);
+                [$deb, $cre] = compta_fec_lignes($r);
+                yield ['MC', 'moncamp.fr', (string)$n, $d, $deb[0], $deb[1], $deb[2], $deb[3], $piece, $d, $lib, $fmt($a), '0,00', '', '', $d, '', ''];
+                yield ['MC', 'moncamp.fr', (string)$n, $d, $cre[0], $cre[1], $cre[2], $cre[3], $piece, $d, $lib, '0,00', $fmt($a), '', '', $d, '', ''];
+            }
+        })();
+        return [$h, $gen];
+    }
+    return null;
+}
+
+function compta_fec_out(string $filename, array $headers, iterable $rows): void {
+    header('Content-Type: text/plain; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-store');
+    $o = fopen('php://output', 'w');
+    fwrite($o, implode("\t", $headers) . "\r\n");
+    foreach ($rows as $r) fwrite($o, implode("\t", array_map(fn($v) => str_replace(["\t", "\r", "\n"], ' ', (string)$v), $r)) . "\r\n");
+    fclose($o);
+    exit;
+}

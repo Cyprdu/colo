@@ -2,7 +2,7 @@
 if (basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'adm_core.php') { http_response_code(404); exit; }
 if (defined('ADM_CORE')) return;
 define('ADM_CORE', 1);
-const ADM_SCHEMA = 5;
+const ADM_SCHEMA = 6;
 
 function adm_perm_catalog(): array {
     return [
@@ -109,6 +109,10 @@ function adm_core_ensure(PDO $pdo): void {
                 WHERE u.demande_en_cours = 1 AND u.is_directeur = 0 AND NOT EXISTS (SELECT 1 FROM demandes_organisateur d WHERE d.user_id = u.id)");
         }
     } catch (Throwable $e) { error_log('adm_core demandes: ' . $e->getMessage()); }
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS compta_clotures (mois CHAR(7) NOT NULL PRIMARY KEY, totaux TEXT NOT NULL, empreinte CHAR(64) NOT NULL, nb INT NOT NULL DEFAULT 0,
+            par INT NOT NULL, par_nom VARCHAR(190) NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, rouvert_par INT NULL, rouvert_at DATETIME NULL) DEFAULT CHARSET=utf8mb4");
+    } catch (Throwable $e) { error_log('adm_core clotures: ' . $e->getMessage()); }
     $ins = $pdo->prepare("INSERT INTO adm_roles (code, nom, description, systeme) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE nom = nom");
     $insP = $pdo->prepare("INSERT IGNORE INTO adm_role_perms (role_id, perm) VALUES (?, ?)");
     foreach (adm_role_presets() as $code => [$nom, $desc, $perms]) {

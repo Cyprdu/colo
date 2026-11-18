@@ -415,6 +415,16 @@
     else if (t.matches && t.matches('input[name="sel[]"]')) selSync();
     else if (t.matches && t.matches('[data-autosubmit]')) t.form.submit();
   });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-stripe]'); if (!b) return;
+    var box = $('#stripe-live'); b.disabled = true;
+    api({ a: 'pay.stripe', t: b.dataset.stripe }).then(function (j) {
+      b.disabled = false; box.textContent = '';
+      var dl = el('dl', { class: 'dl' });
+      Object.keys(j.stripe).forEach(function (k) { dl.appendChild(el('dt', { text: k })); dl.appendChild(el('dd', { text: j.stripe[k] })); });
+      box.appendChild(el('h3', { class: 'sub', text: 'Chez Stripe, maintenant' })); box.appendChild(dl); box.hidden = false;
+    }, function (err) { b.disabled = false; toast(err.message, true); });
+  });
   window.ADM = { api: api, toast: toast, confirmBox: confirmBox, dialog: dialog, el: el, icon: icon };
 
   if (DATA.page === 'list') listActions();
