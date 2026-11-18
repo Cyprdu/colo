@@ -89,7 +89,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 .fd-menu a, .fd-menu button.it { display: block; width: 100%; text-align: left; padding: 9px 12px; border-radius: 8px; font-size: 14px; color: var(--ds-ink); background: none; border: 0; cursor: pointer; }
 .fd-menu a:hover, .fd-menu button.it:hover, .fd-menu button.it:focus-visible { background: var(--ds-soft); }
 .fd-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ds-line); margin-top: 18px; overflow-x: auto; scrollbar-width: none; }
-.fd-tab { padding: 11px 14px; font-size: 14px; font-weight: 700; color: var(--ds-muted); border: 0; background: none; border-bottom: 2.5px solid transparent; cursor: pointer; white-space: nowrap; }
+.fd-tab { text-decoration: none; padding: 11px 14px; font-size: 14px; font-weight: 700; color: var(--ds-muted); border: 0; background: none; border-bottom: 2.5px solid transparent; cursor: pointer; white-space: nowrap; }
 .fd-tab[aria-selected="true"] { color: var(--ds-ink); border-bottom-color: var(--ds-btn); }
 .fd-tab .ct { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 9px; background: #fde68a; color: #7a4b00; font-size: 11px; line-height: 18px; }
 .fd-panel { padding-top: 18px; }
@@ -178,14 +178,6 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
                     <span>· Commission <?= htmlspecialchars($comTxt) ?></span></div>
             </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <a class="fd-btn" href="mes_camps.php">Séjours et inscrits</a>
-            <a class="fd-btn" href="edit_organisateur.php?o=<?= $orgaTok ?>">Mon organisme</a>
-            <a class="fd-btn" href="messagerie.php">Messages</a>
-            <a class="fd-btn" href="annulations_organisme.php?o=<?= $orgaTok ?>">Annulations<?= $nbAnnul ? ' (' . $nbAnnul . ')' : '' ?></a>
-            <a class="fd-btn" href="marketing.php?o=<?= $orgaTok ?>">Marketing</a>
-            <a class="fd-btn" href="aide_paiements.php">Aide</a>
-        </div>
     </header>
 
     <div class="fd-bar" role="group" aria-label="Période et exports">
@@ -210,6 +202,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     <nav class="fd-tabs" role="tablist" aria-label="Sections">
         <?php foreach ($tabs as $k => $l): ?><button type="button" class="fd-tab" role="tab" id="tab-<?= $k ?>" aria-controls="pan-<?= $k ?>" aria-selected="false" tabindex="-1" data-tab="<?= $k ?>"><?= $l ?><?php if ($k === 'hors'): ?><span class="ct" id="ctHors" hidden></span><?php endif; ?></button><?php endforeach; ?>
+        <a class="fd-tab" href="marketing.php?o=<?= $orgaTok ?>">Marketing</a>
     </nav>
 
     <!-- Vue d'ensemble -->
@@ -367,7 +360,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     $('retry').addEventListener('click', load);
 
     // ---------- onglets (#hash, flèches)
-    var TABS = [].slice.call(document.querySelectorAll('.fd-tab'));
+    var TABS = [].slice.call(document.querySelectorAll('.fd-tab[data-tab]'));
     function showTab(k, focus) {
         if (!$('pan-' + k)) k = 'apercu';
         TABS.forEach(function (t) { var on = t.dataset.tab === k; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; $('pan-' + t.dataset.tab).hidden = !on; if (on && focus) t.focus(); });
