@@ -237,4 +237,23 @@ $sp0 = (int)$pdo->query("SELECT solde_points FROM organisateurs WHERE id = 1")->
 stripe_webhook_process($pdo, $ev2('evt_s3', 'payment_intent.succeeded', ['id' => 'pi_pts1', 'amount' => $pp['cents'], 'amount_received' => $pp['cents'], 'metadata' => ['type' => 'buy_points', 'sepa' => '1', 'points_amount' => (string)$pp['points'], 'organisateur' => $tok1]]));
 stripe_webhook_process($pdo, $ev2('evt_s3b', 'payment_intent.succeeded', ['id' => 'pi_pts1', 'amount' => $pp['cents'], 'amount_received' => $pp['cents'], 'metadata' => ['type' => 'buy_points', 'sepa' => '1', 'points_amount' => (string)$pp['points'], 'organisateur' => $tok1]]));
 ok((int)$pdo->query("SELECT solde_points FROM organisateurs WHERE id = 1")->fetchColumn() === $sp0 + $pp['points'], 'points payés par prélèvement : crédités une seule fois à réception');
+// ---- G. logo de l'organisme envoyé sur sa page de paiement (une fois par logo, fichier local seulement)
+$png = function (int $w, int $h): string {
+    $ch = fn($t, $d) => pack('N', strlen($d)) . $t . $d . pack('N', crc32($t . $d));
+    $raw = str_repeat("\0" . str_repeat("\x80", $w), $h);
+    return "\x89PNG\r\n\x1a\n" . $ch('IHDR', pack('NNCCCCC', $w, $h, 8, 0, 0, 0, 0)) . $ch('IDAT', gzcompress($raw)) . $ch('IEND', '');
+};
+$pdo->exec("ALTER TABLE organisateurs ADD COLUMN IF NOT EXISTS logo_url VARCHAR(200) NULL");
+file_put_contents(__DIR__ . '/tmp_logo_test.png', $png(128, 128));
+$pdo->exec("UPDATE organisateurs SET logo_url = 'tests/tmp_logo_test.png', stripe_account_id = 'acct_A', logo_stripe_hash = NULL WHERE id = 1");
+$GLOBALS['stripe_calls'] = []; $GLOBALS['stripe_resp']['files.create'] = (object)['id' => 'file_logo1'];
+$ok1 = fin_branding_sync($pdo, 1);
+$fc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'files.create'));
+$au = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'accounts.update'));
+ok($ok1 && $fc && $fc[0][1][0]['purpose'] === 'business_logo' && $fc[0][1][1] === ['stripe_account' => 'acct_A'] && $au[0][1][1]['settings']['branding']['logo'] === 'file_logo1', 'logo envoyé sur le compte de l\'organisme (business_logo, branding)');
+$GLOBALS['stripe_calls'] = [];
+ok(fin_branding_sync($pdo, 1) && !$GLOBALS['stripe_calls'], 'logo inchangé : rien de renvoyé');
+$pdo->exec("UPDATE organisateurs SET logo_url = 'https://exemple.test/logo.png', logo_stripe_hash = NULL WHERE id = 1");
+ok(!fin_branding_sync($pdo, 1) && !$GLOBALS['stripe_calls'], 'logo hébergé ailleurs : jamais téléchargé');
+@unlink(__DIR__ . '/tmp_logo_test.png');
 echo "Tout est bon.\n";

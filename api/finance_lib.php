@@ -237,6 +237,7 @@ function fin_ensure(PDO $pdo): void {
         fin_add_col($pdo, 'fin_paiements', 'frais_orga', "TINYINT(1) NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_paiements', 'frais_estimes_cents', "INT NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_paiements', 'dispo_le', "DATE NULL");
+        fin_add_col($pdo, 'organisateurs', 'logo_stripe_hash', "CHAR(40) NULL");
         fin_add_col($pdo, 'fin_transferts', 'par_paiement', "TINYINT(1) NOT NULL DEFAULT 0");
         $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_payout_auto_v1'");
         $mig->execute();
@@ -369,6 +370,41 @@ function fin_detail_frais(array $extra): array {
         $extra['payment_intent_data']['description'] = mb_substr(trim(($extra['payment_intent_data']['description'] ?? '') . ' · ' . $txt, ' ·'), 0, 500);
     }
     return $extra;
+}
+
+/**
+ * Logo de l'organisme sur sa page de paiement : fichier local (jamais téléchargé depuis une URL externe) envoyé sur son compte connecté
+ * (Files API, purpose business_logo) puis settings.branding (logo, couleur). Seulement si le logo a changé (empreinte). Un échec est journalisé.
+ */
+function fin_branding_sync(PDO $pdo, int $orgaId, bool $force = false): bool {
+    try {
+        $st = $pdo->prepare("SELECT logo_url, stripe_account_id, logo_stripe_hash FROM organisateurs WHERE id = ?");
+        $st->execute([$orgaId]);
+        $o = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$o || empty($o['logo_url']) || empty($o['stripe_account_id'])) return false;
+        $path = (string)(parse_url((string)$o['logo_url'], PHP_URL_PATH) ?? '');
+        if (preg_match('#^https?://#i', (string)$o['logo_url'])) {
+            $host = strtolower((string)parse_url((string)$o['logo_url'], PHP_URL_HOST));
+            $site = strtolower((string)parse_url(defined('BASE_URL') ? BASE_URL : 'https://moncamp.fr', PHP_URL_HOST));
+            if ($host !== $site && $host !== 'www.' . $site) return false;
+        }
+        $root = realpath(__DIR__ . '/..');
+        $file = realpath($root . '/' . ltrim(rawurldecode($path), '/'));
+        if (!$file || strpos($file, $root) !== 0 || !is_file($file) || filesize($file) > 512000) return false;
+        $img = @getimagesize($file);
+        if (!$img || !in_array($img[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG], true) || $img[0] < 128 || $img[1] < 128) return false;
+        $hash = sha1_file($file);
+        if (!$force && $hash === $o['logo_stripe_hash']) return true;
+        $opt = ['stripe_account' => $o['stripe_account_id']];
+        $f = fin_stripe()->files->create(['purpose' => 'business_logo', 'file' => fopen($file, 'r')], $opt);
+        fin_stripe()->accounts->update($o['stripe_account_id'], ['settings' => ['branding' => ['logo' => $f->id, 'primary_color' => '#2f3d45']]]);
+        $pdo->prepare("UPDATE organisateurs SET logo_stripe_hash = ? WHERE id = ?")->execute([$hash, $orgaId]);
+        fin_audit($pdo, 'logo_paiement_envoye', 'organisateur', $orgaId, ['fichier' => $f->id], 'systeme');
+        return true;
+    } catch (Throwable $e) {
+        fin_audit($pdo, 'logo_paiement_echec', 'organisateur', $orgaId, ['erreur' => mb_substr($e->getMessage(), 0, 200)], 'systeme');
+        return false;
+    }
 }
 
 /** Frais Stripe estimés d'une charge par carte européenne : 1,5 % + 0,25 € (ajustés ensuite aux frais réels) */
@@ -666,6 +702,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
     if (($a->type ?? '') !== 'express') throw new Exception('Type de compte inattendu (' . ($a->type ?? '?') . ') : Express requis.');
     $pdo->prepare("UPDATE organisateurs SET stripe_account_id = ? WHERE id = ? AND (stripe_account_id IS NULL OR stripe_account_id = '')")->execute([$a->id, $orgaId]);
     fin_store_account($pdo, $orgaId, $a);
+    fin_branding_sync($pdo, $orgaId);
     $pdo->prepare("UPDATE stripe_comptes SET statut = ? WHERE organisateur_id = ?")->execute([$statut, $orgaId]);
     fin_audit($pdo, 'compte_connect_cree', 'organisateur', $orgaId, ['account' => $a->id, 'statut' => $statut], 'user:' . $userId);
     return $a->id;
@@ -680,6 +717,7 @@ function fin_sync_account(PDO $pdo, int $orgaId): ?array {
     if (!$acct) return null;
     $row = fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
     if (!$row['payout_manuel'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct);
+    fin_branding_sync($pdo, $orgaId);
     $acc = fin_account($pdo, $orgaId);
     if (fin_account_ready($acc)) fin_release_pending_now($pdo, $orgaId); // paiements reçus avant l'activation : transférés tout de suite
     return $acc;
