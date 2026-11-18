@@ -252,6 +252,85 @@ function fin_payouts_sync(PDO $pdo, int $orgaId): int {
     return $n;
 }
 
+// ---------------------------------------------------------------------------------------------
+// « Payer ma dette » : l'organisme règle sa dette par carte (Checkout sur le compte PLATEFORME, sans application fee)
+// ---------------------------------------------------------------------------------------------
+/** Dette en cours (centimes) : solde négatif du portefeuille, celui que les paiements suivants compensent */
+function fin_dette_due(PDO $pdo, int $orgaId): int {
+    $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ?");
+    $st->execute([$orgaId]);
+    return max(0, -(int)round((float)$st->fetchColumn() * 100));
+}
+
+/** Crée la session Checkout du montant de la dette, recalculé ici (jamais celui du navigateur). Retourne l'URL Stripe. */
+function fin_dette_checkout(PDO $pdo, int $orgaId, int $userId): string {
+    $due = fin_dette_due($pdo, $orgaId);
+    if ($due < 50) throw new Exception($due > 0 ? 'Montant trop faible pour un paiement par carte (minimum 0,50 EUR) : il sera compensé sur votre prochain paiement.' : 'Vous n\'avez aucune dette en cours.');
+    $st = $pdo->prepare("SELECT nom, email FROM organisateurs WHERE id = ?");
+    $st->execute([$orgaId]);
+    $o = $st->fetch(PDO::FETCH_ASSOC);
+    $tok = fin_orga_tok($orgaId, $pdo);
+    $site = rtrim(defined('BASE_URL') ? BASE_URL : 'https://moncamp.fr', '/');
+    $meta = ['type' => 'dette', 'organisateur' => $tok, 'montant' => (string)$due];
+    $desc = 'Règlement de la dette moncamp.fr · ' . mb_substr(html_entity_decode((string)$o['nom'], ENT_QUOTES, 'UTF-8'), 0, 80);
+    $params = [
+        'mode' => 'payment', 'payment_method_types' => ['card'], 'locale' => 'fr',
+        'line_items' => [['quantity' => 1, 'price_data' => ['currency' => 'eur', 'unit_amount' => $due, 'product_data' => ['name' => $desc]]]], // quantité et montant fixes : pas de paiement partiel
+        'metadata' => $meta, 'payment_intent_data' => ['description' => $desc, 'metadata' => $meta],
+        'success_url' => $site . '/dashboard_organisme.php?o=' . $tok . '&dette=ok#dette',
+        'cancel_url' => $site . '/dashboard_organisme.php?o=' . $tok . '#dette',
+        'expires_at' => time() + 1800,
+    ];
+    if (!empty($o['email']) && filter_var($o['email'], FILTER_VALIDATE_EMAIL)) $params['customer_email'] = $o['email'];
+    $s = fin_stripe()->checkout->sessions->create($params, ['idempotency_key' => 'moncamp-dette-' . $orgaId . '-' . $due . '-' . date('YmdHi')]); // pas de Stripe-Account : compte plateforme
+    fin_audit($pdo, 'dette_checkout', 'organisateur', $orgaId, ['cents' => $due, 'session' => $s->id], 'user:' . $userId);
+    return (string)$s->url;
+}
+
+/**
+ * Webhook checkout.session.completed (type = dette), dans la transaction du webhook. Idempotent (références uniques au journal).
+ * La dette du moment est soldée (ligne « dette » négative) ; si elle a baissé entre le clic et le paiement, le surplus est crédité au solde
+ * (ligne « ajustement »). Le portefeuille augmente du montant payé. Retourne le détail (pour le reçu et la notification) ou null.
+ */
+function fin_dette_reglee(PDO $pdo, $session): ?array {
+    if (($session->payment_status ?? '') !== 'paid' || strtolower((string)($session->currency ?? 'eur')) !== 'eur') return null;
+    $orgaId = fin_orga_from_tok($pdo, (string)($session->metadata->organisateur ?? ''));
+    $paid = (int)($session->amount_total ?? 0);
+    if (!$orgaId || $paid <= 0) { fin_audit($pdo, 'dette_paiement_inconnu', 'checkout', (string)$session->id, ['cents' => $paid], 'webhook'); return null; }
+    $ref = 'dettecb:' . $session->id;
+    $st = $pdo->prepare("SELECT COUNT(*) FROM fin_ledger WHERE reference IN (?, ?)");
+    $st->execute([$ref, $ref . ':surplus']);
+    if ((int)$st->fetchColumn()) return null; // déjà traité
+    $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
+    $st->execute([$orgaId]);
+    $due = max(0, -(int)round((float)$st->fetchColumn() * 100));
+    $solde = min($paid, $due); $surplus = $paid - $solde;
+    $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$paid / 100, $orgaId]);
+    if ($solde > 0) fin_ledger_add($pdo, 'dette', $orgaId, -$solde, $ref, 'checkout', $session->id, 'Dette réglée par carte', 'webhook', 'plateforme');
+    if ($surplus > 0) fin_ledger_add($pdo, 'ajustement', $orgaId, $surplus, $ref . ':surplus', 'checkout', $session->id, 'Excédent du règlement de dette crédité au solde', 'webhook', 'plateforme');
+    $r = ['organisateur_id' => $orgaId, 'session' => (string)$session->id, 'paye' => $paid, 'solde' => $solde, 'surplus' => $surplus, 'attendu' => (int)($session->metadata->montant ?? 0)];
+    fin_audit($pdo, 'dette_reglee_carte', 'organisateur', $orgaId, $r, 'webhook');
+    return $r;
+}
+
+/** Reçu par e-mail (après la transaction du webhook ; un échec n'annule rien) */
+function fin_dette_notifier(PDO $pdo, array $r): void {
+    try {
+        if (!function_exists('sendMailGmail')) @include_once __DIR__ . '/mail_config.php';
+        if (!function_exists('sendMailGmail')) return;
+        $st = $pdo->prepare("SELECT o.nom, COALESCE(NULLIF(o.email, ''), u.email) email FROM organisateurs o LEFT JOIN users u ON u.id = o.user_id WHERE o.id = ?");
+        $st->execute([$r['organisateur_id']]);
+        $o = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$o || !filter_var($o['email'], FILTER_VALIDATE_EMAIL)) return;
+        $site = rtrim(defined('BASE_URL') ? BASE_URL : 'https://moncamp.fr', '/');
+        $tok = fin_orga_tok((int)$r['organisateur_id'], $pdo);
+        $body = '<p>Bonjour,</p><p>Votre paiement de <b>' . fin_eur($r['paye']) . '</b> a bien été reçu. Dette soldée : <b>' . fin_eur($r['solde']) . '</b>'
+            . ($r['surplus'] ? ' ; excédent crédité à votre solde : <b>' . fin_eur($r['surplus']) . '</b>' : '') . '.</p>'
+            . '<p><a href="' . htmlspecialchars($site . '/recu_dette.php?o=' . $tok . '&r=' . urlencode($r['session'])) . '">Télécharger le reçu (PDF)</a></p><p>L\'équipe moncamp.fr</p>';
+        sendMailGmail($o['email'], html_entity_decode((string)$o['nom'], ENT_QUOTES, 'UTF-8'), 'Reçu : règlement de votre dette moncamp.fr', $body);
+    } catch (Throwable $e) { error_log('fin_dette_notifier: ' . $e->getMessage()); }
+}
+
 /** Délai (jours après le début du séjour) avant le versement bancaire ; recalcule la date des paiements pas encore versés. Journalisé. */
 function fin_set_payout_jours(PDO $pdo, int $jours, string $acteur): void {
     fin_ensure($pdo);

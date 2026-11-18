@@ -55,6 +55,8 @@ $hasAccount = !empty($orga['stripe_account_id']);
 $due = $acc && !empty($acc['exigences']) ? (json_decode($acc['exigences'], true) ?: []) : [];
 $autoTxt = 'versé automatiquement par Stripe dès que les fonds sont disponibles, en général sous 2 à 7 jours ouvrés';
 $comTxt = number_format(fin_commission_pct(), 1, ',', ' ') . ' %' . (fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '');
+$detteDue = fin_dette_due($pdo, $orgaId); // « Payer ma dette » : affiché seulement si > 0
+if (($_GET['dette'] ?? '') === 'ok' && !$success) $success = 'Paiement reçu : votre dette est soldée dans quelques instants (reçu envoyé par e-mail).';
 $tvaCur = $orga['tva_taux'] === null ? '' : rtrim(rtrim((string)$orga['tva_taux'], '0'), '.');
 
 $body_class = 'bg-white';
@@ -286,6 +288,12 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     <section class="fd-panel" role="tabpanel" id="pan-dette" aria-labelledby="tab-dette" hidden>
         <div class="fd-card" style="max-width:720px"><h2 class="fd-h"><span>Dette et compensations<?= $help("Quand une famille est remboursée alors que votre solde Stripe ne suffit pas, moncamp.fr avance la différence. Elle est retenue avec la commission sur vos paiements par carte suivants, jamais plus que leur montant. Aucune démarche.") ?></span></h2>
             <dl class="fd-dl" id="dTot"></dl>
+            <?php if ($detteDue > 0 && $orga['user_id'] == $userId): ?>
+            <form method="post" action="api/payer_dette.php" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>">
+                <button type="submit" class="fd-btn pri">Payer ma dette · <?= fin_eur($detteDue) ?></button>
+                <span style="font-size:12.5px;color:var(--ds-muted)">Paiement par carte du montant total, sans commission. Sinon, elle est compensée automatiquement sur vos prochains paiements.</span>
+            </form><?php endif; ?>
             <div class="fd-tw" style="margin-top:14px"><table class="fd-t" style="min-width:480px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Opération</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th></tr></thead><tbody id="dBody"></tbody></table></div></div>
     </section>
 

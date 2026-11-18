@@ -8,6 +8,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
 
     $feePI = null; // paiement dont on relève les frais Stripe réels, une fois la transaction validée
     $feeAdj = null;
+    $dette = null; // « Payer ma dette » réglé : reçu par e-mail après la transaction
     $pret = 0; // account.updated : organisme dont le compte est prêt (paiements reçus avant l'activation à transférer)
     $copie = null; // destination : PaymentIntent dont on recopie description et métadonnées sur le paiement côté organisme // destination : [payment_intent, commission prélevée] pour rendre un éventuel excédent (code promo)
     try {
@@ -27,6 +28,9 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                 if (($obj->payment_status ?? '') !== 'paid') break;
                 $meta = $obj->metadata;
                 $pi = $obj->payment_intent ?? null;
+
+                // --- Règlement de dette par carte (compte plateforme) ---
+                if (($meta->type ?? '') === 'dette') { $dette = fin_dette_reglee($pdo, $obj); break; }
 
                 // --- Achat de points par carte ---
                 if (($meta->type ?? '') === 'buy_points') {
@@ -135,7 +139,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
         }
 
         $pdo->commit();
-        return [200, 'ok', ['type' => $event->type, 'feePI' => $feePI, 'feeAdj' => $feeAdj, 'copie' => $copie, 'pret' => $pret]];
+        return [200, 'ok', ['type' => $event->type, 'feePI' => $feePI, 'feeAdj' => $feeAdj, 'copie' => $copie, 'pret' => $pret, 'dette' => $dette]];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('WEBHOOK ERROR (' . ($event->type ?? '?') . '): ' . $e->getMessage());
@@ -149,6 +153,7 @@ function stripe_webhook_after(PDO $pdo, array $a): void {
     if (in_array($a['type'], ['charge.refunded', 'charge.dispute.closed'], true)) { try { $r = []; fin_process_reversals($pdo, $r); fin_reprises_run($pdo); } catch (Throwable $e) { error_log('webhook reversement: ' . $e->getMessage()); } }
     if ($a['feeAdj']) fin_fee_excess_refund($pdo, $a['feeAdj'][0], $a['feeAdj'][1]);
     if (!empty($a['copie'])) fin_copy_to_destination($pdo, $a['copie']);
+    if (!empty($a['dette'])) fin_dette_notifier($pdo, $a['dette']);
     if (!empty($a['pret'])) { try { fin_sync_account($pdo, (int)$a['pret']); } catch (Throwable $e) { error_log('webhook compte pret: ' . $e->getMessage()); try { fin_release_pending_now($pdo, (int)$a['pret']); } catch (Throwable $e2) { error_log('webhook transfert: ' . $e2->getMessage()); } } }
     if ($a['feePI']) { try { fin_sync_fees($pdo, $a['feePI']); } catch (Throwable $e) { error_log('webhook frais Stripe: ' . $e->getMessage()); } }
 }

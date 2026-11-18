@@ -71,4 +71,28 @@ ok(strpos($tr[0][1]['description'], 'Été (Durand)') !== false && $tr[0][1]['me
 ok($pdo->query("SELECT statut FROM fin_paiements WHERE inscription_id = 201")->fetchColumn() === 'verse', 'ligne transférée');
 ok((int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'transfert'")->fetchColumn() === 29220 && fin_ledger_totaux($pdo, 1)['verse'] === $before['verse'], 'journal : transfert tracé, pas compté comme versement bancaire (le payout automatique le sera)');
 ok(fin_release_pending_now($pdo, 1)['transferts'] === 0 && count($GLOBALS['fake_transfers']->calls) === 1, 'rejeu : aucun second transfert');
+// ---- F. « Payer ma dette » : Checkout sur le compte plateforme, montant serveur, surplus crédité, idempotent
+require __DIR__ . '/../api/marketing_lib.php';
+require __DIR__ . '/../api/stripe_webhook_lib.php';
+$pdo->exec("UPDATE organisateurs SET portefeuille = -20.00 WHERE id = 1");
+ok(fin_dette_due($pdo, 1) === 2000, 'dette en cours = solde négatif (20 EUR)');
+$GLOBALS['stripe_calls'] = []; $GLOBALS['stripe_resp']['checkout.sessions.create'] = (object)['id' => 'cs_dette1', 'url' => 'https://checkout.stripe.test/cs_dette1'];
+$url = fin_dette_checkout($pdo, 1, 7);
+$c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'checkout.sessions.create'))[0][1];
+ok($url === 'https://checkout.stripe.test/cs_dette1' && $c[0]['line_items'][0]['price_data']['unit_amount'] === 2000 && $c[0]['line_items'][0]['quantity'] === 1
+   && !isset($c[0]['payment_intent_data']['application_fee_amount']) && !isset($c[1]['stripe_account']) && $c[0]['metadata']['type'] === 'dette'
+   && $c[0]['metadata']['organisateur'] === fin_orga_tok(1, $pdo), 'Checkout plateforme (pas de Stripe-Account ni de commission), montant fixe de la dette, jeton d\'organisme');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -15.00 WHERE id = 1"); // une compensation a eu lieu entre le clic et le paiement
+$ev = fn(string $id, array $o) => json_decode(json_encode(['id' => $id, 'type' => 'checkout.session.completed', 'account' => '', 'data' => ['object' => $o]]));
+$sess = ['id' => 'cs_dette1', 'payment_status' => 'paid', 'currency' => 'eur', 'amount_total' => 2000, 'metadata' => ['type' => 'dette', 'organisateur' => fin_orga_tok(1, $pdo), 'montant' => '2000']];
+$r = stripe_webhook_process($pdo, $ev('evt_dette1', $sess));
+ok($r[0] === 200 && $r[2]['dette']['solde'] === 1500 && $r[2]['dette']['surplus'] === 500, 'webhook : 15 EUR de dette soldés, 5 EUR de surplus');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - 5.00) < 0.001, 'portefeuille : surplus crédité au solde (+5 EUR)');
+ok((int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE reference = 'dettecb:cs_dette1'")->fetchColumn() === -1500
+   && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE reference = 'dettecb:cs_dette1:surplus' AND type = 'ajustement'")->fetchColumn() === 500, 'journal : « dette réglée par carte » et excédent');
+stripe_webhook_process($pdo, $ev('evt_dette1b', $sess)); // même session, autre événement
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - 5.00) < 0.001, 'idempotent : rien de compté deux fois');
+$GLOBALS['stripe_calls'] = [];
+try { fin_dette_checkout($pdo, 1, 7); $err = ''; } catch (Exception $e) { $err = $e->getMessage(); }
+ok($err !== '' && !$GLOBALS['stripe_calls'], 'plus de dette : pas de session de paiement');
 echo "Tout est bon.\n";
