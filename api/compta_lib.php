@@ -207,6 +207,15 @@ function compta_export(PDO $pdo, string $type, string $from, string $to, int $or
         $gen = (function () use ($q, $dt) { foreach ($q as $p) yield [$dt($p['date_creation']), $dt($p['date_arrivee']), compta_eur((int)$p['montant_cents']), $p['statut'], $p['payout_id']]; })();
         return [$h, $gen];
     }
+    if ($type === 'gains') {
+        require_once __DIR__ . '/gains_lib.php';
+        gains_ensure($pdo);
+        $q = $pdo->prepare("SELECT j.*, o.nom AS orga FROM fin_gains_journal j LEFT JOIN organisateurs o ON o.id = j.organisateur_id WHERE j.created_at BETWEEN ? AND ? ORDER BY j.id");
+        $q->execute([$from, $to]);
+        $h = ['Réf.', 'Date', 'Organisme', 'Utilisateur', 'IP', 'Achat', 'Montant (€)', 'Solde avant (€)', 'Solde après (€)', 'Statut', 'Empreinte'];
+        $gen = (function () use ($q) { foreach ($q as $g) yield ['G-' . $g['id'], date('d/m/Y H:i:s', strtotime($g['created_at'])), $g['orga'], $g['user_id'], $g['ip'], $g['libelle'], compta_eur((int)$g['montant_cents']), compta_eur((int)$g['solde_avant_cents']), compta_eur((int)$g['solde_apres_cents']), $g['statut'], $g['hash']]; })();
+        return [$h, $gen];
+    }
     if ($type === 'journal') {
         $q = $pdo->prepare("SELECT * FROM fin_audit WHERE created_at BETWEEN ? AND ? ORDER BY id");
         $q->execute([$from, $to]);

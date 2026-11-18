@@ -3,6 +3,7 @@
 require_once 'api/config.php';
 require_once 'api/marketing_lib.php';
 require_once 'api/finance_lib.php';
+require_once 'api/gains_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 
@@ -146,6 +147,16 @@ require_once 'partials/mk_icons.php';
             </table>
         </div>
         <?php endif; ?>
+    </section>
+    <?php endif; ?>
+
+    <?php $gh = $orga ? gains_history($pdo, $orgaId, 8) : []; if ($gh): ?>
+    <section class="mk-section">
+        <h2>Paiements avec mes gains</h2>
+        <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:520px">
+            <thead><tr><th>Date</th><th>Achat</th><th class="num">Montant</th><th class="num">Solde après</th><th>Réf.</th></tr></thead><tbody>
+            <?php foreach ($gh as $g): ?><tr><td><?= date('d/m/Y H:i', strtotime($g['created_at'])) ?></td><td><?= htmlspecialchars($g['libelle']) ?><?= $g['statut'] === 'ok' ? '' : ' <span class="mk-pill bad">Refusé : solde</span>' ?></td><td class="num"><?= $g['statut'] === 'ok' ? '- ' . mk_money($g['montant_cents'] / 100) : '-' ?></td><td class="num"><?= mk_money($g['solde_apres_cents'] / 100) ?></td><td>G-<?= (int)$g['id'] ?></td></tr><?php endforeach; ?>
+            </tbody></table></div>
     </section>
     <?php endif; ?>
 

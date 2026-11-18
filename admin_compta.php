@@ -5,6 +5,7 @@
 // Le réglage de la commission et le déverrouillage des exports exigent le mot de passe administrateur (adm_reauth).
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
+require_once __DIR__ . '/api/gains_lib.php';
 adm_guard();
 fin_ensure($pdo);
 
@@ -156,6 +157,15 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
   <?php foreach ($months as $m): ?><tr><td data-l="Mois"><?= h(substr($m['m'], 5, 2) . '/' . substr($m['m'], 0, 4)) ?></td><td class="num" data-l="Paiements"><?= (int)$m['nb'] ?></td><td class="num" data-l="CA"><?= $e($m['ca']) ?></td><td class="num" data-l="Commissions"><?= $e($m['commission']) ?></td><td class="num" data-l="Frais Stripe"><?= $e($m['frais'] + $m['litige']) ?></td><td class="num<?= $m['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge nette"><b><?= $e($m['marge']) ?></b></td></tr><?php endforeach; ?>
   </tbody></table></div>
 
+<?php $gj = gains_history($pdo, 0, 30); $gc = gains_verify_chain($pdo); ?>
+<h2 class="sec"><?= ic('lock') ?> Paiements avec les gains (journal en ajout seulement)</h2>
+<p class="muted small">Chaque achat de points payé avec le solde « à recevoir » : qui, quand, IP, montant, solde avant/après. Chaîne d'empreintes : <b><?= $gc['ok'] ? 'intacte (' . (int)$gc['n'] . ' lignes)' : 'ALTÉRÉE à la ligne n° ' . (int)$gc['rupture'] ?></b>.</p>
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Date</th><th>Organisme</th><th>Achat</th><th class="num">Montant</th><th class="num">Solde avant</th><th class="num">Solde après</th><th>IP</th><th>Statut</th><th>Réf.</th></tr></thead><tbody>
+  <?php if (!$gj): ?><tr><td colspan="9" class="empty"><p>Aucun paiement avec les gains pour le moment.</p></td></tr><?php endif; ?>
+  <?php foreach ($gj as $g): ?><tr><td data-l="Date"><?= h(date('d/m/Y H:i', strtotime($g['created_at']))) ?></td><td data-l="Organisme"><?= h($g['orga_nom'] ?? '') ?></td><td data-l="Achat"><?= h($g['libelle']) ?></td><td class="num" data-l="Montant"><?= h(fin_eur((int)$g['montant_cents'])) ?></td><td class="num" data-l="Solde avant"><?= h(fin_eur((int)$g['solde_avant_cents'])) ?></td><td class="num" data-l="Solde après"><?= h(fin_eur((int)$g['solde_apres_cents'])) ?></td><td data-l="IP"><?= h($g['ip']) ?></td><td data-l="Statut"><?= $g['statut'] === 'ok' ? 'Payé' : 'Refusé (solde)' ?></td><td data-l="Réf.">G-<?= (int)$g['id'] ?></td></tr><?php endforeach; ?>
+  </tbody></table></div>
+
 <?php if ($negN > 0): $neg = compta_negative($pdo); ?>
 <h2 class="sec" id="negatives"><?= ic('alert') ?> Paiements à marge négative</h2>
 <div class="tbl-wrap"><table class="tbl">
@@ -292,6 +302,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
         ['organismes', 'Synthèse par organisme', 'CA, commissions, frais, marge, dû / versé / en attente (ignore le filtre organisme).'],
         ['hors_stripe', 'Paiements hors carte et commissions', 'Chèques, espèces, virements... marqués reçus par les organisateurs, avec la commission retenue.'],
         ['payouts', 'Virements Stripe vers la banque', 'Pour le rapprochement avec votre relevé bancaire (synchroniser d\'abord).'],
+        ['gains', 'Paiements avec les gains', 'Achats de points payés avec le solde à recevoir : qui, IP, montant, solde avant/après, statut, empreinte.'],
         ['journal', 'Journal d\'audit financier', 'Toutes les opérations (paiements, remboursements, transferts, suspensions).'],
     ]; ?>
 <p class="muted">Période : <b><?= h($periodLabel) ?></b><?= $orgaTok ? ' · un seul organisme' : '' ?>. Format Excel français (séparateur « ; », UTF-8, virgule décimale).</p>
