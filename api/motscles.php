@@ -94,6 +94,11 @@ function mc_valider(?PDO $pdo, array $labels, string $niveau, int $orgaId = 0, s
                 $st = $pdo->prepare("SELECT 1 FROM organisme_motscles WHERE mot = ? AND organisateur_id <> ? LIMIT 1");
                 $st->execute([$mot, $orgaId]);
                 if ($st->fetchColumn()) { $r($label, "Ce mot est l'alias d'un autre organisme."); continue; }
+                if ($niveau === 'camp' && $orgaId) {
+                    $st = $pdo->prepare("SELECT 1 FROM organisme_motscles WHERE mot = ? AND organisateur_id = ? LIMIT 1");
+                    $st->execute([$mot, $orgaId]);
+                    if ($st->fetchColumn()) { $r($label, 'Déjà dans les mots de votre organisme, inutile de le répéter ici.'); continue; }
+                }
             } catch (Throwable $e) {}
         }
         if ($niveau === 'orga') {   // un alias d'organisme est un nom, pas un thème (sinon « ski » ferait remonter tous ses séjours sur n'importe quelle recherche de ski)

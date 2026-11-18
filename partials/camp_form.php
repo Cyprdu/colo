@@ -117,9 +117,8 @@ $tick = $svg('check', 'w-3 h-3');
             <?= $sec('s-description', 'edit', 'Description et mots-clés', "Ce que les familles lisent, et les mots qu'elles tapent pour vous trouver.") ?>
                 <div class="grid md:grid-cols-2 gap-5">
                     <div class="md:col-span-2">
-                        <label class="ds-label" for="mcInput">Mots-clés et alias du séjour <span class="font-normal text-[#6b7780]">(12 maximum)</span></label>
+                        <label class="ds-label" for="mcInput">Mots-clés et alias du séjour <span class="font-normal text-[#6b7780]">(12 maximum)</span> <details class="ds-help"><summary>?</summary><div>Les mots que les familles tapent pour trouver ce séjour : son petit nom ou son sigle, une activité, un lieu connu. Seul votre meilleur mot-clé compte dans le classement : inutile d'en mettre beaucoup, et les mots sans rapport avec le séjour comptent moins. Les alias de votre organisme valent déjà pour tous vos séjours.</div></details></label>
                         <div id="mcCamp"></div>
-                        <div class="mc-help"><b>Ces mots sont ceux que les familles tapent ; ils améliorent la visibilité de votre séjour.</b> Ajoutez le petit nom ou le sigle du séjour (« EPJ »), une activité ou un lieu bien connu. Évitez les mots sans rapport avec le séjour : ils comptent moins, et seul votre meilleur mot-clé compte dans le classement, inutile d'en mettre beaucoup.</div>
                         <p id="mcOrgaHint" class="ds-hint hidden"></p>
                     </div>
                     <div class="md:col-span-2"><label class="ds-label" for="f-desc">Description complète *</label><textarea id="f-desc" name="description" rows="6" class="ds-textarea" required maxlength="10000" placeholder="Programme, ambiance, journée type…"><?= $val('description') ?></textarea></div>
@@ -379,19 +378,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') document.que
 document.querySelectorAll('.ds-modal').forEach(m => m.addEventListener('mousedown', e => { if (e.target === m) m.classList.remove('open'); }));
 
 // ------------------------------------------------ mots-clés et catégories
-const KW_STOP = ['de', 'du', 'des', 'la', 'le', 'les', 'l', 'd', 'un', 'une', 'et', 'ou', 'en', 'au', 'aux', 'a', 'sur', 'pour', 'dans', 'avec', 'par'];
-function kwSuggestions() {
-    const out = [], mots = $('f-nom').value.split(/[\s'’\-&]+/).filter(w => w.length > 1 && !KW_STOP.includes(MotsCles.norm(w)));
-    if (mots.length >= 2 && mots.length <= 5) out.push(mots.map(w => w[0]).join('').toUpperCase());   // sigle du nom : « École de prière » -> EP
-    mots.filter(w => w.length >= 6).slice(0, 2).forEach(w => out.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()));
-    if ($('villeInput').value.trim()) out.push($('villeInput').value.trim());
-    return out;
-}
-const MC = MotsCles.mount($('mcCamp'), { initial: KW_INIT, max: 12, suggest: kwSuggestions, inputId: 'mcInput', placeholder: 'Ex : EPJ, bivouac… puis Entrée' });
+const orgaCourant = () => ORGAS.find(x => String(x.id) === $('orga-select').value);
+const MC = MotsCles.mount($('mcCamp'), { initial: KW_INIT, max: 12, inputId: 'mcInput', placeholder: 'Tapez un mot puis Entrée',
+    deja: l => { const o = orgaCourant(), n = MotsCles.norm(l); return o && (o.motscles || []).some(m => MotsCles.norm(m) === n) ? 'Déjà dans les mots de votre organisme, inutile de le répéter ici.' : ''; } });
 const CP = CategoriesPicker.mount($('catPicker'), { catalogue: CATALOGUE, value: CAT_SEL, max: <?= (int)CAT_MAX_PAR_SEJOUR ?> });
-['f-nom', 'villeInput'].forEach(i => $(i).addEventListener('input', () => { clearTimeout(MC.t); MC.t = setTimeout(MC.refresh, 300); }));
 function orgaKwHint() {
-    const o = ORGAS.find(x => String(x.id) === $('orga-select').value), h = $('mcOrgaHint');
+    const o = orgaCourant(), h = $('mcOrgaHint');
     h.classList.toggle('hidden', !(o && o.motscles && o.motscles.length));
     if (o && o.motscles && o.motscles.length) h.textContent = 'Votre organisme est déjà trouvé avec : ' + o.motscles.map(x => '#' + x).join(', ') + '. Inutile de les répéter ici.';
 }

@@ -1,7 +1,7 @@
 /* moncamp.fr : champ de mots-clés à pastilles (alias, « hashtags »).
    Les règles sont celles du serveur (api/motscles.php) : le navigateur les rappelle, le serveur décide.
-   Usage : MotsCles.mount(element, { initial: ['PAJE'], max: 12, suggest: function () { return ['EPJ']; }, onChange: function (liste) {}, placeholder: '…' })
-   Retourne { get(), set(liste), refresh() } */
+   Usage : MotsCles.mount(element, { initial: ['PAJE'], max: 12, deja: function (mot) { return '' ou raison du refus; }, onChange: function (liste) {}, placeholder: '…' })
+   Retourne { get(), set(liste) } */
 (function () {
     'use strict';
     var MAXLEN = 30, MAXMOTS = 3;
@@ -35,41 +35,34 @@
         opt = opt || {};
         var max = opt.max || 12, list = [], uid = 'mc' + Math.random().toString(36).slice(2, 8);
         (opt.initial || []).forEach(function (l) { l = clean(l); if (l && !check(l, list, max)) list.push(l); });
-        root.innerHTML = '<div class="mc-box"></div><p class="mc-msg" role="status" aria-live="polite"></p><div class="mc-sugg" hidden></div>';
-        var box = root.querySelector('.mc-box'), msg = root.querySelector('.mc-msg'), sg = root.querySelector('.mc-sugg');
+        root.innerHTML = '<div class="mc-box"></div><p class="mc-msg" role="status" aria-live="polite"></p>';
+        var box = root.querySelector('.mc-box'), msg = root.querySelector('.mc-msg');
         var input = document.createElement('input');
         input.type = 'text'; input.className = 'mc-input'; input.maxLength = 60; input.autocomplete = 'off'; input.id = opt.inputId || uid;
         input.setAttribute('aria-label', opt.label || 'Ajouter un mot-clé'); input.placeholder = opt.placeholder || 'Tapez un mot puis Entrée';
+        var count = document.createElement('span'); count.className = 'mc-count';
+        box.appendChild(input); box.appendChild(count);
 
         function emit() { if (opt.onChange) opt.onChange(list.slice()); }
         function render() {
-            box.textContent = '';
+            [].slice.call(box.querySelectorAll('.mc-pill')).forEach(function (n) { n.remove(); });
             list.forEach(function (l, i) {
                 var p = document.createElement('span'); p.className = 'mc-pill';
                 p.innerHTML = '<i>#</i>'; p.appendChild(document.createTextNode(l));
                 var b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', 'Retirer ' + l); b.innerHTML = '&times;';
                 b.addEventListener('click', function () { list.splice(i, 1); render(); emit(); input.focus(); });
-                p.appendChild(b); box.appendChild(p);
+                p.appendChild(b); box.insertBefore(p, input);
             });
-            box.appendChild(input);
-            var c = document.createElement('span'); c.className = 'mc-count'; c.textContent = list.length + ' / ' + max; box.appendChild(c);
-            suggestions();
+            count.textContent = list.length + ' / ' + max;
         }
         function add(raw) {
             var l = clean(raw); if (!l) return true;
-            var err = check(l, list, max);
+            var err = check(l, list, max) || (opt.deja ? opt.deja(l) : '');
             if (err) { msg.textContent = '« ' + l + ' » : ' + err; return false; }
             list.push(l); msg.textContent = ''; render(); emit(); return true;
         }
-        function suggestions() {
-            var s = (opt.suggest ? opt.suggest() : []).filter(function (x) { return x && !check(x, list, max); }).slice(0, 8);
-            sg.hidden = !s.length; sg.textContent = '';
-            if (!s.length) return;
-            sg.appendChild(document.createTextNode('Suggestions : '));
-            s.forEach(function (x) { var b = document.createElement('button'); b.type = 'button'; b.textContent = '+ ' + x; b.addEventListener('click', function () { add(x); input.focus(); }); sg.appendChild(b); });
-        }
         input.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); if (add(input.value)) input.value = ''; }
+            if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); if (add(input.value)) input.value = ''; input.focus(); }
             else if (e.key === 'Backspace' && !input.value && list.length) { list.pop(); render(); emit(); input.focus(); }
         });
         input.addEventListener('input', function () { msg.textContent = ''; });
@@ -80,7 +73,7 @@
         });
         box.addEventListener('click', function (e) { if (e.target === box) input.focus(); });
         render();
-        return { get: function () { return list.slice(); }, set: function (l) { list = []; (l || []).forEach(function (x) { x = clean(x); if (x && !check(x, list, max)) list.push(x); }); render(); emit(); }, refresh: suggestions };
+        return { get: function () { return list.slice(); }, set: function (l) { list = []; (l || []).forEach(function (x) { x = clean(x); if (x && !check(x, list, max)) list.push(x); }); render(); emit(); } };
     }
 
     window.MotsCles = { mount: mount, norm: norm, check: check };
