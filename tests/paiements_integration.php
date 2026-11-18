@@ -205,6 +205,11 @@ ok(array_map('intval', $h2) === [6000, 6000] && (int)$pdo->query("SELECT COUNT(*
 
 [$d, $o] = fin_checkout_params($pdo, 2, [6000]);
 ok($d['metadata']['compensation'] === '2000' && $d['payment_intent_data']['application_fee_amount'] === fin_commission_split(6000)[0] + 2000, 'paiement suivant : la dette s\'ajoute à la commission prélevée');
+$pfS = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn();
+$pdo->exec("UPDATE organisateurs SET portefeuille = -1000.00 WHERE id = 2");
+[$d] = fin_checkout_params($pdo, 2, [15000]);
+ok((int)$d['metadata']['compensation'] === 15000 - fin_commission_split(15000)[0] - fin_frais_estimes(15000) - 100, 'dette énorme : compensation plafonnée, au moins 1 € net pour l’organisme (frais estimés compris), le reste reste dû');
+$pdo->prepare("UPDATE organisateurs SET portefeuille = ? WHERE id = 2")->execute([$pfS]);
 $r = stripe_webhook_process($pdo, $ev('evt_22', 'checkout.session.completed', ['id' => 'cs_I', 'payment_status' => 'paid', 'payment_intent' => 'pi_I', 'amount_total' => 6000, 'amount_subtotal' => 6000,
     'metadata' => ['reservation_token' => 'tokI', 'mode' => 'direct', 'organisateur_id' => '2', 'commission' => (string)fin_commission_split(6000)[0], 'compensation' => '2000']], 'acct_D'));
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'comp:pi_I'")->fetchColumn() === -2000, 'dette compensée et journalisée (« compensée le … »)');

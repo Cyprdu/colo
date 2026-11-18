@@ -382,7 +382,7 @@ function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     foreach ($itemCents as $c) { $com += fin_commission_split((int)$c)[0]; $total += (int)$c; }
     $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ?");
     $st->execute([$orgaId]);
-    $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com));
+    $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com - fin_frais_estimes($total) - 100)); // au moins 1 € net pour l'organisme
     $mode = $direct ? 'direct' : 'destination';
     // destination : moncamp.fr paie les frais Stripe de la charge, l'organisme les rembourse avec la commission (estimés, ajustés aux frais réels ensuite)
     $fe = $direct ? 0 : min(fin_frais_estimes($total), max(0, $total - $com - $comp));
