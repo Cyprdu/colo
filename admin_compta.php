@@ -42,15 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             adm_audit('commission_modifiee', 'fin_reglages', number_format($pct, 2, '.', '') . ' % + ' . $fixe . ' c');
             flash_go('ok', 'Commission enregistrée : ' . number_format($pct, 2, ',', ' ') . ' % + ' . compta_eur($fixe) . ' €. Elle s\'applique aux prochains paiements uniquement.', 'admin_compta.php?v=reglages');
         }
-        if ($act === 'payout_jours') {
-            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
-            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
-            $d = (string)($_POST['jours'] ?? '');
-            if (!ctype_digit($d) || (int)$d > 30) flash_go('err', 'Valeur invalide : de 0 à 30 jours.', 'admin_compta.php?v=versements');
-            fin_set_payout_jours($pdo, (int)$d, 'admin:' . $uid);
-            adm_audit('payout_jours', 'fin_reglages', "$d j");
-            flash_go('ok', "Enregistré : versement sur la banque de l'organisme $d jour(s) après le début du séjour. S'applique aussi aux paiements pas encore versés.", 'admin_compta.php?v=versements');
-        }
         if ($act === 'direct_charges') {
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
@@ -66,12 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
             if (!$oid) flash_go('err', 'Organisme introuvable.', 'admin_compta.php?v=versements');
             $force = !empty($_POST['force']);   // test : ignore la date de versement (et, pour les anciens paiements, délai et réserve)
-            $r = fin_release_due($pdo, 'admin:' . $uid, $oid, false, $force);
-            $p = fin_payouts_run($pdo, 'admin:' . $uid, $oid, $force);
+            $r = fin_release_due($pdo, 'admin:' . $uid, $oid, false, true); // anciens paiements : tout le net, tout de suite
+            $p = ['payouts' => 0, 'montant_cents' => 0, 'erreurs' => 0];
+            try { $p['payouts'] = fin_payouts_sync($pdo, $oid); } catch (Throwable $e) { $p['erreurs']++; error_log('admin versement_now sync: ' . $e->getMessage()); }
             adm_audit($force ? 'versement_force_test' : 'versement_immediat', 'organisateur', (string)$oid);
-            if ($p['payouts'] || $r['transferts']) flash_go('ok', 'Versement lancé : ' . fin_eur($p['montant_cents']) . ' vers la banque' . ($r['transferts'] ? ' (+ ' . fin_eur($r['montant_cents']) . ' d\'anciens paiements transférés sur son compte Stripe)' : '') . '.', 'admin_compta.php?v=versements');
+            if ($r['transferts']) flash_go('ok', fin_eur($r['montant_cents']) . ' d\'anciens paiements transférés sur son compte Stripe (versés ensuite automatiquement par Stripe). ' . $p['payouts'] . ' versement(s) Stripe relevé(s).', 'admin_compta.php?v=versements');
             $acc = fin_account($pdo, $oid);
-            flash_go('err', 'Rien versé : aucun séjour éligible ou solde Stripe disponible insuffisant (moins de 1 €) · compte Stripe ' . (fin_account_ready($acc) ? 'prêt' : 'NON prêt (onboarding incomplet)') . ($p['erreurs'] + $r['erreurs'] ? ' · ' . ($p['erreurs'] + $r['erreurs']) . ' erreur(s), voir le journal' : '') . '.', 'admin_compta.php?v=versements');
+            flash_go('err', 'Rien à transférer (' . $p['payouts'] . ' versement(s) Stripe relevé(s)) · compte Stripe ' . (fin_account_ready($acc) ? 'prêt' : 'NON prêt (onboarding incomplet)') . ($p['erreurs'] + $r['erreurs'] ? ' · ' . ($p['erreurs'] + $r['erreurs']) . ' erreur(s), voir le journal' : '') . '.', 'admin_compta.php?v=versements');
         }
         if ($act === 'retenter') {
             if (!adm_reauth_ok()) flash_go('err', 'Confirmez votre mot de passe (onglet Exports CSV, « Déverrouiller ») puis réessayez.', 'admin_compta.php?v=versements');
@@ -225,11 +217,7 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
 <?php if ($vs['dettes'] || $vs['negatifs']): ?><div class="note err"><?= ic('alert') ?><div><b>Dettes d'organismes.</b> Un remboursement a eu lieu après un versement et n'a pas pu être repris. La dette est prélevée automatiquement sur la commission de ses prochains paiements par carte.</div></div><?php endif; ?>
 <div class="cols">
   <section class="card"><h2 class="sec"><?= ic('clock') ?> Règle de versement</h2>
-    <p class="muted">L'argent de chaque paiement arrive sur le <b>compte Stripe de l'organisme</b> dès le paiement (commission déduite). Il est versé sur <b>sa banque</b> automatiquement, le nombre de jours ci-dessous après le <b>début du séjour</b> (cron horaire). Rien n'est retenu sur le solde de moncamp.fr.</p>
-    <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="payout_jours">
-      <label class="fld"><span class="fl">Jours après le début du séjour <small>(0 à 30)</small></span><input class="in" name="jours" type="number" min="0" max="30" value="<?= (int)$rg['payout_jours'] ?>" required></label>
-      <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
-      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
+    <p class="muted">L'argent de chaque paiement arrive sur le <b>compte Stripe de l'organisme</b> dès le paiement (commission déduite). Il est <b>versé automatiquement par Stripe</b> sur sa banque dès que les fonds sont disponibles (versements quotidiens, délai minimal : en général 2 à 7 jours ouvrés), <b>sans attendre le séjour</b>. Chaque versement est relevé avec sa date d'arrivée. Un remboursement après versement crée une dette, compensée sur ses paiements suivants.</p>
     <form method="post" action="admin_compta.php?v=versements" style="margin-top:14px"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="direct_charges">
       <label class="fld"><span class="fl">Paiements par carte</span><select class="in" name="direct"><option value="1"<?= $rg['direct_charges'] ? ' selected' : '' ?>>Sur le compte de l'organisme (direct charges : frais Stripe à sa charge)</option><option value="0"<?= $rg['direct_charges'] ? '' : ' selected' ?>>Repli : encaissés par moncamp.fr puis transférés (frais Stripe à notre charge)</option></select></label>
       <p class="muted small">Direct charges seulement pour les comptes complets (aucune information demandée par Stripe). Repli à utiliser si la page de paiement Stripe affiche une erreur.</p>
@@ -237,13 +225,12 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
       <div class="row-l"><button class="btn ghost" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
     <?php if ($vs['legacy']): ?><p class="muted small">Anciens paiements encore gardés par moncamp.fr : <?= $e($vs['legacy']) ?> (règles d'origine : <?= (int)$rg['delai_securite_jours'] ?> j après le paiement, réserve <?= h(number_format($rg['reserve_pct'], 0, ',', ' ')) ?> %), transférés automatiquement puis versés avec le reste.</p><?php endif; ?>
   </section>
-  <section class="card"><h2 class="sec"><?= ic('clock') ?> Lancer le versement maintenant</h2>
-    <p class="muted">Verse tout de suite sur la banque d'un organisme ce qui est éligible, sans attendre le prochain passage du cron. Utile pour un test ou un dépannage.</p>
+  <section class="card"><h2 class="sec"><?= ic('clock') ?> Rattraper un organisme maintenant</h2>
+    <p class="muted">Transfère tout de suite sur son compte Stripe le net des paiements reçus avant l'activation de son compte, et relève ses versements Stripe (dates d'arrivée). Les versements vers sa banque restent automatiques.</p>
     <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="versement_now">
       <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($vs['orgas'] as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h($o['nom']) ?></option><?php endforeach; ?></select></label>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
-      <label class="fld"><span class="fl"><input type="checkbox" name="force" value="1"> Test : ignorer la date de versement (verse tout le disponible, sauf litiges)</span></label>
-      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer le versement maintenant</button></div></form>
+      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer maintenant</button></div></form>
   </section>
 </div>
 

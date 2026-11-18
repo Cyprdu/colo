@@ -66,7 +66,7 @@ ok($d['metadata']['compensation'] === '500' && $d['payment_intent_data']['applic
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (2, 2, 2, 'En attente', 25.00, 'EN_ATTENTE', 'tokB'), (3, 2, 3, 'En attente', 100.00, 'EN_ATTENTE', 'tokC')");
 ok(fin_record_checkout($pdo, ['tokB', 'tokC'], 'pi_D', 'cs_D', 12500, 'destination', 500) === 2, 'paiement destination : 2 lignes');
 $r = $pdo->query("SELECT mode, net_cents, compensation_cents, verse_cents, DATE(date_deblocage) d FROM fin_paiements WHERE payment_intent = 'pi_D' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
-ok($r[0]['mode'] === 'destination' && array_sum(array_column($r, 'compensation_cents')) === 500 && $r[0]['d'] === date('Y-m-d', strtotime('+43 day')), 'mode destination, dette répartie, versement = début + 3 jours');
+ok($r[0]['mode'] === 'destination' && array_sum(array_column($r, 'compensation_cents')) === 500 && $r[0]['d'] === date('Y-m-d'), 'mode destination, dette répartie, versable tout de suite (versements automatiques)');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001, 'solde : net non crédité (il est chez Stripe), dette soldée');
 $t = fin_ledger_totaux($pdo, 2);
 ok($t['encaisse'] === 12500 && $t['commission'] === 373 && $t['en_attente'] === 12500 - 373, 'cascade destination : 125 EUR encaissés, 3,73 EUR de commission');
@@ -116,11 +116,12 @@ $bal = fn(int $a, int $p) => $GLOBALS['stripe_resp']['balance.retrieve'] = (obje
 $bal(4845, 11627); // G (séjour commencé il y a 5 jours) disponible ; D (séjour dans 40 jours) encore en attente chez Stripe
 $po = 0; $GLOBALS['stripe_resp']['payouts.create'] = function () use (&$po) { return (object)['id' => 'po_' . (++$po)]; };
 $GLOBALS['stripe_calls'] = [];
+$pdo->exec("UPDATE fin_paiements SET date_deblocage = DATE_ADD(NOW(), INTERVAL 40 DAY) WHERE payment_intent = 'pi_D'"); // ancien pilotage manuel (plus utilisé par le cron) : D pas encore éligible
 $rep = fin_payouts_run($pdo);
 $c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'payouts.create'));
 ok($rep['payouts'] === 1 && $rep['montant_cents'] === 4845, 'versement de 48,45 EUR (séjour commencé), le séjour à venir reste sur le compte Stripe');
 ok($c[0][1][1] === ['stripe_account' => 'acct_D', 'idempotency_key' => 'moncamp-payout-' . $pdo->query("SELECT MAX(id) FROM fin_transferts")->fetchColumn()], 'payout sur le compte connecté, clé d\'idempotence');
-ok((int)$pdo->query("SELECT payout_manuel FROM stripe_comptes WHERE organisateur_id = 2")->fetchColumn() === 1 && in_array('accounts.update', array_column($GLOBALS['stripe_calls'], 0), true), 'compte passé en versements manuels avant le premier versement');
+ok((int)$pdo->query("SELECT payout_auto FROM stripe_comptes WHERE organisateur_id = 2")->fetchColumn() === 1 && in_array('accounts.update', array_column($GLOBALS['stripe_calls'], 0), true), 'compte passé en versements automatiques quotidiens (ancien pilotage manuel encore testable)');
 ok($pdo->query("SELECT statut FROM fin_paiements WHERE payment_intent = 'pi_G'")->fetchColumn() === 'verse' && fin_ledger_totaux($pdo, 2)['verse'] === 4845, 'ligne versée, journal : 48,45 EUR versés');
 $bal(0, 11627);
 ok(fin_payouts_run($pdo)['payouts'] === 0, 'second passage (double clic) : rien de plus');

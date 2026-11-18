@@ -69,6 +69,6 @@ ok(fin_commission_split(2500)[0] + fin_commission_split(10000)[0] === 373, 'pani
 ok(fin_commission_split(1)[0] === 1 && fin_commission_split(333)[0] === 38, 'arrondis : jamais plus que le payé, 2,5 % de 3,33 = 0,08 + 0,30');
 ok(in_array('frais_paiement', FIN_LEDGER_TYPES, true) && in_array('dette', FIN_LEDGER_TYPES, true), 'journal : frais Stripe de l\'organisme et dette tracés à part');
 ok(strpos(fin_sql_marge('p'), "p.mode = 'direct', 0") !== false, 'direct charges : frais Stripe hors marge moncamp.fr (jamais négative)');
-ok(fin_payout_date('2030-07-10') === '2030-07-13 00:00:00', 'versement bancaire : début du séjour + 3 jours');
+ok(abs(strtotime(fin_payout_date('2030-07-10')) - time()) < 5, 'versement : immédiat (versements automatiques Stripe, plus de retenue avant le séjour)');
 ok(in_array('versement', FIN_LEDGER_TYPES, true) && !in_array('reversement', FIN_LEDGER_TYPES, true), 'journal : les reversements ne sont pas des lignes');
 echo "Tout est bon.\n";

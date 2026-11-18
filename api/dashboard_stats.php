@@ -45,11 +45,10 @@ try {
     $all = fin_ledger_totaux($pdo, $orgaId);
     $dette = max(0, -(int)round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = " . (int)$orgaId)->fetchColumn() * 100), -$all['en_attente']);
 
-    // ---- prochains versements (prévisions) et à encaisser hors carte
-    $st = $pdo->prepare("SELECT GREATEST(DATE(p.date_deblocage), CURDATE()) d, SUM(GREATEST(0, p.net_cents - p.net_rembourse_cents - p.verse_cents)) m, COUNT(*) n, GROUP_CONCAT(DISTINCT c.nom ORDER BY c.nom SEPARATOR ', ') sejours
-                         FROM fin_paiements p JOIN camps c ON c.id = p.camp_id WHERE p.organisateur_id = ? AND p.statut = 'attente' GROUP BY d HAVING m > 0 ORDER BY d LIMIT 12");
+    // ---- versements en route vers la banque (versements automatiques Stripe), date d'arrivée annoncée par Stripe
+    $st = $pdo->prepare("SELECT COALESCE(arrivee, DATE(created_at)) d, montant_cents m FROM fin_transferts WHERE organisateur_id = ? AND type = 'payout' AND statut = 'envoye' ORDER BY d LIMIT 12");
     $st->execute([$orgaId]);
-    $prochains = array_map(fn($r) => ['d' => $r['d'], 'm' => (int)$r['m'], 'n' => (int)$r['n'], 'sejours' => $txt($r['sejours'])], $st->fetchAll(PDO::FETCH_ASSOC));
+    $prochains = array_map(fn($r) => ['d' => $r['d'], 'm' => (int)$r['m']], $st->fetchAll(PDO::FETCH_ASSOC));
 
     // ---- séries quotidiennes (journal + inscriptions)
     $days = [];
@@ -121,7 +120,7 @@ try {
         if ((int)$r['ann'] === 1) return ['annule', 'Annulé par la famille'];
         if ((int)$r['remb'] > 0 && (int)$r['remb'] >= (int)$r['brut']) return ['rembourse', 'Remboursé'];
         $k = $r['st']; $dd = $r['dd'] ? date('d/m/Y', strtotime($r['dd'])) : '';
-        $l = ['attente' => 'Versement prévu le ' . $dd, 'en_cours' => 'Versement en cours', 'verse' => 'Versé', 'litige' => 'Litige', 'bloque' => 'Suspendu',
+        $l = ['attente' => 'En attente de versement', 'en_cours' => 'Versement en cours', 'verse' => 'Versé', 'litige' => 'Litige', 'bloque' => 'Suspendu',
               'rembourse' => 'Remboursé', 'PAYE' => 'Reçu (hors carte)', 'A_REGLER' => 'À encaisser'][$k] ?? $k;
         if ((int)$r['remb'] > 0) return [$k === 'rembourse' ? 'rembourse' : 'partiel', $l . ' · remboursé en partie'];
         return [$k, $l];
@@ -183,7 +182,7 @@ try {
     }
 
     // ---- versements (historique, indépendant de la période) avec les transactions incluses
-    $st = $pdo->prepare("SELECT id, token, type, statut, montant_cents, erreur, nb_paiements, created_at, updated_at FROM fin_transferts WHERE organisateur_id = ? ORDER BY created_at DESC LIMIT 60");
+    $st = $pdo->prepare("SELECT id, token, type, statut, montant_cents, erreur, nb_paiements, created_at, updated_at, arrivee FROM fin_transferts WHERE organisateur_id = ? ORDER BY created_at DESC LIMIT 60");
     $st->execute([$orgaId]);
     $vers = $st->fetchAll(PDO::FETCH_ASSOC); $lignes = [];
     if ($vers) {
@@ -197,7 +196,7 @@ try {
         $po = $v['type'] === 'payout';
         $s = $po ? (['en_cours' => 'prepa', 'envoye' => 'route', 'paye' => 'arrive', 'echec' => 'echec'][$v['statut']] ?? $v['statut'])
                  : (['envoye' => 'stripe', 'en_cours' => 'prepa', 'echec' => 'echec'][$v['statut']] ?? $v['statut']);
-        $arr = $v['statut'] === 'paye' ? substr($v['updated_at'], 0, 10) : ($po && $v['statut'] === 'envoye' ? date('Y-m-d', strtotime($v['created_at'] . ' +2 weekdays')) : null);
+        $arr = $v['arrivee'] ?: ($v['statut'] === 'paye' ? substr($v['updated_at'], 0, 10) : null); // date d'arrivée Stripe (payout.arrival_date)
         return ['tok' => $v['token'], 'd' => $v['created_at'], 'm' => (int)$v['montant_cents'], 'st' => $s, 'payout' => $po, 'arr' => $arr, 'arr_est' => $v['statut'] !== 'paye',
                 'err' => $v['statut'] === 'echec' ? (string)$v['erreur'] : null, 'n' => (int)$v['nb_paiements'], 'lignes' => $lignes[(int)$v['id']] ?? []];
     }, $vers);
@@ -229,7 +228,7 @@ try {
     ds_fin([
         'periode' => ['du' => $du, 'au' => $au, 'prev_du' => $pdu, 'prev_au' => $pau],
         'kpi' => ['cur' => $cur, 'prev' => $prev, 'en_attente' => max(0, $all['en_attente']), 'dette' => $dette, 'verse_total' => $all['verse'],
-                  'prochain' => $prochains ? ['d' => $prochains[0]['d'], 'm' => min($prochains[0]['m'], max(0, $all['en_attente']))] : null,
+                  'prochain' => $prochains ? ['d' => $prochains[0]['d'], 'm' => $prochains[0]['m']] : null,
                   'a_encaisser' => array_sum(array_column($hors, 'm')), 'nb_a_encaisser' => count($hors)],
         'jours' => array_map(fn($d, $v) => ['d' => $d] + $v, array_keys($days), array_values($days)),
         'moyens' => $moyens, 'remplissage' => $remp,

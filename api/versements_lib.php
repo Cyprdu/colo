@@ -1,7 +1,7 @@
 <?php
 // api/versements_lib.php : calendrier des versements aux organismes (inclus par finance_lib.php).
 // ANCIEN MODÈLE (fin_paiements.mode = 'legacy') seulement, conservé tant qu'il reste des paiements legacy. Les paiements « destination »
-// sont versés par fin_payouts_run (api/destination_lib.php). Le jour de versement hebdomadaire n'est plus utilisé (cron horaire, tous les organismes).
+// sont versés automatiquement par Stripe (versements quotidiens, relevés par fin_payout_record). Le jour de versement hebdomadaire n'est plus utilisé (cron horaire, tous les organismes).
 //
 // MODÈLE
 //  - Un jour de versement HEBDOMADAIRE fixe par organisme (lundi à samedi, jamais dimanche), attribué automatiquement au jour le moins chargé
@@ -251,6 +251,8 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
         fin_audit($pdo, 'transfert_envoye', 'transfert', $tid, ['stripe' => $tr->id, 'cents' => (int)$t['montant_cents']], $acteur);
         // Journal : un payout est un versement vers la banque ; un transfert legacy aussi, sauf si le compte est en versements manuels (le payout comptera)
         $manuel = (int)$pdo->query("SELECT COALESCE(MAX(payout_manuel), 0) FROM stripe_comptes WHERE account_id = " . $pdo->quote((string)$t['stripe_account_id']))->fetchColumn();
+        // Versements automatiques : un transfert vers le compte Stripe n'est pas encore un versement bancaire (le payout relevé le sera)
+        $manuel = $manuel || (int)$pdo->query("SELECT COALESCE(MAX(payout_auto), 0) FROM stripe_comptes WHERE account_id = " . $pdo->quote((string)$t['stripe_account_id']))->fetchColumn();
         if ($payout || !$manuel) fin_ledger_add($pdo, 'versement', (int)$t['organisateur_id'], -(int)$t['montant_cents'], $tr->id, 'transfert', $tid, 'Versement', $acteur, $payout ? 'destination' : 'legacy');
         $pdo->commit();
         return 'envoye';

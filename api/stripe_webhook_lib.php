@@ -118,6 +118,11 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                 if ($orgaId) fin_store_account($pdo, $orgaId, $obj);
                 break;
 
+            case 'payout.created': // versement automatique Stripe d'un compte connecté : relevé avec sa date d'arrivée
+            case 'payout.updated':
+                fin_payout_record($pdo, $obj, (string)($event->account ?? ''));
+                break;
+
             case 'payout.paid':   // versement bancaire d'un compte connecté arrivé
             case 'payout.failed': // refusé (IBAN invalide...) : les lignes repassent en attente
                 fin_payout_event($pdo, $obj, $event->type === 'payout.paid', (string)($event->account ?? ''));

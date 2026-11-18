@@ -157,9 +157,9 @@ function fin_payout_event(PDO $pdo, $po, bool $paid, string $account): void {
     $st = $pdo->prepare("SELECT * FROM fin_transferts WHERE stripe_transfer_id = ? AND type = 'payout' FOR UPDATE");
     $st->execute([(string)$po->id]);
     $t = $st->fetch(PDO::FETCH_ASSOC);
-    if (!$t) { fin_audit($pdo, $paid ? 'payout_hors_moncamp' : 'payout_echec', 'compte', $account, ['payout' => $po->id, 'montant' => (int)($po->amount ?? 0), 'raison' => $po->failure_message ?? ''], 'webhook'); return; }
+    if (!$t) { fin_payout_record($pdo, $po, $account); return; } // versement automatique Stripe
     if ($paid) {
-        $pdo->prepare("UPDATE fin_transferts SET statut = 'paye' WHERE id = ? AND statut = 'envoye'")->execute([$t['id']]);
+        $pdo->prepare("UPDATE fin_transferts SET statut = 'paye', arrivee = COALESCE(?, arrivee) WHERE id = ? AND statut = 'envoye'")->execute([fin_payout_arrivee($po), $t['id']]);
         fin_audit($pdo, 'payout_paye', 'transfert', $t['id'], ['payout' => $po->id], 'webhook');
         return;
     }
@@ -173,16 +173,83 @@ function fin_payout_event(PDO $pdo, $po, bool $paid, string $account): void {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Versements bancaires des organismes (Payout sur leur compte connecté, schedule « manual »)
+// Versements bancaires des organismes : AUTOMATIQUES (Stripe, quotidiens, délai minimal). moncamp.fr les relève et les journalise.
+// (fin_payouts_run / fin_prepare_payout : ancien pilotage manuel, plus appelé par le cron, gardé pour l'historique)
 // ---------------------------------------------------------------------------------------------
-/** Passe le compte en versements manuels (pilotés par fin_payouts_run) et demande les paiements par carte (on_behalf_of). Idempotent. */
+/** Passe le compte en versements automatiques quotidiens (délai minimal Stripe) et demande les paiements par carte. Idempotent. */
 function fin_account_setup(PDO $pdo, int $orgaId, string $accountId): bool {
     try {
-        fin_stripe()->accounts->update($accountId, ['settings' => ['payouts' => ['schedule' => ['interval' => 'manual']]], 'capabilities' => ['card_payments' => ['requested' => true]]]);
-        $pdo->prepare("UPDATE stripe_comptes SET payout_manuel = 1 WHERE organisateur_id = ?")->execute([$orgaId]);
-        fin_audit($pdo, 'compte_versements_manuels', 'organisateur', $orgaId, ['account' => $accountId], 'systeme');
+        fin_stripe()->accounts->update($accountId, ['settings' => ['payouts' => ['schedule' => ['interval' => 'daily', 'delay_days' => 'minimum']]], 'capabilities' => ['card_payments' => ['requested' => true]]]);
+        $pdo->prepare("UPDATE stripe_comptes SET payout_manuel = 0, payout_auto = 1 WHERE organisateur_id = ?")->execute([$orgaId]);
+        fin_audit($pdo, 'compte_versements_auto', 'organisateur', $orgaId, ['account' => $accountId], 'systeme');
         return true;
     } catch (Throwable $e) { error_log('fin_account_setup: ' . $e->getMessage()); return false; }
+}
+
+/** Date d'arrivée sur la banque annoncée par Stripe (payout.arrival_date) */
+function fin_payout_arrivee($po): ?string { return !empty($po->arrival_date) ? date('Y-m-d', (int)$po->arrival_date) : null; }
+
+/**
+ * Relève un Payout automatique d'un compte connecté (webhook payout.* ou fin_payouts_sync). Idempotent : verrou par payout, une ligne fin_transferts,
+ * référence unique au journal. Nouveau versement : réparti sur les paiements en attente de l'organisme (les plus anciens d'abord) et journalisé.
+ * Échec ou annulation d'un versement déjà relevé : fin_payout_event remet ses lignes en attente.
+ */
+function fin_payout_record(PDO $pdo, $po, string $account): void {
+    if ($account === '' || strtolower((string)($po->currency ?? 'eur')) !== 'eur' || (int)($po->amount ?? 0) <= 0) return;
+    $st = $pdo->prepare("SELECT organisateur_id FROM stripe_comptes WHERE account_id = ?");
+    $st->execute([$account]);
+    $orgaId = (int)$st->fetchColumn();
+    if (!$orgaId) return;
+    $lock = $pdo->quote('moncamp_po_' . $po->id);
+    if (!(int)$pdo->query("SELECT GET_LOCK($lock, 5)")->fetchColumn()) return;
+    try {
+        $s = (string)($po->status ?? 'pending');
+        $statut = $s === 'paid' ? 'paye' : (in_array($s, ['failed', 'canceled'], true) ? 'echec' : 'envoye');
+        $st = $pdo->prepare("SELECT * FROM fin_transferts WHERE stripe_transfer_id = ? AND type = 'payout'");
+        $st->execute([(string)$po->id]);
+        $t = $st->fetch(PDO::FETCH_ASSOC);
+        if ($t) {
+            if ($statut === 'echec' && $t['statut'] !== 'echec') { fin_payout_event($pdo, $po, false, $account); return; }
+            if ($t['statut'] !== 'echec') $pdo->prepare("UPDATE fin_transferts SET statut = IF(? = 'paye', 'paye', statut), arrivee = COALESCE(?, arrivee) WHERE id = ?")->execute([$statut, fin_payout_arrivee($po), $t['id']]);
+            return;
+        }
+        $own = !$pdo->inTransaction();
+        if ($own) $pdo->beginTransaction();
+        try {
+            $amt = (int)$po->amount;
+            $pdo->prepare("INSERT INTO fin_transferts (token, organisateur_id, montant_cents, type, statut, stripe_account_id, stripe_transfer_id, arrivee, erreur, created_at)
+                           VALUES (?, ?, ?, 'payout', ?, ?, ?, ?, ?, ?)")
+                ->execute([bin2hex(random_bytes(30)), $orgaId, $amt, $statut, $account, (string)$po->id, fin_payout_arrivee($po),
+                           $statut === 'echec' ? mb_substr((string)($po->failure_message ?? 'refusé par la banque'), 0, 450) : null, date('Y-m-d H:i:s', (int)($po->created ?? time()))]);
+            $tid = (int)$pdo->lastInsertId();
+            if ($statut !== 'echec') {
+                $st = $pdo->prepare("SELECT id, GREATEST(0, net_cents - net_rembourse_cents - verse_cents) reste FROM fin_paiements
+                                     WHERE organisateur_id = ? AND mode <> 'legacy' AND statut = 'attente' ORDER BY created_at, id FOR UPDATE");
+                $st->execute([$orgaId]);
+                $left = $amt; $alloc = [];
+                foreach ($st->fetchAll(PDO::FETCH_KEY_PAIR) as $pid => $r) { if ($left <= 0) break; if ((int)$r > 0) { $alloc[$pid] = min((int)$r, $left); $left -= $alloc[$pid]; } }
+                $li = $pdo->prepare("INSERT INTO fin_transfert_lignes (transfert_id, paiement_id, montant_cents) VALUES (?, ?, ?)");
+                $up = $pdo->prepare("UPDATE fin_paiements SET verse_cents = verse_cents + ?, transfert_id = ?, statut = IF(net_cents - net_rembourse_cents - verse_cents <= 0, 'verse', statut) WHERE id = ?");
+                foreach ($alloc as $pid => $m) { $li->execute([$tid, $pid, $m]); $up->execute([$m, $tid, $pid]); }
+                $pdo->prepare("UPDATE fin_transferts SET nb_paiements = ? WHERE id = ?")->execute([count($alloc), $tid]);
+                fin_ledger_add($pdo, 'versement', $orgaId, -$amt, (string)$po->id, 'transfert', $tid, 'Versement automatique Stripe', 'webhook', 'destination');
+            }
+            fin_audit($pdo, 'payout_auto_releve', 'transfert', $tid, ['payout' => $po->id, 'cents' => $amt, 'statut' => $statut, 'arrivee' => fin_payout_arrivee($po)], 'systeme');
+            if ($own) $pdo->commit();
+        } catch (Throwable $e) { if ($own && $pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+    } finally {
+        $pdo->query("SELECT RELEASE_LOCK($lock)");
+    }
+}
+
+/** Relit les derniers versements du compte chez Stripe (ouverture du tableau de bord, au plus toutes les 5 minutes par session) */
+function fin_payouts_sync(PDO $pdo, int $orgaId): int {
+    $acc = fin_account($pdo, $orgaId);
+    if (!$acc || empty($acc['account_id'])) return 0;
+    if (session_status() === PHP_SESSION_ACTIVE) { $k = 'po_sync_' . $orgaId; if (($_SESSION[$k] ?? 0) > time() - 300) return 0; $_SESSION[$k] = time(); }
+    $n = 0;
+    foreach (fin_stripe()->payouts->all(['limit' => 30], ['stripe_account' => $acc['account_id']])->data as $po) { fin_payout_record($pdo, $po, $acc['account_id']); $n++; }
+    return $n;
 }
 
 /** Délai (jours après le début du séjour) avant le versement bancaire ; recalcule la date des paiements pas encore versés. Journalisé. */
