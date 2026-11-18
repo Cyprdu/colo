@@ -105,14 +105,14 @@ try {
     $csv = ($_GET['csv'] ?? '') === '1'; $lim = $csv ? 5000 : 300; $rows = [];
     $fam = "COALESCE(NULLIF(e.nom, ''), 'Équipe d''animation')";
     if ($f['moyen'] === '' || $f['moyen'] === 'carte') {
-        $q = $pdo->prepare("SELECT p.created_at d, $fam fam, c.nom camp, p.brut_cents brut, p.rembourse_cents remb, p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, 'carte' moy, i.reservation_token tok
+        $q = $pdo->prepare("SELECT p.created_at d, $fam fam, c.nom camp, p.brut_cents brut, p.rembourse_cents remb, p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, 'carte' moy, i.reservation_token tok, p.annul_com ann
                             FROM fin_paiements p JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id
                             WHERE p.camp_id IN ($in) AND p.created_at BETWEEN ? AND ? ORDER BY p.created_at DESC LIMIT $lim");
         $q->execute($dt); $rows = $q->fetchAll(PDO::FETCH_ASSOC);
     }
     if ($f['moyen'] !== 'carte') {
         $q = $pdo->prepare("SELECT i.date_inscription d, $fam fam, c.nom camp, ROUND(i.prix_final * 100) brut, 0 remb, ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv,
-                                   i.statut_paiement st, NULL dd, i.moyen_paiement moy, i.reservation_token tok
+                                   i.statut_paiement st, NULL dd, i.moyen_paiement moy, i.reservation_token tok, 0 ann
                             FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
                             WHERE i.camp_id IN ($in) AND $CANC AND i.statut_paiement IN ('PAYE', 'A_REGLER') AND COALESCE(i.moyen_paiement, '') NOT IN ('', 'carte')
                               AND i.date_inscription BETWEEN ? AND ?" . ($f['moyen'] !== '' ? " AND i.moyen_paiement = ?" : '') . " ORDER BY i.date_inscription DESC LIMIT $lim");
@@ -120,6 +120,8 @@ try {
     }
     usort($rows, fn($a, $b) => strcmp($b['d'], $a['d']));
     $etat = function (array $r): string {
+        if ((int)$r['ann'] === 1) return 'Annulé par la famille';
+        if ((int)$r['remb'] > 0 && (int)$r['remb'] >= (int)$r['brut']) return 'Remboursé';
         $dd = $r['dd'] ? date('d/m/Y', strtotime($r['dd'])) : '';
         $s = ['attente' => 'Versement prévu le ' . $dd, 'en_cours' => 'Versement en cours', 'verse' => 'Versé', 'litige' => 'Litige en cours', 'bloque' => 'Bloqué',
               'rembourse' => 'Remboursé', 'PAYE' => 'Payé directement', 'A_REGLER' => 'À encaisser'][$r['st']] ?? $r['st'];

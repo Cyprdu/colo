@@ -165,7 +165,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
             <?php else: ?>
             <div class="cas-r" role="button" tabindex="0" data-vue="remb"><span style="color:#b42318">À compenser<?= $help("Une famille a été remboursée après le versement sur votre banque. Ce montant sera retenu sur vos prochains encaissements, automatiquement.") ?></span><span class="amt" style="color:#b42318"><?= fin_eur(-$tot['en_attente']) ?></span></div>
             <?php endif; ?>
-            <p class="cas-note"><?= $prochains ? 'Prochain versement : <b>' . fin_eur((int)$prochains[0]['m']) . '</b> le ' . date('d/m/Y', strtotime($prochains[0]['d'])) . '. ' : '' ?>Règle : versé sur votre banque <?= $nJours ?> jour<?= $nJours > 1 ? 's' : '' ?> après le début de chaque séjour.</p>
+            <p class="cas-note"><?= $prochains && $tot['en_attente'] > 0 ? 'Prochain versement : <b>' . fin_eur(min((int)$prochains[0]['m'], $tot['en_attente'])) . '</b> le ' . date('d/m/Y', strtotime($prochains[0]['d'])) . '. ' : '' ?>Règle : versé sur votre banque <?= $nJours ?> jour<?= $nJours > 1 ? 's' : '' ?> après le début de chaque séjour.</p>
         </div>
         <?php if ($historique > 0): ?><div class="ds-alert-ok" style="margin-top:12px">Solde de l'ancien système : <?= fin_eur($historique) ?> <?= $help("Réglé par l'équipe moncamp.fr : contactez-nous pour le recevoir.") ?></div><?php endif; ?>
     </section>
@@ -228,7 +228,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
 
     <!-- 6. Liste des paiements (mêmes filtres) -->
     <section class="mk-section" id="paiements">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Paiements <span id="pVue" class="mk-pill info" hidden></span><?= $help("Touchez une ligne pour le détail. Pour vous = payé − remboursé − commission.") ?></h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Paiements <span id="pVue" class="mk-pill info" style="display:none"></span><?= $help("Touchez une ligne pour le détail. Pour vous = payé − remboursé − commission.") ?></h2>
             <a id="pCsv" class="ds-btn ds-btn-light mk-btn-sm" href="#"><?= mk_icon('doc', 16) ?> CSV</a></div>
         <div class="mk-table-wrap" style="margin-top:12px"><table class="mk-table" style="min-width:640px">
             <thead><tr><th>Date</th><th>Famille</th><th>Séjour</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Pour vous</th><th>Statut</th><th></th></tr></thead>
@@ -330,7 +330,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
     var dfr = function (s) { return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4); };
     function list() {
         var v = VUES[VUE], rows = v ? ROWS.filter(v[0]) : ROWS;
-        $('pVue').hidden = !v; if (v) $('pVue').textContent = v[1] + ' ×';
+        $('pVue').style.display = v ? '' : 'none'; if (v) $('pVue').textContent = v[1] + ' ×';
         $('pBody').innerHTML = rows.length ? rows.map(function (r) { return '<tr class="pay-tr" tabindex="0" aria-expanded="false" data-det="' + esc('Moyen : ' + r.moy + ' · payé ' + eur2(r.brut) + (r.remb ? ' · remboursé ' + eur2(r.remb) : '') + ' · commission ' + eur2(r.com) + ' · pour vous ' + eur2(r.pv) + ' · ' + r.st) + '">'
             + '<td>' + dfr(r.d) + '</td><td><b>' + esc(r.fam) + '</b></td><td>' + esc(r.camp) + '</td><td class="num">' + eur2(r.brut) + '</td><td class="num">' + (r.com ? '− ' + eur2(r.com) : '–') + '</td><td class="num"><b>' + eur2(r.pv) + '</b></td><td>' + esc(r.st) + '</td>'
             + '<td class="num">' + (r.tok ? '<a class="underline" href="generate_pdf_certificat.php?r=' + encodeURIComponent(r.tok) + '" target="_blank" rel="noopener">Reçu</a>' : '') + '</td></tr>'; }).join('')

@@ -14,10 +14,13 @@ $pdo = new PDO($dsn, getenv('FIN_TEST_USER') ?: 'root', getenv('FIN_TEST_PASS') 
 $GLOBALS['pdo'] = $pdo;
 foreach ($pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN) as $t) $pdo->exec("DROP TABLE `$t`");
 $pdo->exec("CREATE TABLE organisateurs (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), user_id INT, portefeuille DECIMAL(12,2) NOT NULL DEFAULT 0, solde_points INT DEFAULT 0, stripe_account_id VARCHAR(64) NULL, email VARCHAR(80) NULL, web VARCHAR(80) NULL)");
-$pdo->exec("CREATE TABLE camps (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), date_debut DATE, organisateur_id INT, token VARCHAR(40) NULL)");
+$pdo->exec("CREATE TABLE camps (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), date_debut DATE, date_fin DATE NULL, organisateur_id INT, token VARCHAR(40) NULL, type VARCHAR(30) NULL, groupe_id INT NULL, quota_global INT DEFAULT 20, supprime TINYINT DEFAULT 0)");
+$pdo->exec("CREATE TABLE enfants (id INT AUTO_INCREMENT PRIMARY KEY, parent_id INT, nom VARCHAR(50), prenom VARCHAR(50))");
+$pdo->exec("INSERT INTO enfants (id, parent_id, nom, prenom) VALUES (1, 9, 'Martin', 'Léa'), (2, 9, 'Durand', 'Tom'), (3, 9, 'Durand', 'Zoé'), (4, 9, 'Petit', 'Noé'), (5, 9, 'Petit', 'Lou'), (6, 9, 'Bernard', 'Jade')");
 $pdo->exec("CREATE TABLE inscriptions (id INT AUTO_INCREMENT PRIMARY KEY, camp_id INT, enfant_id INT, tarif_id INT NULL, statut VARCHAR(20), prix_final DECIMAL(10,2), statut_paiement VARCHAR(20), reservation_token VARCHAR(64), mode_paiement VARCHAR(20), montant_paye DECIMAL(10,2) DEFAULT 0, stripe_payment_intent_id VARCHAR(80) NULL, date_inscription DATETIME DEFAULT CURRENT_TIMESTAMP)");
 $pdo->exec("INSERT INTO organisateurs (id, nom, user_id) VALUES (1, 'Legacy', 7), (2, 'Destination', 8)");
-$pdo->exec("INSERT INTO camps (id, nom, date_debut, organisateur_id) VALUES (1, 'Été', DATE_ADD(CURDATE(), INTERVAL 40 DAY), 1), (2, 'Hiver', DATE_ADD(CURDATE(), INTERVAL 40 DAY), 2), (3, 'Commencé', DATE_SUB(CURDATE(), INTERVAL 5 DAY), 2)");
+$pdo->exec("ALTER TABLE organisateurs ADD logo_url VARCHAR(200) NULL");
+$pdo->exec("INSERT INTO camps (id, nom, date_debut, organisateur_id, token, type) VALUES (1, 'Été', DATE_ADD(CURDATE(), INTERVAL 40 DAY), 1, 't1', 'Colonie'), (2, 'Hiver', DATE_ADD(CURDATE(), INTERVAL 40 DAY), 2, 't2', 'Ski'), (3, 'Commencé', DATE_SUB(CURDATE(), INTERVAL 5 DAY), 2, 't3', 'Colonie')");
 
 // ---------------------------------------------------------------- 2. journal : rattrapage des paiements existants, écriture en direct, idempotence
 $pdo->exec("CREATE TABLE fin_paiements (id INT AUTO_INCREMENT PRIMARY KEY, inscription_id INT NOT NULL, organisateur_id INT NOT NULL, camp_id INT NOT NULL, payment_intent VARCHAR(80) NULL, session_id VARCHAR(80) NULL,
@@ -77,6 +80,8 @@ stripe_webhook_after($pdo, $r[2]);
 $fee = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'applicationFees.createRefund'));
 ok($fee && $fee[0][1][0] === 'fee_pi_E' && $fee[0][1][1]['amount'] === 32 && $fee[0][1][2]['idempotency_key'] === 'moncamp-fee-pi_E', 'commission prélevée en trop (0,32 EUR) rendue à l\'organisme, clé d\'idempotence');
 ok(stripe_webhook_process($pdo, $paid)[1] === 'deja traite', 'webhook rejoué : ignoré');
+$paid->id = 'evt_1bis'; // même paiement notifié deux fois (double clic, async_payment_succeeded...) sous un autre identifiant d'événement
+ok(stripe_webhook_process($pdo, $paid)[0] === 200 && (int)$pdo->query("SELECT COUNT(*) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn() === 2, 'même paiement reçu deux fois : une ligne par inscription');
 ok((int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference LIKE 'pay:pi_E:%'")->fetchColumn() === 4, 'webhook rejoué : journal inchangé');
 $pf = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn();
 
