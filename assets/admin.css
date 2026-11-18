@@ -187,7 +187,7 @@ textarea.in { resize:vertical; } .sel { width:auto; min-width:190px; }
   body.nav-open { overflow:hidden; }
   .main { margin-left:0; }
   .menu { display:inline-grid; margin:0; flex:none; }
-  .sitenav .hide-m { display:none; }
+  .sitenav > a.hide-m { display:none; }
   .crumbs { display:none; }
   .gsearch { width:auto; flex:1; } .gsearch > kbd { display:none; }
   .subbar { padding:8px 14px; } .content { padding:16px 14px 56px; }
@@ -261,3 +261,4 @@ a.sort { color:inherit; } a.sort.on { color:var(--ink); }
 .tbl tr.dim td { color:#9aa3ab; } .tbl tr.tot td { font-weight:800; background:#fbfbfc; border-top:2px solid var(--line); }
 @media (max-width: 1024px) { .tsearch { width:100%; } .exp { margin-left:0; } }
 .diff pre { background:var(--soft); border-radius:8px; padding:8px; margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; }
+.spr { position:absolute; width:0; height:0; overflow:hidden; } .sitebar .logo { font-weight:800; font-size:19px; letter-spacing:-.02em; color:var(--ink); white-space:nowrap; } .sitebar .logo span { color:var(--accent); }

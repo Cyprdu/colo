@@ -134,6 +134,7 @@
     if (k) { e.preventDefault(); k.closest('details') && k.closest('details').removeAttribute('open'); open($('#m-keys')); }
   });
 
+  var tabOn = $('.tabs .tab.on'); if (tabOn) tabOn.parentNode.scrollLeft = tabOn.offsetLeft - 16;
   var gs = $('#gs'), gres = $('#gres'), gsT, gsSeq = 0, gsIdx = -1;
   function gsLinks() { return gres ? [].slice.call(gres.querySelectorAll('a')) : []; }
   function gsMark(i) { var l = gsLinks(); l.forEach(function (a) { a.classList.remove('on'); }); if (l[i]) { l[i].classList.add('on'); l[i].scrollIntoView({ block: 'nearest' }); } gsIdx = i; }

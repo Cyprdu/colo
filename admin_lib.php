@@ -297,7 +297,7 @@ function adm_sprite(): string {
      'send'=>'<path d="M21 3L10 14M21 3l-7 18-4-7-7-4 18-7z"/>',
      'dot3'=>'<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
     ];
-    $o = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>';
+    $o = '<svg class="spr" width="0" height="0" aria-hidden="true"><defs>';
     foreach ($p as $k => $v) $o .= '<symbol id="i-' . $k . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round">' . $v . '</symbol>';
     return $o . '</defs></svg>';
 }
@@ -357,7 +357,7 @@ function adm_site_bar(array $todo, int $unread): string {
     $me = $_SESSION['user'] ?? [];
     $ini = mb_strtoupper(mb_substr((string)($me['prenom'] ?? 'A'), 0, 1));
     $total = array_sum($todo);
-    $o = '<header class="sitebar"><a class="logo" href="index.php" aria-label="moncamp.fr, accueil">' . mc_logo('dark', true, 28) . '</a>'
+    $o = '<header class="sitebar"><a class="logo" href="index.php" aria-label="moncamp.fr, accueil">moncamp<span>.fr</span></a>'
        . '<nav class="sitenav" aria-label="Site"><a class="hide-m" href="index.php">Accueil</a>';
     if (!empty($me['is_directeur'])) $o .= '<a class="hide-m" href="organisateurs.php">Organisateur</a>';
     $o .= '<a class="hide-m" href="reservations.php">Réservations</a>'
