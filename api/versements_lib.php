@@ -159,15 +159,20 @@ function fin_paiement_charge(PDO $pdo, int $paiementId): ?string {
 
 /** Libellé lisible d'un transfert (séjours, familles, nombre d'inscriptions) pour le Stripe de l'organisme */
 function fin_transfer_libelle(PDO $pdo, int $tid): array {
-    $st = $pdo->prepare("SELECT c.nom camp, COALESCE(NULLIF(e.nom, ''), 'Équipe') fam, p.inscription_id FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id
-                         JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id WHERE l.transfert_id = ? ORDER BY c.nom, fam");
+    $st = $pdo->prepare("SELECT c.nom camp, e.prenom, e.nom, p.brut_cents, p.commission_cents, p.net_cents FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id
+                         JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id WHERE l.transfert_id = ? ORDER BY c.nom, e.nom");
     $st->execute([$tid]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-    $par = []; foreach ($rows as $r) $par[html_entity_decode((string)$r['camp'], ENT_QUOTES, 'UTF-8')][] = html_entity_decode((string)$r['fam'], ENT_QUOTES, 'UTF-8');
-    $txt = implode(' ; ', array_map(fn($c, $f) => $c . ' (' . implode(', ', array_unique($f)) . ')', array_keys($par), $par));
+    $d = fn($v) => html_entity_decode((string)$v, ENT_QUOTES, 'UTF-8');
+    $eur = fn($c) => number_format(((int)$c) / 100, 2, ',', ' ') . ' €';
+    // Une ligne par inscription : « Séjour · Prénom NOM · 125,00 € − 3,43 € = 121,57 € »
+    $lignes = array_map(fn($r) => $d($r['camp']) . ' · ' . (trim($d($r['prenom']) . ' ' . mb_strtoupper($d($r['nom']))) ?: 'Équipe') . ' · '
+        . $eur($r['brut_cents']) . ' − ' . $eur($r['commission_cents']) . ' = ' . $eur($r['net_cents']), $rows);
     $n = count($rows);
-    return [mb_substr('moncamp.fr · ' . ($n ? $n . ' inscription' . ($n > 1 ? 's' : '') . ' payée' . ($n > 1 ? 's' : '') . ' avant l\'activation · ' . $txt : 'reversement des inscriptions'), 0, 350),
-            ['source' => 'moncamp.fr', 'type' => 'paiements_avant_activation', 'inscriptions' => (string)$n, 'sejours' => mb_substr(implode(', ', array_keys($par)), 0, 450)]];
+    $meta = ['source' => 'moncamp.fr', 'type' => 'paiements_avant_activation', 'inscriptions' => (string)$n];
+    foreach (array_slice($lignes, 0, 40) as $k => $l) $meta['inscription_' . ($k + 1)] = mb_substr($l, 0, 480);
+    $titre = 'moncamp.fr · ' . ($n ? $n . ' inscription' . ($n > 1 ? 's' : '') . ' payée' . ($n > 1 ? 's' : '') . ' avant l\'activation' : 'reversement des inscriptions');
+    return [mb_substr($titre . ($lignes ? ' : ' . implode(' ; ', $lignes) : ''), 0, 350), $meta];
 }
 
 function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = null, bool $respectDay = false, bool $force = false): array {   // $force : test administrateur, ignore délai de sécurité et réserve
