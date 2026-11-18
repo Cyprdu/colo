@@ -110,12 +110,32 @@ function compta_sync_payouts(PDO $pdo): int {
  * Rapprochement : ce que moncamp.fr DOIT avoir chez Stripe d'après la base, comparé au solde Stripe + virements déjà faits vers la banque.
  * $stripe = ['disponible' => cents, 'en_attente' => cents] ou null si Stripe est injoignable.
  */
+/**
+ * Encart « Vos commissions » : solde Stripe de la plateforme (disponible / à venir, EUR) et virements vers le compte bancaire de moncamp.fr
+ * (dernier arrivé, prochain annoncé). Lecture seule, aucune règle de commission. null si Stripe est injoignable.
+ */
+function compta_plateforme_solde(): ?array {
+    try {
+        $s = fin_stripe();
+        $b = $s->balance->retrieve();
+        $eur = function ($l) { $t = 0; foreach ($l ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $t += (int)$x->amount; return $t; };
+        $r = ['disponible' => $eur($b->available ?? []), 'a_venir' => $eur($b->pending ?? []), 'dernier' => null, 'prochain' => null];
+        foreach ($s->payouts->all(['limit' => 20])->data as $po) {
+            if (strtolower((string)$po->currency) !== 'eur') continue;
+            $p = ['m' => (int)$po->amount, 'arrivee' => $po->arrival_date ? date('Y-m-d', (int)$po->arrival_date) : null, 'statut' => (string)$po->status];
+            if ($po->status === 'paid' && !$r['dernier']) $r['dernier'] = $p;
+            if (in_array($po->status, ['pending', 'in_transit'], true) && (!$r['prochain'] || $p['arrivee'] < $r['prochain']['arrivee'])) $r['prochain'] = $p;
+        }
+        return $r;
+    } catch (Throwable $e) { error_log('compta_plateforme_solde: ' . $e->getMessage()); return null; }
+}
+
 function compta_reconcile(PDO $pdo, ?array $stripe): array {
     $a = $pdo->query("SELECT COALESCE(SUM(brut_cents - rembourse_cents), 0) ca, COALESCE(SUM(frais_stripe_cents), 0) frais, COALESCE(SUM(frais_litige_cents), 0) litige,
                 COALESCE(SUM(frais_stripe_cents IS NULL), 0) inconnus,
                 COALESCE(SUM(CASE WHEN statut IN ('attente','bloque','litige','en_cours') THEN GREATEST(0, net_cents - net_rembourse_cents - verse_cents) END), 0) du
             FROM fin_paiements")->fetch(PDO::FETCH_ASSOC);
-    $transferts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents - reverse_cents), 0) FROM fin_transferts WHERE statut = 'envoye'")->fetchColumn(); // net des reversements
+    $transferts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents - reverse_cents), 0) FROM fin_transferts WHERE statut = 'envoye' AND type <> 'payout'")->fetchColumn(); // net des reversements ; les payouts des comptes connectés ne sortent pas de notre solde
     $points = 0;
     try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid','in_transit','pending')")->fetchColumn();

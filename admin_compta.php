@@ -124,7 +124,16 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
 </form>
 <?php endif; ?>
 
-<?php if ($v === 'synthese'): ?>
+<?php if ($v === 'synthese'): $ps = compta_plateforme_solde(); ?>
+<section class="card"><h2 class="sec"><?= ic('bank') ?> Vos commissions <span class="muted small">· solde Stripe de moncamp.fr</span></h2>
+  <?php if ($ps): ?>
+  <div class="kv"><span>Disponible (prêt à être viré sur votre banque)</span><b><?= $e($ps['disponible']) ?></b></div>
+  <div class="kv"><span>À venir (paiements récents en cours de disponibilité)</span><b><?= $e($ps['a_venir']) ?></b></div>
+  <div class="kv"><span>Dernier virement vers votre banque</span><b><?= $ps['dernier'] ? $e($ps['dernier']['m']) . ' · arrivé le ' . h(date('d/m/Y', strtotime($ps['dernier']['arrivee']))) : '–' ?></b></div>
+  <div class="kv"><span>Prochain virement</span><b><?= $ps['prochain'] ? $e($ps['prochain']['m']) . ' · arrivée prévue le ' . h(date('d/m/Y', strtotime($ps['prochain']['arrivee']))) : 'aucun annoncé' ?></b></div>
+  <?php else: ?><p class="muted">Solde Stripe indisponible (Stripe injoignable ou clé non configurée).</p><?php endif; ?>
+  <p class="muted small"><a class="underline" href="https://dashboard.stripe.com/balance/overview" target="_blank" rel="noopener">Ouvrir la page Soldes de Stripe ↗</a> · le solde peut aussi contenir l'argent d'anciens paiements pas encore transférés aux organismes.</p>
+</section>
 <?php if ($sum['frais_inconnus'] > 0): ?>
 <div class="note warn"><?= ic('clock') ?><div><?= $sum['frais_inconnus'] ?> paiement<?= $sum['frais_inconnus'] > 1 ? 's' : '' ?> de la période sans frais Stripe relevés (la marge ci-dessous ne les inclut pas). Le relevé est automatique (webhook + cron) ;
   <form class="inl" method="post" action="admin_compta.php"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="frais"><button class="btn ghost sm" type="submit">relever maintenant</button></form></div></div>
