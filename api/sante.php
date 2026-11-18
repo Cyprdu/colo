@@ -13,6 +13,8 @@
 //    ATTENTION : perdre la clé = perdre les documents chiffrés. Ne jamais la changer sans les ré-encoder.
 //  - Type réel vérifié (finfo), taille limitée, images ré-encodées (métadonnées EXIF supprimées), PDF sans script.
 
+require_once __DIR__ . '/fiche_modele.php';
+
 const SANTE_MAX_DOC = 8 * 1024 * 1024;
 const SANTE_MAGIC = 'CMENC1';
 const SANTE_DIRS = ['sante' => 'carnet_sante_token', 'sanitaire' => 'fiche_sanitaire_token', 'signatures' => 'signature_token', 'photos' => 'photo_token'];
@@ -155,6 +157,7 @@ function fiche_completude(array $e): array {
         ['Médecin traitant', 'sante', $ok('medecin_nom') && $ok('medecin_tel')],
         ["Personne à prévenir en urgence", 'sante', $ok('urgence_nom') && $ok('urgence_tel')],
         ['Taille et poids', 'sante', $ok('taille') && $ok('poids')],
+        ['Questions de santé (allergies, traitement…)', 'sante', !array_filter(array_keys(FICHE_YN), fn($k) => fiche_val($e, $k) === '')],
         ['Accord parental', 'autorisations', !empty($e['accord_parental'])],
         ['Conditions générales acceptées', 'autorisations', !empty($e['cgv_accepte'])],
         ['Fiche sanitaire de liaison', 'documents', $ok('fiche_sanitaire_token')],
