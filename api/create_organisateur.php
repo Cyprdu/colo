@@ -36,8 +36,9 @@ try {
     }
 
     // RÉPONSE PROPRE (SQL style)
+    require_once __DIR__ . '/orga_lib.php';
     sendJson([
-        'id' => $newId,
+        'id' => fin_orga_tok((int)$newId, $pdo), // jeton public, jamais l'id numérique
         'nom' => $input['nom'],
         'email' => $email
     ] + $alias, 201);

@@ -43,7 +43,7 @@ $csrf = fin_csrf();
 <title>Activer mes versements</title>
 <link rel="stylesheet" href="assets/mk.css?v=1">
 <main class="mk-wrap" style="max-width:760px">
-<a href="<?= $orga ? 'dashboard_organisme.php?organisateur_id=' . (int)$orga['id'] : 'public_infos.php' ?>" class="mk-back"><?= mk_icon('back', 16) ?> Retour</a>
+<a href="<?= $orga ? 'dashboard_organisme.php?o=' . $tok : 'public_infos.php' ?>" class="mk-back"><?= mk_icon('back', 16) ?> Retour</a>
 <?php if (!$orga): ?>
     <div class="ds-alert-err"><?= htmlspecialchars($error ?? '') ?></div>
 <?php else: ?>

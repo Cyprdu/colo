@@ -16,7 +16,7 @@ ok(fin_commission_split(2500, 1.0, 0)[0] === 25, 'taux explicite 1 % : 0,25 EUR 
 // Répartition des frais : somme exacte
 ok(array_sum(fin_allocate(63, [1 => 1000, 2 => 1000, 3 => 1000])) === 63, 'répartition de 63 c sur 3 lignes : somme exacte');
 ok(array_sum(fin_allocate(5, [1 => 0, 2 => 0])) === 5, 'répartition avec poids nuls : le reste va à la dernière ligne');
-ok(fin_orga_tok(7) !== fin_orga_tok(8) && strlen(fin_orga_tok(7)) === 24, 'jeton organisme opaque');
+ok(preg_match('/^[A-Za-z0-9]{22}$/', fin_orga_tok_new()) === 1 && fin_orga_tok_new() !== fin_orga_tok_new(), 'jeton organisme : 22 caractères base62 aléatoires');
 // TVA incluse dans un prix TTC : 100 EUR a 20 % -> 16,67 EUR (pas 20), non applicable -> 0
 ok(fin_tva_incluse(10000, 20) === 1667, 'TVA incluse 20 % sur 100 EUR TTC = 16,67 EUR');
 ok(fin_tva_incluse(10000, 5.5) === 521, 'TVA incluse 5,5 % sur 100 EUR TTC = 5,21 EUR');

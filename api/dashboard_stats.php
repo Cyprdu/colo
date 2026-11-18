@@ -1,22 +1,20 @@
 <?php
-// api/dashboard_stats.php?organisateur_id=N[&type=&sejour=&session=&moyen=&du=Y-m-d&au=Y-m-d][&csv=1] : activité d'un organisme pour dashboard_organisme.php.
+// api/dashboard_stats.php?o=<jeton organisme>[&type=&sejour=&session=&moyen=&du=Y-m-d&au=Y-m-d][&csv=1] : activité d'un organisme pour dashboard_organisme.php.
 // Un seul jeu de filtres pilote les cartes, les graphes et la liste des paiements : type de séjour, séjour (jeton de sa session principale), session (jeton),
 // période, moyen de paiement. La cascade « où va l'argent » et les versements (fin_ledger) ne sont PAS filtrés : ils sont calculés par la page.
 // Réservé au propriétaire de l'organisme. Liste des paiements : nom de famille seulement ; csv=1 l'exporte (formules neutralisées).
 require_once 'config.php';
 require_once 'options.php';
 require_once 'compta_lib.php';
+require_once 'orga_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 function ds_fin(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }
 if (empty($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) ds_fin(['error' => 'Accès réservé aux organisateurs.'], 403);
-$orgaId = (int)($_GET['organisateur_id'] ?? 0);
+$orgaId = fin_orga_request($pdo);
 try {
-    $o = $pdo->prepare("SELECT id FROM organisateurs WHERE id = ? AND user_id = ?");
-    $o->execute([$orgaId, (int)$_SESSION['user']['id']]);
-    if (!$o->fetchColumn()) ds_fin(['error' => 'Organisme introuvable.'], 404);
 
     $CANC = "COALESCE(i.statut, '') NOT IN ('Annulé', 'annule', 'Annule')";
     $OK = "i.statut_paiement IN ('PAYE', 'GRATUIT', 'A_REGLER')";

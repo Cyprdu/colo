@@ -1,5 +1,5 @@
 <?php
-// dashboard_organisme.php?organisateur_id=N : tableau de bord d'un organisme. Ordre : compte Stripe, « où va l'argent » (journal fin_ledger, jamais filtré),
+// dashboard_organisme.php?o=<jeton organisme> : tableau de bord d'un organisme. Ordre : compte Stripe, « où va l'argent » (journal fin_ledger, jamais filtré),
 // versements (prévus et passés), activité et liste des paiements (api/dashboard_stats.php, filtres appliqués seulement au clic sur « Appliquer »).
 require_once 'api/config.php';
 require_once 'api/finance_lib.php';
@@ -7,7 +7,8 @@ require_once 'api/marketing_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 
-$orgaId = (int)($_GET['organisateur_id'] ?? 0);
+$orgaId = fin_orga_request($pdo); // propriétaire ou admin, sinon 404 ; ancienne URL numérique : redirection admin
+$orgaTok = fin_orga_tok($orgaId);
 $userId = (int)$_SESSION['user']['id'];
 $error = isset($_GET['error']) ? mb_substr(strip_tags((string)$_GET['error']), 0, 300) : null;
 $success = isset($_GET['success']) ? mb_substr(strip_tags((string)$_GET['success']), 0, 300) : null;
@@ -18,18 +19,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'tva') {
         if (!fin_csrf_ok()) throw new Exception('Session expirée, rechargez la page.');
         $tx = (string)($_POST['tva'] ?? '');
         if (!array_key_exists($tx, fin_tva_taux_permis())) throw new Exception('Taux invalide.');
-        $up = $pdo->prepare("UPDATE organisateurs SET tva_taux = ? WHERE id = ? AND user_id = ?");
-        $up->execute([$tx === '' ? null : $tx, $orgaId, $userId]);
+        $up = $pdo->prepare("UPDATE organisateurs SET tva_taux = ? WHERE id = ?");
+        $up->execute([$tx === '' ? null : $tx, $orgaId]);
         fin_audit($pdo, 'tva_modifiee', 'organisateur', $orgaId, ['taux' => $tx === '' ? 'na' : $tx], 'user:' . $userId);
-        header('Location: dashboard_organisme.php?organisateur_id=' . $orgaId . '&success=' . urlencode('Taux de TVA enregistré.')); exit;
+        header('Location: dashboard_organisme.php?o=' . $orgaTok . '&success=' . urlencode('Taux de TVA enregistré.')); exit;
     } catch (Throwable $e) { $error = $e->getMessage(); }
 }
 $orga = null; $camps = []; $acc = null; $transferts = []; $legacy = []; $tot = null; $prochains = []; $historique = 0; $dette = 0; $detteLignes = [];
 
 try {
     fin_ensure($pdo); mk_ensure($pdo);
-    $st = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ? AND user_id = ?");
-    $st->execute([$orgaId, $userId]);
+    $st = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ?");
+    $st->execute([$orgaId]);
     $orga = $st->fetch(PDO::FETCH_ASSOC);
     if (!$orga) {
         $error = "Organisme introuvable ou vous n'êtes pas autorisé à y accéder.";
@@ -141,7 +142,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
             <a class="ds-btn" href="create_camp.php">Créer un séjour</a>
             <a class="ds-btn ds-btn-light" href="mes_camps.php">Inscrits</a>
             <a class="ds-btn ds-btn-light" href="messagerie.php">Messages</a>
-            <a class="ds-btn ds-btn-light" href="marketing.php?id=<?= $orgaId ?>">Marketing · <?= number_format((int)$orga['solde_points'], 0, ',', ' ') ?> pts</a>
+            <a class="ds-btn ds-btn-light" href="marketing.php?o=<?= $orgaTok ?>">Marketing · <?= number_format((int)$orga['solde_points'], 0, ',', ' ') ?> pts</a>
         </div>
     </div>
     <div class="ds-card" style="margin-top:16px;padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
@@ -149,7 +150,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
             <?= $help($ready ? "Vos paiements arrivent sur votre compte Stripe, puis sur votre banque " . $nJours . " jour" . ($nJours > 1 ? 's' : '') . " après le début de chaque séjour. Stripe vérifie votre identité et garde votre IBAN : moncamp.fr ne les voit pas." : "Pour recevoir l'argent des inscriptions, complétez votre compte chez Stripe (identité, IBAN : 5 minutes). moncamp.fr ne voit ni ne conserve ces données." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
             <?php if (!$ready): ?><a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= fin_orga_tok($orgaId) ?>">Compléter mon compte</a>
-            <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="api/connect_dashboard.php?organisateur_id=<?= $orgaId ?>" target="_blank" rel="noopener">Ouvrir mon espace Stripe</a><?php endif; ?>
+            <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="api/connect_dashboard.php?o=<?= $orgaTok ?>" target="_blank" rel="noopener">Ouvrir mon espace Stripe</a><?php endif; ?>
             <a class="ds-btn ds-btn-light mk-btn-sm" href="annulations_organisme.php?o=<?= fin_orga_tok($orgaId) ?>">Annulations<?= !empty($nbAnnul) ? ' (' . $nbAnnul . ')' : '' ?></a>
             <a class="ds-btn ds-btn-light mk-btn-sm" href="aide_paiements.php">Comprendre mes paiements</a>
         </div>
@@ -179,7 +180,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
     <!-- 3. Versements -->
     <section class="mk-section" id="versements">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Versements<?= $help("Les prochains versements sont des prévisions : une annulation peut les réduire. Chaque versement passé a son justificatif, inscription par inscription.") ?></h2>
-            <?php if ($transferts || $legacy): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="pdf_export_virements_history.php?organisateur_id=<?= $orgaId ?>" target="_blank"><?= mk_icon('doc', 16) ?> PDF</a><?php endif; ?></div>
+            <?php if ($transferts || $legacy): ?><a class="ds-btn ds-btn-light mk-btn-sm" href="pdf_export_virements_history.php?o=<?= $orgaTok ?>" target="_blank"><?= mk_icon('doc', 16) ?> PDF</a><?php endif; ?></div>
         <?php if (!$prochains && !$transferts && !$legacy): ?>
             <p class="db-empty">Aucun versement pour le moment.</p>
         <?php else: ?>
@@ -259,7 +260,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
 <?php if ($orga): ?>
 <script>
 (function () {
-    var NS = 'http://www.w3.org/2000/svg', INK = '#2f3d45', ACC = '#3d6a8e', COLS = ['#2f3d45', '#3d6a8e', '#8aa4b8', '#c9d3db', '#6b7780', '#b9a96b'], ORGA = <?= (int)$orgaId ?>;
+    var NS = 'http://www.w3.org/2000/svg', INK = '#2f3d45', ACC = '#3d6a8e', COLS = ['#2f3d45', '#3d6a8e', '#8aa4b8', '#c9d3db', '#6b7780', '#b9a96b'], ORGA = <?= json_encode($orgaTok) ?>;
     var $ = function (id) { return document.getElementById(id); };
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
     var eur = function (c) { return (c / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); };
@@ -300,7 +301,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
     function fill(id, rows, val) { var el = $(id), all = el.options[0].outerHTML; el.innerHTML = all + rows.map(function (r) { return '<option value="' + esc(r[0]) + '"' + (r[0] === val ? ' selected' : '') + '>' + esc(r[1]) + '</option>'; }).join(''); el.value = val; }
     function sessions(val) { var sj = $('fSejour').value, ss = SESS.filter(function (s) { return !sj || s.s === sj; }); fill('fSession', ss.map(function (s) { return [s.t, (ss.length > 1 || sj ? '' : s.n + ' · ') + s.l]; }), ss.some(function (s) { return s.t === val; }) ? val : ''); }
     function setFields() { Object.keys(IDS).forEach(function (k) { if (k !== 'session') $(IDS[k]).value = F[k]; }); sessions(F.session); }
-    function qs(csv) { var q = new URLSearchParams({ organisateur_id: ORGA }); Object.keys(F).forEach(function (k) { if (F[k]) q.set(k, F[k]); }); if (csv) q.set('csv', '1'); return q; }
+    function qs(csv) { var q = new URLSearchParams({ o: ORGA }); Object.keys(F).forEach(function (k) { if (F[k]) q.set(k, F[k]); }); if (csv) q.set('csv', '1'); return q; }
     function render(d) {
         var f = d.filtres, k = d.kpi;
         if (first) { first = false; DEF = { du: d.periode.du, au: d.periode.au }; F.du = DEF.du; F.au = DEF.au; SESS = f.sessions;

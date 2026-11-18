@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/orga_lib.php';
 // api/finance_lib.php : flux d'argent entre les familles, moncamp.fr et les organismes (Stripe Connect).
 //
 // ARCHITECTURE (depuis 2026-11) : « direct charges » sur les comptes Connect EXPRESS (fin_paiements.mode = 'direct')
@@ -628,20 +629,6 @@ function fin_transfer_legacy(PDO $pdo, int $orgaId, string $acteur): ?int {
     }
 }
 
-
-/** Jeton opaque (HMAC) d'un organisme pour les URLs : aucun identifiant numérique exposé */
-function fin_orga_tok(int $orgaId): string {
-    $k = (defined('STRIPE_SECRET_KEY') ? STRIPE_SECRET_KEY : '') . '|' . (defined('CRON_SECRET') ? CRON_SECRET : '') . '|colomap-orga';
-    return substr(hash_hmac('sha256', 'orga:' . $orgaId, $k), 0, 24);
-}
-/** Retrouve l'organisme d'un jeton parmi ceux de $userId (ou tous si $userId = null, usage administration). Retourne l'id ou 0. */
-function fin_orga_from_tok(PDO $pdo, string $tok, ?int $userId = null): int {
-    if (!preg_match('/^[a-f0-9]{24}$/', $tok)) return 0;
-    if ($userId === null) $ids = $pdo->query("SELECT id FROM organisateurs")->fetchAll(PDO::FETCH_COLUMN);
-    else { $st = $pdo->prepare("SELECT id FROM organisateurs WHERE user_id = ?"); $st->execute([$userId]); $ids = $st->fetchAll(PDO::FETCH_COLUMN); }
-    foreach ($ids as $id) if (hash_equals(fin_orga_tok((int)$id), $tok)) return (int)$id;
-    return 0;
-}
 
 /** Taux de TVA acceptés pour un organisme (clé '' = non applicable) */
 function fin_tva_taux_permis(): array { return ['' => 'Non applicable (pas de TVA)', '5.5' => '5,5 %', '10' => '10 %', '20' => '20 %']; }

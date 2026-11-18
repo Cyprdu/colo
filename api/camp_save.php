@@ -20,8 +20,9 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     $day = function ($v) { $d = DateTime::createFromFormat('Y-m-d', (string)$v); return ($d && $d->format('Y-m-d') === $v) ? $v : null; };
 
     // L'organisme doit appartenir au directeur
+    require_once __DIR__ . '/orga_lib.php';
     $st = $pdo->prepare("SELECT id, nom FROM organisateurs WHERE id = ? AND user_id = ?");
-    $st->execute([(int)($in['organisateur_id'] ?? 0), $uid]);
+    $st->execute([fin_orga_from_tok($pdo, (string)($in['organisateur_id'] ?? ''), $uid), $uid]); // jeton public de l'organisme
     $orga = $st->fetch(PDO::FETCH_ASSOC);
     $orgaId = (int)($orga['id'] ?? 0);
     if (!$orgaId) return [[], [], 'Choisissez un organisme.', null];

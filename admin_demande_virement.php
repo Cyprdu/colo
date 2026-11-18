@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if (!fin_csrf_ok()) throw new Exception('Session expirée, rechargez la page.');
         $action = (string)($_POST['action'] ?? '');
-        $orgaId = (int)($_POST['organisateur_id'] ?? 0);
+        $orgaId = fin_orga_from_tok($pdo, (string)($_POST['o'] ?? '')); // jeton public (admin : tous les organismes)
         if ($action === 'release_now') {
             $r = fin_release_due($pdo, $acteur);
             $message = $r['transferts'] . ' transfert(s) envoyé(s) (' . fin_eur($r['montant_cents']) . '), ' . $r['reportes'] . ' reporté(s), ' . $r['erreurs'] . ' erreur(s).';
@@ -69,7 +69,7 @@ require_once 'partials/header.php';
 require_once 'partials/mk_icons.php';
 $csrf = fin_csrf();
 function postbtn($label, $action, $orgaId, $csrf, $confirm = '', $light = true) {
-    return '<form method="post" style="display:inline"' . ($confirm ? ' data-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"' : '') . '><input type="hidden" name="csrf" value="' . $csrf . '"><input type="hidden" name="action" value="' . $action . '"><input type="hidden" name="organisateur_id" value="' . (int)$orgaId . '"><button class="ds-btn ' . ($light ? 'ds-btn-light ' : '') . 'mk-btn-sm" type="submit">' . $label . '</button></form>';
+    return '<form method="post" style="display:inline"' . ($confirm ? ' data-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"' : '') . '><input type="hidden" name="csrf" value="' . $csrf . '"><input type="hidden" name="action" value="' . $action . '"><input type="hidden" name="o" value="' . ($orgaId ? htmlspecialchars(fin_orga_tok((int)$orgaId)) : '') . '"><button class="ds-btn ' . ($light ? 'ds-btn-light ' : '') . 'mk-btn-sm" type="submit">' . $label . '</button></form>';
 }
 ?>
 <title>Admin - Versements aux organismes</title>

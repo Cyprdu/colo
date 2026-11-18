@@ -8,17 +8,18 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 
 $userId = (int)$_SESSION['user']['id'];
-$orgaId = (int)($_GET['id'] ?? 0);
+if (isset($_GET['id'])) fin_orga_request($pdo, 'id'); // ancienne URL numérique : 404 (admin : redirection vers le jeton)
+$orgaId = !empty($_GET['o']) ? fin_orga_from_tok($pdo, (string)$_GET['o'], $userId) : 0;
 mk_ensure($pdo); fin_ensure($pdo);
 
 $st = $pdo->prepare("SELECT id, nom, solde_points, portefeuille, logo_url FROM organisateurs WHERE user_id = ? ORDER BY nom ASC");
 $st->execute([$userId]);
 $orgas = $st->fetchAll(PDO::FETCH_ASSOC);
-if (!$orgaId && count($orgas) === 1) { header('Location: marketing.php?id=' . (int)$orgas[0]['id']); exit; }
+if (!$orgaId && count($orgas) === 1) { header('Location: marketing.php?o=' . fin_orga_tok((int)$orgas[0]['id'])); exit; }
 
 $orga = null;
 foreach ($orgas as $o) if ((int)$o['id'] === $orgaId) $orga = $o;
-if ($orgaId && !$orga) { header('Location: marketing.php'); exit; }
+if ((!empty($_GET['o']) || $orgaId) && !$orga) { header('Location: marketing.php'); exit; }
 
 $camps = []; $tot = ['impressions' => 0, 'clics' => 0, 'inscriptions' => 0, 'points' => 0]; $avgPrice = 0.0; $walletCents = 0;
 if ($orga) {
@@ -67,7 +68,7 @@ require_once 'partials/mk_icons.php';
         <h2>Pour quel organisme ?</h2>
         <div class="mk-grid mk-g2" style="margin-top:16px">
             <?php foreach ($orgas as $o): ?>
-                <a class="ds-tile" href="marketing.php?id=<?= (int)$o['id'] ?>">
+                <a class="ds-tile" href="marketing.php?o=<?= htmlspecialchars(fin_orga_tok((int)$o['id'])) ?>">
                     <span class="ds-tile-ico"><?php if (!empty($o['logo_url'])): ?><img src="<?= htmlspecialchars($o['logo_url']) ?>" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:14px"><?php else: echo mk_icon('users'); endif; ?></span>
                     <span style="flex:1;min-width:0"><b class="block text-[#26343b]" style="overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($o['nom']) ?></b><span class="mk-note"><?= number_format((int)$o['solde_points'], 0, ',', ' ') ?> points</span></span>
                     <?= mk_icon('arrow', 18) ?>
@@ -118,7 +119,7 @@ require_once 'partials/mk_icons.php';
     <section class="mk-section" id="sejours">
         <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap">
             <div><h2>Vos séjours</h2><p class="lead">Choisissez le séjour à mettre en avant.</p></div>
-            <a class="ds-btn ds-btn-light mk-btn-sm" href="marketing_dashboard.php?id=<?= (int)$orga['id'] ?>"><?= mk_icon('chart', 16) ?> Statistiques détaillées</a>
+            <a class="ds-btn ds-btn-light mk-btn-sm" href="marketing_dashboard.php?o=<?= htmlspecialchars(fin_orga_tok((int)$orga['id'])) ?>"><?= mk_icon('chart', 16) ?> Statistiques détaillées</a>
         </div>
         <?php if (!$camps): ?>
             <p class="mk-note" style="margin-top:14px">Aucun séjour pour le moment. <a class="underline" href="create_camp.php">Publier un séjour</a></p>

@@ -62,7 +62,7 @@ try {
     
     $stmt->execute();
     $result = $stmt->get_result();
-    $camps = $result->fetch_all(MYSQLI_ASSOC);
+    $camps = array_map(function ($c) { unset($c['organisateur_id']); return $c; }, $result->fetch_all(MYSQLI_ASSOC));
 
     echo json_encode(['success' => true, 'camps' => $camps]);
 

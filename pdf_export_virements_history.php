@@ -1,5 +1,5 @@
 <?php
-// pdf_export_virements_history.php?organisateur_id=N : historique PDF des versements d'un organisme.
+// pdf_export_virements_history.php?o=<jeton organisme> : historique PDF des versements d'un organisme.
 require_once 'api/config.php';
 require_once 'api/finance_lib.php';
 require_once 'libs/fpdf/fpdf.php';
@@ -7,11 +7,11 @@ require_once 'libs/fpdf/fpdf.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_directeur'])) { http_response_code(403); exit; }
 
-$orgaId = (int)($_GET['organisateur_id'] ?? 0);
+$orgaId = fin_orga_request($pdo);
 try {
     fin_ensure($pdo);
-    $st = $pdo->prepare("SELECT nom FROM organisateurs WHERE id = ? AND user_id = ?");
-    $st->execute([$orgaId, $_SESSION['user']['id']]);
+    $st = $pdo->prepare("SELECT nom FROM organisateurs WHERE id = ?");
+    $st->execute([$orgaId]);
     $orga = $st->fetch(PDO::FETCH_ASSOC);
     if (!$orga) { http_response_code(404); exit('Organisme introuvable.'); }
     $st = $pdo->prepare("SELECT created_at AS d, montant_cents AS cents, statut, token, nb_paiements FROM fin_transferts WHERE organisateur_id = ? AND statut = 'envoye' ORDER BY created_at DESC");
