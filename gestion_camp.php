@@ -1,5 +1,6 @@
 <?php
-// gestion_camp.php?t=<jeton d'une session> : page de gestion d'un séjour (aperçu des sessions, inscrits enfants et animateurs, liens, équipe, actions).
+// gestion_camp.php?t=<jeton d'une session> : tableau de bord d'un séjour (aperçu, inscrits, effectifs, paiements, dossiers, santé, urgences, messages, quotas, liens, équipe).
+// Exports : api/gestion_export.php (CSV, PDF) ; relances et messages groupés : api/gestion_actions.php.
 // Réservée au propriétaire de l'organisme et à l'administrateur : les données viennent de api/gestion_donnees.php, qui vérifie l'accès.
 require_once 'api/config.php';
 require_once 'api/finance_lib.php';
@@ -88,17 +89,31 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 const IC = {
     home: '<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/>', users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.2a3 3 0 010 5.6M18 14.3c1.8.8 3 2.6 3 4.7"/>',
     link: '<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>', whistle: '<circle cx="9" cy="14" r="5"/><path d="M13 11l8-4v4l-5 2M9 12v2"/>',
-    more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
+    more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', euro: '<path d="M17 6.5A7 7 0 007 12a7 7 0 0010 5.5M4 10h9M4 14h9"/>', file: '<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h4"/>',
+    heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z"/>', phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', gauge: '<path d="M4 18a8 8 0 1116 0M12 18l4-6"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
 const HELP = {
     sessions: "Chaque session est une édition du séjour avec ses propres dates, âges, places et tarifs. Les familles les voient sur une seule page. Le bouton « Modifier » ouvre le formulaire, avec un onglet par session.",
     attente: "Réservations faites mais pas encore payées : la place est gardée jusqu'à la date limite que vous avez réglée, puis libérée automatiquement.",
     lienAnim: "Ce lien mène à la page du séjour avec le tarif « Animateur ». Selon vos réglages, il est privé (à envoyer à votre équipe) ou affiché sur la page publique.",
-    visible: "Désactivée, la session n'apparaît plus dans la recherche : elle reste accessible par son lien."
+    visible: "Désactivée, la session n'apparaît plus dans la recherche : elle reste accessible par son lien.",
+    inscrits: "Cliquez sur une ligne pour un aperçu rapide, ou sur « Dossier complet » pour la fiche entière. Les exports suivent la session choisie.",
+    effectifs: "Nombre d'inscrits par session, répartition filles / garçons et par âge (âge actuel). Le taux d'encadrement compte les animateurs inscrits via moncamp.fr.",
+    paiements: "Montants réglés par les familles et l'équipe (avant commission). « À encaisser » : prix restant dû, y compris les règlements à recevoir directement (chèque, espèces…).",
+    dossiers: "Fiches auxquelles il manque une information demandée par votre séjour ou par la fiche moncamp.fr. La relance envoie un e-mail avec un lien direct vers la fiche.",
+    sante: "Enfants dont les parents ont signalé une allergie, un régime, un traitement ou un problème de santé. Chaque export est enregistré dans le journal d'accès aux données de santé.",
+    urgences: "Responsables légaux, personne à prévenir et médecin traitant. À imprimer pour le dossier du séjour.",
+    messages: "E-mail envoyé à chaque famille inscrite (une fois par adresse). Les familles vous répondent par la messagerie moncamp.fr. Limite : 5 envois par heure.",
+    quotas: "Places prévues par session, inscriptions qui les occupent et réservations en attente de paiement (place gardée jusqu'à la date limite, puis libérée)."
 };
 let D = null, I = null, tab = 'apercu', filt = { type: 'enfants', session: '', statut: 'all', q: '' };
-const TABS = [['apercu', 'Aperçu', 'home'], ['inscrits', 'Inscrits', 'users'], ['liens', 'Liens et partage', 'link'], ['equipe', 'Équipe', 'whistle'], ['plus', 'Plus', 'more']];
+const TABS = [['apercu', 'Aperçu', 'home'], ['inscrits', 'Inscrits', 'users'], ['effectifs', 'Effectifs', 'chart'], ['paiements', 'Paiements', 'euro'], ['dossiers', 'Dossiers incomplets', 'file'],
+    ['sante', 'Allergies et régimes', 'heart'], ['urgences', "Contacts d'urgence", 'phone'], ['messages', 'Messages aux familles', 'mail'], ['quotas', "Quotas et attente", 'gauge'],
+    ['liens', 'Liens et partage', 'link'], ['equipe', 'Équipe', 'whistle'], ['plus', 'Plus', 'more']];
+const NEED_I = ['inscrits', 'effectifs', 'paiements', 'dossiers', 'sante', 'urgences', 'messages', 'quotas'];
 const help = k => `<button type="button" class="gm-help" data-help="${k}" aria-label="Aide">?</button>`;
 
 async function get(a) {
@@ -111,8 +126,8 @@ function drawTabs() {
 }
 async function go(k) {
     tab = k; drawTabs();
-    if (k === 'inscrits' && !I) { $('panel').innerHTML = '<p class="ds-lead py-10">Chargement…</p>'; try { I = await get('inscrits'); } catch (e) { $('panel').innerHTML = `<p class="ds-alert-err">${esc(ColoUI.friendly(e))}</p>`; return; } }
-    $('panel').innerHTML = ({ apercu, inscrits, liens, equipe, plus })[k]();
+    if (NEED_I.includes(k) && !I) { $('panel').innerHTML = '<p class="ds-lead py-10">Chargement…</p>'; try { I = await get('inscrits'); } catch (e) { $('panel').innerHTML = `<p class="ds-alert-err">${esc(ColoUI.friendly(e))}</p>`; return; } }
+    $('panel').innerHTML = ({ apercu, inscrits, effectifs, paiements, dossiers, sante, urgences, messages, quotas, liens, equipe, plus })[k]();
     if (k === 'inscrits') drawList();
     history.replaceState(null, '', '#' + k);
 }
@@ -158,13 +173,12 @@ function row(s) {
 
 // ---------------------------------------------------------------- Inscrits (enfants et animateurs)
 function inscrits() {
-    const opt = Object.entries(I.sessions).map(([t, l]) => `<option value="${t}" ${filt.session === t ? 'selected' : ''}>${esc(l)}</option>`).join('');
     return `<div class="ds-card overflow-hidden"><div class="p-5 border-b border-[#e5e7eb] flex flex-wrap items-center gap-3">
       <div class="flex gap-2" role="group" aria-label="Type d'inscrits"><button type="button" class="ds-chip" data-type="enfants" aria-pressed="${filt.type === 'enfants'}">Enfants (${I.enfants.length})</button><button type="button" class="ds-chip" data-type="animateurs" aria-pressed="${filt.type === 'animateurs'}">Animateurs (${I.animateurs.length})</button></div>
-      <select id="fSess" class="ds-select !w-auto !py-2" aria-label="Session"><option value="">Toutes les sessions</option>${opt}</select>
+      ${sessSel()}
       <select id="fStat" class="ds-select !w-auto !py-2 ${filt.type === 'enfants' ? '' : 'hidden'}" aria-label="Statut"><option value="all">Tous les statuts</option><option value="paid" ${filt.statut === 'paid' ? 'selected' : ''}>Payés</option><option value="wait" ${filt.statut === 'wait' ? 'selected' : ''}>En attente de paiement</option></select>
       <input id="fQ" type="search" class="ds-input !w-48 !py-2" placeholder="Rechercher" aria-label="Rechercher" value="${esc(filt.q)}">
-      <button type="button" class="ds-btn ds-btn-light ds-btn-sm ml-auto" id="csv">Exporter en CSV</button></div>
+      <span class="ml-auto flex flex-wrap gap-2">${exb('liste', 'PDF de la liste')}${exb('appel', "Liste d'appel")}${exb('enfants', 'CSV enfants')}${exb('animateurs', 'CSV animateurs')}${exb('tous', 'CSV tout')}${help('inscrits')}</span></div>
       <p id="listCount" class="px-5 pt-3 text-xs font-bold text-[#6b7780]"></p><div id="list"></div></div>`;
 }
 function stEnfant(i) {
@@ -187,19 +201,20 @@ function drawList() {
     const td = (h, c = '') => `<td class="px-4 py-3 align-middle ${c}">${h}</td>`;
     const open = (k, v, l) => `data-open="${esc(k)}:${esc(v)}" tabindex="0" role="button" aria-label="Ouvrir le dossier de ${esc(l)}"`;
     if (filt.type === 'enfants') {
-        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Enfant')}${th('Âge')}${th('Parent', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(i => {
-            const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].some(Boolean), m = moyen(i);
+        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Enfant')}${th('Âge')}${th('Parent', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}${th('')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(i => {
+            const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].some(x => !aucun(x)), m = moyen(i);
             return `<tr class="gm-tr ${i.expire ? 'opacity-60' : ''}" ${open('r', i.reservation_token, i.prenom + ' ' + i.nom)}>
-              ${td(`<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span>${sante ? ` <span class="inline-block align-middle text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#f8f5ea] text-[#5b4a1c] border border-[#ebe3c8]" title="À consulter dans le dossier : ${i.allergies ? 'allergies' : 'informations de santé'} renseignées par les parents">${i.allergies ? 'Allergie' : 'Santé'}</span>` : ''}`)}
+              ${td(`<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span>${sante ? ` <span class="inline-block align-middle text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#f8f5ea] text-[#5b4a1c] border border-[#ebe3c8]" title="À consulter dans le dossier : ${!aucun(i.allergies) ? 'allergies' : 'informations de santé'} renseignées par les parents">${!aucun(i.allergies) ? 'Allergie' : 'Santé'}</span>` : ''}`)}
               ${td(a !== null ? a + ' ans' : '—', 'whitespace-nowrap')}
               ${td(`<span class="block truncate max-w-[200px]">${esc(i.parent_prenom)} ${esc(i.parent_nom_famille)}</span>`, 'hidden md:table-cell')}
               ${td(`<span class="block text-xs text-[#6b7780] max-w-[170px]">${esc(I.sessions[i.session_token] || '')}</span>`, 'hidden lg:table-cell')}
               ${td(esc(i.tarif_nom || '—'), 'hidden lg:table-cell')}
               ${td(`${esc(m || '—')}${i.montant_paye > 0 ? `<span class="block text-xs text-[#6b7780]">${eur(i.montant_paye)}</span>` : ''}`)}
-              ${td(`<span class="flex items-center gap-3 flex-wrap">${pill(st[0].split(' · ')[0], st[1])}${i.statut_paiement === 'A_REGLER' ? `<button type="button" class="text-xs font-bold text-[#3d6a8e] underline hover:text-[#26343b]" data-recu="${esc(i.reservation_token)}">Marquer reçu</button>` : ''}</span>`)}</tr>`;
+              ${td(`<span class="flex items-center gap-3 flex-wrap">${pill(st[0].split(' · ')[0], st[1])}${i.statut_paiement === 'A_REGLER' ? `<button type="button" class="text-xs font-bold text-[#3d6a8e] underline hover:text-[#26343b]" data-recu="${esc(i.reservation_token)}">Marquer reçu</button>` : ''}</span>`)}
+              ${td(dosLien(i), 'text-right')}</tr>`;
         }).join('')}</tbody></table></div>`;
     } else {
-        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Animateur')}${th('Âge')}${th('Contact', 'hidden md:table-cell')}${th('BAFA', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(a => {
+        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Animateur')}${th('Âge')}${th('Contact', 'hidden md:table-cell')}${th('BAFA', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}${th('')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(a => {
             const [s, p] = stAnim(a);
             return `<tr class="gm-tr" ${open('a', a.token, a.prenom + ' ' + a.nom)}>
               ${td(`<span class="font-bold text-[#26343b]">${esc(a.prenom)} ${esc(a.nom)}</span>`)}
@@ -208,7 +223,7 @@ function drawList() {
               ${td(esc(a.bafa_statut || 'aucun'), 'hidden md:table-cell')}
               ${td(`<span class="block text-xs text-[#6b7780] max-w-[170px]">${esc(I.sessions[a.session_token] || '')}</span>`, 'hidden lg:table-cell')}
               ${td(esc(a.tarif_nom || '—'), 'hidden lg:table-cell')}
-              ${td(esc(p))}${td(pill(s, 'bg-[#eef2f4] text-[#26343b]'))}</tr>`;
+              ${td(esc(p))}${td(pill(s, 'bg-[#eef2f4] text-[#26343b]'))}${td(`<a class="ds-btn ds-btn-light ds-btn-sm whitespace-nowrap" target="_blank" rel="noopener" href="api/dossier_inscrit.php?a=${encodeURIComponent(a.token)}&format=pdf">Dossier complet</a>`, 'text-right')}</tr>`;
         }).join('')}</tbody></table></div>`;
     }
 }
@@ -224,20 +239,99 @@ async function openDossier(kind, tok) {
     } catch (e) { $('dosBody').innerHTML = `<p class="ds-alert-err">${esc(ColoUI.friendly(e))}</p>`; }
 }
 function closeDossier() { $('dosDrawer').classList.remove('open'); $('dosScrim').classList.remove('open'); }
-function csvCell(v) { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
-function exportCsv() {
-    const L = filtered(); if (!L.length) { ColoUI.alert('Aucun inscrit à exporter pour ce filtre.'); return; }
-    let head, rows;
-    if (filt.type === 'enfants') {
-        head = ['Session', 'Date', 'Prénom enfant', 'Nom enfant', 'Sexe', 'Naissance', 'Infos santé', 'Allergies', 'Régime', 'Parent', 'Email', 'Téléphone', 'Tarif', 'Montant payé', 'Moyen de paiement', 'Statut'];
-        rows = L.map(r => [I.sessions[r.session_token], r.date_inscription, r.prenom, r.nom, r.sexe === 'Femme' ? 'Fille' : 'Garçon', r.date_naissance, r.infos_sante, r.allergies, r.regime_alimentaire, (r.parent_prenom || '') + ' ' + (r.parent_nom_famille || ''), r.parent_email, r.parent_tel, r.tarif_nom, r.montant_paye, moyen(r), stEnfant(r)[0]]);
-    } else {
-        const libs = [...new Set(L.flatMap(a => (a.reponses || []).map(x => x.libelle)))];
-        head = ['Session', 'Inscription', 'Prénom', 'Nom', 'Naissance', 'Email', 'Téléphone', 'BAFA', 'Diplôme', 'Allergies', 'Régime', 'Contact urgence', 'Tel urgence', 'Tarif', 'Prix', 'Payé', 'Statut', 'Paiement', ...libs];
-        rows = L.map(a => [I.sessions[a.session_token], a.created_at, a.prenom, a.nom, a.date_naissance, a.email, a.tel, a.bafa_statut, a.diplome, a.allergies, a.regime, a.urgence_nom, a.urgence_tel, a.tarif_nom, a.prix_final, a.montant_paye, a.statut, a.statut_paiement, ...libs.map(l => ((a.reponses || []).find(x => x.libelle === l) || {}).valeur || '')]);
-    }
-    const csv = '﻿' + [head, ...rows].map(l => l.map(csvCell).join(';')).join('\r\n');
-    const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); el.download = (filt.type === 'enfants' ? 'inscrits-enfants' : 'inscrits-animateurs') + '.csv'; el.click(); URL.revokeObjectURL(el.href);
+// ---------------------------------------------------------------- outils communs aux onglets
+const exb = (q, l) => `<button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-exp="${q}">${l}</button>`;
+const sessSel = () => `<select id="fSess" class="ds-select !w-auto !py-2" aria-label="Session"><option value="">Toutes les sessions</option>${Object.entries(I.sessions).map(([t, l]) => `<option value="${esc(t)}" ${filt.session === t ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+const enf = () => I.enfants.filter(i => !filt.session || i.session_token === filt.session);
+const anims = () => I.animateurs.filter(a => !filt.session || a.session_token === filt.session);
+const aucun = v => !v || /^\s*(aucune?s?|non|rien|n[ée]ant|ras|pas de)\b/i.test(v);
+const nomE = i => `<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span><span class="block text-xs text-[#6b7780]">${esc(I.sessions[i.session_token] || '')}</span>`;
+const dosLien = i => `<a class="ds-btn ds-btn-light ds-btn-sm whitespace-nowrap" href="child_details.php?r=${encodeURIComponent(i.reservation_token)}&t=${encodeURIComponent(i.session_token)}">Dossier complet</a>`;
+const telL = t => t ? `<a class="underline" href="tel:${esc(String(t).replace(/[^0-9+]/g, ''))}">${esc(t)}</a>` : '—';
+function entete(titre, k, outils = '') { return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><h2 class="text-lg font-extrabold text-[#26343b]">${titre}${help(k)}</h2><div class="flex flex-wrap items-center gap-2">${sessSel()}${outils}</div></div>`; }
+function tbl(heads, rows) {
+    return `<div class="ds-card overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-b border-[#e5e7eb]"><tr>${heads.map(h => `<th scope="col" class="px-4 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wider text-[#6b7780] whitespace-nowrap">${h}</th>`).join('')}</tr></thead>
+      <tbody class="divide-y divide-[#f1f3f5]">${rows.length ? rows.map(r => '<tr>' + r.map(c => `<td class="px-4 py-3 align-top">${c ?? ''}</td>`).join('') + '</tr>').join('') : `<tr><td colspan="${heads.length}" class="p-8 text-center text-[#6b7780]">Rien à afficher pour cette sélection.</td></tr>`}</tbody></table></div></div>`;
+}
+const barre = (v, max) => `<div class="h-2 bg-[#f1f3f5] rounded-full overflow-hidden"><div class="h-2 bg-[#2f3d45] rounded-full" style="width:${max ? Math.round(v / max * 100) : 0}%"></div></div>`;
+
+// ---------------------------------------------------------------- Effectifs
+function effectifs() {
+    const S = D.sessions.filter(s => !filt.session || s.token === filt.session), E = enf();
+    const rows = S.map(s => {
+        const L = I.enfants.filter(i => i.session_token === s.token), ages = L.map(i => age(i.date_naissance)).filter(a => a !== null), f = L.filter(i => i.sexe === 'Femme').length;
+        return [esc(s.label), L.length + (s.quota ? ' / ' + s.quota : ''), f, L.length - f, ages.length ? Math.min(...ages) + '–' + Math.max(...ages) + ' ans' : '—',
+            ages.length ? (ages.reduce((a, b) => a + b, 0) / ages.length).toFixed(1).replace('.', ',') + ' ans' : '—', s.animateurs, s.animateurs ? '1 pour ' + Math.ceil(L.length / s.animateurs) : '—'];
+    });
+    const parAge = {}; E.forEach(i => { const a = age(i.date_naissance); if (a !== null) parAge[a] = (parAge[a] || 0) + 1; });
+    const max = Math.max(1, ...Object.values(parAge)), f = E.filter(i => i.sexe === 'Femme').length;
+    return entete('Effectifs', 'effectifs', exb('appel', "Liste d'appel (PDF)")) + tbl(['Session', 'Inscrits', 'Filles', 'Garçons', 'Âges', 'Âge moyen', 'Animateurs', 'Encadrement'], rows) +
+      `<div class="grid md:grid-cols-2 gap-4 mt-4"><div class="ds-card p-5"><p class="ds-eyebrow mb-3">Répartition par âge</p>${Object.keys(parAge).sort((a, b) => a - b).map(a => `<div class="grid grid-cols-[60px_1fr_30px] items-center gap-3 text-sm py-1"><span>${a} ans</span>${barre(parAge[a], max)}<span class="text-right font-bold">${parAge[a]}</span></div>`).join('') || '<p class="text-sm text-[#6b7780]">Aucun inscrit.</p>'}</div>
+       <div class="ds-card p-5"><p class="ds-eyebrow mb-3">Filles / garçons</p><div class="flex h-3 rounded-full overflow-hidden bg-[#f1f3f5]"><div class="bg-[#3d6a8e]" style="width:${E.length ? f / E.length * 100 : 0}%"></div><div class="bg-[#2f3d45]" style="width:${E.length ? (E.length - f) / E.length * 100 : 0}%"></div></div>
+       <p class="text-sm mt-3"><span class="inline-block w-3 h-3 rounded-full bg-[#3d6a8e] align-middle"></span> ${f} fille${f > 1 ? 's' : ''} &nbsp; <span class="inline-block w-3 h-3 rounded-full bg-[#2f3d45] align-middle"></span> ${E.length - f} garçon${E.length - f > 1 ? 's' : ''}</p></div></div>`;
+}
+
+// ---------------------------------------------------------------- Paiements
+function paiements() {
+    const E = enf(), A = anims(), resteA = x => Math.max(0, Number(x.prix_final || 0) - Number(x.montant_paye || 0));
+    const enc = E.reduce((a, i) => a + Number(i.montant_paye || 0), 0) + A.reduce((a, x) => a + Number(x.montant_paye || 0), 0);
+    const du = E.reduce((a, i) => a + Number(i.reste || 0), 0) + A.reduce((a, x) => a + resteA(x), 0);
+    const L = E.filter(i => i.reste > 0), soldes = E.filter(i => !(i.reste > 0)).length;
+    return entete('Paiements', 'paiements') + `<div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-4">${kpi('Encaissé', eur(enc))}${kpi('À encaisser', eur(du))}${kpi('Inscriptions soldées', soldes + ' / ' + E.length)}${kpi('Délais dépassés', E.filter(i => i.expire).length)}</div>` +
+      tbl(['Inscrit', 'Tarif', 'Prix', 'Payé', 'Reste', 'Moyen', 'Statut', ''], [...L.map(i => [nomE(i), esc(i.tarif_nom || '—'), eur(i.prix_final), eur(i.montant_paye), `<b>${eur(i.reste)}</b>`, esc(moyen(i) || '—'), esc(stEnfant(i)[0]),
+          i.statut_paiement === 'A_REGLER' ? `<button type="button" class="text-xs font-bold text-[#3d6a8e] underline" data-recu="${esc(i.reservation_token)}">Marquer reçu</button>` : '']),
+        ...A.filter(x => resteA(x) > 0).map(x => [`<span class="font-bold">${esc(x.prenom)} ${esc(x.nom)}</span><span class="block text-xs text-[#6b7780]">Animateur</span>`, esc(x.tarif_nom || '—'), eur(x.prix_final), eur(x.montant_paye), `<b>${eur(resteA(x))}</b>`, '—', esc(x.statut_paiement || ''), ''])]);
+}
+
+// ---------------------------------------------------------------- Dossiers incomplets
+function dossiers() {
+    const L = enf().filter(i => i.manque && i.manque.length);
+    return entete('Dossiers incomplets', 'dossiers', L.length ? `<button type="button" class="ds-btn ds-btn-sm" id="relance">Relancer par e-mail</button>` : '') +
+      (L.length ? tbl([`<input type="checkbox" id="relAll" checked aria-label="Tout sélectionner">`, 'Inscrit', 'Complétude', 'Il manque', ''], L.map(i => [`<input type="checkbox" data-rel="${esc(i.reservation_token)}" checked aria-label="Relancer ${esc(i.prenom)}">`,
+          nomE(i), `<div class="w-28">${barre(i.pct, 100)}<span class="text-xs text-[#6b7780]">${i.pct} %</span></div>`, esc(i.manque.join(', ')), dosLien(i)]))
+        : '<div class="ds-card p-10 text-center"><p class="font-bold text-[#26343b]">Tous les dossiers sont complets.</p></div>');
+}
+
+// ---------------------------------------------------------------- Allergies et régimes, urgences
+function sante() {
+    const v = x => aucun(x) ? '<span class="text-[#9aa4ab]">—</span>' : esc(x);
+    const L = enf().filter(i => !aucun(i.allergies) || !aucun(i.regime_alimentaire) || !aucun(i.traitements) || !aucun(i.infos_sante));
+    const A = anims().filter(a => !aucun(a.allergies) || !aucun(a.regime));
+    return entete('Allergies et régimes', 'sante', exb('sante', 'PDF')) + `<p class="text-sm text-[#6b7780] mb-3">${L.length} enfant${L.length > 1 ? 's' : ''} concerné${L.length > 1 ? 's' : ''} sur ${enf().length}.</p>` +
+      tbl(['Inscrit', 'Allergies', 'Régime', 'Traitement', 'Santé'], L.map(i => [nomE(i), v(i.allergies), v(i.regime_alimentaire), v(i.traitements), v(i.infos_sante)])) +
+      (A.length ? '<h3 class="ds-eyebrow mt-6 mb-2">Animateurs</h3>' + tbl(['Animateur', 'Allergies', 'Régime'], A.map(a => [`<b>${esc(a.prenom)} ${esc(a.nom)}</b>`, v(a.allergies), v(a.regime)])) : '');
+}
+function urgences() {
+    const p = (n, t) => (n || t) ? `${esc(n || '')}<span class="block">${telL(t)}</span>` : '<span class="text-[#9aa4ab]">—</span>';
+    return entete("Contacts d'urgence", 'urgences', exb('urgences', 'PDF')) +
+      tbl(['Inscrit', 'Responsable 1', 'Responsable 2', 'Personne à prévenir', 'Médecin'], enf().map(i => [nomE(i), p(((i.resp1_prenom || i.parent_prenom || '') + ' ' + (i.resp1_nom || i.parent_nom_famille || '')).trim(), i.resp1_tel || i.parent_tel),
+        p(((i.resp2_prenom || '') + ' ' + (i.resp2_nom || '')).trim(), i.resp2_tel), p((i.urgence_nom || '') + (i.urgence_lien ? ' (' + i.urgence_lien + ')' : ''), i.urgence_tel), p(i.medecin_nom, i.medecin_tel)]));
+}
+
+// ---------------------------------------------------------------- Messages groupés
+function messages() {
+    const n = new Set(enf().map(i => (i.resp1_email || i.parent_email || '').toLowerCase()).filter(Boolean)).size;
+    return entete('Messages aux familles', 'messages') + `<form id="msgForm" class="ds-card p-6 space-y-4" novalidate>
+      <p class="text-sm text-[#26343b]">Destinataires : <b id="msgN">${n}</b> famille${n > 1 ? 's' : ''} ${filt.session ? 'de cette session' : 'de toutes les sessions'}.</p>
+      <div><label class="ds-label" for="msgSujet">Objet</label><input id="msgSujet" class="ds-input" maxlength="150" required placeholder="Ex. : Horaires de départ"></div>
+      <div><label class="ds-label" for="msgTexte">Message</label><textarea id="msgTexte" class="ds-textarea" rows="7" maxlength="5000" required></textarea></div>
+      <div class="flex justify-end"><button type="submit" class="ds-btn" id="msgGo" ${n ? '' : 'disabled'}>Envoyer</button></div></form>`;
+}
+
+// ---------------------------------------------------------------- Quotas et liste d'attente
+function quotas() {
+    const S = D.sessions.filter(s => !filt.session || s.token === filt.session);
+    const W = enf().filter(i => i.statut_paiement === 'EN_ATTENTE');
+    return entete("Quotas et liste d'attente", 'quotas') + tbl(['Session', 'Places', 'Occupées', 'En attente de paiement', 'Restantes', 'Remplissage'], S.map(s => {
+        const libres = s.quota > 0 ? Math.max(0, s.quota - s.inscrits) : null;
+        return [esc(s.label), s.quota || '—', s.inscrits, s.attente, libres === null ? '—' : `<b>${libres}</b>`, `<div class="w-32">${barre(Math.min(s.inscrits, s.quota || 0), s.quota || 0)}</div>`];
+    })) + '<h3 class="ds-eyebrow mt-6 mb-2">Réservations en attente de paiement</h3>' +
+      tbl(['Inscrit', 'Réservé le', 'Date limite', 'État'], W.map(i => [nomE(i), i.date_inscription ? new Date(i.date_inscription.replace(' ', 'T')).toLocaleDateString('fr-FR') : '', i.limite_paiement ? new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString('fr-FR') : '—', i.expire ? '<b class="text-[#a4372f]">Délai dépassé : place libérée</b>' : 'Place gardée']));
+}
+
+async function actionPost(body) {
+    const r = await fetch('api/gestion_actions.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ ...body, t: TOKEN, csrf: CSRF }) });
+    const d = await r.json().catch(() => ({})); if (!r.ok || d.error) throw new Error(d.error || 'Une erreur est survenue.'); return d;
 }
 
 // ---------------------------------------------------------------- Liens, équipe, plus
@@ -310,7 +404,21 @@ document.addEventListener('click', async e => {
     else if (t.dataset.del) supprimer(t.dataset.del);
     else if (t.dataset.goto) { if (t.dataset.goto === 'inscrits-anim') filt.type = 'animateurs'; else { filt.type = 'enfants'; filt.statut = 'wait'; } go('inscrits'); }
     else if (t.dataset.type) { filt.type = t.dataset.type; go('inscrits'); }
-    else if (t.id === 'csv') exportCsv();
+    else if (t.dataset.exp) {
+        const q = t.dataset.exp, u = 'api/gestion_export.php?t=' + encodeURIComponent(TOKEN) + '&quoi=' + q + (filt.session ? '&s=' + encodeURIComponent(filt.session) : '');
+        if (['enfants', 'animateurs', 'tous'].includes(q)) location.href = u; else window.open(u, '_blank', 'noopener');
+    }
+    else if (t.id === 'relance') {
+        const toks = [...document.querySelectorAll('[data-rel]:checked')].map(x => x.dataset.rel);
+        if (!toks.length) { ColoUI.alert('Sélectionnez au moins un dossier.'); return; }
+        if (!(await ColoUI.confirm('Envoyer un e-mail de relance à ' + toks.length + ' famille' + (toks.length > 1 ? 's' : '') + ' ?'))) return;
+        t.disabled = true;
+        try { const b = new URLSearchParams({ a: 'relance', t: TOKEN, csrf: CSRF }); toks.forEach(x => b.append('r[]', x));
+            const r = await fetch('api/gestion_actions.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: b }), j = await r.json().catch(() => ({}));
+            if (!r.ok || j.error) throw new Error(j.error || 'Envoi impossible.'); ColoUI.toast(j.message, { tone: 'ok' }); }
+        catch (x) { ColoUI.alert(ColoUI.friendly(x)); }
+        t.disabled = false;
+    }
 });
 document.addEventListener('change', async e => {
     const t = e.target;
@@ -319,7 +427,8 @@ document.addEventListener('change', async e => {
         try { const r = await fetch('api/update_camp_visibility.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'token=' + encodeURIComponent(t.dataset.vis) + '&prive=' + (on ? 0 : 1) }), d = await r.json(); if (!d.success) throw 0; ColoUI.toast(on ? 'Session visible dans la recherche.' : 'Session masquée de la recherche.', { tone: 'ok' }); D.sessions.find(s => s.token === t.dataset.vis).prive = !on; }
         catch (x) { t.checked = !on; ColoUI.error('Mise à jour impossible.'); }
     }
-    else if (t.id === 'fSess') { filt.session = t.value; drawList(); }
+    else if (t.id === 'fSess') { filt.session = t.value; if (tab === 'inscrits') drawList(); else go(tab); }
+    else if (t.id === 'relAll') document.querySelectorAll('[data-rel]').forEach(x => { x.checked = t.checked; });
     else if (t.id === 'fStat') { filt.statut = t.value; drawList(); }
 });
 document.addEventListener('input', e => { if (e.target.id === 'fQ') { filt.q = e.target.value; drawList(); } });
@@ -331,6 +440,17 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.open) { const [k, v] = e.target.dataset.open.split(':'); openDossier(k, v); }
 });
 $('dosScrim').addEventListener('click', closeDossier);
+document.addEventListener('submit', async e => {
+    if (e.target.id !== 'msgForm') return;
+    e.preventDefault();
+    const sujet = $('msgSujet').value.trim(), texte = $('msgTexte').value.trim();
+    if (!sujet || !texte) { ColoUI.alert('Indiquez un objet et un message.'); return; }
+    if (!(await ColoUI.confirm('Envoyer ce message à ' + $('msgN').textContent + ' famille(s) ?'))) return;
+    $('msgGo').disabled = true;
+    try { const d = await actionPost({ a: 'message', s: filt.session, sujet, texte }); ColoUI.toast(d.message, { tone: 'ok' }); $('msgSujet').value = $('msgTexte').value = ''; }
+    catch (x) { ColoUI.alert(ColoUI.friendly(x)); }
+    $('msgGo').disabled = false;
+});
 $('dupForm').addEventListener('submit', async e => {
     e.preventDefault(); $('dupErr').textContent = ''; $('dupOk').disabled = true;
     try {

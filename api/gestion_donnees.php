@@ -2,8 +2,7 @@
 // api/gestion_donnees.php : données de la page de gestion d'un séjour (gestion_camp.php). GET ?a=apercu|inscrits&t=<jeton d'une session>
 // Accès : propriétaire de l'organisme du séjour, ou administrateur. Lecture seule ; les écritures passent par les API existantes.
 require_once 'config.php';
-require_once 'camp_groupe.php';
-require_once 'attente.php';
+require_once 'gestion_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json; charset=utf-8');
 
@@ -14,22 +13,10 @@ $admin = !empty($_SESSION['user']['is_admin']);
 if (!$admin && empty($_SESSION['user']['is_directeur'])) fin(['error' => 'Accès réservé aux organisateurs.'], 403);
 
 try {
-    options_ensure($pdo); attente_ensure($pdo);
-    $st = $pdo->prepare("SELECT c.*, o.user_id AS owner_id FROM camps c JOIN organisateurs o ON o.id = c.organisateur_id WHERE c.token = ? AND COALESCE(c.supprime, 0) = 0");
-    $st->execute([(string)($_GET['t'] ?? '')]);
-    $open = $st->fetch(PDO::FETCH_ASSOC);
-    if (!$open || (!$admin && (int)$open['owner_id'] !== $uid)) fin(['error' => "Ce séjour n'existe pas ou ne vous appartient pas."], 404);
-
-    // Toutes les sessions du séjour (le propriétaire réel, même si c'est un administrateur qui consulte)
-    $rows = camp_groupe_lignes($pdo, (int)$open['owner_id'], $open);
-    $principal = camp_principal($rows);
-    $ids = array_map(fn($r) => (int)$r['id'], $rows);
-    $in = implode(',', array_fill(0, count($ids), '?'));
-    $mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    $lab = function ($r) use ($mois) {
-        [$a, $b] = normalizeSessionDates($r['date_debut'], $r['date_fin']);
-        return $a->format('j') . ' ' . $mois[(int)$a->format('n') - 1] . ' → ' . $b->format('j') . ' ' . $mois[(int)$b->format('n') - 1] . ' ' . $b->format('Y');
-    };
+    $ctx = gestion_ouvrir($pdo, (string)($_GET['t'] ?? ''), $uid, $admin);
+    if (!$ctx) fin(['error' => "Ce séjour n'existe pas ou ne vous appartient pas."], 404);
+    ['open' => $open, 'rows' => $rows, 'principal' => $principal, 'ids' => $ids, 'in' => $in] = $ctx;
+    $lab = fn($r) => gestion_label($r);
     $a = (string)($_GET['a'] ?? 'apercu');
 
     if ($a === 'apercu') {
@@ -63,36 +50,10 @@ try {
     }
 
     if ($a === 'inscrits') {
-        $sel = $pdo->prepare("SELECT i.id inscription_id, i.camp_id, i.reservation_token, i.date_inscription, i.montant_paye, i.statut, i.statut_paiement, i.moyen_paiement, i.mode_paiement, i.tarif_id, i.prix_final,
-                    e.prenom, e.nom, e.date_naissance, e.sexe, e.infos_sante, e.allergies, e.regime_alimentaire,
-                    u.email parent_email, u.tel parent_tel, u.nom parent_nom_famille, u.prenom parent_prenom, t.nom tarif_nom,
-                    c.token session_token, c.attente_paiement, c.attente_jours
-                FROM inscriptions i JOIN enfants e ON i.enfant_id = e.id JOIN users u ON e.parent_id = u.id JOIN camps c ON c.id = i.camp_id
-                LEFT JOIN tarifs t ON i.tarif_id = t.id
-                WHERE i.camp_id IN ($in) AND COALESCE(i.statut, '') NOT IN ('Annulé', 'annule', 'Annule') ORDER BY i.date_inscription DESC");
-        $sel->execute($ids);
-        $enfants = $sel->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($enfants as &$e) {
-            $lim = attente_limite($e);
-            $e['expire'] = $lim && $lim < new DateTime();
-            $e['limite_paiement'] = $lim ? $lim->format('Y-m-d H:i') : null;
-            unset($e['inscription_id'], $e['camp_id'], $e['attente_paiement'], $e['attente_jours'], $e['tarif_id']);   // jamais d'identifiant numérique côté navigateur
-        }
+        $d = gestion_inscrits($pdo, $ctx);
+        foreach ($d['enfants'] as &$e) { $e['reste'] = gestion_reste($e); unset($e['_enfant_id'], $e['_public_id']); }   // jamais d'identifiant côté navigateur
         unset($e);
-        $anims = [];
-        try {
-            require_once __DIR__ . '/equipe.php'; equipe_ensure($pdo);
-            $q = $pdo->prepare("SELECT q.id, q.token, q.prenom, q.nom, q.date_naissance, q.email, q.tel, q.bafa_statut, q.diplome, q.allergies, q.regime, q.urgence_nom, q.urgence_tel,
-                                       q.tarif_nom, q.prix_final, q.montant_paye, q.statut, q.statut_paiement, q.created_at, c.token session_token
-                                FROM equipe_inscriptions q JOIN camps c ON c.id = q.camp_id WHERE q.camp_id IN ($in) ORDER BY q.created_at DESC");
-            $q->execute($ids);
-            $anims = $q->fetchAll(PDO::FETCH_ASSOC);
-            $rep = $pdo->prepare("SELECT libelle, valeur FROM equipe_reponses WHERE equipe_id = ? ORDER BY id");
-            foreach ($anims as &$x) { $rep->execute([$x['id']]); $x['reponses'] = $rep->fetchAll(PDO::FETCH_ASSOC); unset($x['id']); }
-            unset($x);
-        } catch (Throwable $e) { error_log('gestion animateurs: ' . $e->getMessage()); }
-        $labels = []; foreach ($rows as $r) $labels[$r['token']] = $lab($r);
-        fin(['enfants' => $enfants, 'animateurs' => $anims, 'sessions' => $labels]);
+        fin($d);
     }
     fin(['error' => 'Action inconnue.'], 400);
 } catch (Throwable $e) {
