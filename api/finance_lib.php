@@ -5,7 +5,7 @@
 //   1. Checkout avec transfer_data[destination] = compte de l'organisme et application_fee_amount = commission (fin_destination_params) :
 //      Stripe place le net sur le compte de l'organisme (visible dans SON solde) et la commission sur le nôtre, sans transfert de notre part ;
 //   2. versements bancaires de l'organisme en mode « manual » : le cron crée un Payout `payout_jours` (défaut 3) jours après le début du séjour
-//      (fin_payouts_run, api/payouts_lib.php) ; aucune réserve sur notre solde ;
+//      (fin_payouts_run, api/destination_lib.php) ; aucune réserve sur notre solde ;
 //   3. remboursement : reverse_transfer (l'organisme est débité ; s'il a déjà été versé, son solde Stripe devient négatif et se compense
 //      sur ses encaissements suivants : RISQUE PORTÉ PAR L'ORGANISME, affiché « à compenser ») ; commission conservée sur une annulation par la famille.
 //   Un compte pas encore prêt (transfers inactif) : repli sur l'ancien modèle ci-dessous (mode 'legacy'), qui reste en place pour l'historique.
@@ -217,6 +217,7 @@ function fin_ensure(PDO $pdo): void {
         // Destination charges : modèle de chaque paiement, dette de l'organisme compensée sur ce paiement
         fin_add_col($pdo, 'fin_paiements', 'mode', "VARCHAR(12) NOT NULL DEFAULT 'legacy'");
         fin_add_col($pdo, 'fin_paiements', 'compensation_cents', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_paiements', 'a_reprendre_cents', "INT NOT NULL DEFAULT 0"); // litige perdu : net à reprendre à l'organisme (fin_reprises_run)
         fin_ledger_ensure($pdo);
         fin_ledger_backfill($pdo);
     } catch (Throwable $e) {
@@ -363,9 +364,12 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
         $statut = ($full && in_array($p['statut'], ['attente', 'bloque', 'litige'], true)) ? 'rembourse' : $p['statut'];
         $pdo->prepare("UPDATE fin_paiements SET rembourse_cents = ?, net_rembourse_cents = ?, statut = ? WHERE id = ?")->execute([$newRef, $newNetRef, $statut, $p['id']]);
         fin_ledger_remboursement($pdo, $p, (int)$p['rembourse_cents'], $newRef, (int)$p['net_rembourse_cents'], $newNetRef);
-        fin_reversal_demander($pdo, $p, $newNetRef); // part déjà versée à l'organisme : à récupérer par reversement Stripe, sinon dette
-        // Solde de l'organisme : même si le net a déjà été transféré, le solde devient négatif et sera compensé sur ses prochains séjours
-        $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$delta / 100, $p['organisateur_id']]);
+        // Destination : Stripe a déjà débité le compte de l'organisme (reverse_transfer) ; rien à faire sur notre solde
+        if (($p['mode'] ?? 'legacy') !== 'destination') {
+            fin_reversal_demander($pdo, $p, $newNetRef); // part déjà versée à l'organisme : à récupérer par reversement Stripe, sinon dette
+            // Solde de l'organisme : même si le net a déjà été transféré, le solde devient négatif et sera compensé sur ses prochains séjours
+            $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$delta / 100, $p['organisateur_id']]);
+        }
         fin_audit($pdo, 'remboursement', 'inscription', $p['inscription_id'], ['rembourse_cents' => $newRef, 'net_retire' => $delta, 'deja_verse' => $p['statut'] === 'verse'], 'webhook');
         if ($full) {
             // inscription_id négatif = inscription de l'équipe d'animation (table equipe_inscriptions)
@@ -384,7 +388,13 @@ function fin_dispute(PDO $pdo, string $paymentIntent, string $phase, ?int $captu
     } elseif ($phase === 'won') {
         $pdo->prepare("UPDATE fin_paiements SET statut = 'attente' WHERE payment_intent = ? AND statut = 'litige'")->execute([$paymentIntent]);
     } elseif ($phase === 'lost' && $capturedCents) {
+        $st = $pdo->prepare("SELECT id, net_rembourse_cents FROM fin_paiements WHERE payment_intent = ? AND mode = 'destination'");
+        $st->execute([$paymentIntent]);
+        $avant = $st->fetchAll(PDO::FETCH_KEY_PAIR);
         fin_apply_refund($pdo, $paymentIntent, $capturedCents, $capturedCents);
+        // Destination : Stripe a débité moncamp.fr, le net est repris à l'organisme après la transaction (fin_reprises_run)
+        $up = $pdo->prepare("UPDATE fin_paiements SET a_reprendre_cents = a_reprendre_cents + net_rembourse_cents - ? WHERE id = ?");
+        foreach ($avant as $id => $nr) $up->execute([(int)$nr, $id]);
     }
     fin_audit($pdo, 'litige_' . $phase, 'payment_intent', $paymentIntent, [], 'webhook');
 }
@@ -693,4 +703,5 @@ function fin_pdf_txt($s): string {
 
 require_once __DIR__ . '/versements_lib.php';
 require_once __DIR__ . '/ledger_lib.php';
+require_once __DIR__ . '/destination_lib.php';
 require_once __DIR__ . '/moyens_paiement_lib.php';

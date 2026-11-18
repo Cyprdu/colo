@@ -62,4 +62,40 @@ ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")
 $t = fin_ledger_totaux($pdo, 2);
 ok($t['encaisse'] === 12500 && $t['commission'] === 373 && $t['en_attente'] === 12500 - 373, 'cascade destination : 125 EUR encaissés, 3,73 EUR de commission');
 
+// ---------------------------------------------------------------- 4. webhook : paiement destination avec code promo, rejeu, remboursement, litige perdu
+require __DIR__ . '/../api/marketing_lib.php';
+require __DIR__ . '/../api/stripe_webhook_lib.php';
+$ev = fn(string $id, string $type, array $o, string $acct = '') => json_decode(json_encode(['id' => $id, 'type' => $type, 'account' => $acct, 'data' => ['object' => $o]]));
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = fn($id) => (object)['latest_charge' => (object)['id' => 'ch_' . $id, 'application_fee' => 'fee_' . $id, 'transfer' => 'tr_' . $id]];
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (4, 3, 4, 'En attente', 25.00, 'EN_ATTENTE', 'tokE'), (5, 3, 5, 'En attente', 100.00, 'EN_ATTENTE', 'tokF')");
+$paid = $ev('evt_1', 'checkout.session.completed', ['id' => 'cs_E', 'payment_status' => 'paid', 'payment_intent' => 'pi_E', 'amount_total' => 11250, 'amount_subtotal' => 12500,
+    'metadata' => ['reservation_token' => 'tokE,tokF', 'mode' => 'destination', 'organisateur_id' => '2', 'commission' => '373', 'compensation' => '0']]);
+$r = stripe_webhook_process($pdo, $paid);
+ok($r[0] === 200 && $r[2]['feeAdj'] === ['pi_E', 373], 'webhook : paiement destination enregistré');
+ok((int)$pdo->query("SELECT SUM(commission_cents) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn() === 86 + 255, 'code promo -10 % : commission recalculée sur le payé (0,86 + 2,55)');
+stripe_webhook_after($pdo, $r[2]);
+$fee = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'applicationFees.createRefund'));
+ok($fee && $fee[0][1][0] === 'fee_pi_E' && $fee[0][1][1]['amount'] === 32 && $fee[0][1][2]['idempotency_key'] === 'moncamp-fee-pi_E', 'commission prélevée en trop (0,32 EUR) rendue à l\'organisme, clé d\'idempotence');
+ok(stripe_webhook_process($pdo, $paid)[1] === 'deja traite', 'webhook rejoué : ignoré');
+ok((int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference LIKE 'pay:pi_E:%'")->fetchColumn() === 4, 'webhook rejoué : journal inchangé');
+$pf = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn();
+
+$r = stripe_webhook_process($pdo, $ev('evt_2', 'charge.refunded', ['id' => 'ch_pi_E', 'payment_intent' => 'pi_E', 'amount_refunded' => 2250, 'amount' => 11250]));
+ok($r[0] === 200 && abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() - $pf) < 0.001, 'remboursement destination : notre solde inchangé (Stripe débite l\'organisme)');
+ok((int)$pdo->query("SELECT COUNT(*) FROM fin_reversals")->fetchColumn() === 0, 'remboursement destination : aucun reversement legacy');
+$t0 = fin_ledger_totaux($pdo, 2);
+ok($t0['rembourse'] === 2250, 'journal : 22,50 EUR remboursés (partiel, au prorata)');
+
+$GLOBALS['stripe_resp']['charges.retrieve'] = (object)['amount' => 11250];
+$nrb = (int)$pdo->query("SELECT SUM(net_rembourse_cents) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn();
+stripe_webhook_process($pdo, $ev('evt_3', 'charge.dispute.created', ['id' => 'dp_1', 'payment_intent' => 'pi_E', 'charge' => 'ch_pi_E', 'balance_transactions' => [['fee' => 1500]]]));
+ok($pdo->query("SELECT GROUP_CONCAT(DISTINCT statut) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn() === 'litige', 'litige ouvert : lignes gelées');
+$r = stripe_webhook_process($pdo, $ev('evt_4', 'charge.dispute.closed', ['id' => 'dp_1', 'payment_intent' => 'pi_E', 'charge' => 'ch_pi_E', 'status' => 'lost']));
+$rep = (int)$pdo->query("SELECT SUM(a_reprendre_cents) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn();
+ok($rep === (int)$pdo->query("SELECT SUM(net_cents) FROM fin_paiements WHERE payment_intent = 'pi_E'")->fetchColumn() - $nrb, 'litige perdu : net restant à reprendre à l\'organisme');
+stripe_webhook_after($pdo, $r[2]);
+$rev = array_values(array_filter($GLOBALS['fake_transfers']->calls, fn($c) => $c[0] === 'reversal'));
+ok($rev && $rev[0][1] === 'tr_pi_E' && $rev[0][2]['amount'] === $rep && (int)$pdo->query("SELECT SUM(a_reprendre_cents) FROM fin_paiements")->fetchColumn() === 0, 'reprise : reversement du transfert de la charge, rien ne reste à reprendre');
+ok(fin_ledger_totaux($pdo, 2)['rembourse'] === 11250 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference LIKE 'litige:%'")->fetchColumn() === 2, 'litige perdu : tout est remboursé au journal, frais de litige à la charge de moncamp.fr');
+
 echo "Tout est bon.\n";
