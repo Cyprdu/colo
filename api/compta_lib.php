@@ -173,6 +173,30 @@ function compta_revenus(PDO $pdo, string $from, string $to, string $g = 'm'): ar
     return ['cur' => $tot($from, $to), 'prev' => $tot($pfrom, $pto), 'prev_du' => $pfrom, 'prev_au' => $pto, 'serie' => $serie, 'orgas' => $orgas, 'sejours' => $sejours, 'dettes' => $dettes];
 }
 
+/**
+ * « Commission − frais Stripe payés par moncamp.fr = net pour moncamp.fr », puis rapprochement avec le solde Stripe de la plateforme
+ * (depuis le début, journal fin_ledger). Solde attendu = commissions par carte − frais + achats de points par carte + argent d'organismes encore
+ * détenu (paiements reçus avant l'activation) − dette nette (avances − compensations et règlements) − virements vers la banque de moncamp.fr.
+ * Les commissions hors carte n'entrent en caisse que lorsqu'elles sont compensées (lignes « dette » négatives).
+ */
+function compta_revenus_rapprochement(PDO $pdo, ?array $ps): array {
+    $l = $pdo->query("SELECT -COALESCE(SUM(IF(type = 'commission', montant_cents, 0)), 0) com,
+                             -COALESCE(SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)), 0) hors,
+                             -COALESCE(SUM(IF(type = 'frais', montant_cents, 0)), 0) frais,
+                             COALESCE(SUM(IF(type = 'dette', montant_cents, 0)), 0) dette
+                      FROM fin_ledger")->fetch(PDO::FETCH_ASSOC);
+    $l = array_map('intval', $l);
+    $points = 0;
+    try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
+    $detenu = (int)$pdo->query("SELECT COALESCE(SUM(GREATEST(0, net_cents - net_rembourse_cents - verse_cents)), 0) FROM fin_paiements WHERE mode = 'legacy' AND statut IN ('attente', 'bloque', 'litige', 'en_cours')")->fetchColumn();
+    $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid', 'in_transit', 'pending')")->fetchColumn();
+    $r = ['com' => $l['com'], 'frais' => $l['frais'], 'net' => $l['com'] - $l['frais'], 'hors' => $l['hors'], 'points' => $points, 'detenu' => $detenu, 'dette' => $l['dette'], 'payouts' => $payouts];
+    $r['attendu'] = $r['net'] - $l['hors'] + $points + $detenu - $l['dette'] - $payouts;
+    $r['solde'] = $ps ? $ps['disponible'] + $ps['a_venir'] : null;
+    $r['ecart'] = $ps ? $r['solde'] - $r['attendu'] : null;
+    return $r;
+}
+
 /** Export comptable mensuel de « Mes revenus » (une ligne par mois) */
 function compta_revenus_mois(PDO $pdo, string $from, string $to): array {
     $st = $pdo->prepare("SELECT DATE_FORMAT(created_at, '%Y-%m') m, SUM(type = 'paiement') nb,

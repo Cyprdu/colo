@@ -111,4 +111,14 @@ ok(fin_prochain_virement($pdo, 1)['etat'] === 'dispo' && fin_prochain_virement($
 fin_payout_record($pdo, (object)['id' => 'po_9', 'amount' => 3300, 'currency' => 'eur', 'status' => 'in_transit', 'arrival_date' => strtotime('+3 days'), 'created' => time()], 'acct_A');
 $pv = fin_prochain_virement($pdo, 1);
 ok($pv['etat'] === 'route' && $pv['m'] === 3300 && $pv['d'] === date('Y-m-d', strtotime('+3 days')), 'virement en route : montant et date d\'arrivée du payout');
+// ---- admin « Mes revenus » : commission − frais Stripe payés par moncamp.fr = net, rapproché du solde Stripe de la plateforme
+require_once __DIR__ . '/../api/compta_lib.php';
+$b0 = compta_revenus_rapprochement($pdo, null);
+fin_ledger_add($pdo, 'commission', 1, -1966, 'test:com-rev', 'paiement', 1, 'Commission moncamp.fr');
+fin_ledger_add($pdo, 'frais', 1, -213, 'test:frais-rev', 'paiement', 1, 'Frais Stripe');
+$b1 = compta_revenus_rapprochement($pdo, null);
+ok($b1['com'] - $b0['com'] === 1966 && $b1['frais'] - $b0['frais'] === 213 && $b1['net'] - $b0['net'] === 1753, 'commission 19,66 − frais 2,13 = net 17,53');
+$ok = compta_revenus_rapprochement($pdo, ['disponible' => $b1['attendu'] - 500, 'a_venir' => 500]);
+$ko = compta_revenus_rapprochement($pdo, ['disponible' => $b1['attendu'] + 213, 'a_venir' => 0]);
+ok($ok['ecart'] === 0 && $ko['ecart'] === 213, 'rapprochement : égal au solde Stripe (disponible + à venir), sinon écart affiché');
 echo "Tout est bon.\n";

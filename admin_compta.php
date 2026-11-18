@@ -186,6 +186,21 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
   $dl = function (int $c, int $p, bool $up = true) { if (!$p) return $c ? 'nouveau' : '='; $x = (int)round(($c - $p) / abs($p) * 100); return ($x > 0 ? '+' : '') . $x . ' % vs ' . fin_eur($p); };
   $c = $rv['cur']; $pv = $rv['prev']; ?>
 <p class="muted">Ce que gagne moncamp.fr, lu dans le journal comptable <code>fin_ledger</code>. Comparaison : du <?= h(date('d/m/Y', strtotime($rv['prev_du']))) ?> au <?= h(date('d/m/Y', strtotime($rv['prev_au']))) ?>.</p>
+<?php $rr = compta_revenus_rapprochement($pdo, $ps); ?>
+<section class="card"><h2 class="sec"><?= ic('bank') ?> Ce que gagne moncamp.fr <span class="muted small">· depuis le début</span></h2>
+  <div class="kv"><span>Commission</span><b><?= $e($rr['com']) ?></b></div>
+  <div class="kv"><span>− frais Stripe payés par moncamp.fr <small class="muted">(paiements en repli destination ou reçus avant l'activation ; en direct, l'organisme paie ses frais)</small></span><b>− <?= $e($rr['frais']) ?></b></div>
+  <div class="kv"><span><b>= net pour moncamp.fr</b></span><b><?= $e($rr['net']) ?></b></div>
+  <?php if ($rr['hors']): ?><div class="kv"><span>− commissions hors carte pas encore encaissées <small class="muted">(retenues sur les paiements suivants des organismes)</small></span><b>− <?= $e($rr['hors']) ?></b></div><?php endif; ?>
+  <?php if ($rr['points']): ?><div class="kv"><span>+ achats de points par carte</span><b>+ <?= $e($rr['points']) ?></b></div><?php endif; ?>
+  <?php if ($rr['detenu']): ?><div class="kv"><span>+ argent d'organismes encore détenu <small class="muted">(paiements reçus avant l'activation, à leur transférer)</small></span><b>+ <?= $e($rr['detenu']) ?></b></div><?php endif; ?>
+  <?php if ($rr['dette']): ?><div class="kv"><span><?= $rr['dette'] > 0 ? '− dettes d\'organismes avancées, pas encore recouvrées' : '+ dettes et commissions hors carte recouvrées' ?></span><b><?= $rr['dette'] > 0 ? '− ' : '+ ' ?><?= $e(abs($rr['dette'])) ?></b></div><?php endif; ?>
+  <?php if ($rr['payouts']): ?><div class="kv"><span>− déjà viré sur votre banque</span><b>− <?= $e($rr['payouts']) ?></b></div><?php endif; ?>
+  <?php if ($rr['solde'] === null): ?><p class="muted">Solde Stripe indisponible : rapprochement impossible pour le moment.</p>
+  <?php elseif (abs($rr['ecart']) <= 1): ?><div class="note ok"><?= ic('check') ?><div><b>= solde Stripe de la plateforme : <?= $e($rr['solde']) ?></b> (disponible + à venir). Tout est rapproché.</div></div>
+  <?php else: ?><div class="note err"><?= ic('alert') ?><div><b>Solde attendu <?= $e($rr['attendu']) ?> · solde Stripe <?= $e($rr['solde']) ?> · écart <?= $e($rr['ecart']) ?></b><br>
+    Causes possibles : frais Stripe pas encore relevés sur un paiement récent, frais Connect ou de virement facturés par Stripe, virements vers votre banque pas encore synchronisés (onglet Rapprochement Stripe), paiements antérieurs au journal, mouvements en cours.</div></div><?php endif; ?>
+</section>
 <section class="kpis">
   <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($c['com']) ?></b><span>Commissions encaissées</span><small><?= h($dl($c['com'], $pv['com'])) ?> · dont hors carte <?= $e($c['hors']) ?></small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($c['frais']) ?></b><span>Frais Stripe payés par moncamp.fr</span><small><?= h($dl($c['frais'], $pv['frais'])) ?> · paiements en repli destination / anciens</small></div></div>
