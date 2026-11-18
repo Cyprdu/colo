@@ -248,6 +248,8 @@ try {
         ],
     ];
     if (!empty($_SESSION['user']['email'])) $params['customer_email'] = $_SESSION['user']['email'];
+    // Destination charges : le net va directement sur le compte Stripe de l'organisme, la commission reste à moncamp.fr (repli legacy si compte non prêt)
+    $params = array_replace_recursive($params, fin_destination_params($pdo, (int)$camp['organisateur_id'], array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems)));
 
     $checkout = \Stripe\Checkout\Session::create($params);
 

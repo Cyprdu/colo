@@ -9,7 +9,7 @@ require_once __DIR__ . '/api/gains_lib.php';
 adm_guard();
 fin_ensure($pdo);
 
-$v = in_array($_GET['v'] ?? '', ['synthese', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
+$v = in_array($_GET['v'] ?? '', ['synthese', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
 [$from, $to, $periodLabel, $pk] = compta_period($_GET);
 $orgaTok = preg_match('/^[a-f0-9]{24}$/', (string)($_GET['o'] ?? '')) ? (string)$_GET['o'] : '';
 $orgaId = $orgaTok ? fin_orga_from_tok($pdo, $orgaTok) : 0;
@@ -42,37 +42,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             adm_audit('commission_modifiee', 'fin_reglages', number_format($pct, 2, '.', '') . ' % + ' . $fixe . ' c');
             flash_go('ok', 'Commission enregistrée : ' . number_format($pct, 2, ',', ' ') . ' % + ' . compta_eur($fixe) . ' €. Elle s\'applique aux prochains paiements uniquement.', 'admin_compta.php?v=reglages');
         }
-        if ($act === 'versements') {
+        if ($act === 'payout_jours') {
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
-            $d = (string)($_POST['delai'] ?? ''); $rp = str_replace(',', '.', (string)($_POST['reserve'] ?? ''));
-            if (!ctype_digit($d) || (int)$d > 60 || !is_numeric($rp) || (float)$rp < 0 || (float)$rp > 100)
-                flash_go('err', 'Valeurs invalides : délai de 0 à 60 jours, réserve de 0 à 100 %.', 'admin_compta.php?v=versements');
-            fin_set_versements($pdo, (int)$d, (float)$rp, 'admin:' . $uid);
-            adm_audit('versements_reglages', 'fin_reglages', "$d j, $rp %");
-            flash_go('ok', "Enregistré : versable $d jours après le paiement, réserve de " . number_format((float)$rp, 1, ',', ' ') . " %. S'applique aussi aux paiements déjà en attente.", 'admin_compta.php?v=versements');
+            $d = (string)($_POST['jours'] ?? '');
+            if (!ctype_digit($d) || (int)$d > 30) flash_go('err', 'Valeur invalide : de 0 à 30 jours.', 'admin_compta.php?v=versements');
+            fin_set_payout_jours($pdo, (int)$d, 'admin:' . $uid);
+            adm_audit('payout_jours', 'fin_reglages', "$d j");
+            flash_go('ok', "Enregistré : versement sur la banque de l'organisme $d jour(s) après le début du séjour. S'applique aussi aux paiements pas encore versés.", 'admin_compta.php?v=versements');
         }
-        if ($act === 'jour') {
-            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
-            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
-            $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
-            $j = ctype_digit((string)($_POST['jour'] ?? '')) ? (int)$_POST['jour'] : 0;
-            if (!$oid || !fin_set_jour($pdo, $oid, $j, 'admin:' . $uid)) flash_go('err', 'Organisme ou jour invalide (lundi à samedi).', 'admin_compta.php?v=versements');
-            adm_audit('jour_versement_modifie', 'organisateur', FIN_JOURS[$j]);
-            flash_go('ok', 'Jour de versement modifié : ' . FIN_JOURS[$j] . '.', 'admin_compta.php?v=versements');
-        }
-        if ($act === 'versement_now') {   // lance le versement d'UN organisme tout de suite, sans attendre son jour (même logique que api/cron_virements.php)
+        if ($act === 'versement_now') {   // lance le versement d'UN organisme tout de suite (même logique que api/cron_virements.php)
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
             $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
             if (!$oid) flash_go('err', 'Organisme introuvable.', 'admin_compta.php?v=versements');
-            $force = !empty($_POST['force']);   // test : ignore délai de sécurité et réserve
+            $force = !empty($_POST['force']);   // test : ignore la date de versement (et, pour les anciens paiements, délai et réserve)
             $r = fin_release_due($pdo, 'admin:' . $uid, $oid, false, $force);
+            $p = fin_payouts_run($pdo, 'admin:' . $uid, $oid, $force);
             adm_audit($force ? 'versement_force_test' : 'versement_immediat', 'organisateur', (string)$oid);
-            if ($r['transferts']) flash_go('ok', 'Versement envoyé : ' . fin_eur($r['montant_cents']) . '.', 'admin_compta.php?v=versements');
-            $ov = fin_overview($pdo, $oid); $acc = fin_account($pdo, $oid);
-            flash_go('err', 'Rien versé. Versable : ' . fin_eur($ov['deblocable_cents']) . ' · réserve retenue : ' . fin_eur($ov['reserve_cents']) . ' · en délai de sécurité (' . $ov['delai_jours'] . ' j) : ' . fin_eur($ov['delai_cents'])
-                . ' · solde : ' . fin_eur($ov['solde_cents']) . ' · compte Stripe ' . (fin_account_ready($acc) ? 'prêt' : 'NON prêt (onboarding incomplet)') . ($r['erreurs'] ? ' · ' . $r['erreurs'] . ' erreur(s), voir le journal' : '') . '.', 'admin_compta.php?v=versements');
+            if ($p['payouts'] || $r['transferts']) flash_go('ok', 'Versement lancé : ' . fin_eur($p['montant_cents']) . ' vers la banque' . ($r['transferts'] ? ' (+ ' . fin_eur($r['montant_cents']) . ' d\'anciens paiements transférés sur son compte Stripe)' : '') . '.', 'admin_compta.php?v=versements');
+            $acc = fin_account($pdo, $oid);
+            flash_go('err', 'Rien versé : aucun séjour éligible ou solde Stripe disponible insuffisant (moins de 1 €) · compte Stripe ' . (fin_account_ready($acc) ? 'prêt' : 'NON prêt (onboarding incomplet)') . ($p['erreurs'] + $r['erreurs'] ? ' · ' . ($p['erreurs'] + $r['erreurs']) . ' erreur(s), voir le journal' : '') . '.', 'admin_compta.php?v=versements');
         }
         if ($act === 'retenter') {
             if (!adm_reauth_ok()) flash_go('err', 'Confirmez votre mot de passe (onglet Exports CSV, « Déverrouiller ») puis réessayez.', 'admin_compta.php?v=versements');
@@ -110,7 +100,7 @@ $orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN or
 $e = fn($c) => h(fin_eur((int)$c));
 
 adm_head('Comptabilité', 'admin_compta.php');
-$tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Commission'];
+$tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Réglages'];
 ?>
 <nav class="tabs" aria-label="Sections de la comptabilité">
 <?php foreach ($tabs as $k => $l): ?><a class="tab<?= $k === $v ? ' on' : '' ?>" href="<?= h(cu(['v' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
@@ -120,7 +110,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
 <div class="note err"><?= ic('alert') ?><div><b><?= $negN ?> paiement<?= $negN > 1 ? 's' : '' ?> à marge négative.</b> La commission ne couvre pas les frais Stripe réels (carte hors Europe, remboursement, litige...). <a class="lnk" href="<?= h(cu(['v' => 'synthese'])) ?>#negatives">Voir le détail</a> · envisagez d'augmenter la part fixe ou le pourcentage (onglet Commission).</div></div>
 <?php endif; ?>
 
-<?php if ($v === 'synthese' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
+<?php if ($v === 'synthese' || $v === 'commission' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
 <form class="bar" method="get" action="admin_compta.php">
   <input type="hidden" name="v" value="<?= h($v) ?>"><input type="hidden" name="p" value="perso">
   <?php foreach (['mois' => 'Ce mois', 'trimestre' => 'Trimestre', 'annee' => 'Année', 'tout' => 'Tout'] as $k => $l): ?><a class="btn ghost<?= $pk === $k ? ' sel-on' : '' ?>" href="<?= h(cu(['p' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
@@ -175,6 +165,45 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
 <p class="muted small">Un remboursement ne restitue pas les frais Stripe : la commission rendue à la famille augmente la perte. Cas normaux à surveiller : cartes hors Europe, litiges (frais fixes élevés).</p>
 <?php endif; ?>
 
+<?php elseif ($v === 'commission'): $lc = compta_ledger_commission($pdo, $from, $to, $orgaId); $rc = null; $rcErr = null;
+  if (!empty($_GET['rp'])) { try { $rc = compta_fees_reconcile($pdo, $from, $to); } catch (Throwable $ex) { $rcErr = 'Stripe injoignable : ' . mb_substr($ex->getMessage(), 0, 160); } } ?>
+<p class="muted">Lu dans le journal comptable unique <code>fin_ledger</code> (ajout seulement). Commission nette des commissions rendues ; frais Stripe réels relevés sur chaque paiement.</p>
+<section class="kpis">
+  <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= $e($lc['tot']['encaisse']) ?></b><span>Encaissé par carte</span></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($lc['tot']['com']) ?></b><span>Commission</span><small>y compris hors carte</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($lc['tot']['frais']) ?></b><span>Frais Stripe réels</span><small>dont litiges</small></div></div>
+  <div class="kpi<?= $lc['tot']['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($lc['tot']['marge']) ?></b><span>Marge nette</span></div></div>
+</section>
+<section class="card"><h2 class="sec"><?= ic('check') ?> Rapprochement avec Stripe</h2>
+  <?php if ($rcErr): ?><div class="note warn"><?= ic('alert') ?><div><?= h($rcErr) ?></div></div><?php endif; ?>
+  <?php if ($rc): ?><p>Commissions attendues (paiements destination de la période) : <b><?= $e($rc['attendu']) ?></b> · relevées chez Stripe (<?= (int)$rc['n'] ?> commissions) : <b><?= $e($rc['stripe']) ?></b> ·
+    écart : <b<?= $rc['ecart'] !== 0 ? ' class="neg" style="color:#b42318"' : '' ?>><?= $e($rc['ecart']) ?></b></p>
+    <?php if ($rc['ecart'] !== 0): ?><p class="muted small">Un écart vient en général d'un litige perdu (Stripe garde la commission, nos comptes la rendent), d'un remboursement fait dans Stripe sans « refund application fee », ou d'un paiement de fin de période enregistré le lendemain.</p><?php endif; ?>
+  <?php else: ?><a class="btn ghost" href="<?= h(cu(['rp' => 1])) ?>"><?= ic('search') ?> Comparer avec Stripe</a><?php endif; ?>
+</section>
+<div class="cols">
+<section><h2 class="sec"><?= ic('building') ?> Par organisme</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">Commission</th><th class="num">Frais</th><th class="num">Marge</th></tr></thead><tbody>
+  <?php if (!$lc['orgas']): ?><tr><td colspan="4" class="empty"><p>Rien sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($lc['orgas'] as $r): ?><tr><td data-l="Organisme"><?= h($r['k'] ?? '-') ?></td><td class="num" data-l="Commission"><?= $e($r['com']) ?></td><td class="num" data-l="Frais"><?= $e($r['frais']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td></tr><?php endforeach; ?>
+</tbody></table></div></section>
+<section><h2 class="sec"><?= ic('list') ?> Par mois</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Mois</th><th class="num">Commission</th><th class="num">Frais</th><th class="num">Marge</th></tr></thead><tbody>
+  <?php if (!$lc['mois']): ?><tr><td colspan="4" class="empty"><p>Rien sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($lc['mois'] as $r): ?><tr><td data-l="Mois"><?= h(substr($r['k'], 5, 2) . '/' . substr($r['k'], 0, 4)) ?></td><td class="num" data-l="Commission"><?= $e($r['com']) ?></td><td class="num" data-l="Frais"><?= $e($r['frais']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td></tr><?php endforeach; ?>
+</tbody></table></div></section>
+</div>
+<h2 class="sec"><?= ic('alert') ?> Marge réelle par paiement (les plus faibles d'abord)</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Organisme</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Frais Stripe</th><th class="num">Marge</th></tr></thead><tbody>
+  <?php $mg = compta_marges($pdo, $from, $to, $orgaId); if (!$mg): ?><tr><td colspan="6" class="empty"><p>Aucun paiement avec frais relevés.</p></td></tr><?php endif; ?>
+  <?php foreach ($mg as $r): ?><tr><td data-l="Date"><?= h(adm_date($r['created_at'])) ?></td><td data-l="Organisme"><?= h($r['orga']) ?></td><td class="num" data-l="Payé"><?= $e($r['brut_cents']) ?></td><td class="num" data-l="Commission"><?= $e($r['com']) ?></td><td class="num" data-l="Frais"><?= $e((int)$r['frais'] + (int)$r['litige']) ?></td><td class="num<?= $r['marge'] < 0 ? ' neg' : '' ?>" data-l="Marge"><b><?= $e($r['marge']) ?></b></td></tr><?php endforeach; ?>
+</tbody></table></div>
+<h2 class="sec"><?= ic('lock') ?> Journal comptable (50 dernières lignes)</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Type</th><th>Organisme</th><th class="num">Montant</th><th>Référence</th><th>Par</th></tr></thead><tbody>
+  <?php $jl = compta_journal($pdo, $from, $to, $orgaId); if (!$jl): ?><tr><td colspan="6" class="empty"><p>Aucune écriture sur cette période.</p></td></tr><?php endif; ?>
+  <?php foreach ($jl as $r): ?><tr><td data-l="Date"><?= h(adm_date($r['created_at'])) ?></td><td data-l="Type"><?= h($r['libelle'] ?: $r['type']) ?></td><td data-l="Organisme"><?= h($r['orga'] ?? '-') ?></td><td class="num<?= $r['montant_cents'] < 0 ? ' neg' : '' ?>" data-l="Montant"><?= $e($r['montant_cents']) ?></td><td data-l="Référence"><code><?= h($r['reference']) ?></code></td><td data-l="Par"><?= h($r['acteur']) ?></td></tr><?php endforeach; ?>
+</tbody></table></div>
+
 <?php elseif ($v === 'organismes'): $rows = compta_by_orga($pdo, $from, $to); ?>
 <div class="bar"><span class="count"><?= count($rows) ?> organisme<?= count($rows) > 1 ? 's' : '' ?></span><a class="btn ghost" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => 'organismes', 'p' => $pk] + ($pk === 'perso' ? ['du' => substr($from, 0, 10), 'au' => substr($to, 0, 10)] : []))) ?>"><?= ic('list') ?> Exporter (CSV)</a></div>
 <div class="tbl-wrap"><table class="tbl">
@@ -184,45 +213,40 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
   </tbody></table></div>
 
 <?php elseif ($v === 'versements'): $vs = compta_versements($pdo); $rg = fin_reglages(true); ?>
-<?php if ($vs['dettes'] || $vs['negatifs']): ?><div class="note err"><?= ic('alert') ?><div><b>Dettes d'organismes.</b> De l'argent a déjà été versé alors qu'un remboursement a eu lieu, et le solde Stripe de l'organisme ne permet pas de le reprendre. La dette est compensée automatiquement sur ses prochains versements.</div></div><?php endif; ?>
+<?php if ($vs['dettes'] || $vs['negatifs']): ?><div class="note err"><?= ic('alert') ?><div><b>Dettes d'organismes.</b> Un remboursement a eu lieu après un versement et n'a pas pu être repris. La dette est prélevée automatiquement sur la commission de ses prochains paiements par carte.</div></div><?php endif; ?>
 <div class="cols">
-  <section class="card"><h2 class="sec"><?= ic('clock') ?> Règles de versement</h2>
-    <p class="muted">Chaque inscription payée devient versable après le <b>délai de sécurité</b>, sans attendre le séjour. Tant qu'une annulation avec remboursement est possible, un <b>pourcentage</b> du net reste retenu en réserve ; il est libéré dès que plus aucun remboursement n'est possible (séjour commencé, ou fenêtre de remboursement « 50 % » fermée). Le versement a lieu un <b>jour fixe par semaine</b> et par organisme.</p>
-    <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="versements">
-      <label class="fld"><span class="fl">Délai de sécurité après le paiement, en jours <small>(0 à 60)</small></span><input class="in" name="delai" type="number" min="0" max="60" value="<?= (int)$rg['delai_securite_jours'] ?>" required></label>
-      <label class="fld"><span class="fl">Réserve de remboursement, en % du net <small>(0 à 100)</small></span><input class="in" name="reserve" inputmode="decimal" value="<?= h(number_format($rg['reserve_pct'], 1, ',', '')) ?>" required></label>
+  <section class="card"><h2 class="sec"><?= ic('clock') ?> Règle de versement</h2>
+    <p class="muted">L'argent de chaque paiement arrive sur le <b>compte Stripe de l'organisme</b> dès le paiement (commission déduite). Il est versé sur <b>sa banque</b> automatiquement, le nombre de jours ci-dessous après le <b>début du séjour</b> (cron horaire). Rien n'est retenu sur le solde de moncamp.fr.</p>
+    <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="payout_jours">
+      <label class="fld"><span class="fl">Jours après le début du séjour <small>(0 à 30)</small></span><input class="in" name="jours" type="number" min="0" max="30" value="<?= (int)$rg['payout_jours'] ?>" required></label>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
+    <?php if ($vs['legacy']): ?><p class="muted small">Anciens paiements encore gardés par moncamp.fr : <?= $e($vs['legacy']) ?> (règles d'origine : <?= (int)$rg['delai_securite_jours'] ?> j après le paiement, réserve <?= h(number_format($rg['reserve_pct'], 0, ',', ' ')) ?> %), transférés automatiquement puis versés avec le reste.</p><?php endif; ?>
   </section>
-  <section class="card"><h2 class="sec"><?= ic('building') ?> Changer le jour d'un organisme</h2>
-    <p class="muted">Le jour est attribué automatiquement (le moins chargé, du lundi au samedi, jamais le dimanche). Seul un administrateur peut le modifier.</p>
-    <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="jour">
-      <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($vs['orgas'] as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h($o['nom']) ?> (<?= h(FIN_JOURS[(int)$o['jour_versement']] ?? '-') ?>)</option><?php endforeach; ?></select></label>
-      <label class="fld"><span class="fl">Nouveau jour</span><select class="in" name="jour"><?php foreach (FIN_JOURS as $n => $nom): ?><option value="<?= $n ?>"><?= h(ucfirst($nom)) ?></option><?php endforeach; ?></select></label>
+  <section class="card"><h2 class="sec"><?= ic('clock') ?> Lancer le versement maintenant</h2>
+    <p class="muted">Verse tout de suite sur la banque d'un organisme ce qui est éligible, sans attendre le prochain passage du cron. Utile pour un test ou un dépannage.</p>
+    <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="versement_now">
+      <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($vs['orgas'] as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h($o['nom']) ?></option><?php endforeach; ?></select></label>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
-      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Modifier</button></div></form>
+      <label class="fld"><span class="fl"><input type="checkbox" name="force" value="1"> Test : ignorer la date de versement (verse tout le disponible, sauf litiges)</span></label>
+      <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer le versement maintenant</button></div></form>
   </section>
 </div>
 
-<section class="card"><h2 class="sec"><?= ic('clock') ?> Lancer le versement maintenant</h2>
-  <p class="muted">Verse tout de suite ce qui est versable pour un seul organisme (après délai de sécurité et réserve), sans attendre son jour. Utile pour un test ou un dépannage ; les règles ne changent pas.</p>
-  <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="versement_now">
-    <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($vs['orgas'] as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h($o['nom']) ?></option><?php endforeach; ?></select></label>
-    <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
-    <label class="fld"><span class="fl"><input type="checkbox" name="force" value="1"> Test : ignorer le délai de sécurité et la réserve (verse tout le net)</span></label>
-    <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer le versement maintenant</button></div></form>
-</section>
-
-<h2 class="sec"><?= ic('chart') ?> Charge par jour de la semaine</h2>
-<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Jour</th><th class="num">Organismes</th><th class="num">Sortie prévue (versable)</th><th class="num">Réserve retenue</th></tr></thead><tbody>
-  <?php foreach ($vs['jours'] as $j): ?><tr><td data-l="Jour"><b><?= h(ucfirst($j['nom'])) ?></b></td><td class="num" data-l="Organismes"><?= (int)$j['orgas'] ?></td><td class="num" data-l="Sortie prévue"><b><?= $e($j['ok']) ?></b></td><td class="num" data-l="Réserve"><?= $e($j['held']) ?></td></tr><?php endforeach; ?>
-  </tbody></table></div>
-
 <h2 class="sec"><?= ic('building') ?> Situation par organisme</h2>
-<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th>Jour</th><th class="num">Versable</th><th class="num">Réserve retenue</th><th class="num">En délai de sécurité</th><th class="num">Suspendu / litige</th><th class="num">Solde</th></tr></thead><tbody>
-  <?php $any = false; foreach ($vs['orgas'] as $o): if (!($o['ok'] || $o['held'] || $o['wait'] || $o['suspendu'] || abs((float)$o['portefeuille']) > 0.004)) continue; $any = true; ?>
-  <tr><td data-l="Organisme"><b><?= h($o['nom']) ?></b></td><td data-l="Jour"><?= h(FIN_JOURS[(int)$o['jour_versement']] ?? '-') ?></td><td class="num" data-l="Versable"><b><?= $e($o['ok']) ?></b></td><td class="num" data-l="Réserve"><?= $e($o['held']) ?></td><td class="num" data-l="Délai"><?= $e($o['wait']) ?></td><td class="num" data-l="Suspendu"><?= $e($o['suspendu']) ?></td><td class="num<?= $o['portefeuille'] < 0 ? ' neg' : '' ?>" data-l="Solde"><?= $e((int)round($o['portefeuille'] * 100)) ?></td></tr>
-  <?php endforeach; if (!$any): ?><tr><td colspan="7" class="empty"><p>Aucun fonds en attente.</p></td></tr><?php endif; ?>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">À verser maintenant</th><th class="num">Séjours à venir</th><th class="num">Litige</th><th class="num">Anciens paiements</th><th class="num">Solde moncamp.fr</th></tr></thead><tbody>
+  <?php $any = false; foreach ($vs['orgas'] as $o): if (!($o['ok'] || $o['futur'] || $o['litige'] || $o['legacy'] || abs((float)$o['portefeuille']) > 0.004)) continue; $any = true; ?>
+  <tr><td data-l="Organisme"><b><?= h($o['nom']) ?></b></td><td class="num" data-l="À verser"><b><?= $e($o['ok']) ?></b></td><td class="num" data-l="À venir"><?= $e($o['futur']) ?></td><td class="num" data-l="Litige"><?= $e($o['litige']) ?></td><td class="num" data-l="Anciens"><?= $e($o['legacy']) ?></td><td class="num<?= $o['portefeuille'] < 0 ? ' neg' : '' ?>" data-l="Solde"><?= $e((int)round($o['portefeuille'] * 100)) ?></td></tr>
+  <?php endforeach; if (!$any): ?><tr><td colspan="6" class="empty"><p>Aucun fonds en attente.</p></td></tr><?php endif; ?>
+  </tbody></table></div>
+<p class="muted small">Solde moncamp.fr négatif : dette de l'organisme (commission d'un paiement hors carte, remboursement non repris), prélevée sur ses prochains paiements par carte.</p>
+
+<h2 class="sec"><?= ic('list') ?> Derniers versements bancaires</h2>
+<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Organisme</th><th class="num">Montant</th><th>Statut</th></tr></thead><tbody>
+  <?php if (!$vs['payouts']): ?><tr><td colspan="4" class="empty"><p>Aucun versement pour l'instant.</p></td></tr><?php endif; ?>
+  <?php foreach ($vs['payouts'] as $pp): $lab = ['en_cours' => 'En préparation', 'envoye' => 'En cours', 'paye' => 'Payé', 'echec' => 'Échoué'][$pp['statut']] ?? $pp['statut']; ?>
+  <tr><td data-l="Date"><?= h(adm_date($pp['created_at'])) ?></td><td data-l="Organisme"><?= h($pp['orga']) ?></td><td class="num" data-l="Montant"><b><?= $e($pp['montant_cents']) ?></b></td><td data-l="Statut"><?= h($lab) ?><?= $pp['statut'] === 'echec' && $pp['erreur'] ? ' <span class="muted small">' . h($pp['erreur']) . '</span>' : '' ?></td></tr>
+  <?php endforeach; ?>
   </tbody></table></div>
 
 <h2 class="sec" id="dettes"><?= ic('alert') ?> Dettes d'organismes (reversements impossibles)</h2>

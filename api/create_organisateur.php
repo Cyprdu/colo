@@ -27,7 +27,7 @@ try {
     
     $newId = $pdo->lastInsertId();
     try { require_once __DIR__ . '/organismes.php'; orga_assign_slug($pdo, (int)$newId); } catch (Throwable $e) { error_log('create_organisateur (adresse): ' . $e->getMessage()); }
-    try { require_once __DIR__ . '/finance_lib.php'; fin_ensure($pdo); } catch (Throwable $e) { error_log('create_organisateur (jour de versement): ' . $e->getMessage()); } // attribue le jour de versement hebdomadaire
+    try { require_once __DIR__ . '/finance_lib.php'; fin_ensure($pdo); } catch (Throwable $e) { error_log('create_organisateur (finances): ' . $e->getMessage()); } // tables financières à jour
 
     // Alias de l'organisme (« PAJE ») : contrôlés et enregistrés à part, un refus n'empêche jamais la création
     $alias = ['motscles' => [], 'motscles_refuses' => []];

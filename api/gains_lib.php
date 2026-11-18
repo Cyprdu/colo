@@ -94,6 +94,7 @@ function gains_buy_points(PDO $pdo, int $userId, int $orgaId, string $packKey, s
         if (!mk_credit_points($pdo, $orgaId, (int)$pack['points'], 'portefeuille', (int)$pack['cents'], $ref)) throw new Exception('Opération déjà enregistrée.');
         $row['statut'] = 'ok'; $row['solde_apres_cents'] = $apres; $row['ref_points'] = $ref;
         $id = gains_append($pdo, $row);
+        fin_ledger_add($pdo, 'ajustement', $orgaId, -(int)$pack['cents'], 'gains:' . $id, 'points', $id, 'Points payés avec le solde', 'user:' . $userId);
         fin_audit($pdo, 'points_sur_ca', 'organisateur', $orgaId, ['pack' => $packKey, 'points' => $pack['points'], 'cents' => $pack['cents'], 'ref' => $ref, 'journal' => $id, 'avant' => $avant, 'apres' => $apres], 'user:' . $userId);
         $pdo->commit();
         return ['ok' => true, 'code' => 'ok', 'replay' => false, 'montant_cents' => $row['montant_cents'], 'solde_avant_cents' => $avant, 'solde_apres_cents' => $apres, 'points' => $row['points'], 'libelle' => $row['libelle'], 'journal_id' => $id];

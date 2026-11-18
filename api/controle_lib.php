@@ -155,7 +155,7 @@ function ctl_tests(): array {
     });
     $add('v_regles', 'Versements aux organismes', 'Règles en vigueur', function () {
         $r = fin_reglages(true);
-        return ctl_r('info', 'Délai de sécurité ' . $r['delai_securite_jours'] . ' j · réserve ' . $r['reserve_pct'] . ' % · commission ' . $r['commission_pct'] . ' % + ' . fin_eur($r['commission_fixe_cents']) . ' (hors carte ' . $r['commission_hors_pct'] . ' %).');
+        return ctl_r('info', 'Versement bancaire ' . $r['payout_jours'] . ' j après le début du séjour · commission ' . $r['commission_pct'] . ' % + ' . fin_eur($r['commission_fixe_cents']) . ' (hors carte ' . $r['commission_hors_pct'] . ' %).');
     });
 
     // ------------------------------------------------------------ Connexion Google

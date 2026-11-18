@@ -64,4 +64,11 @@ ok($r + $k === 2500 && $r === 2407, 'commande de 25 EUR (commission 0,93) : 24,0
 // L'organisme n'est débité que du remboursé : son net restant = net - remboursé = ce qu'il garde selon ses conditions (brut - part remboursable)
 [$r] = fin_annul_montants(10000, 280, 20, 30, 15);
 ok((10000 - 280) - $r === 10000 - 5000, 'organisme : net 97,20 - remboursé 47,20 = 50,00 = 50 % du brut');
+// Destination charges : commission prélevée = somme des commissions par inscription (part fixe par inscription), arrondis au centime
+ok(fin_commission_split(2500)[0] + fin_commission_split(10000)[0] === 373, 'panier 25 + 100 EUR : 0,93 + 2,80 = 3,73 EUR prélevés par Stripe');
+ok(fin_commission_split(1)[0] === 1 && fin_commission_split(333)[0] === 38, 'arrondis : jamais plus que le payé, 2,5 % de 3,33 = 0,08 + 0,30');
+ok(fin_refund_params(['mode' => 'destination']) === ['reverse_transfer' => true, 'refund_application_fee' => false], 'annulation destination : l\'organisme est débité, commission conservée');
+ok(fin_refund_params(['mode' => 'destination'], true)['refund_application_fee'] === true && fin_refund_params(['mode' => 'legacy']) === [], 'remboursement hors annulation : commission rendue ; legacy inchangé');
+ok(fin_payout_date('2030-07-10') === '2030-07-13 00:00:00', 'versement bancaire : début du séjour + 3 jours');
+ok(in_array('versement', FIN_LEDGER_TYPES, true) && !in_array('reversement', FIN_LEDGER_TYPES, true), 'journal : les reversements ne sont pas des lignes');
 echo "Tout est bon.\n";

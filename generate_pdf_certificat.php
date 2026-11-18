@@ -20,7 +20,15 @@ if ($r === '' && isset($_GET['inscription_id'])) {
     $r = (string)$st->fetchColumn();
 }
 $members = [];
-try { $members = loadOrderByToken($pdo, $r, $userId); } catch (Throwable $e) { error_log('pdf: ' . $e->getMessage()); }
+try {
+    $members = loadOrderByToken($pdo, $r, $userId);
+    if (!$members && $r !== '') { // l'organisme du séjour obtient le même reçu que la famille (sa comptabilité), rien de plus
+        $st = $pdo->prepare("SELECT e.parent_id FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id JOIN camps c ON c.id = i.camp_id JOIN organisateurs o ON o.id = c.organisateur_id
+                             WHERE i.reservation_token = ? AND o.user_id = ?");
+        $st->execute([$r, $userId]);
+        if ($pid = (int)$st->fetchColumn()) $members = loadOrderByToken($pdo, $r, $pid);
+    }
+} catch (Throwable $e) { error_log('pdf: ' . $e->getMessage()); }
 if (!$members) { http_response_code(404); exit('Réservation introuvable.'); }
 
 $first = $members[0];

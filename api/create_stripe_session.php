@@ -9,6 +9,7 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/orders.php';
+require_once __DIR__ . '/finance_lib.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $site = rtrim(defined('BASE_URL') ? BASE_URL : 'https://' . ($_SERVER['HTTP_HOST'] ?? 'moncamp.fr'), '/');
@@ -89,6 +90,8 @@ try {
         'payment_intent_data' => ['description' => 'moncamp.fr · ' . mb_substr($first['camp_nom'], 0, 120) . ' · ' . $label, 'metadata' => ['reservation_token' => $tokensString]],
     ];
     if (!empty($_SESSION['user']['email'])) $params['customer_email'] = $_SESSION['user']['email'];
+    $orgaId = (int)$pdo->query("SELECT organisateur_id FROM camps WHERE id = " . (int)$first['camp_id'])->fetchColumn();
+    $params = array_replace_recursive($params, fin_destination_params($pdo, $orgaId, array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems)));
 
     $checkout = \Stripe\Checkout\Session::create($params);
 

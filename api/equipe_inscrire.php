@@ -20,7 +20,8 @@ function eq_stripe(PDO $pdo, array $camp, array $row, int $uid): string {
     \Stripe\Stripe::setApiKey(STRIPE_SECRET_KEY);
     $site = rtrim(defined('BASE_URL') ? BASE_URL : 'https://' . ($_SERVER['HTTP_HOST'] ?? 'moncamp.fr'), '/');
     $cents = (int)round((float)$row['prix_final'] * 100);
-    $co = \Stripe\Checkout\Session::create([
+    require_once __DIR__ . '/finance_lib.php';
+    $params = [
         'payment_method_types' => ['card'], 'mode' => 'payment', 'locale' => 'fr', 'allow_promotion_codes' => true,
         'expires_at' => time() + EQUIPE_ATTENTE_MIN * 60 + 60,
         'client_reference_id' => (string)$uid,
@@ -33,7 +34,8 @@ function eq_stripe(PDO $pdo, array $camp, array $row, int $uid): string {
         'success_url' => $site . '/reservations?equipe=ok', 'cancel_url' => $site . '/reservations?equipe=annule',
         'metadata' => ['reservation_token' => $row['token'], 'camp_id' => (string)$camp['id'], 'user_id' => (string)$uid, 'type' => 'equipe_inscription'],
         'payment_intent_data' => ['description' => 'moncamp.fr · Équipe d\'animation · ' . mb_substr($camp['nom'], 0, 120), 'metadata' => ['reservation_token' => $row['token'], 'camp_id' => (string)$camp['id']]],
-    ]);
+    ];
+    $co = \Stripe\Checkout\Session::create(array_replace_recursive($params, fin_destination_params($pdo, (int)$camp['organisateur_id'], [$cents])));
     $pdo->prepare("UPDATE equipe_inscriptions SET stripe_session_id = ? WHERE id = ?")->execute([$co->id, $row['id']]);
     return $co->url;
 }

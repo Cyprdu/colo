@@ -20,8 +20,22 @@ namespace Stripe {
             return (object)['id' => 'trr_' . count($this->calls)];
         }
     }
+    /** Service générique : enregistre l'appel dans $GLOBALS['stripe_calls'] et répond via $GLOBALS['stripe_resp']['service.methode'] (valeur ou fonction). */
+    class FakeService {
+        public $name;
+        public function __construct($name) { $this->name = $name; }
+        public function __call($m, $args) {
+            $k = $this->name . '.' . $m;
+            $GLOBALS['stripe_calls'][] = [$k, $args];
+            $r = $GLOBALS['stripe_resp'][$k] ?? null;
+            if ($r instanceof \Closure) return $r(...$args);
+            if ($r instanceof \Throwable) throw $r;
+            return $r ?? (object)['id' => str_replace('.', '_', $k) . '_' . count($GLOBALS['stripe_calls'])];
+        }
+    }
     class StripeClient {
         public $transfers;
         public function __construct($key = null) { $this->transfers = $GLOBALS['fake_transfers'] ??= new FakeTransfers(); }
+        public function __get($n) { return new FakeService($n); }
     }
 }
