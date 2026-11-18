@@ -3,10 +3,11 @@
 
 // 1. CONFIG
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/finance_lib.php';
 
 // 2. SÉCURITÉ - STRICT ADMIN CHECK
-if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_admin'])) {
+if (!isset($_SESSION['user']) || !adm_can('compta.read')) {
     header('Location: alerte.html'); // Redirection sécurisée
     exit;
 }

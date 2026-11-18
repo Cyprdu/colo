@@ -5,10 +5,11 @@
 // Un aperçu est affiché d'abord ; rien n'est modifié tant qu'on n'a pas cliqué sur « Appliquer ».
 
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/sessions.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-if (empty($_SESSION['user']['is_admin'])) { http_response_code(403); exit('Accès réservé aux administrateurs.'); }
+if (!adm_can('tech.db')) { http_response_code(403); exit('Accès réservé aux administrateurs.'); }
 if (empty($_SESSION['csrf_sessions'])) $_SESSION['csrf_sessions'] = bin2hex(random_bytes(16));
 
 $apply = ($_SERVER['REQUEST_METHOD'] === 'POST')

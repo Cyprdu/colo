@@ -47,6 +47,7 @@ if (isset($_GET['code'])) {
                 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
                 $stmt->execute([$user['id']]);
                 $_SESSION['user'] = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!empty($_SESSION['user']['bloque'])) { unset($_SESSION['user']); header('Location: ../login.php?suspendu=1'); exit; }
 
             } else {
                 // --- CAS B : NOUVEL UTILISATEUR ---

@@ -44,6 +44,8 @@ try {
             exit;
         }
 
+        if (!empty($user['bloque'])) { echo json_encode(['error' => 'Ce compte est suspendu. Contactez-nous via la page Contact.']); exit; }
+
         // Connexion OK
         if (session_status() === PHP_SESSION_NONE) session_start();
         unset($user['password'], $user['remember_token'], $user['verification_token']); // Sécurité

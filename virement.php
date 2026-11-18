@@ -1,13 +1,14 @@
 <?php
 // virement.php?t=<jeton> : justificatif d'un versement (détail par inscription, brut / commission / net).
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/finance_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { header('Location: index.php'); exit; }
+if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.read'))) { header('Location: index.php'); exit; }
 
 $token = (string)($_GET['t'] ?? '');
 $rec = null; $error = null;
-try { $rec = fin_receipt($pdo, $token, (int)$_SESSION['user']['id'], !empty($_SESSION['user']['is_admin'])); }
+try { $rec = fin_receipt($pdo, $token, (int)$_SESSION['user']['id'], adm_can('orgas.read')); }
 catch (Throwable $e) { error_log('virement.php: ' . $e->getMessage()); }
 if (!$rec) $error = 'Versement introuvable ou vous n\'êtes pas autorisé à le consulter.';
 

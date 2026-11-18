@@ -6,6 +6,7 @@
 // Accès : propriétaire de l'organisme du séjour, ou administrateur. L'ouverture d'un dossier enfant est journalisée (table acces_sante).
 // Les documents ne sont jamais servis ici : seulement des liens vers api/secure_file.php (déchiffrement + journal à chaque ouverture).
 require_once 'config.php';
+require_once __DIR__ . '/adm_core.php';
 require_once 'security.php';
 require_once 'sante.php';
 require_once 'champs.php';
@@ -57,7 +58,7 @@ function dossier_pdf(array $d): void {
 }
 if (empty($_SESSION['user']['id'])) dossier_fin(['error' => 'Connectez-vous pour continuer.'], 401);
 $uid = (int)$_SESSION['user']['id'];
-$admin = !empty($_SESSION['user']['is_admin']);
+$admin = adm_can('inscriptions.read');
 if (!$admin && empty($_SESSION['user']['is_directeur'])) dossier_fin(['error' => 'Accès réservé aux organisateurs.'], 403);
 $mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 

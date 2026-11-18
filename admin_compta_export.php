@@ -4,7 +4,7 @@
 // Paramètres : t = paiements | transferts | organismes | payouts | journal | gains ; p/du/au = période ; o = jeton d'organisme (jamais d'identifiant numérique).
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
-adm_guard();
+adm_guard(false, 'compta.export');
 
 if (!adm_reauth_ok()) {
     $_SESSION['adm_flash'] = ['err', 'Confirmez votre mot de passe pour exporter les données financières.'];
@@ -19,8 +19,15 @@ fin_ensure($pdo);
 $orgaId = 0;
 if (!empty($_GET['o'])) { $orgaId = fin_orga_from_tok($pdo, (string)$_GET['o']); if (!$orgaId) { http_response_code(404); exit; } }
 $type = (string)($_GET['t'] ?? '');
-$set = compta_export($pdo, $type, $from, $to, $orgaId);
+$fmt = ($_GET['f'] ?? '') === 'xlsx' ? 'xlsx' : 'csv';
+$set = in_array($type, ['ledger', 'grandlivre', 'fec'], true) ? compta_export_plus($pdo, $type, $from, $to, $orgaId, $_GET) : compta_export($pdo, $type, $from, $to, $orgaId);
 if (!$set) { http_response_code(400); exit('Export inconnu.'); }
 
-adm_audit('compta_export', $type, $label . ($orgaId ? ' (un organisme)' : ''));
-compta_csv('colomap_' . $type . '_' . substr($from, 0, 10) . '_' . substr($to, 0, 10) . '.csv', $set[0], $set[1]);
+adm_audit('compta_export', $type . '.' . ($type === 'fec' ? 'txt' : $fmt), $label . ($orgaId ? ' (un organisme)' : ''));
+$base = 'moncamp_' . $type . '_' . substr($from, 0, 10) . '_' . substr($to, 0, 10);
+if ($type === 'fec') {
+    $siren = preg_replace('/[^0-9]/', '', (string)adm_one("SELECT valeur FROM fin_reglages WHERE cle = 'siren_plateforme'")) ?: '000000000';
+    compta_fec_out($siren . 'FEC' . date('Ymd', strtotime($to)) . '.txt', $set[0], $set[1]);
+}
+if ($fmt === 'xlsx') compta_xlsx($base . '.xlsx', $set[0], $set[1]);
+compta_csv($base . '.csv', $set[0], $set[1]);

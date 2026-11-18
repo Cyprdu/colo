@@ -122,14 +122,70 @@
   // Les actions sensibles ouvrent la fenêtre de mot de passe d'elles-mêmes (401 reauth:true)
   function api(body) { return post(body, false); }
 
-  /* ---------- menu mobile ---------- */
-  var menu = $('#menu'); if (menu) menu.addEventListener('click', function () { $('#side').classList.toggle('open'); });
+  var menu = $('#menu');
+  function navOpen(on) { document.body.classList.toggle('nav-open', on); if (menu) menu.setAttribute('aria-expanded', on ? 'true' : 'false'); }
+  if (menu) menu.addEventListener('click', function () { navOpen(!document.body.classList.contains('nav-open')); });
+  var ov = $('#overlay'); if (ov) ov.addEventListener('click', function () { navOpen(false); });
+  window.addEventListener('resize', function () { if (window.innerWidth > 1024) navOpen(false); });
+
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('details.dd[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); });
+    var k = e.target.closest && e.target.closest('[data-keys]');
+    if (k) { e.preventDefault(); k.closest('details') && k.closest('details').removeAttribute('open'); open($('#m-keys')); }
+  });
+
+  var tabOn = $('.tabs .tab.on'); if (tabOn) tabOn.parentNode.scrollLeft = tabOn.offsetLeft - 16;
+  var gs = $('#gs'), gres = $('#gres'), gsT, gsSeq = 0, gsIdx = -1;
+  function gsLinks() { return gres ? [].slice.call(gres.querySelectorAll('a')) : []; }
+  function gsMark(i) { var l = gsLinks(); l.forEach(function (a) { a.classList.remove('on'); }); if (l[i]) { l[i].classList.add('on'); l[i].scrollIntoView({ block: 'nearest' }); } gsIdx = i; }
+  function gsRender(j) {
+    gres.textContent = ''; gsIdx = -1;
+    var groups = j.groups || [];
+    if (!groups.length) gres.appendChild(el('div', { class: 'none', text: 'Aucun résultat.' }));
+    groups.forEach(function (g) {
+      gres.appendChild(el('div', { class: 'g', text: g.label }));
+      g.items.forEach(function (it) { gres.appendChild(el('a', { href: it.href }, icon(g.icon), el('div', {}, el('b', { text: it.title }), it.sub ? el('small', { text: it.sub }) : null))); });
+    });
+    gres.hidden = false;
+  }
+  if (gs) {
+    gs.addEventListener('input', function () {
+      clearTimeout(gsT);
+      var q = gs.value.trim();
+      if (q.length < 2) { gres.hidden = true; return; }
+      gsT = setTimeout(function () {
+        var n = ++gsSeq;
+        fetch('admin_search.php?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+          .then(function (r) { return r.json(); }).then(function (j) { if (n === gsSeq) gsRender(j); }).catch(function () {});
+      }, 220);
+    });
+    gs.addEventListener('keydown', function (e) {
+      var l = gsLinks();
+      if (e.key === 'ArrowDown') { e.preventDefault(); gsMark(Math.min(l.length - 1, gsIdx + 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); gsMark(Math.max(0, gsIdx - 1)); }
+      else if (e.key === 'Enter' && l.length) { e.preventDefault(); location.href = (l[gsIdx] || l[0]).href; }
+      else if (e.key === 'Escape') { gres.hidden = true; gs.blur(); }
+    });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.gsearch')) gres.hidden = true; });
+  }
+  var gPending = 0;
+  var goMap = { d: 'admin.php', n: 'admin_notifs.php', m: 'admin_contacts.php', o: 'admin_demandes.php', c: 'admin_compta.php', u: 'admin_list.php?e=users', s: 'admin_list.php?e=camps' };
+  document.addEventListener('keydown', function (e) {
+    var t = e.target, typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); if (gs) { gs.focus(); gs.select(); } return; }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '/') { e.preventDefault(); if (gs) gs.focus(); return; }
+    if (e.key === '?') { open($('#m-keys')); return; }
+    if (e.key === 'Escape') { navOpen(false); document.querySelectorAll('details[open]').forEach(function (d) { d.removeAttribute('open'); }); return; }
+    if (e.key === 'g') { gPending = Date.now(); return; }
+    if (gPending && Date.now() - gPending < 1200 && goMap[e.key]) { gPending = 0; location.href = goMap[e.key]; }
+  });
 
   /* ---------- pages de liste : actions ---------- */
   function listActions() {
     document.querySelectorAll('button[data-act]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var act = b.dataset.act, id = +b.dataset.id, e = b.dataset.e;
+        var act = b.dataset.act, id = b.dataset.id, e = b.dataset.e;
         var run = function (extra) {
           b.disabled = true;
           return api(Object.assign({ a: 'act', act: act, id: id, e: e }, extra || {})).then(function (j) { b.disabled = false; return j; }, function (err) { b.disabled = false; throw err; });
@@ -311,6 +367,66 @@
     $('#sql-unlock').addEventListener('click', function () { askReauth().then(function (ok) { if (ok) lock(false); }); });
     lock(!unlocked());
   }
+
+  function formData(f) {
+    var o = {};
+    new FormData(f).forEach(function (v, k) {
+      if (k.slice(-2) === '[]') { k = k.slice(0, -2); (o[k] = o[k] || []).push(v); } else o[k] = v;
+    });
+    f.querySelectorAll('input[type=checkbox][name$="[]"]').forEach(function (c) { var k = c.name.slice(0, -2); if (!o[k]) o[k] = []; });
+    return o;
+  }
+  function done(j, src) {
+    toast(j.msg || src.dataset.ok || 'Fait.');
+    if (j.go || src.dataset.go) { location.href = j.go || src.dataset.go; return; }
+    if (src.dataset.stay === undefined) setTimeout(function () { location.reload(); }, 450);
+  }
+  function confirmed(src) {
+    return src.dataset.confirm ? confirmBox(src.dataset.title || 'Confirmer', src.dataset.confirm, src.dataset.word || '') : Promise.resolve(true);
+  }
+  document.addEventListener('submit', function (e) {
+    var f = e.target.closest && e.target.closest('form[data-api]'); if (!f) return;
+    e.preventDefault();
+    confirmed(f).then(function (ok) {
+      if (!ok) return;
+      var b = f.querySelector('[type=submit]'); if (b) b.disabled = true;
+      api(Object.assign(formData(f), { a: f.dataset.api })).then(function (j) { if (b) b.disabled = false; done(j, f); }, function (err) { if (b) b.disabled = false; toast(err.message, true); });
+    });
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button[data-api]'); if (!b) return;
+    e.preventDefault();
+    confirmed(b).then(function (ok) {
+      if (!ok) return;
+      var body = { a: b.dataset.api };
+      Object.keys(b.dataset).forEach(function (k) { if (['api', 'confirm', 'ok', 'title', 'word', 'stay', 'go', 'sel'].indexOf(k) < 0) body[k] = b.dataset[k]; });
+      if (b.dataset.sel) body.ids = [].map.call(document.querySelectorAll('input[name="sel[]"]:checked'), function (c) { return c.value; });
+      b.disabled = true;
+      api(body).then(function (j) { b.disabled = false; done(j, b); }, function (err) { b.disabled = false; toast(err.message, true); });
+    });
+  });
+  function selSync() {
+    var n = document.querySelectorAll('input[name="sel[]"]:checked').length, b = $('#bulk');
+    if (b) b.hidden = !n;
+    document.querySelectorAll('[data-selcount]').forEach(function (s) { s.textContent = n; });
+  }
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('[data-selall]')) { document.querySelectorAll('input[name="sel[]"]').forEach(function (c) { c.checked = t.checked; }); selSync(); }
+    else if (t.matches && t.matches('input[name="sel[]"]')) selSync();
+    else if (t.matches && t.matches('[data-autosubmit]')) t.form.submit();
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-stripe]'); if (!b) return;
+    var box = $('#stripe-live'); b.disabled = true;
+    api({ a: 'pay.stripe', t: b.dataset.stripe }).then(function (j) {
+      b.disabled = false; box.textContent = '';
+      var dl = el('dl', { class: 'dl' });
+      Object.keys(j.stripe).forEach(function (k) { dl.appendChild(el('dt', { text: k })); dl.appendChild(el('dd', { text: j.stripe[k] })); });
+      box.appendChild(el('h3', { class: 'sub', text: 'Chez Stripe, maintenant' })); box.appendChild(dl); box.hidden = false;
+    }, function (err) { b.disabled = false; toast(err.message, true); });
+  });
+  window.ADM = { api: api, toast: toast, confirmBox: confirmBox, dialog: dialog, el: el, icon: icon };
 
   if (DATA.page === 'list') listActions();
   if (DATA.page === 'db') dbApp();

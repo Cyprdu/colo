@@ -1,9 +1,10 @@
 <?php
 // Fichier: /api/get_camp_requests.php
 require_once 'config.php';
+require_once __DIR__ . '/adm_core.php';
 
 // Vérification Admin
-if (!isset($_SESSION['user']['is_admin']) || !$_SESSION['user']['is_admin']) { 
+if (!adm_can('camps.read')) { 
     sendJson(['error' => 'Interdit'], 403); 
 }
 

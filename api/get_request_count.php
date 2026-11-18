@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
-if (!isset($_SESSION['user']['is_admin']) || !$_SESSION['user']['is_admin']) { sendJson(['count' => 0]); }
+require_once __DIR__ . '/adm_core.php';
+if (!adm_can('demandes.read')) { sendJson(['count' => 0]); }
 
 try {
     $stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE demande_en_cours = 1");

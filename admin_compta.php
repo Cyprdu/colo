@@ -6,11 +6,11 @@
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
 require_once __DIR__ . '/api/gains_lib.php';
-adm_guard();
+adm_guard(false, 'compta.read');
 fin_ensure($pdo);
 try { fin_frais_rattrapage($pdo); } catch (Throwable $e) { error_log('admin rattrapage frais: ' . $e->getMessage()); } // une fois, puis ne refait rien
 
-$v = in_array($_GET['v'] ?? '', ['synthese', 'revenus', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
+$v = in_array($_GET['v'] ?? '', ['synthese', 'revenus', 'journal', 'grandlivre', 'paiements', 'remboursements', 'dettes', 'commission', 'organismes', 'versements', 'rapprochement', 'tva', 'cloture', 'recherche', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
 [$from, $to, $periodLabel, $pk] = compta_period($_GET);
 $orgaTok = preg_match('/^[A-Za-z0-9]{22,24}$/', (string)($_GET['o'] ?? '')) ? (string)$_GET['o'] : ''; // jeton public (22 car.) ou ancien jeton HMAC
 $orgaId = $orgaTok ? fin_orga_from_tok($pdo, $orgaTok) : 0;
@@ -26,7 +26,8 @@ if ($v === 'revenus' && ($_GET['csv'] ?? '') === 'revenus') { // export comptabl
 /** URL de la page avec la période / l'organisme courants (aucun identifiant numérique) */
 function cu(array $o = []): string {
     global $v, $pk, $orgaTok;
-    $q = array_merge(['v' => $v, 'p' => $pk, 'o' => $orgaTok, 'du' => $_GET['du'] ?? '', 'au' => $_GET['au'] ?? ''], $o);
+    $keep = (!isset($o['v']) || $o['v'] === $v) ? array_intersect_key($_GET, array_flip(['q', 'ty', 'mo', 'min', 'max', 'f', 'tri', 'sens', 'page'])) : [];
+    $q = array_merge(['v' => $v, 'p' => $pk, 'o' => $orgaTok, 'du' => $_GET['du'] ?? '', 'au' => $_GET['au'] ?? ''], $keep, $o);
     if (($q['p'] ?? '') !== 'perso') unset($q['du'], $q['au']);
     return 'admin_compta.php?' . http_build_query(array_filter($q, fn($x) => $x !== '' && $x !== null));
 }
@@ -35,6 +36,9 @@ function flash_go(string $kind, string $msg, string $to): void { $_SESSION['adm_
 /* ------------------------------------------------------------------ actions (POST : CSRF vérifié par adm_guard) */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = (string)($_POST['act'] ?? '');
+    $need = ['ajustement' => 'paiements.write', 'commission' => 'compta.settings', 'direct_charges' => 'compta.settings', 'versement_now' => 'versements.write',
+             'retenter' => 'versements.write', 'unlock' => 'compta.export', 'frais' => 'paiements.write', 'payouts' => 'compta.read', 'tva' => 'compta.settings'];
+    if (isset($need[$act])) adm_need($need[$act], false);
     try {
         if ($act === 'ajustement') {   // ajustement / dette manuelle d'un organisme (mot de passe, motif obligatoire, journalisé)
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
@@ -88,13 +92,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($act === 'retenter') {
             if (!adm_reauth_ok()) flash_go('err', 'Confirmez votre mot de passe (onglet Exports CSV, « Déverrouiller ») puis réessayez.', 'admin_compta.php?v=versements');
             $_SESSION['adm_reauth'] = time();
-            $ok = ctype_digit((string)($_POST['rev'] ?? '')) && fin_reversal_retenter($pdo, (int)$_POST['rev'], 'admin:' . $uid);
+            $revId = adm_untok('rev', (string)($_POST['rev'] ?? ''));
+            $ok = $revId > 0 && fin_reversal_retenter($pdo, $revId, 'admin:' . $uid);
             if ($ok) { $r = []; fin_process_reversals($pdo, $r); }
             flash_go($ok ? 'ok' : 'err', $ok ? 'Reversement retenté (voir le résultat ci-dessous).' : 'Demande introuvable ou déjà traitée.', 'admin_compta.php?v=versements');
         }
         if ($act === 'unlock') {
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             flash_go($ok ? 'ok' : 'err', $ok ? 'Exports déverrouillés pendant 10 minutes.' : $msg, 'admin_compta.php?v=export');
+        }
+        if ($act === 'tva') {
+            $t = str_replace(',', '.', (string)($_POST['taux'] ?? ''));
+            $siren = preg_replace('/\D/', '', (string)($_POST['siren'] ?? ''));
+            if (!is_numeric($t) || (float)$t < 0 || (float)$t > 30 || ($siren !== '' && strlen($siren) !== 9)) flash_go('err', 'Taux entre 0 et 30 %, SIREN à 9 chiffres.', 'admin_compta.php?v=tva');
+            $old = ['taux' => adm_one("SELECT valeur FROM fin_reglages WHERE cle = 'tva_commission_pct'"), 'siren' => adm_one("SELECT valeur FROM fin_reglages WHERE cle = 'siren_plateforme'")];
+            fin_put_reglage($pdo, 'tva_commission_pct', (string)(float)$t, 'admin:' . $uid);
+            fin_put_reglage($pdo, 'siren_plateforme', $siren, 'admin:' . $uid);
+            adm_audit('compta_tva_reglage', 'fin_reglages', null, $old, ['taux' => (string)(float)$t, 'siren' => $siren]);
+            flash_go('ok', 'Paramètres enregistrés.', 'admin_compta.php?v=tva');
         }
         if ($act === 'frais') {
             [$ok, $ko] = fin_backfill_fees($pdo, 60);
@@ -120,25 +135,33 @@ $negN = compta_negative_count($pdo);
 $orgList = $pdo->query("SELECT DISTINCT o.id, o.nom FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id ORDER BY o.nom")->fetchAll(PDO::FETCH_ASSOC);
 $e = fn($c) => h(fin_eur((int)$c));
 
-adm_head('Comptabilité', 'admin_compta.php');
-$tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 'Commission', 'organismes' => 'Par organisme', 'versements' => 'Versements', 'rapprochement' => 'Rapprochement Stripe', 'export' => 'Exports CSV', 'reglages' => 'Réglages'];
+adm_head('Comptabilité');
+$tabs = ['synthese' => ['Synthèse', ''], 'revenus' => ['Mes revenus', ''], 'journal' => ['Journal', ''], 'grandlivre' => ['Grand livre', ''], 'paiements' => ['Paiements', 'paiements.read'],
+         'remboursements' => ['Remboursements', 'paiements.read'], 'dettes' => ['Dettes', ''], 'versements' => ['Versements', 'versements.read'], 'rapprochement' => ['Rapprochement Stripe', ''],
+         'tva' => ['TVA', ''], 'cloture' => ['Clôtures', ''], 'commission' => ['Commission', ''], 'organismes' => ['Par organisme', ''], 'export' => ['Exports', 'compta.export'], 'reglages' => ['Réglages', 'compta.settings']];
+$tabs = array_filter($tabs, fn($t) => $t[1] === '' || adm_can($t[1]));
+if (!isset($tabs[$v]) && $v !== 'recherche') adm_forbidden(false, 'compta');
 ?>
-<nav class="tabs" aria-label="Sections de la comptabilité">
-<?php foreach ($tabs as $k => $l): ?><a class="tab<?= $k === $v ? ' on' : '' ?>" href="<?= h(cu(['v' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
+<div class="row-l wrap-row compta-top">
+<nav class="tabs grow" aria-label="Sections de la comptabilité">
+<?php foreach ($tabs as $k => [$l]): ?><a class="tab<?= $k === $v ? ' on' : '' ?>" href="<?= h(cu(['v' => $k, 'page' => ''])) ?>"><?= h($l) ?></a><?php endforeach; ?>
 </nav>
+<form class="tsearch" method="get" action="admin_compta.php" role="search"><input type="hidden" name="v" value="recherche"><label class="search"><?= ic('search') ?><input class="in" type="search" name="q" value="<?= h($v === 'recherche' ? (string)($_GET['q'] ?? '') : '') ?>" placeholder="Rechercher une transaction" maxlength="80"></label></form>
+</div>
 
 <?php if ($negN > 0): ?>
 <div class="note err"><?= ic('alert') ?><div><b><?= $negN ?> paiement<?= $negN > 1 ? 's' : '' ?> à marge négative.</b> La commission ne couvre pas les frais Stripe réels (carte hors Europe, remboursement, litige...). <a class="lnk" href="<?= h(cu(['v' => 'synthese'])) ?>#negatives">Voir le détail</a> · envisagez d'augmenter la part fixe ou le pourcentage (onglet Commission).</div></div>
 <?php endif; ?>
 
-<?php if ($v === 'synthese' || $v === 'revenus' || $v === 'commission' || $v === 'organismes' || $v === 'export'): /* barre de période */ ?>
+<?php if (in_array($v, ['synthese', 'revenus', 'commission', 'organismes', 'export', 'journal', 'grandlivre', 'paiements', 'remboursements', 'tva'], true)): ?>
 <form class="bar" method="get" action="admin_compta.php">
   <input type="hidden" name="v" value="<?= h($v) ?>"><input type="hidden" name="p" value="perso">
   <?php foreach (['mois' => 'Ce mois', 'trimestre' => 'Trimestre', 'annee' => 'Année', 'tout' => 'Tout'] as $k => $l): ?><a class="btn ghost<?= $pk === $k ? ' sel-on' : '' ?>" href="<?= h(cu(['p' => $k])) ?>"><?= h($l) ?></a><?php endforeach; ?>
   <label class="fld-inline">Du <input class="in dt" type="date" name="du" value="<?= h(substr($from, 0, 10)) ?>"></label>
   <label class="fld-inline">au <input class="in dt" type="date" name="au" value="<?= h(substr($to, 0, 10)) ?>"></label>
   <?php if ($v === 'revenus'): ?><input type="hidden" name="g" value="<?= h((string)($_GET['g'] ?? 'm')) ?>"><?php endif; ?>
-  <?php if ($v !== 'organismes' && $v !== 'revenus'): ?><select class="in sel" name="o" aria-label="Organisme"><option value="">Tous les organismes</option>
+  <?php foreach (['q', 'ty', 'mo', 'min', 'max', 'f'] as $kk) if (($_GET[$kk] ?? '') !== '') echo '<input type="hidden" name="' . $kk . '" value="' . h((string)$_GET[$kk]) . '">'; ?>
+  <?php if ($v !== 'organismes' && $v !== 'revenus' && $v !== 'tva'): ?><select class="in sel" name="o" aria-label="Organisme"><option value="">Tous les organismes</option>
     <?php foreach ($orgList as $o): $t = fin_orga_tok((int)$o['id']); ?><option value="<?= h($t) ?>"<?= $t === $orgaTok ? ' selected' : '' ?>><?= h($o['nom']) ?></option><?php endforeach; ?></select><?php endif; ?>
   <button class="btn" type="submit"><?= ic('search') ?> Appliquer</button>
   <span class="count"><?= h($periodLabel) ?></span>
@@ -288,7 +311,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
 <section class="card"><h2 class="sec"><?= ic('check') ?> Rapprochement avec Stripe</h2>
   <?php if ($rcErr): ?><div class="note warn"><?= ic('alert') ?><div><?= h($rcErr) ?></div></div><?php endif; ?>
   <?php if ($rc): ?><p>Commissions attendues (paiements destination de la période) : <b><?= $e($rc['attendu']) ?></b> · relevées chez Stripe (<?= (int)$rc['n'] ?> commissions) : <b><?= $e($rc['stripe']) ?></b> ·
-    écart : <b<?= $rc['ecart'] !== 0 ? ' class="neg" style="color:#b42318"' : '' ?>><?= $e($rc['ecart']) ?></b></p>
+    écart : <b<?= $rc['ecart'] !== 0 ? ' class="neg"' : '' ?>><?= $e($rc['ecart']) ?></b></p>
     <?php if ($rc['ecart'] !== 0): ?><p class="muted small">Un écart vient en général d'un litige perdu (Stripe garde la commission, nos comptes la rendent), d'un remboursement fait dans Stripe sans « refund application fee », ou d'un paiement de fin de période enregistré le lendemain.</p><?php endif; ?>
   <?php else: ?><a class="btn ghost" href="<?= h(cu(['rp' => 1])) ?>"><?= ic('search') ?> Comparer avec Stripe</a><?php endif; ?>
 </section>
@@ -328,7 +351,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
 <div class="cols">
   <section class="card"><h2 class="sec"><?= ic('clock') ?> Règle de versement</h2>
     <p class="muted">L'argent de chaque paiement arrive sur le <b>compte Stripe de l'organisme</b> dès le paiement (commission déduite). Il est <b>viré chaque jour sur sa banque</b> par moncamp.fr dès que les fonds sont disponibles (cron quotidien, ou bouton « Virer mon argent maintenant » de l'organisme ; en général 2 à 7 jours ouvrés après le paiement), <b>sans attendre le séjour</b>. Chaque versement est relevé avec sa date d'arrivée. Un remboursement après versement crée une dette, compensée sur ses paiements suivants.</p>
-    <form method="post" action="admin_compta.php?v=versements" style="margin-top:14px"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="direct_charges">
+    <form class="mt" method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="direct_charges">
       <label class="fld"><span class="fl">Paiements par carte</span><select class="in" name="direct"><option value="1"<?= $rg['direct_charges'] ? ' selected' : '' ?>>Sur le compte de l'organisme (direct charges : frais Stripe à sa charge)</option><option value="0"<?= $rg['direct_charges'] ? '' : ' selected' ?>>Repli : encaissés par moncamp.fr puis transférés (frais Stripe à notre charge)</option></select></label>
       <p class="muted small">Direct charges seulement pour les comptes complets (aucune information demandée par Stripe). Repli à utiliser si la page de paiement Stripe affiche une erreur.</p>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
@@ -344,7 +367,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
   </section>
 </div>
 
-<section class="card"><h2 class="sec"><?= ic('edit') ?> Ajouter un ajustement / une dette</h2>
+<?php if (adm_can('paiements.write')): ?><section class="card" id="ajustement"><h2 class="sec"><?= ic('edit') ?> Ajouter un ajustement / une dette <?= adm_help('Mot de passe obligatoire. L’écriture est ajoutée au journal et ne peut pas être supprimée : une erreur se corrige par un ajustement inverse.') ?></h2>
   <p class="muted">Dette : l'organisme doit ce montant à moncamp.fr (compensée sur ses prochains paiements, visible dans son onglet Dette). Crédit : moncamp.fr lui doit ce montant. Journalisé avec le motif.</p>
   <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="ajustement">
     <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($pdo->query("SELECT id, nom FROM organisateurs ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC) as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h(html_entity_decode((string)$o['nom'], ENT_QUOTES, 'UTF-8')) ?></option><?php endforeach; ?></select></label>
@@ -353,7 +376,7 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
     <label class="fld"><span class="fl">Motif (obligatoire, visible par l'organisme)</span><input class="in" name="motif" minlength="3" maxlength="110" required></label>
     <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
     <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
-</section>
+</section><?php endif; ?>
 
 <h2 class="sec"><?= ic('building') ?> Situation par organisme</h2>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">À verser maintenant</th><th class="num">Séjours à venir</th><th class="num">Litige</th><th class="num">Anciens paiements</th><th class="num">Solde moncamp.fr</th></tr></thead><tbody>
@@ -374,8 +397,8 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
 <h2 class="sec" id="dettes"><?= ic('alert') ?> Dettes d'organismes (reversements impossibles)</h2>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Organisme</th><th>Inscription</th><th class="num">Reste dû</th><th></th></tr></thead><tbody>
   <?php if (!$vs['dettes']): ?><tr><td colspan="5" class="empty"><p>Aucune dette.</p></td></tr><?php endif; ?>
-  <?php foreach ($vs['dettes'] as $d): ?><tr><td data-l="Date"><?= h(adm_date($d['created_at'])) ?></td><td data-l="Organisme"><?= h($d['orga']) ?></td><td data-l="Inscription">#<?= abs((int)$d['inscription_id']) ?></td><td class="num neg" data-l="Reste dû"><b><?= $e($d['montant_cents'] - $d['recupere_cents']) ?></b></td>
-    <td class="acts"><form class="inl" method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="retenter"><input type="hidden" name="rev" value="<?= (int)$d['id'] ?>"><button class="btn ghost sm" type="submit">Retenter le reversement</button></form></td></tr><?php endforeach; ?>
+  <?php foreach ($vs['dettes'] as $d): ?><tr><td data-l="Date"><?= h(adm_date($d['created_at'])) ?></td><td data-l="Organisme"><?= h($d['orga']) ?></td><td data-l="Inscription"><?php if (adm_can('paiements.read')): ?><a class="lnk-q" href="<?= h(cu(['v' => 'dettes'])) ?>">Voir</a><?php endif; ?></td><td class="num neg" data-l="Reste dû"><b><?= $e($d['montant_cents'] - $d['recupere_cents']) ?></b></td>
+    <td class="acts"><form class="inl" method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="retenter"><input type="hidden" name="rev" value="<?= h(adm_tok('rev', (int)$d['id'])) ?>"><button class="btn ghost sm" type="submit">Retenter le reversement</button></form></td></tr><?php endforeach; ?>
   </tbody></table></div>
 <p class="muted small">Un reversement échoue si le solde Stripe de l'organisme est insuffisant (il a déjà été viré sur sa banque). La dette reste alors en solde négatif et se compense toute seule sur ses prochains versements.</p>
 
@@ -449,13 +472,18 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
         ['hors_stripe', 'Paiements hors carte et commissions', 'Chèques, espèces, virements... marqués reçus par les organisateurs, avec la commission retenue.'],
         ['payouts', 'Virements Stripe vers la banque', 'Pour le rapprochement avec votre relevé bancaire (synchroniser d\'abord).'],
         ['gains', 'Paiements avec les gains', 'Achats de points payés avec le solde à recevoir : qui, IP, montant, solde avant/après, statut, empreinte.'],
+        ['ledger', 'Journal comptable', 'Toutes les écritures de fin_ledger de la période (débit, crédit, référence, acteur).'],
+        ['grandlivre', 'Grand livre de l’organisme', 'Écritures et solde cumulé d’un organisme (choisissez l’organisme dans le filtre).'],
         ['journal', 'Journal d\'audit financier', 'Toutes les opérations (paiements, remboursements, transferts, suspensions).'],
     ]; ?>
 <p class="muted">Période : <b><?= h($periodLabel) ?></b><?= $orgaTok ? ' · un seul organisme' : '' ?>. Format Excel français (séparateur « ; », UTF-8, virgule décimale).</p>
 <div class="cols">
-<?php foreach ($exp as [$t, $l, $d]): ?><section class="card"><h2 class="sec"><?= ic('list') ?> <?= h($l) ?></h2><p class="muted"><?= h($d) ?></p><a class="btn" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => $t] + $qs)) ?>"><?= ic('external') ?> Télécharger (CSV)</a></section><?php endforeach; ?>
+<?php foreach ($exp as [$t, $l, $d]): if ($t === 'grandlivre' && !$orgaTok) continue; ?><section class="card"><h2 class="sec"><?= ic('list') ?> <?= h($l) ?></h2><p class="muted"><?= h($d) ?></p><div class="row-l wrap-row"><a class="btn" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => $t] + $qs)) ?>"><?= ic('download') ?> CSV</a><a class="btn ghost" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => $t, 'f' => 'xlsx'] + $qs)) ?>"><?= ic('download') ?> Excel</a></div></section><?php endforeach; ?>
+<section class="card"><h2 class="sec"><?= ic('list') ?> Fichier des écritures comptables (FEC) <?= adm_help('Format texte tabulé de l’administration fiscale. Seules les écritures propres à moncamp.fr (commissions, frais Stripe à sa charge, dettes, ajustements) sont exportées, avec un plan de comptes proposé : à valider par votre expert-comptable. Renseignez le SIREN dans l’onglet TVA.') ?></h2><p class="muted">Période choisie ci-dessus, fichier SIRENFECAAAAMMJJ.txt.</p><a class="btn" href="<?= h('admin_compta_export.php?' . http_build_query(['t' => 'fec'] + $qs)) ?>"><?= ic('download') ?> FEC</a></section>
 </div>
 <?php endif; ?>
+
+<?php elseif (in_array($v, ['journal', 'grandlivre', 'paiements', 'remboursements', 'dettes', 'tva', 'cloture', 'recherche'], true)): require __DIR__ . '/admin_compta_plus.php'; ?>
 
 <?php else: /* réglages */
     $rg = fin_reglages(true); $stripePct = 1.5; $stripeFixe = 25;

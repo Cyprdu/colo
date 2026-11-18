@@ -2,9 +2,10 @@
 // child_details.php?r=<jeton de réservation>&t=<jeton de session> : dossier complet d'un enfant inscrit (organisateur du séjour ou administrateur).
 // Les données viennent de api/dossier_inscrit.php (accès vérifié et journalisé) et le rendu est partagé avec le panneau de gestion_camp.php (assets/js/dossier.js).
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { header('Location: index.php'); exit; }
+if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.read'))) { header('Location: index.php'); exit; }
 $resToken = (string)($_GET['r'] ?? '');
 $tokenCamp = (string)($_GET['t'] ?? '');
 if ($resToken === '') { header('Location: mes_camps.php'); exit; }

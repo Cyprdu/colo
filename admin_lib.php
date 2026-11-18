@@ -18,6 +18,7 @@ const ADM_PER_PAGE   = 25;
 
 require_once __DIR__ . '/partials/logo.php';
 require_once __DIR__ . '/api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 
 /* ------------------------------------------------------------------ en-têtes */
 function adm_headers(): void {
@@ -58,22 +59,33 @@ function adm_ensure(PDO $pdo): void {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_att (kind, who, created_at)
     ) DEFAULT CHARSET=utf8mb4");
+    adm_core_ensure($pdo);
     $done = true;
 }
 
 function adm_ip(): string { return substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45); }
 
-/** Journal d'audit. N'échoue jamais bruyamment (un journal cassé ne doit pas casser l'action, mais on le trace). */
-function adm_audit(string $action, ?string $cible = null, ?string $detail = null): void {
+function adm_audit(string $action, ?string $cible = null, ?string $detail = null, $avant = null, $apres = null): void {
     global $pdo;
     try {
         adm_ensure($pdo);
         $u = $_SESSION['user'] ?? [];
-        $pdo->prepare("INSERT INTO admin_audit (user_id, email, ip, action, cible, detail) VALUES (?,?,?,?,?,?)")
+        $j = fn($v) => $v === null ? null : mb_substr(is_string($v) ? $v : json_encode($v, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), 0, 8000);
+        $pdo->prepare("INSERT INTO admin_audit (user_id, email, ip, action, cible, detail, avant, apres) VALUES (?,?,?,?,?,?,?,?)")
             ->execute([$u['id'] ?? null, isset($u['email']) ? mb_substr((string)$u['email'], 0, 190) : null, adm_ip(),
                        mb_substr($action, 0, 60), $cible !== null ? mb_substr($cible, 0, 190) : null,
-                       $detail !== null ? mb_substr($detail, 0, 4000) : null]);
+                       $detail !== null ? mb_substr($detail, 0, 4000) : null, $j($avant), $j($apres)]);
     } catch (Throwable $e) { error_log('adm_audit: ' . $e->getMessage()); }
+}
+
+function adm_snap(string $table, string $pk, $id, array $cols): ?array {
+    global $pdo;
+    try {
+        $st = $pdo->prepare("SELECT `" . implode('`,`', $cols) . "` FROM `$table` WHERE `$pk` = ? LIMIT 1");
+        $st->execute([$id]);
+        $r = $st->fetch(PDO::FETCH_ASSOC);
+        return $r ?: null;
+    } catch (Throwable $e) { return null; }
 }
 
 /** Limitation de tentatives : $max échecs de type $kind en $minutes minutes pour $who. */
@@ -107,7 +119,7 @@ function adm_json(array $data, int $code = 200) {
  * À appeler en tête de chaque page et API admin.
  * $api = true : réponses JSON (403/401) au lieu d'une redirection.
  */
-function adm_guard(bool $api = false): void {
+function adm_guard(bool $api = false, string $perm = ''): void {
     global $pdo;
     adm_headers();
     $deny = function (int $code, string $msg) use ($api) {
@@ -125,12 +137,13 @@ function adm_guard(bool $api = false): void {
 
     // Vérification côté serveur dans la base : le drapeau de session seul ne suffit pas (compte rétrogradé, supprimé).
     try {
-        $st = $pdo->prepare("SELECT id, email, is_admin FROM users WHERE id = ? LIMIT 1");
+        adm_core_ensure($pdo);
+        $st = $pdo->prepare("SELECT id, email, is_admin, bloque FROM users WHERE id = ? LIMIT 1");
         $st->execute([$uid]);
         $u = $st->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) { error_log('adm_guard: ' . $e->getMessage()); $deny(500, 'Erreur serveur.'); }
 
-    if (!$u || (int)$u['is_admin'] !== 1) {
+    if (!$u || (int)$u['is_admin'] !== 1 || (int)$u['bloque'] === 1) {
         if (adm_limited('acces', adm_ip(), 10, 10)) { http_response_code(429); exit; }
         adm_hit('acces', adm_ip());
         adm_audit('acces_refuse', basename($_SERVER['SCRIPT_NAME'] ?? ''), 'compte non administrateur');
@@ -169,7 +182,20 @@ function adm_guard(bool $api = false): void {
             $deny(419, 'Jeton de sécurité invalide, rechargez la page.');
         }
     }
+    if ($perm !== '' && !adm_can($perm)) adm_forbidden($api, $perm);
 }
+
+function adm_forbidden(bool $api, string $perm): void {
+    adm_audit('acces_refuse', basename($_SERVER['SCRIPT_NAME'] ?? ''), 'permission ' . $perm);
+    if ($api) adm_json(['error' => "Vous n'avez pas le droit de faire cela."], 403);
+    http_response_code(403);
+    adm_head('Accès refusé');
+    echo '<div class="empty-st">' . ic('lock', 'ic ic-xl') . '<h2>Accès refusé</h2><p>Votre rôle ne donne pas accès à cette page. Demandez à l’administrateur suprême.</p><a class="btn" href="admin.php">Retour au tableau de bord</a></div>';
+    adm_foot();
+    exit;
+}
+
+function adm_need(string $perm, bool $api = true): void { if (!adm_can($perm)) adm_forbidden($api, $perm); }
 
 function adm_csrf(): string { return (string)($_SESSION['adm_csrf'] ?? ''); }
 function adm_reauth_ok(): bool { return isset($_SESSION['adm_reauth']) && time() - (int)$_SESSION['adm_reauth'] < ADM_REAUTH_TTL; }
@@ -259,77 +285,168 @@ function adm_sprite(): string {
      'play'=>'<path d="M7 4l13 8-13 8V4z"/>',
      'external'=>'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
      'user-check'=>'<circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c0-3.600 2.900-6 6.500-6 1.500 0 2.900.4 4 1.200M15 18l2 2 4-4"/>',
+     'bell'=>'<path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2z"/><path d="M10 20a2 2 0 004 0"/>',
+     'bug'=>'<rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7a3 3 0 016 0M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 19l3-2M20 19l-3-2M12 11v9"/>',
+     'download'=>'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+     'inbox'=>'<path d="M3 13l3-8h12l3 8v6H3v-6z"/><path d="M3 13h5l1 2h6l1-2h5"/>',
+     'archive'=>'<rect x="3" y="4" width="18" height="5" rx="1.500"/><path d="M5 9v10h14V9M10 13h4"/>',
+     'flag'=>'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+     'reply'=>'<path d="M10 8L4 13l6 5M4 13h11a5 5 0 015 5v1"/>',
+     'filter'=>'<path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/>',
+     'note'=>'<path d="M5 4h10l4 4v12H5V4z"/><path d="M14 4v5h5M8 13h8M8 17h5"/>',
+     'send'=>'<path d="M21 3L10 14M21 3l-7 18-4-7-7-4 18-7z"/>',
+     'dot3'=>'<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
     ];
-    $o = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>';
+    $o = '<svg class="spr" width="0" height="0" aria-hidden="true"><defs>';
     foreach ($p as $k => $v) $o .= '<symbol id="i-' . $k . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round">' . $v . '</symbol>';
     return $o . '</defs></svg>';
 }
 
 /* ------------------------------------------------------------------ gabarit */
 function adm_badges(): array {
-    return [
-        'users'    => (int)adm_one("SELECT COUNT(*) FROM users WHERE is_directeur = 0 AND demande_en_cours = 1"),
-        'camps'    => (int)adm_one("SELECT COUNT(*) FROM camps WHERE en_attente = 1 AND valide = 0 AND refuse = 0"),
-        'virements'=> (int)adm_one("SELECT COUNT(*) FROM virements WHERE effectue = 0"),
-        'contacts' => (int)adm_one("SELECT COUNT(*) FROM contact_messages WHERE statut = 'En attente'"),
-    ];
+    $t = adm_todo_counts();
+    return ['users' => $t['demande'], 'camps' => $t['sejour'], 'virements' => 0, 'contacts' => $t['contact']];
 }
 
 function adm_nav(): array {
     return [
-        'Pilotage' => [['admin.php', 'home', 'Tableau de bord', '']],
-        'Gestion'  => [
-            ['admin_list.php?e=users', 'users', 'Utilisateurs', 'users'],
-            ['admin_list.php?e=organismes', 'building', 'Organismes', ''],
-            ['admin_list.php?e=camps', 'tent', 'Séjours', 'camps'],
-            ['admin_list.php?e=inscriptions', 'ticket', 'Inscriptions', ''],
-            ['admin_list.php?e=paiements', 'card', 'Paiements', ''],
-            ['admin_list.php?e=virements', 'bank', 'Virements', 'virements'],
-            ['admin_list.php?e=boosts', 'bolt', 'Boosts', ''],
-            ['admin_list.php?e=contacts', 'mail', 'Messages de contact', 'contacts'],
+        'Pilotage' => [
+            ['admin.php', 'home', 'Tableau de bord', '', ''],
+            ['admin_notifs.php', 'bell', 'Notifications', 'notifs', ''],
+        ],
+        'Support' => [
+            ['admin_contacts.php', 'mail', 'Messages de contact', 'contact', 'contacts.read'],
+            ['admin_demandes.php', 'user-check', 'Demandes organisateur', 'demande', 'demandes.read'],
+        ],
+        'Catalogue' => [
+            ['admin_list.php?e=camps', 'tent', 'Séjours', 'sejour', 'camps.read'],
+            ['admin_list.php?e=organismes', 'building', 'Organismes', '', 'orgas.read'],
+            ['admin_list.php?e=boosts', 'bolt', 'Boosts', '', 'camps.read'],
+        ],
+        'Clients' => [
+            ['admin_list.php?e=users', 'users', 'Utilisateurs', '', 'users.read'],
+            ['admin_list.php?e=inscriptions', 'ticket', 'Inscriptions', '', 'inscriptions.read'],
         ],
         'Finances' => [
-            ['admin_compta.php', 'euro', 'Comptabilité', ''],
-            ['admin_demande_virement.php', 'bank', 'Versements aux organismes', ''],
+            ['admin_compta.php', 'euro', 'Comptabilité', '', 'compta.read'],
+            ['admin_compta.php?v=paiements', 'card', 'Paiements', 'litige', 'paiements.read'],
+            ['admin_compta.php?v=versements', 'bank', 'Versements', 'versement', 'versements.read'],
+            ['admin_list.php?e=virements', 'list', 'Anciens virements', '', 'versements.read'],
         ],
-        'Données'  => [
-            ['admin_db.php', 'database', 'Base de données', ''],
-            ['admin_sql.php', 'terminal', 'Console SQL', ''],
+        'Technique' => [
+            ['admin_erreurs.php', 'bug', 'Erreurs', 'erreur', 'tech.logs'],
+            ['admin_tech.php?v=crons', 'clock', 'Tâches planifiées', '', 'tech.crons'],
+            ['admin_tech.php?v=securite', 'shield', 'Sécurité', '', 'tech.security'],
+            ['tableau_de_controle.php', 'check', 'Tableau de contrôle', '', 'tech.security'],
+            ['admin_tech.php?v=sauvegardes', 'download', 'Sauvegardes', '', 'tech.backup'],
+            ['admin_db.php', 'database', 'Base de données', '', 'tech.db'],
+            ['admin_sql.php', 'terminal', 'Console SQL', '', 'tech.sql'],
         ],
-        'Sécurité' => [['tableau_de_controle.php', 'shield', 'Tableau de contrôle', ''], ['admin_audit.php', 'shield', "Journal d'audit", '']],
+        'Administration' => [
+            ['admin_audit.php', 'list', "Journal d'audit", '', 'audit.read'],
+            ['admin_equipe.php', 'key', 'Équipe et rôles', '', 'supreme'],
+        ],
     ];
 }
 
-function adm_head(string $title, string $active = ''): void {
-    $b = adm_badges();
+function adm_nav_ok(string $perm): bool { return $perm === 'supreme' ? adm_is_supreme() : ($perm === '' || adm_can($perm)); }
+
+function adm_help(string $t): string { return '<span class="help" tabindex="0" role="note" aria-label="' . h($t) . '" data-tip="' . h($t) . '">?</span>'; }
+
+function adm_site_bar(array $todo, int $unread): string {
     $me = $_SESSION['user'] ?? [];
-    $name = trim(($me['prenom'] ?? '') . ' ' . ($me['nom'] ?? ''));
+    $ini = mb_strtoupper(mb_substr((string)($me['prenom'] ?? 'A'), 0, 1));
+    $total = array_sum($todo);
+    $o = '<header class="sitebar"><a class="logo" href="index.php" aria-label="moncamp.fr, accueil">moncamp<span>.fr</span></a>'
+       . '<nav class="sitenav" aria-label="Site"><a class="hide-m" href="index.php">Accueil</a>';
+    if (!empty($me['is_directeur'])) $o .= '<a class="hide-m" href="organisateurs.php">Organisateur</a>';
+    $o .= '<a class="hide-m" href="reservations.php">Réservations</a>'
+        . '<details class="dd"><summary class="on">Administration' . ($total ? ' <span class="cnt-i">' . $total . '</span>' : '') . '</summary><div class="dd-menu"><div class="dd-h">À traiter</div>';
+    foreach (adm_todo_types() as $k => [$label, $perm, $href, $icon]) {
+        if (!adm_can($perm)) continue;
+        $o .= '<a href="' . h($href) . '">' . ic($icon) . '<span>' . h($label) . '</span>' . ($todo[$k] ? '<b class="pill warn">' . $todo[$k] . '</b>' : '<b class="pill">0</b>') . '</a>';
+    }
+    $o .= '<hr><a href="admin.php">' . ic('home') . '<span>Tableau de bord</span></a><a href="admin_notifs.php">' . ic('bell') . '<span>Notifications</span></a></div></details>'
+        . '<a class="bell" href="admin_notifs.php" title="Notifications" aria-label="Notifications' . ($unread ? ' (' . $unread . ' non lues)' : '') . '">' . ic('bell') . ($unread ? '<b>' . ($unread > 99 ? '99+' : $unread) . '</b>' : '') . '</a>'
+        . '<details class="dd"><summary class="av-s" aria-label="Mon compte"><span class="avatar">' . h($ini) . '</span></summary><div class="dd-menu">'
+        . '<div class="dd-who"><b>' . h(trim(($me['prenom'] ?? '') . ' ' . ($me['nom'] ?? ''))) . '</b><small>' . h($me['email'] ?? '') . '</small></div><hr>'
+        . '<a href="profile.php">' . ic('users') . '<span>Mon profil</span></a><a href="messagerie.php">' . ic('mail') . '<span>Messagerie</span></a>'
+        . '<a href="#" data-keys>' . ic('key') . '<span>Raccourcis clavier</span><kbd>?</kbd></a><hr><a href="api/logout.php">' . ic('out') . '<span>Déconnexion</span></a></div></details></nav></header>';
+    return $o;
+}
+
+function adm_head(string $title, string $active = '', array $crumbs = []): void {
+    global $pdo;
+    adm_notif_sync($pdo);
+    $todo = adm_todo_counts();
+    $unread = adm_notif_unread();
+    $b = $todo + ['notifs' => $unread];
+    $self = basename($_SERVER['SCRIPT_NAME'] ?? 'admin.php') . (isset($_GET['e']) ? '?e=' . $_GET['e'] : (isset($_GET['v']) ? '?v=' . $_GET['v'] : ''));
+    $active = $active !== '' ? $active : $self;
     echo '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="robots" content="noindex,nofollow"><meta name="csrf" content="' . h(adm_csrf()) . '">'
        . '<title>' . h($title) . ' · Administration moncamp.fr</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">'
        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
        . '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
-       . '<link rel="stylesheet" href="assets/admin.css?v=3"></head><body>' . adm_sprite()
-       . '<div class="adm" id="adm"><aside class="side" id="side"><a class="brand" href="admin.php">' . mc_logo('light', false, 30) . '<span>moncamp.fr<small>Administration</small></span></a><nav>';
+       . '<link rel="stylesheet" href="assets/admin.css?v=10"></head><body>' . adm_sprite() . adm_site_bar($todo, $unread)
+       . '<aside class="side" id="side" aria-label="Administration"><nav>';
+    $best = ''; $bestLen = 0;
+    foreach (adm_nav() as $items) foreach ($items as $it) if (strpos($active, $it[0]) === 0 && strlen($it[0]) > $bestLen) { $best = $it[0]; $bestLen = strlen($it[0]); }
+    $section = '';
     foreach (adm_nav() as $grp => $items) {
+        $items = array_filter($items, fn($it) => adm_nav_ok($it[4]));
+        if (!$items) continue;
         echo '<div class="grp">' . h($grp) . '</div>';
         foreach ($items as [$href, $icon, $label, $badge]) {
-            $on = ($active !== '' && strpos($href, $active) !== false) ? ' on' : '';
-            echo '<a class="nav' . $on . '" href="' . h($href) . '">' . ic($icon) . '<span>' . h($label) . '</span>'
-               . (($badge !== '' && !empty($b[$badge])) ? '<b class="pill">' . (int)$b[$badge] . '</b>' : '') . '</a>';
+            $on = $href === $best;
+            if ($on) $section = $grp;
+            $n = $badge !== '' ? (int)($b[$badge] ?? 0) : 0;
+            echo '<a class="nav' . ($on ? ' on' : '') . '" href="' . h($href) . '"' . ($on ? ' aria-current="page"' : '') . '>' . ic($icon) . '<span>' . h($label) . '</span>' . ($n ? '<b class="pill">' . $n . '</b>' : '') . '</a>';
         }
     }
-    echo '</nav><div class="side-foot"><a class="nav" href="index.php">' . ic('external') . '<span>Voir le site</span></a>'
-       . '<a class="nav" href="api/logout.php">' . ic('out') . '<span>Déconnexion</span></a></div></aside>'
-       . '<div class="main"><header class="top"><button class="icon-btn menu" id="menu" type="button" aria-label="Menu">' . ic('menu') . '</button>'
-       . '<h1>' . h($title) . '</h1><div class="top-r"><span class="lockst" id="lockst" title="Ré-authentification">' . ic('lock') . '<span id="locktxt">Verrouillé</span></span>'
-       . '<span class="who">' . ic('user-check') . h($name !== '' ? $name : 'Admin') . '</span></div></header><main class="content">';
+    echo '</nav></aside><div class="overlay" id="overlay"></div><div class="main"><div class="subbar">'
+       . '<button class="ib menu" id="menu" type="button" aria-label="Menu" aria-controls="side">' . ic('menu') . '</button><nav class="crumbs" aria-label="Fil d’Ariane"><a href="admin.php">Administration</a>';
+    if (!$crumbs && !in_array($section, ['', 'Pilotage', 'Administration'], true)) $crumbs = [[$section, '']];
+    foreach ($crumbs as [$l, $u]) echo '<span>›</span>' . ($u !== '' ? '<a href="' . h($u) . '">' . h($l) . '</a>' : '<span>' . h($l) . '</span>');
+    echo '<span>›</span><b>' . h($title) . '</b></nav>'
+       . '<div class="gsearch" role="search"><span class="gs-i">' . ic('search') . '</span><input class="in" id="gs" type="search" autocomplete="off" placeholder="Rechercher partout…" aria-label="Recherche globale" maxlength="80"><kbd>/</kbd><div class="gres" id="gres" hidden></div></div>'
+       . '<span class="lockst" id="lockst" title="Ré-authentification">' . ic('lock') . '<span id="locktxt">Verrouillé</span></span></div>'
+       . '<main class="content" id="content"><div class="page-h"><h1>' . h($title) . '</h1></div>';
     $f = $_SESSION['adm_flash'] ?? null; unset($_SESSION['adm_flash']);
     if ($f) echo '<div class="note ' . ($f[0] === 'ok' ? 'ok' : 'err') . '">' . h($f[1]) . '</div>';
 }
 
+function adm_notes_box(string $objet, string $ref, array $notes): string {
+    $o = '<div class="mt"><h3 class="h3">' . ic('note') . ' Notes internes ' . adm_help('Visibles uniquement par l’équipe. Jamais envoyées au client.') . '</h3><div class="notes">';
+    foreach ($notes as $n) $o .= '<div class="note-i">' . nl2br(h($n['texte'])) . '<small>' . h($n['auteur']) . ' · ' . h(adm_date($n['created_at'])) . '</small></div>';
+    if (!$notes) $o .= '<p class="muted small">Aucune note.</p>';
+    $o .= '</div>';
+    if (adm_can('notes.write') || adm_is_supreme()) $o .= '<form class="row-l wrap-row" data-api="note.add" data-ok="Note ajoutée."><input type="hidden" name="objet" value="' . h($objet) . '"><input type="hidden" name="ref" value="' . h($ref) . '">'
+        . '<input class="in grow" name="texte" maxlength="2000" required placeholder="Ajouter une note…"><button class="btn ghost sm" type="submit">' . ic('plus') . ' Ajouter</button></form>';
+    return $o . '</div>';
+}
+
+function adm_notes(string $objet, string $ref): array { return adm_rows("SELECT auteur, texte, created_at FROM adm_notes WHERE objet = ? AND ref = ? ORDER BY id DESC", [$objet, $ref]); }
+
+function adm_empty(string $icon, string $text): string { return '<div class="empty-st">' . ic($icon, 'ic ic-xl') . '<p>' . h($text) . '</p></div>'; }
+
+function adm_pager(int $page, int $pages, callable $url): string {
+    if ($pages < 2) return '';
+    $o = '<nav class="pager" aria-label="Pagination">';
+    if ($page > 1) $o .= '<a class="btn ghost sm" href="' . h($url($page - 1)) . '">' . ic('back') . ' Précédent</a>';
+    $o .= '<span>Page ' . $page . ' / ' . $pages . '</span>';
+    if ($page < $pages) $o .= '<a class="btn ghost sm" href="' . h($url($page + 1)) . '">Suivant ' . ic('next') . '</a>';
+    return $o . '</nav>';
+}
+
 function adm_foot(array $page = []): void {
-    echo '</main></div></div>'
+    echo '</main></div>'
+       . '<div class="modal" id="m-keys" hidden><div class="dlg"><h3>' . ic('key') . ' Raccourcis clavier</h3><div class="keys">'
+       . '<div><span><kbd>/</kbd> <kbd>Ctrl K</kbd></span>Recherche globale</div><div><span><kbd>g</kbd> <kbd>d</kbd></span>Tableau de bord</div>'
+       . '<div><span><kbd>g</kbd> <kbd>n</kbd></span>Notifications</div><div><span><kbd>g</kbd> <kbd>m</kbd></span>Messages de contact</div>'
+       . '<div><span><kbd>g</kbd> <kbd>o</kbd></span>Demandes organisateur</div><div><span><kbd>g</kbd> <kbd>c</kbd></span>Comptabilité</div>'
+       . '<div><span><kbd>g</kbd> <kbd>u</kbd></span>Utilisateurs</div><div><span><kbd>g</kbd> <kbd>s</kbd></span>Séjours</div><div><span><kbd>Échap</kbd></span>Fermer</div></div>'
+       . '<div class="row"><button class="btn" type="button" data-close>Fermer</button></div></div></div>'
        . '<div class="modal" id="m-reauth" hidden><div class="dlg"><h3>' . ic('lock') . ' Confirmez votre identité</h3>'
        . '<p>Cette action est sensible. Saisissez votre mot de passe administrateur (valable 10 minutes).</p>'
        . '<form id="re-form" method="post" autocomplete="on">'   // vrai formulaire : Chrome associe identifiant + mot de passe ici et plus à un champ de recherche
@@ -341,7 +458,7 @@ function adm_foot(array $page = []): void {
        . '<div class="row"><button class="btn ghost" type="button" data-close>Annuler</button><button class="btn" type="button" id="cf-go">Confirmer</button></div></div></div>'
        . '<div class="toast" id="toast" role="status"></div>'
        . '<script type="application/json" id="adm-data">' . json_encode($page + ['reauth' => adm_reauth_ok() ? max(0, ADM_REAUTH_TTL - (time() - (int)$_SESSION['adm_reauth'])) : 0], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '</script>'
-       . '<script src="assets/admin.js?v=3"></script>' . (!empty($page['js']) && preg_match('/^[a-z_]+$/', $page['js']) ? '<script src="assets/' . $page['js'] . '.js?v=1"></script>' : '') . '</body></html>';
+       . '<script src="assets/admin.js?v=10"></script>' . (!empty($page['js']) && preg_match('/^[a-z_]+$/', $page['js']) ? '<script src="assets/' . $page['js'] . '.js?v=1"></script>' : '') . '</body></html>';
 }
 
 /* ----------------------------------------------------------------- entités */
@@ -350,37 +467,35 @@ function adm_foot(array $page = []): void {
 function adm_entities(): array {
     return [
     'users' => [
-        'label' => 'Utilisateurs', 'icon' => 'users', 'table' => 'users', 'pk' => 'id', 'alias' => 'u', 'edit' => true,
-        'select' => "u.id, u.nom, u.prenom, u.email, u.tel, u.created_at, u.is_admin, u.is_directeur, u.is_animateur, u.is_verified, u.demande_en_cours",
+        'perm' => 'users.read', 'label' => 'Utilisateurs', 'icon' => 'users', 'table' => 'users', 'pk' => 'id', 'alias' => 'u', 'edit' => true,
+        'select' => "u.id, u.nom, u.prenom, u.email, u.tel, u.created_at, u.is_admin, u.is_directeur, u.is_animateur, u.is_verified, u.demande_en_cours, u.bloque",
         'from' => "users u",
-        'cols' => ['id' => ['ID', 'id'], 'nom' => ['Nom', 'name'], 'email' => ['Email', 'text'], 'tel' => ['Téléphone', 'text'], 'role' => ['Rôle', 'role'], 'is_verified' => ['Vérifié', 'bool'], 'created_at' => ['Inscrit le', 'date']],
-        'search' => ['u.nom', 'u.prenom', 'u.email', 'u.tel'],
-        'filters' => ['all' => ['Tous', '1=1'], 'demandes' => ['Demandes directeur', 'u.demande_en_cours = 1 AND u.is_directeur = 0'], 'directeurs' => ['Directeurs', 'u.is_directeur = 1'], 'animateurs' => ['Animateurs', 'u.is_animateur = 1'], 'admins' => ['Administrateurs', 'u.is_admin = 1'], 'nonverifies' => ['Non vérifiés', 'u.is_verified = 0']],
+        'cols' => ['nom' => ['Nom', 'name'], 'email' => ['Email', 'text'], 'tel' => ['Téléphone', 'text'], 'role' => ['Rôle', 'role'], 'is_verified' => ['Vérifié', 'bool'], 'created_at' => ['Inscrit le', 'date']],
+        'search' => ['u.nom', 'u.prenom', 'u.email', 'u.tel'], 'fiche' => 'user',
+        'filters' => ['all' => ['Tous', '1=1'], 'demandes' => ['Demandes directeur', 'u.demande_en_cours = 1 AND u.is_directeur = 0'], 'directeurs' => ['Directeurs', 'u.is_directeur = 1'], 'animateurs' => ['Animateurs', 'u.is_animateur = 1'], 'admins' => ['Équipe', 'u.is_admin = 1'], 'nonverifies' => ['Non vérifiés', 'u.is_verified = 0'], 'bloques' => ['Bloqués', 'u.bloque = 1']],
         'order' => 'u.id DESC',
         'actions' => [
-            ['user.accept', 'Accepter comme directeur', 'user-check', 'ok', fn($r) => ($r['demande_en_cours'] ?? 0) == 1, false, ''],
-            ['user.deny', 'Refuser la demande', 'x', 'warn', fn($r) => ($r['demande_en_cours'] ?? 0) == 1, false, 'Refuser la demande directeur de cet utilisateur ?'],
             ['user.revoke', 'Retirer le rôle directeur', 'x', 'warn', fn($r) => ($r['is_directeur'] ?? 0) == 1 && ($r['demande_en_cours'] ?? 0) != 1, false, 'Retirer le rôle directeur ?'],
             ['user.verify', 'Marquer comme vérifié', 'check', 'ok', fn($r) => ($r['is_verified'] ?? 1) == 0, false, ''],
-            ['user.admin', 'Basculer administrateur', 'key', 'warn', fn($r) => true, true, 'Accorder ou retirer les droits administrateur ? Action sensible.'],
+            ['user.block', 'Bloquer / débloquer', 'lock', 'warn', fn($r) => ($r['is_admin'] ?? 0) != 1, true, 'Bloquer ou débloquer ce compte ? Un compte bloqué est déconnecté et ne peut plus se connecter.'],
             ['row.delete', 'Supprimer', 'trash', 'danger', fn($r) => ($r['is_admin'] ?? 0) != 1, true, 'Supprimer définitivement ce compte ?'],
         ],
     ],
     'organismes' => [
-        'label' => 'Organismes', 'icon' => 'building', 'table' => 'organisateurs', 'pk' => 'id', 'alias' => 'o', 'edit' => true,
+        'perm' => 'orgas.read', 'label' => 'Organismes', 'icon' => 'building', 'table' => 'organisateurs', 'pk' => 'id', 'alias' => 'o', 'edit' => true,
         'select' => "o.id, o.nom, o.email, o.tel, o.web, o.portefeuille, o.solde_points, CONCAT_WS(' ', u.prenom, u.nom) AS responsable",
         'from' => "organisateurs o LEFT JOIN users u ON u.id = o.user_id",
-        'cols' => ['id' => ['ID', 'id'], 'nom' => ['Organisme', 'name'], 'responsable' => ['Responsable', 'text'], 'email' => ['Email', 'text'], 'portefeuille' => ['Portefeuille', 'money'], 'solde_points' => ['Points', 'int']],
-        'search' => ['o.nom', 'o.email', 'o.tel', 'u.nom', 'u.prenom'],
+        'cols' => ['nom' => ['Organisme', 'name'], 'responsable' => ['Responsable', 'text'], 'email' => ['Email', 'text'], 'portefeuille' => ['Portefeuille', 'money'], 'solde_points' => ['Points', 'int']],
+        'search' => ['o.nom', 'o.email', 'o.tel', 'u.nom', 'u.prenom'], 'fiche' => 'orga',
         'filters' => ['all' => ['Tous', '1=1'], 'solde' => ['Avec solde', 'o.portefeuille > 0']],
         'order' => 'o.id DESC',
         'actions' => [['row.delete', 'Supprimer', 'trash', 'danger', fn($r) => true, true, 'Supprimer définitivement cet organisme ?']],
     ],
     'camps' => [
-        'label' => 'Séjours', 'icon' => 'tent', 'table' => 'camps', 'pk' => 'id', 'alias' => 'c', 'edit' => true,
+        'perm' => 'camps.read', 'label' => 'Séjours', 'icon' => 'tent', 'table' => 'camps', 'pk' => 'id', 'alias' => 'c', 'edit' => true,
         'select' => "c.id, c.nom, c.ville, c.code_postal, c.prix, c.date_debut, c.date_fin, c.valide, c.en_attente, c.refuse, c.prive, c.supprime, c.token, o.nom AS organisateur",
         'from' => "camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id",
-        'cols' => ['id' => ['ID', 'id'], 'nom' => ['Séjour', 'camp'], 'organisateur' => ['Organisme', 'text'], 'ville' => ['Ville', 'text'], 'date_debut' => ['Début', 'date0'], 'prix' => ['Prix', 'money'], 'etat' => ['État', 'campstate']],
+        'cols' => ['nom' => ['Séjour', 'camp'], 'organisateur' => ['Organisme', 'text'], 'ville' => ['Ville', 'text'], 'date_debut' => ['Début', 'date0'], 'prix' => ['Prix', 'money'], 'etat' => ['État', 'campstate']],
         'search' => ['c.nom', 'c.ville', 'c.code_postal', 'o.nom'],
         'filters' => ['all' => ['Tous', 'c.supprime = 0'], 'attente' => ['En attente de validation', 'c.en_attente = 1 AND c.valide = 0 AND c.refuse = 0 AND c.supprime = 0'], 'valides' => ['Validés', 'c.valide = 1 AND c.supprime = 0'], 'refuses' => ['Refusés', 'c.refuse = 1 AND c.supprime = 0'], 'prives' => ['Masqués', 'c.prive = 1 AND c.supprime = 0'], 'supprimes' => ['Supprimés', 'c.supprime = 1']],
         'order' => 'c.id DESC',
@@ -394,29 +509,29 @@ function adm_entities(): array {
         ],
     ],
     'inscriptions' => [
-        'label' => 'Inscriptions', 'icon' => 'ticket', 'table' => 'inscriptions', 'pk' => 'id', 'alias' => 'i', 'edit' => true,
+        'perm' => 'inscriptions.read', 'label' => 'Inscriptions', 'icon' => 'ticket', 'table' => 'inscriptions', 'pk' => 'id', 'alias' => 'i', 'edit' => true,
         'select' => "i.id, i.statut, i.statut_paiement, i.prix_final, i.montant_paye, i.mode_paiement, c.nom AS camp, CONCAT_WS(' ', e.prenom, e.nom) AS enfant",
         'from' => "inscriptions i LEFT JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id",
-        'cols' => ['id' => ['ID', 'id'], 'enfant' => ['Participant', 'name'], 'camp' => ['Séjour', 'text'], 'statut' => ['Statut', 'status'], 'statut_paiement' => ['Paiement', 'status'], 'prix_final' => ['Prix', 'money'], 'montant_paye' => ['Payé', 'money']],
+        'cols' => ['enfant' => ['Participant', 'name'], 'camp' => ['Séjour', 'text'], 'statut' => ['Statut', 'status'], 'statut_paiement' => ['Paiement', 'status'], 'prix_final' => ['Prix', 'money'], 'montant_paye' => ['Payé', 'money']],
         'search' => ['c.nom', 'e.nom', 'e.prenom', 'i.statut', 'i.statut_paiement'],
         'filters' => ['all' => ['Toutes', '1=1'], 'attente' => ['En attente', "i.statut = 'En attente'"], 'confirmees' => ['Confirmées', "i.statut = 'Confirmé'"], 'impayees' => ['Non payées', "i.statut_paiement <> 'PAYE'"]],
         'order' => 'i.id DESC',
         'actions' => [['row.delete', 'Supprimer', 'trash', 'danger', fn($r) => true, true, 'Supprimer définitivement cette inscription ?']],
     ],
     'paiements' => [
-        'label' => 'Paiements', 'icon' => 'card', 'table' => 'inscriptions', 'pk' => 'id', 'alias' => 'i', 'edit' => false,
+        'perm' => 'paiements.read', 'label' => 'Paiements', 'icon' => 'card', 'table' => 'inscriptions', 'pk' => 'id', 'alias' => 'i', 'edit' => false,
         'select' => "i.id, i.montant_paye, i.mode_paiement, i.statut_paiement, c.nom AS camp, CONCAT_WS(' ', e.prenom, e.nom) AS enfant, o.nom AS organisateur",
         'from' => "inscriptions i LEFT JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN organisateurs o ON o.id = c.organisateur_id",
-        'cols' => ['id' => ['Inscr.', 'id'], 'enfant' => ['Participant', 'name'], 'camp' => ['Séjour', 'text'], 'organisateur' => ['Organisme', 'text'], 'mode_paiement' => ['Mode', 'text'], 'montant_paye' => ['Montant', 'money'], 'statut_paiement' => ['Statut', 'status']],
+        'cols' => ['enfant' => ['Participant', 'name'], 'camp' => ['Séjour', 'text'], 'organisateur' => ['Organisme', 'text'], 'mode_paiement' => ['Mode', 'text'], 'montant_paye' => ['Montant', 'money'], 'statut_paiement' => ['Statut', 'status']],
         'search' => ['c.nom', 'e.nom', 'e.prenom', 'o.nom'],
         'filters' => ['payes' => ['Payés', "i.statut_paiement = 'PAYE' AND i.montant_paye > 0"], 'all' => ['Tous', '1=1'], 'carte' => ['Carte', "i.mode_paiement = 'CARTE'"], 'attente' => ['En attente', "i.statut_paiement = 'EN_ATTENTE'"]],
         'order' => 'i.id DESC', 'actions' => [],
     ],
     'virements' => [
-        'label' => 'Demandes de virement', 'icon' => 'bank', 'table' => 'virements', 'pk' => 'id', 'alias' => 'v', 'edit' => false,
+        'perm' => 'versements.read', 'label' => 'Demandes de virement', 'icon' => 'bank', 'table' => 'virements', 'pk' => 'id', 'alias' => 'v', 'edit' => false,
         'select' => "v.id, v.token, v.montant_total, v.commission_rate, v.montant_apres_commission, v.nom_organisme, v.email_organisme, v.date_demande, v.date_virement_estime, v.date_virement_effectue, v.effectue",
         'from' => "virements v",
-        'cols' => ['id' => ['ID', 'id'], 'nom_organisme' => ['Organisme', 'name'], 'montant_total' => ['Brut', 'money'], 'montant_apres_commission' => ['Net à virer', 'money'], 'commission' => ['Commission', 'money'], 'date_demande' => ['Demandé le', 'date'], 'effectue' => ['Statut', 'done']],
+        'cols' => ['nom_organisme' => ['Organisme', 'name'], 'montant_total' => ['Brut', 'money'], 'montant_apres_commission' => ['Net à virer', 'money'], 'commission' => ['Commission', 'money'], 'date_demande' => ['Demandé le', 'date'], 'effectue' => ['Statut', 'done']],
         'search' => ['v.nom_organisme', 'v.email_organisme'],
         'filters' => ['attente' => ['À traiter', 'v.effectue = 0'], 'faits' => ['Effectués', 'v.effectue = 1'], 'all' => ['Tous', '1=1']],
         'order' => 'v.effectue ASC, v.date_demande ASC',
@@ -426,10 +541,10 @@ function adm_entities(): array {
         ],
     ],
     'boosts' => [
-        'label' => 'Boosts', 'icon' => 'bolt', 'table' => 'camps', 'pk' => 'id', 'alias' => 'c', 'edit' => false,
+        'perm' => 'camps.read', 'label' => 'Boosts', 'icon' => 'bolt', 'table' => 'camps', 'pk' => 'id', 'alias' => 'c', 'edit' => false,
         'select' => "c.id, c.nom, c.ville, c.date_bump, c.boost_vedette_fin, c.boost_urgence_fin, o.nom AS organisateur, o.solde_points",
         'from' => "camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id",
-        'cols' => ['id' => ['ID', 'id'], 'nom' => ['Séjour', 'name'], 'organisateur' => ['Organisme', 'text'], 'boost_vedette_fin' => ['Vedette jusqu\'au', 'future'], 'boost_urgence_fin' => ['Urgence jusqu\'au', 'future'], 'date_bump' => ['Dernière remontée', 'date']],
+        'cols' => ['nom' => ['Séjour', 'name'], 'organisateur' => ['Organisme', 'text'], 'boost_vedette_fin' => ['Vedette jusqu\'au', 'future'], 'boost_urgence_fin' => ['Urgence jusqu\'au', 'future'], 'date_bump' => ['Dernière remontée', 'date']],
         'search' => ['c.nom', 'c.ville', 'o.nom'],
         'filters' => ['actifs' => ['Boosts actifs', 'c.supprime = 0 AND (c.boost_vedette_fin > NOW() OR c.boost_urgence_fin > NOW())'], 'all' => ['Tous les séjours', 'c.supprime = 0']],
         'order' => 'c.id DESC',
@@ -441,10 +556,10 @@ function adm_entities(): array {
         ],
     ],
     'contacts' => [
-        'label' => 'Messages de contact', 'icon' => 'mail', 'table' => 'contact_messages', 'pk' => 'id', 'alias' => 'm', 'edit' => false,
+        'perm' => 'contacts.read', 'label' => 'Messages de contact', 'icon' => 'mail', 'table' => 'contact_messages', 'pk' => 'id', 'alias' => 'm', 'edit' => false,
         'select' => "m.id, m.nom, m.prenom, m.email, m.motif, m.message, m.statut, m.reponse, m.replied_at",
         'from' => "contact_messages m",
-        'cols' => ['id' => ['ID', 'id'], 'nom' => ['De', 'name'], 'motif' => ['Motif', 'text'], 'message' => ['Message', 'long'], 'statut' => ['Statut', 'status']],
+        'cols' => ['nom' => ['De', 'name'], 'motif' => ['Motif', 'text'], 'message' => ['Message', 'long'], 'statut' => ['Statut', 'status']],
         'search' => ['m.nom', 'm.prenom', 'm.email', 'm.motif', 'm.message'],
         'filters' => ['attente' => ['En attente', "m.statut = 'En attente'"], 'traites' => ['Traités', "m.statut = 'Traité'"], 'all' => ['Tous', '1=1']],
         'order' => 'm.id DESC',

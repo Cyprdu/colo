@@ -2,9 +2,10 @@
 // admin_demande_virement.php : supervision des versements aux organismes (administrateurs).
 // Les versements sont automatiques (api/cron_virements.php) ; cette page permet de surveiller, forcer, suspendre et auditer.
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/finance_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['user']) || empty($_SESSION['user']['is_admin'])) { header('Location: alerte.html'); exit; }
+if (!isset($_SESSION['user']) || !adm_can('versements.write')) { header('Location: alerte.html'); exit; }
 
 $adminId = (int)$_SESSION['user']['id'];
 $acteur = 'admin:' . $adminId;

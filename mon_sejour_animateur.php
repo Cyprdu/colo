@@ -3,6 +3,7 @@
 // Accès : l'animateur concerné, le directeur du séjour et les admins (equipe_acces). Toutes les valeurs viennent de la base.
 $body_class = 'bg-white';
 require_once 'partials/header.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/animateurs.php';
 require_once 'api/equipe.php';
 require_once 'api/annulation_lib.php';
@@ -15,7 +16,7 @@ $eur = fn($v) => rtrim(rtrim(number_format((float)$v, 2, ',', ' '), '0'), ',') .
 $jour = fn($d) => $d ? date('d/m/Y', strtotime($d)) : '';
 
 $acc = null;
-if (!sec_blocked($pdo, 'equipe_page', (string)$uid, 120, 1)) { sec_hit($pdo, 'equipe_page', (string)$uid); $acc = equipe_acces($pdo, $t, $uid, !empty($_SESSION['user']['is_admin'])); }
+if (!sec_blocked($pdo, 'equipe_page', (string)$uid, 120, 1)) { sec_hit($pdo, 'equipe_page', (string)$uid); $acc = equipe_acces($pdo, $t, $uid, adm_can('camps.read')); }
 if (!$acc) {
     http_response_code(404);
     echo '<main class="ds-page" style="max-width:640px"><h1 class="ds-h1">Page introuvable</h1><p class="ds-lead">Cette inscription n’existe pas ou ne vous est pas accessible.</p><a class="ds-btn mt-5" href="reservations">Mes réservations</a></main>';

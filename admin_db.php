@@ -2,7 +2,7 @@
 // admin_db.php : éditeur de base de données (liste des tables, parcourir / rechercher / éditer / supprimer).
 // Tout passe par admin_api.php (réauthentification requise, journalisé). Cette page n'est qu'une coquille.
 require_once __DIR__ . '/admin_lib.php';
-adm_guard();
+adm_guard(false, 'tech.db');
 adm_head('Base de données', 'admin_db.php');
 ?>
 <div id="db-app" class="db">

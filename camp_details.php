@@ -3,6 +3,7 @@
 // Le séjour est identifié UNIQUEMENT par son jeton (?t=). L'ancien ?id=N (numérique, devinable) redirige vers
 // l'adresse à jeton quand le séjour est public, et n'est servi à personne d'autre.
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -21,7 +22,7 @@ try {
         $stmt = $pdo->prepare("SELECT c.token, c.valide, c.refuse, c.supprime, c.prive, o.user_id AS owner_id FROM camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id WHERE c.id = ?");
         $stmt->execute([(int)$id_param]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $isAdmin = !empty($_SESSION['user']['is_admin']) || ($row && !empty($_SESSION['user']['id']) && (int)$row['owner_id'] === (int)$_SESSION['user']['id']);
+        $isAdmin = adm_can('camps.read') || ($row && !empty($_SESSION['user']['id']) && (int)$row['owner_id'] === (int)$_SESSION['user']['id']);
         $public = $row && !empty($row['token']) && !empty($row['valide']) && empty($row['refuse']) && empty($row['supprime']) && empty($row['prive']);
         if ($row && !empty($row['token']) && ($public || $isAdmin)) {
             header('Location: camp_details?t=' . urlencode($row['token']), true, 301);

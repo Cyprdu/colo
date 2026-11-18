@@ -46,8 +46,7 @@ if (!isset($_SESSION['user']) && isset($_COOKIE['remember_me'])) {
         
         // On vérifie le token
         if ($user && !empty($user['remember_token']) && hash_equals($user['remember_token'], hash('sha256', $token))) {
-            if (isset($user['is_active']) && $user['is_active'] == 0) {
-                // Compte désactivé
+            if ((isset($user['is_active']) && $user['is_active'] == 0) || !empty($user['bloque'])) {
             } else {
                 $_SESSION['user'] = $user;
                 // Rotation du token
@@ -95,8 +94,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if (password_verify($password, $user['password'])) {
                     
                     // Vérification compte actif
-                    if (isset($user['is_active']) && $user['is_active'] == 0) {
-                        $error = "Votre compte a été désactivé. Contactez le support.";
+                    if ((isset($user['is_active']) && $user['is_active'] == 0) || !empty($user['bloque'])) {
+                        $error = "Votre compte a été suspendu. Contactez le support.";
                     } else {
                         // Connexion réussie : nouvel identifiant de session (anti-fixation), et le hachage du mot de passe ne reste pas en session
                         session_regenerate_id(true);

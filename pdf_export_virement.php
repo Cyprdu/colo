@@ -1,13 +1,14 @@
 <?php
 // pdf_export_virement.php?t=<jeton> : justificatif PDF d'un versement.
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/finance_lib.php';
 require_once 'libs/fpdf/fpdf.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { http_response_code(403); exit; }
+if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.read'))) { http_response_code(403); exit; }
 
-try { $rec = fin_receipt($pdo, (string)($_GET['t'] ?? ''), (int)$_SESSION['user']['id'], !empty($_SESSION['user']['is_admin'])); }
+try { $rec = fin_receipt($pdo, (string)($_GET['t'] ?? ''), (int)$_SESSION['user']['id'], adm_can('orgas.read')); }
 catch (Throwable $e) { $rec = null; }
 if (!$rec) { http_response_code(404); exit('Versement introuvable.'); }
 $v = $rec['v']; $connect = $rec['type'] === 'connect';

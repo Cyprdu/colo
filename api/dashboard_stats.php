@@ -4,6 +4,7 @@
 // fin_transferts / fin_transfert_lignes (versements), inscriptions (hors carte, inscriptions, moyens). Aucune donnée de santé.
 // Export (GET ou POST) : &export=tx|mois&fmt=csv|xlsx[&keys=p12,h34] (keys : lignes choisies dans le tableau ; vide = toute la période).
 require_once 'config.php';
+require_once __DIR__ . '/adm_core.php';
 require_once 'options.php';
 require_once 'compta_lib.php';
 require_once 'finance_lib.php';
@@ -12,7 +13,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 header('Cache-Control: no-store');
 
 function ds_fin(array $d, int $code = 200): void { header('Content-Type: application/json; charset=utf-8'); http_response_code($code); echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }
-if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) ds_fin(['error' => 'Accès réservé aux organisateurs.'], 403);
+if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.read'))) ds_fin(['error' => 'Accès réservé aux organisateurs.'], 403);
 $orgaId = fin_orga_request($pdo);
 $P = $_POST + $_GET;
 

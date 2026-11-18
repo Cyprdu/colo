@@ -1,6 +1,9 @@
 <?php
 // Fichier: contact.php
 require_once 'api/config.php';
+require_once __DIR__ . '/api/security.php';
+require_once __DIR__ . '/api/adm_core.php';
+require_once __DIR__ . '/api/contact_lib.php';
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 
@@ -42,19 +45,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $final_motif = $motif_select;
     }
 
-    // 3. Validation et Envoi
-    if ($nom && $prenom && $email && $final_motif && $message) {
+    $ip = sec_ip();
+    if ($nom && $prenom && $email && $final_motif && $message && mb_strlen($message) < 10) {
+        $msg_error = "Votre message est un peu court : détaillez votre demande.";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($message) > 5000) {
+        $msg_error = "Vérifiez votre e-mail et la longueur du message (5000 caractères au plus).";
+    } elseif (sec_blocked($pdo, 'contact', $ip, 5, 60) || sec_blocked($pdo, 'contact_jour', $ip, 15, 1440)) {
+        $msg_error = "Vous avez envoyé beaucoup de messages. Réessayez dans une heure.";
+    } elseif (!sec_turnstile_ok()) {
+        $msg_error = "La vérification anti-robot a échoué. Réessayez.";
+    } elseif ($nom && $prenom && $email && $final_motif && $message) {
         try {
-            $token = bin2hex(random_bytes(32)); 
-            
-            $stmt = $pdo->prepare("INSERT INTO contact_messages (user_id, nom, prenom, email, motif, message, token) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$user_id, $nom, $prenom, $email, $final_motif, $message, $token]);
-            require_once __DIR__ . '/api/security.php'; sec_trace($pdo, $user_id ? (int)$user_id : null, 'contact', (int)$pdo->lastInsertId());
-            
+            adm_core_ensure($pdo);
+            $spam = contact_spam_reason($_POST, isset($_SESSION['user']));
+            $token = bin2hex(random_bytes(32));
+            $stmt = $pdo->prepare("INSERT INTO contact_messages (user_id, nom, prenom, email, motif, message, token, ip, dossier, spam_raison, lu) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$user_id, $nom, $prenom, $email, $final_motif, $message, $token, $ip, $spam ? 'spam' : 'inbox', $spam, $spam ? 1 : 0]);
+            $mid = (int)$pdo->lastInsertId();
+            sec_trace($pdo, $user_id ? (int)$user_id : null, 'contact', $mid);
+            sec_hit($pdo, 'contact', $ip); sec_hit($pdo, 'contact_jour', $ip);
+            if (!$spam) adm_notif_add('contact', 'm' . $mid, 'Message de ' . html_entity_decode($prenom . ' ' . $nom) . ' : ' . html_entity_decode($final_motif), 'admin_contacts.php?m=' . $token, 'contacts.read');
             $msg_success = "Votre demande a bien été envoyée ! Nous vous répondrons par email.";
-            $message = ''; 
+            $message = '';
             $motif_select = '';
         } catch (Exception $e) {
+            error_log('contact: ' . $e->getMessage());
             $msg_error = "Une erreur est survenue. Veuillez réessayer.";
         }
     } else {
@@ -97,6 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <section class="ds-card p-6 sm:p-8 lg:col-span-2" aria-label="Formulaire de contact">
             <form action="" method="POST" class="space-y-5">
+                <input type="hidden" name="ts" value="<?php echo htmlspecialchars(contact_form_ts()); ?>">
+                <div aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"><label for="c-site">Site web</label><input id="c-site" type="text" name="site_web" tabindex="-1" autocomplete="off" value=""></div>
                 <?php if (!isset($_SESSION['user'])): ?>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                         <div><label class="ds-label" for="c-prenom">Prénom</label><input id="c-prenom" type="text" name="prenom" value="<?php echo htmlspecialchars($prenom); ?>" required class="ds-input"></div>
@@ -133,6 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <textarea id="c-message" name="message" rows="7" required placeholder="Détaillez votre demande ici…" class="ds-textarea"></textarea>
                 </div>
 
+                <?php echo sec_turnstile_widget(); ?>
                 <button type="submit" class="ds-btn w-full" style="padding:15px 22px"><i class="fa-solid fa-paper-plane"></i> Envoyer le message</button>
             </form>
         </section>
