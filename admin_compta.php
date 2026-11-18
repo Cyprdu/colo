@@ -8,6 +8,7 @@ require_once __DIR__ . '/api/compta_lib.php';
 require_once __DIR__ . '/api/gains_lib.php';
 adm_guard();
 fin_ensure($pdo);
+try { fin_frais_rattrapage($pdo); } catch (Throwable $e) { error_log('admin rattrapage frais: ' . $e->getMessage()); } // une fois, puis ne refait rien
 
 $v = in_array($_GET['v'] ?? '', ['synthese', 'revenus', 'commission', 'organismes', 'versements', 'rapprochement', 'export', 'reglages'], true) ? $_GET['v'] : 'synthese';
 [$from, $to, $periodLabel, $pk] = compta_period($_GET);
@@ -35,6 +36,19 @@ function flash_go(string $kind, string $msg, string $to): void { $_SESSION['adm_
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = (string)($_POST['act'] ?? '');
     try {
+        if ($act === 'ajustement') {   // ajustement / dette manuelle d'un organisme (mot de passe, motif obligatoire, journalisé)
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
+            $oid = fin_orga_from_tok($pdo, (string)($_POST['orga'] ?? ''));
+            $m = str_replace([' ', ','], ['', '.'], (string)($_POST['montant'] ?? ''));
+            $motif = trim((string)($_POST['motif'] ?? ''));
+            if (!$oid || !preg_match('/^\d+(\.\d{1,2})?$/', $m) || (float)$m <= 0 || (float)$m > 100000 || mb_strlen($motif) < 3)
+                flash_go('err', 'Organisme, montant positif et motif (3 caractères minimum) obligatoires.', 'admin_compta.php?v=versements');
+            $sens = ($_POST['sens'] ?? '') === 'credit' ? 'credit' : 'dette';
+            $ref = fin_ajustement_manuel($pdo, $oid, $sens, (int)round((float)$m * 100), $motif, 'admin:' . $uid);
+            adm_audit('ajustement_organisme', 'organisateur', $sens . ' ' . $m . ' EUR · ' . mb_substr($motif, 0, 120));
+            flash_go('ok', ($sens === 'dette' ? 'Dette' : 'Crédit') . ' de ' . fin_eur((int)round((float)$m * 100)) . ' enregistré (réf. ' . substr($ref, 7) . ').', 'admin_compta.php?v=versements');
+        }
         if ($act === 'commission') {
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=reglages');
@@ -329,6 +343,17 @@ $tabs = ['synthese' => 'Synthèse', 'revenus' => 'Mes revenus', 'commission' => 
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Lancer maintenant</button></div></form>
   </section>
 </div>
+
+<section class="card"><h2 class="sec"><?= ic('edit') ?> Ajouter un ajustement / une dette</h2>
+  <p class="muted">Dette : l'organisme doit ce montant à moncamp.fr (compensée sur ses prochains paiements, visible dans son onglet Dette). Crédit : moncamp.fr lui doit ce montant. Journalisé avec le motif.</p>
+  <form method="post" action="admin_compta.php?v=versements"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="ajustement">
+    <label class="fld"><span class="fl">Organisme</span><select class="in" name="orga" required><?php foreach ($pdo->query("SELECT id, nom FROM organisateurs ORDER BY nom")->fetchAll(PDO::FETCH_ASSOC) as $o): ?><option value="<?= h(fin_orga_tok((int)$o['id'])) ?>"><?= h(html_entity_decode((string)$o['nom'], ENT_QUOTES, 'UTF-8')) ?></option><?php endforeach; ?></select></label>
+    <label class="fld"><span class="fl">Type</span><select class="in" name="sens"><option value="dette">Dette de l'organisme</option><option value="credit">Crédit à l'organisme</option></select></label>
+    <label class="fld"><span class="fl">Montant (EUR)</span><input class="in" name="montant" inputmode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" required></label>
+    <label class="fld"><span class="fl">Motif (obligatoire, visible par l'organisme)</span><input class="in" name="motif" minlength="3" maxlength="110" required></label>
+    <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+    <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
+</section>
 
 <h2 class="sec"><?= ic('building') ?> Situation par organisme</h2>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Organisme</th><th class="num">À verser maintenant</th><th class="num">Séjours à venir</th><th class="num">Litige</th><th class="num">Anciens paiements</th><th class="num">Solde moncamp.fr</th></tr></thead><tbody>

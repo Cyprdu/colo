@@ -164,4 +164,32 @@ ok((int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'dette' AND re
 $t = fin_ledger_totaux($pdo, 1);
 ok((int)$pdo->query("SELECT SUM(montant_cents) FROM fin_ledger WHERE type = 'frais_paiement' AND objet_id = '" . (int)$o['id'] . "'")->fetchColumn() === -300, 'journal : frais réels de 3 EUR à la charge de l\'organisme (estimation + ajustement)');
 ok(compta_revenus_rapprochement($pdo, null)['frais'] === $plat0, 'admin : frais Stripe payés par moncamp.fr inchangés (0 pour les nouveaux paiements)');
+// ---- rattrapage : frais déjà payés par moncamp.fr (ancien paiement transféré avant activation, cas SJMV) → dette de l'organisme, une seule fois
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (205, 1, 1, 'Confirmé', 125, 'PAYE', 'tokQ')");
+$pdo->exec("INSERT INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, brut_cents, commission_cents, net_cents, commission_pct, date_deblocage, mode, statut, verse_cents, frais_stripe_cents, created_at)
+            VALUES (205, 1, 1, 'pi_Q', 12500, 343, 12157, 2.5, NOW(), 'legacy', 'verse', 12157, 213, '2026-11-03 10:00:00')");
+$qid = (int)$pdo->query("SELECT id FROM fin_paiements WHERE inscription_id = 205")->fetchColumn();
+$pdo->exec("INSERT INTO fin_ledger (type, organisateur_id, montant_cents, reference, objet_type, objet_id, libelle) VALUES ('frais', 1, -213, 'frais:$qid', 'paiement', '$qid', 'Frais Stripe')");
+$pdo->exec("DELETE FROM fin_reglages WHERE cle = 'rattrapage_frais_v1'");
+$pdo->exec("UPDATE fin_paiements SET frais_stripe_cents = 0 WHERE frais_orga = 0 AND frais_stripe_cents IS NULL AND inscription_id <> 205"); // autres anciens paiements : frais relevés (sinon le rattrapage les attend)
+$pf = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn();
+$rap0 = compta_revenus_rapprochement($pdo, null);
+$n1 = fin_frais_rattrapage($pdo);
+$l = $pdo->query("SELECT montant_cents, libelle FROM fin_ledger WHERE type = 'dette' AND reference = 'fraisrattrapage:$qid'")->fetch(PDO::FETCH_ASSOC);
+ok($n1 >= 1 && (int)$l['montant_cents'] === 213 && $l['libelle'] === 'Frais Stripe du paiement du 03/11 (Été · Tom DURAND)', 'rattrapage : dette de 2,13 EUR « ' . ($l['libelle'] ?? '') . ' »');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - ($pf - (float)$n1 * 0 - (int)$pdo->query("SELECT SUM(montant_cents) FROM fin_ledger WHERE reference LIKE 'fraisrattrapage:%'")->fetchColumn() / 100)) < 0.001, 'solde de l\'organisme débité (compensé sur ses paiements suivants)');
+ok(fin_frais_rattrapage($pdo) === 0 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference = 'fraisrattrapage:$qid'")->fetchColumn() === 1
+   && (int)$pdo->query("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'rattrapage_frais_v1'")->fetchColumn() === 1, 'rattrapage : fait une seule fois, puis ne refait rien');
+ok(compta_revenus_rapprochement($pdo, null)['attendu'] === $rap0['attendu'], 'rapprochement : une dette à recevoir n\'est pas de l\'argent sorti');
+
+// ---- ajustement manuel (admin) : dette et crédit, motif obligatoire, journalisé
+$pf = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn();
+$ref = fin_ajustement_manuel($pdo, 1, 'dette', 1000, 'Frais de chèque impayé', 'admin:1');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - ($pf - 10)) < 0.001
+   && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = '$ref'")->fetchColumn() === 1000
+   && (int)$pdo->query("SELECT COUNT(*) FROM fin_audit WHERE action = 'ajustement_manuel'")->fetchColumn() === 1, 'ajustement : dette de 10 EUR (solde, journal, audit)');
+fin_ajustement_manuel($pdo, 1, 'credit', 500, 'Geste commercial', 'admin:1');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - ($pf - 5)) < 0.001, 'ajustement : crédit de 5 EUR');
+try { fin_ajustement_manuel($pdo, 1, 'dette', 100, '  ', 'admin:1'); $e = ''; } catch (InvalidArgumentException $x) { $e = 'refus'; }
+ok($e === 'refus', 'ajustement : motif obligatoire');
 echo "Tout est bon.\n";

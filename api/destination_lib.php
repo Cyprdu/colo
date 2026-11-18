@@ -363,6 +363,61 @@ function fin_prochain_virement(PDO $pdo, int $orgaId): ?array {
     return $v;
 }
 
+/**
+ * Rattrapage (une fois, au déploiement) : frais Stripe réels déjà payés par moncamp.fr pour des paiements legacy ou destination (anciens,
+ * frais_orga = 0) et jamais retenus à l'organisme → dette de l'organisme du même montant, compensée comme les autres (onglet Dette).
+ * Idempotent : une clé par paiement au journal (fraisrattrapage:<id>). Les paiements dont les frais ne sont pas encore relevés sont repris
+ * aux passages suivants ; le rattrapage se marque terminé (réglage rattrapage_frais_v1) quand il n'en reste plus. Retourne le nombre de dettes créées.
+ */
+function fin_frais_rattrapage(PDO $pdo): int {
+    fin_ensure($pdo);
+    $st = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'rattrapage_frais_v1'");
+    $st->execute();
+    if ((int)$st->fetchColumn()) return 0;
+    $rows = $pdo->query("SELECT p.id, p.organisateur_id, p.frais_stripe_cents f, p.created_at, c.nom camp, e.prenom, e.nom
+                         FROM fin_paiements p JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id
+                         WHERE p.frais_orga = 0 AND p.mode IN ('legacy', 'destination') AND p.frais_stripe_cents > 0
+                           AND NOT EXISTS (SELECT 1 FROM fin_ledger l WHERE l.type = 'dette' AND l.reference = CONCAT('fraisrattrapage:', p.id))
+                         ORDER BY p.id")->fetchAll(PDO::FETCH_ASSOC);
+    $n = 0; $d = fn($v) => html_entity_decode((string)$v, ENT_QUOTES, 'UTF-8');
+    foreach ($rows as $r) {
+        $qui = trim($d($r['prenom']) . ' ' . mb_strtoupper($d($r['nom']))) ?: 'Équipe';
+        $lib = mb_substr('Frais Stripe du paiement du ' . date('d/m', strtotime($r['created_at'])) . ' (' . $d($r['camp']) . ' · ' . $qui . ')', 0, 120);
+        $pdo->beginTransaction();
+        try {
+            if (fin_ledger_add($pdo, 'dette', (int)$r['organisateur_id'], (int)$r['f'], 'fraisrattrapage:' . $r['id'], 'paiement', $r['id'], $lib, 'rattrapage')) {
+                $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([(int)$r['f'] / 100, $r['organisateur_id']]);
+                fin_audit($pdo, 'frais_rattrapes_dette', 'paiement', $r['id'], ['cents' => (int)$r['f'], 'organisateur' => (int)$r['organisateur_id']], 'rattrapage');
+                $n++;
+            }
+            $pdo->commit();
+        } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); error_log('fin_frais_rattrapage: ' . $e->getMessage()); return $n; }
+    }
+    $reste = (int)$pdo->query("SELECT COUNT(*) FROM fin_paiements WHERE frais_orga = 0 AND mode IN ('legacy', 'destination') AND frais_stripe_cents IS NULL AND payment_intent IS NOT NULL")->fetchColumn();
+    if (!$reste) $pdo->exec("INSERT IGNORE INTO fin_reglages (cle, valeur, par) VALUES ('rattrapage_frais_v1', '1', 'rattrapage')");
+    return $n;
+}
+
+/**
+ * Ajustement manuel (admin) : « dette » (l'organisme doit $cents à moncamp.fr : solde négatif, compensé sur ses paiements suivants) ou « credit »
+ * (moncamp.fr lui doit $cents : solde positif). Journalisé (fin_ledger, fin_audit) avec le motif. Retourne la référence.
+ */
+function fin_ajustement_manuel(PDO $pdo, int $orgaId, string $sens, int $cents, string $motif, string $acteur): string {
+    $motif = trim($motif);
+    if ($cents <= 0 || $motif === '' || !in_array($sens, ['dette', 'credit'], true)) throw new InvalidArgumentException('Montant positif et motif obligatoires.');
+    $ref = 'manuel:' . bin2hex(random_bytes(8));
+    $lib = mb_substr(($sens === 'dette' ? 'Dette : ' : 'Crédit : ') . $motif, 0, 120);
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([($sens === 'dette' ? -$cents : $cents) / 100, $orgaId]);
+        fin_ledger_add($pdo, 'ajustement', $orgaId, $sens === 'dette' ? -$cents : $cents, $ref, 'admin', '', $lib, $acteur);
+        if ($sens === 'dette') fin_ledger_add($pdo, 'dette', $orgaId, $cents, $ref, 'admin', '', $lib, $acteur);
+        fin_audit($pdo, 'ajustement_manuel', 'organisateur', $orgaId, ['sens' => $sens, 'cents' => $cents, 'motif' => mb_substr($motif, 0, 300), 'ref' => $ref], $acteur);
+        $pdo->commit();
+        return $ref;
+    } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}
+
 /** Délai (jours après le début du séjour) avant le versement bancaire ; recalcule la date des paiements pas encore versés. Journalisé. */
 function fin_set_payout_jours(PDO $pdo, int $jours, string $acteur): void {
     fin_ensure($pdo);

@@ -183,15 +183,17 @@ function compta_revenus_rapprochement(PDO $pdo, ?array $ps): array {
     $l = $pdo->query("SELECT -COALESCE(SUM(IF(type = 'commission', montant_cents, 0)), 0) com,
                              -COALESCE(SUM(IF(type = 'commission' AND reference LIKE 'hors:%', montant_cents, 0)), 0) hors,
                              -COALESCE(SUM(IF(type = 'frais', montant_cents, 0)), 0) frais,
-                             COALESCE(SUM(IF(type = 'dette', montant_cents, 0)), 0) dette
+                             COALESCE(SUM(IF(type = 'dette' AND (montant_cents < 0 OR reference LIKE 'avance:%'), montant_cents, 0)), 0) dette
                       FROM fin_ledger")->fetch(PDO::FETCH_ASSOC);
     $l = array_map('intval', $l);
     $points = 0;
     try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
+    $fraisEcart = (int)$pdo->query("SELECT COALESCE(SUM(frais_estimes_cents - COALESCE(frais_stripe_cents, frais_estimes_cents)), 0) FROM fin_paiements WHERE frais_orga = 1 AND mode = 'destination'")->fetchColumn();
     $detenu = (int)$pdo->query("SELECT COALESCE(SUM(GREATEST(0, net_cents - net_rembourse_cents - verse_cents)), 0) FROM fin_paiements WHERE mode = 'legacy' AND statut IN ('attente', 'bloque', 'litige', 'en_cours')")->fetchColumn();
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid', 'in_transit', 'pending')")->fetchColumn();
     $r = ['com' => $l['com'], 'frais' => $l['frais'], 'net' => $l['com'] - $l['frais'], 'hors' => $l['hors'], 'points' => $points, 'detenu' => $detenu, 'dette' => $l['dette'], 'payouts' => $payouts];
-    $r['attendu'] = $r['net'] - $l['hors'] + $points + $detenu - $l['dette'] - $payouts;
+    $r['frais_ecart'] = $fraisEcart; // destination récente : frais estimés prélevés − frais réels payés par la plateforme (écart en dette ou rendu)
+    $r['attendu'] = $r['net'] - $l['hors'] + $points + $detenu - $l['dette'] - $payouts + $fraisEcart;
     $r['solde'] = $ps ? $ps['disponible'] + $ps['a_venir'] : null;
     $r['ecart'] = $ps ? $r['solde'] - $r['attendu'] : null;
     return $r;
