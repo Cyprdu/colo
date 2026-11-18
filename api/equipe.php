@@ -219,7 +219,7 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
 }
 
 /** Paiement confirmé (webhook) : marque les inscriptions d'équipe et alimente la comptabilité. Retourne le nombre de lignes comptabilisées. */
-function equipe_confirmer(PDO $pdo, array $tokens, ?string $paymentIntent, string $sessionId, int $totalCents, float $ratio): int {
+function equipe_confirmer(PDO $pdo, array $tokens, ?string $paymentIntent, string $sessionId, int $totalCents, float $ratio, string $mode = 'legacy', int $compPrevue = 0): int {
     equipe_ensure($pdo);
     $tokens = array_values(array_filter($tokens, fn($t) => preg_match('/^[a-f0-9]{32}$/', $t)));
     if (!$tokens) return 0;
@@ -229,29 +229,10 @@ function equipe_confirmer(PDO $pdo, array $tokens, ?string $paymentIntent, strin
     if ($totalCents <= 0) return 0;
     require_once __DIR__ . '/finance_lib.php';
     fin_ensure($pdo);
-    $st = $pdo->prepare("SELECT e.id, e.prix_final, e.camp_id, c.date_debut, c.organisateur_id FROM equipe_inscriptions e JOIN camps c ON c.id = e.camp_id
+    $st = $pdo->prepare("SELECT -e.id AS id, e.prix_final, e.camp_id, c.date_debut, c.organisateur_id FROM equipe_inscriptions e JOIN camps c ON c.id = e.camp_id
                          WHERE e.token IN ($in) AND e.prix_final > 0 ORDER BY e.id");
     $st->execute($tokens);
-    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-    $sum = 0.0; foreach ($rows as $r) $sum += (float)$r['prix_final'];
-    if (!$rows || $sum <= 0) return 0;
-    $left = $totalCents; $n = count($rows); $created = 0;
-    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, date_deblocage)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    foreach ($rows as $k => $r) {
-        $brut = ($k === $n - 1) ? $left : (int)round($totalCents * (float)$r['prix_final'] / $sum);
-        $brut = max(0, min($brut, $left)); $left -= $brut;
-        if ($brut <= 0 || !$r['organisateur_id']) continue;
-        $com = fin_commission_cents($brut); $net = $brut - $com;
-        $ins->execute([-(int)$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), fin_release_date($r['date_debut'])]);
-        if ($ins->rowCount() === 1) {
-            $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
-            fin_audit($pdo, 'paiement_recu', 'equipe', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent], 'webhook');
-            fin_ledger_paiement($pdo, ['payment_intent' => $paymentIntent, 'session_id' => $sessionId, 'inscription_id' => -(int)$r['id'], 'organisateur_id' => $r['organisateur_id'], 'brut_cents' => $brut, 'commission_cents' => $com, 'mode' => 'legacy']);
-            $created++;
-        }
-    }
-    return $created;
+    return fin_record_lines($pdo, $st->fetchAll(PDO::FETCH_ASSOC), $paymentIntent, $sessionId, $totalCents, $mode, $compPrevue); // id négatif = équipe d'animation
 }
 
 /** Session de paiement expirée / annulée : libère les places d'équipe non payées */

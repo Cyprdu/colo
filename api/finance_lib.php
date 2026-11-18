@@ -1,7 +1,15 @@
 <?php
 // api/finance_lib.php : flux d'argent entre les familles, moncamp.fr et les organismes (Stripe Connect).
 //
-// ARCHITECTURE : « separate charges and transfers » avec comptes Connect EXPRESS
+// ARCHITECTURE (depuis 2026-11) : « destination charges » avec comptes Connect EXPRESS (fin_paiements.mode = 'destination')
+//   1. Checkout avec transfer_data[destination] = compte de l'organisme et application_fee_amount = commission (fin_destination_params) :
+//      Stripe place le net sur le compte de l'organisme (visible dans SON solde) et la commission sur le nôtre, sans transfert de notre part ;
+//   2. versements bancaires de l'organisme en mode « manual » : le cron crée un Payout `payout_jours` (défaut 3) jours après le début du séjour
+//      (fin_payouts_run, api/payouts_lib.php) ; aucune réserve sur notre solde ;
+//   3. remboursement : reverse_transfer (l'organisme est débité ; s'il a déjà été versé, son solde Stripe devient négatif et se compense
+//      sur ses encaissements suivants : RISQUE PORTÉ PAR L'ORGANISME, affiché « à compenser ») ; commission conservée sur une annulation par la famille.
+//   Un compte pas encore prêt (transfers inactif) : repli sur l'ancien modèle ci-dessous (mode 'legacy'), qui reste en place pour l'historique.
+// ANCIEN MODÈLE ('legacy') : « separate charges and transfers »
 //   1. la famille paie moncamp.fr (Checkout) ; le webhook enregistre UNE ligne fin_paiements par inscription
 //      (brut, commission calculée ICI côté serveur, net, date de déblocage = début du séjour + délai) ;
 //   2. à la date de déblocage, un job (api/cron_virements.php) transfère le net de l'organisme vers son compte Connect
@@ -20,6 +28,7 @@
 
 const FIN_DEFAULT_PCT = 2.5;
 const FIN_DEFAULT_FIXE_CENTS = 30;
+const FIN_DEFAULT_PAYOUT_JOURS = 3; // versement bancaire N jours après le début du séjour (destination charges)
 
 /** Réglages de commission : base (admin) > constantes api/config.php > défauts. Mis en cache pour la requête. */
 function fin_reglages(bool $refresh = false): array {
@@ -29,6 +38,7 @@ function fin_reglages(bool $refresh = false): array {
         'commission_pct' => defined('PLATFORM_COMMISSION_PERCENT') ? (float)PLATFORM_COMMISSION_PERCENT : FIN_DEFAULT_PCT,
         'commission_fixe_cents' => defined('PLATFORM_COMMISSION_FIXED_CENTS') ? (int)PLATFORM_COMMISSION_FIXED_CENTS : FIN_DEFAULT_FIXE_CENTS,
         'delai_securite_jours' => FIN_DEFAULT_DELAI, 'reserve_pct' => FIN_DEFAULT_RESERVE, 'commission_hors_pct' => FIN_DEFAULT_HORS_PCT,
+        'payout_jours' => FIN_DEFAULT_PAYOUT_JOURS,
     ];
     global $pdo;
     if (isset($pdo) && $pdo instanceof PDO) {
@@ -36,7 +46,7 @@ function fin_reglages(bool $refresh = false): array {
             fin_ensure($pdo);
             foreach ($pdo->query("SELECT cle, valeur FROM fin_reglages")->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
                 if ($k === 'commission_pct') $c[$k] = (float)$v;
-                elseif ($k === 'commission_fixe_cents' || $k === 'delai_securite_jours') $c[$k] = (int)$v;
+                elseif ($k === 'commission_fixe_cents' || $k === 'delai_securite_jours' || $k === 'payout_jours') $c[$k] = (int)$v;
                 elseif ($k === 'reserve_pct' || $k === 'commission_hors_pct') $c[$k] = (float)$v;
             }
         } catch (Throwable $e) { error_log('fin_reglages: ' . $e->getMessage()); }
@@ -44,6 +54,7 @@ function fin_reglages(bool $refresh = false): array {
     $c['commission_pct'] = max(0.0, min(30.0, $c['commission_pct']));
     $c['commission_fixe_cents'] = max(0, min(500, $c['commission_fixe_cents']));
     $c['delai_securite_jours'] = max(0, min(60, $c['delai_securite_jours']));
+    $c['payout_jours'] = max(0, min(30, $c['payout_jours']));
     $c['reserve_pct'] = max(0.0, min(100.0, $c['reserve_pct']));
     $c['commission_hors_pct'] = max(0.0, min(30.0, $c['commission_hors_pct']));
     return $c;
@@ -203,6 +214,9 @@ function fin_ensure(PDO $pdo): void {
             UNIQUE KEY uq_ins (inscription_id), KEY idx_orga (organisateur_id), KEY idx_date (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         fin_assign_jours($pdo);
+        // Destination charges : modèle de chaque paiement, dette de l'organisme compensée sur ce paiement
+        fin_add_col($pdo, 'fin_paiements', 'mode', "VARCHAR(12) NOT NULL DEFAULT 'legacy'");
+        fin_add_col($pdo, 'fin_paiements', 'compensation_cents', "INT NOT NULL DEFAULT 0");
         fin_ledger_ensure($pdo);
         fin_ledger_backfill($pdo);
     } catch (Throwable $e) {
@@ -237,9 +251,10 @@ function fin_points_budget_cents(PDO $pdo, int $orgaId): int {
 // ---------------------------------------------------------------------------------------------
 /**
  * Enregistre le paiement d'une commande : une ligne par inscription, le montant payé (après code promo) réparti
- * au prorata des prix. Idempotent (une inscription = une ligne). Crédite le solde net de commission.
+ * au prorata des prix. Idempotent (une inscription = une ligne). $mode 'legacy' : crédite le solde net de commission ;
+ * 'destination' : le net est déjà sur le compte Stripe de l'organisme, seule la dette compensée ($compPrevue) est imputée.
  */
-function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, string $sessionId, int $amountTotalCents): int {
+function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, string $sessionId, int $amountTotalCents, string $mode = 'legacy', int $compPrevue = 0): int {
     fin_ensure($pdo);
     if ($amountTotalCents <= 0 || !$tokens) return 0;
     $in = implode(',', array_fill(0, count($tokens), '?'));
@@ -247,29 +262,73 @@ function fin_record_checkout(PDO $pdo, array $tokens, ?string $paymentIntent, st
                          FROM inscriptions i JOIN camps c ON c.id = i.camp_id
                          WHERE i.reservation_token IN ($in) AND i.prix_final > 0 ORDER BY i.id");
     $st->execute(array_values($tokens));
-    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-    if (!$rows) return 0;
+    return fin_record_lines($pdo, $st->fetchAll(PDO::FETCH_ASSOC), $paymentIntent, $sessionId, $amountTotalCents, $mode, $compPrevue);
+}
+
+/** Lignes d'un paiement ($rows : id (négatif = équipe d'animation), prix_final, camp_id, date_debut, organisateur_id, tva). Voir fin_record_checkout. */
+function fin_record_lines(PDO $pdo, array $rows, ?string $paymentIntent, string $sessionId, int $amountTotalCents, string $mode = 'legacy', int $compPrevue = 0): int {
     $sum = 0.0;
     foreach ($rows as $r) $sum += (float)$r['prix_final'];
-    if ($sum <= 0) return 0;
-
-    $left = $amountTotalCents; $n = count($rows); $created = 0;
-    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, tva_taux_pct, date_deblocage)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    foreach ($rows as $k => $r) {
+    if (!$rows || $sum <= 0 || $amountTotalCents <= 0) return 0;
+    $dest = $mode === 'destination';
+    $left = $amountTotalCents; $n = count($rows); $created = [];
+    $ins = $pdo->prepare("INSERT IGNORE INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, session_id, brut_cents, commission_cents, net_cents, commission_pct, commission_fixe_cents, tva_taux_pct, date_deblocage, mode)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    foreach (array_values($rows) as $k => $r) {
         $brut = ($k === $n - 1) ? $left : (int)round($amountTotalCents * (float)$r['prix_final'] / $sum);
         $brut = max(0, min($brut, $left)); $left -= $brut;
         if ($brut <= 0 || !$r['organisateur_id']) continue;
         [$com, , $fixe] = fin_commission_split($brut); $net = $brut - $com;
-        $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, $r['tva'], fin_release_date($r['date_debut'])]);
-        if ($ins->rowCount() === 1) {
-            $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
-            fin_audit($pdo, 'paiement_recu', 'inscription', $r['id'], ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent], 'webhook');
-            fin_ledger_paiement($pdo, ['payment_intent' => $paymentIntent, 'session_id' => $sessionId, 'inscription_id' => $r['id'], 'organisateur_id' => $r['organisateur_id'], 'brut_cents' => $brut, 'commission_cents' => $com, 'mode' => 'legacy']);
-            $created++;
+        $ins->execute([$r['id'], $r['organisateur_id'], $r['camp_id'], $paymentIntent, $sessionId, $brut, $com, $net, fin_commission_pct(), $fixe, $r['tva'] ?? null,
+                       $dest ? fin_payout_date($r['date_debut']) : fin_release_date($r['date_debut']), $mode]);
+        if ($ins->rowCount() !== 1) continue;
+        $p = ['id' => (int)$pdo->lastInsertId(), 'payment_intent' => $paymentIntent, 'session_id' => $sessionId, 'inscription_id' => (int)$r['id'],
+              'organisateur_id' => (int)$r['organisateur_id'], 'brut_cents' => $brut, 'commission_cents' => $com, 'net_cents' => $net, 'mode' => $mode];
+        if (!$dest) $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$net / 100, $r['organisateur_id']]);
+        fin_audit($pdo, 'paiement_recu', (int)$r['id'] < 0 ? 'equipe' : 'inscription', abs((int)$r['id']), ['brut' => $brut, 'commission' => $com, 'net' => $net, 'pi' => $paymentIntent, 'mode' => $mode], 'webhook');
+        fin_ledger_paiement($pdo, $p);
+        $created[] = $p;
+    }
+    // Dette de l'organisme (solde négatif : commission hors carte, dette d'un remboursement legacy...) prélevée avec la commission Stripe de ce paiement.
+    // Jamais plus que la dette du moment (deux paiements simultanés) : l'excédent prélevé est rendu par fin_fee_excess_refund (webhook).
+    if ($dest && $compPrevue > 0 && $created) {
+        $orga = $created[0]['organisateur_id'];
+        $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
+        $st->execute([$orga]);
+        $comp = min($compPrevue, max(0, -(int)round((float)$st->fetchColumn() * 100)), array_sum(array_column($created, 'net_cents')));
+        if ($comp > 0) {
+            $pdo->prepare("UPDATE organisateurs SET portefeuille = portefeuille + ? WHERE id = ?")->execute([$comp / 100, $orga]);
+            $up = $pdo->prepare("UPDATE fin_paiements SET compensation_cents = ?, verse_cents = verse_cents + ? WHERE id = ?"); // part déjà réglée : n'est pas sur le compte Stripe
+            foreach (fin_allocate($comp, array_column($created, 'net_cents', 'id')) as $id => $part) $up->execute([$part, $part, $id]);
+            fin_audit($pdo, 'dette_compensee', 'organisateur', $orga, ['cents' => $comp, 'prevu' => $compPrevue, 'pi' => $paymentIntent], 'webhook');
         }
     }
-    return $created;
+    return count($created);
+}
+
+/** Date de versement bancaire d'une ligne « destination » : début du séjour + payout_jours (réglage admin) */
+function fin_payout_date(?string $dateDebut): string {
+    return date('Y-m-d 00:00:00', strtotime(($dateDebut ?: 'today') . ' +' . fin_reglages()['payout_jours'] . ' day'));
+}
+
+/**
+ * Paramètres « destination charges » d'une session Checkout ($itemCents : montant de chaque inscription ; un panier = un séjour = un organisme).
+ * Retourne [] (repli legacy : l'argent reste chez moncamp.fr) si le compte de l'organisme ne peut pas encore recevoir de fonds.
+ * application_fee_amount = commission de chaque inscription (fin_commission_split) + dette à compenser (solde négatif), jamais plus que le net.
+ * on_behalf_of (relevé bancaire de la famille au nom de l'organisme) seulement si son compte accepte déjà les cartes.
+ * Un code promo réduit le montant payé : la commission prélevée en trop est rendue par le webhook (fin_fee_excess_refund).
+ */
+function fin_destination_params(PDO $pdo, int $orgaId, array $itemCents): array {
+    $acc = fin_account($pdo, $orgaId);
+    if (!$acc || empty($acc['transfers_actif'])) return [];
+    $com = 0; $total = 0;
+    foreach ($itemCents as $c) { $com += fin_commission_split((int)$c)[0]; $total += (int)$c; }
+    $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ?");
+    $st->execute([$orgaId]);
+    $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com));
+    $pid = ['application_fee_amount' => $com + $comp, 'transfer_data' => ['destination' => $acc['account_id']], 'metadata' => ['mode' => 'destination', 'organisateur_id' => (string)$orgaId]];
+    if (!empty($acc['charges_enabled'])) $pid['on_behalf_of'] = $acc['account_id'];
+    return ['payment_intent_data' => $pid, 'metadata' => ['mode' => 'destination', 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp]];
 }
 
 /** Remboursement (total ou partiel) d'un paiement : réduit le net dû à l'organisme au prorata (la commission est rendue au prorata aussi). */
@@ -445,7 +504,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
     $params = [
         'type' => 'express', 'country' => 'FR',
         'business_type' => $statuts[$statut][2],
-        'capabilities' => ['transfers' => ['requested' => true]],
+        'capabilities' => ['transfers' => ['requested' => true], 'card_payments' => ['requested' => true]], // card_payments : on_behalf_of
         'business_profile' => $profile,
         'metadata' => ['organisateur_id' => (string)$orgaId, 'statut' => $statut],
     ];

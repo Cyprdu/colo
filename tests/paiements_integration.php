@@ -40,4 +40,26 @@ ok(fin_record_checkout($pdo, ['tokA'], 'pi_A', 'cs_A', 2500) === 1, 'paiement le
 fin_record_checkout($pdo, ['tokA'], 'pi_A', 'cs_A', 2500);
 ok((int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference = 'pay:pi_A:1'")->fetchColumn() === 2, 'webhook rejoué : brut + commission écrits une seule fois');
 
+ok($pdo->query("SELECT mode FROM fin_paiements WHERE inscription_id = 900")->fetchColumn() === 'legacy', 'paiement existant : mode legacy');
+
+// ---------------------------------------------------------------- 3. session Checkout en destination charges
+ok(fin_destination_params($pdo, 2, [2500]) === [], 'compte non prêt : repli legacy (aucun paramètre destination)');
+$pdo->exec("UPDATE organisateurs SET stripe_account_id = 'acct_D' WHERE id = 2");
+$pdo->exec("INSERT INTO stripe_comptes (organisateur_id, account_id, transfers_actif, payouts_enabled, details_submitted, charges_enabled) VALUES (2, 'acct_D', 1, 1, 1, 0)");
+$d = fin_destination_params($pdo, 2, [2500, 10000]);
+ok($d['payment_intent_data']['application_fee_amount'] === 93 + 280 && $d['payment_intent_data']['transfer_data']['destination'] === 'acct_D', 'commission = somme des commissions par inscription (0,93 + 2,80), net vers le compte de l\'organisme');
+ok(!isset($d['payment_intent_data']['on_behalf_of']), 'on_behalf_of seulement si le compte accepte les cartes');
+$pdo->exec("UPDATE stripe_comptes SET charges_enabled = 1 WHERE organisateur_id = 2");
+$pdo->exec("UPDATE organisateurs SET portefeuille = -5.00 WHERE id = 2"); // commission hors carte due
+$d = fin_destination_params($pdo, 2, [2500, 10000]);
+ok($d['payment_intent_data']['on_behalf_of'] === 'acct_D' && $d['metadata']['compensation'] === '500' && $d['payment_intent_data']['application_fee_amount'] === 873, 'dette de 5 EUR ajoutée à la commission prélevée');
+
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (2, 2, 2, 'En attente', 25.00, 'EN_ATTENTE', 'tokB'), (3, 2, 3, 'En attente', 100.00, 'EN_ATTENTE', 'tokC')");
+ok(fin_record_checkout($pdo, ['tokB', 'tokC'], 'pi_D', 'cs_D', 12500, 'destination', 500) === 2, 'paiement destination : 2 lignes');
+$r = $pdo->query("SELECT mode, net_cents, compensation_cents, verse_cents, DATE(date_deblocage) d FROM fin_paiements WHERE payment_intent = 'pi_D' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+ok($r[0]['mode'] === 'destination' && array_sum(array_column($r, 'compensation_cents')) === 500 && $r[0]['d'] === date('Y-m-d', strtotime('+43 day')), 'mode destination, dette répartie, versement = début + 3 jours');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001, 'solde : net non crédité (il est chez Stripe), dette soldée');
+$t = fin_ledger_totaux($pdo, 2);
+ok($t['encaisse'] === 12500 && $t['commission'] === 373 && $t['en_attente'] === 12500 - 373, 'cascade destination : 125 EUR encaissés, 3,73 EUR de commission');
+
 echo "Tout est bon.\n";
