@@ -59,8 +59,9 @@ try {
             'camp' => ['nom' => $strip($camp['nom']), 'ville' => $strip($camp['ville']), 'date_debut' => $camp['date_debut'], 'date_fin' => $camp['date_fin'], 'organisateur' => $strip($o->fetchColumn())],
             'age_min' => $camp['equipe_age_min'] !== null ? (int)$camp['equipe_age_min'] : null, 'infos' => equipe_infos_niveaux($camp),
             'places_restantes' => $quota > 0 ? max(0, $quota - equipe_places_prises($pdo, (int)$camp['id'])) : null,
-            'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => equipe_plancher($t)], equipe_tarifs($pdo, (int)$camp['id'])),
-            'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'choix' => $c['choix'], 'obligatoire' => $c['obligatoire']], equipe_champs($pdo, (int)$camp['id'])),
+            'categories' => array_map(fn($k) => ['cle' => $k['cle'], 'nom' => $k['nom'], 'sexe' => (int)$k['quota_f'] > 0 || (int)$k['quota_g'] > 0, 'restant' => equipe_cat_restantes($pdo, (int)$camp['id'], $k)], equipe_categories($pdo, (int)$camp['id'])),
+            'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => equipe_plancher($t), 'cat' => $t['categorie']], equipe_tarifs($pdo, (int)$camp['id'])),
+            'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'choix' => $c['choix'], 'obligatoire' => $c['obligatoire'], 'cat' => $c['categorie']], equipe_champs($pdo, (int)$camp['id'])),
             'moi' => $u->fetch(PDO::FETCH_ASSOC) ?: new stdClass(),
             'deja' => $mine->fetch(PDO::FETCH_ASSOC) ?: null,
         ]);
@@ -102,15 +103,28 @@ try {
         $quota = (int)($camp['equipe_quota'] ?? 0);
         if ($quota > 0 && equipe_places_prises($pdo, $campId) >= $quota) anim_json(['error' => "L'équipe d'animation est complète."], 409);
 
+        // Catégorie d'encadrant (si le directeur en a défini) : places de la catégorie, dont femmes / hommes
+        $cats = array_column(equipe_categories($pdo, $campId), null, 'cle');
+        $cat = $cats[(string)($in['categorie'] ?? '')] ?? null;
+        $sexe = in_array($in['sexe'] ?? '', ['Femme', 'Homme'], true) ? $in['sexe'] : null;
+        if ($cats && !$cat) anim_json(['error' => "Choisissez votre rôle dans l'équipe."], 400);
+        if ($cat) {
+            $rest = equipe_cat_restantes($pdo, $campId, $cat);
+            if ($rest['total'] === 0) anim_json(['error' => 'Plus de place en « ' . $cat['nom'] . ' ».'], 409);
+            if (($rest['f'] !== null || $rest['g'] !== null) && !$sexe) anim_json(['error' => 'Indiquez si vous êtes une femme ou un homme.'], 400);
+            if (($sexe === 'Femme' && $rest['f'] === 0) || ($sexe === 'Homme' && $rest['g'] === 0)) anim_json(['error' => 'Plus de place pour les ' . ($sexe === 'Femme' ? 'femmes' : 'hommes') . ' en « ' . $cat['nom'] . ' ».'], 409);
+        }
+        $pourMoi = fn($x) => empty($x['categorie']) || ($cat && $x['categorie'] === $cat['cle']);
+
         // Questions du directeur
-        $champs = equipe_champs($pdo, $campId); $reps = [];
+        $champs = array_values(array_filter(equipe_champs($pdo, $campId), $pourMoi)); $reps = [];
         if ($champs) {
             [$reps, $err] = champs_valider($champs, is_array($in['reponses'] ?? null) ? $in['reponses'] : [], $prenom);
             if ($err) anim_json(['error' => $err], 400);
         }
 
         // Prix : uniquement depuis la base
-        $tarifs = []; foreach (equipe_tarifs($pdo, $campId) as $t) $tarifs[(int)$t['id']] = $t;
+        $tarifs = []; foreach (array_filter(equipe_tarifs($pdo, $campId), $pourMoi) as $t) $tarifs[(int)$t['id']] = $t;
         $prix = 0.0; $tarifNom = null;
         if ($tarifs) {
             $t = $tarifs[(int)($in['tarif'] ?? 0)] ?? null;
@@ -128,10 +142,10 @@ try {
         $free = $prix <= 0;
         $pdo->beginTransaction();
         $pdo->prepare("INSERT INTO equipe_inscriptions (camp_id, user_id, lien_id, token, prenom, nom, date_naissance, email, tel, bafa_statut, diplome, allergies, regime,
-                urgence_nom, urgence_tel, tarif_nom, prix_final, montant_paye, statut, statut_paiement) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+                urgence_nom, urgence_tel, tarif_nom, prix_final, montant_paye, statut, statut_paiement, categorie, categorie_nom, sexe) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([$campId, $uid, (int)$lien['id'], $tok, $prenom, $nom, $dn ? $dn->format('Y-m-d') : null, $email, $tel ?: null, $bafa, anim_txt($in['diplome'] ?? '', 255) ?: null,
                        anim_txt($in['allergies'] ?? '', 1000) ?: null, anim_txt($in['regime'] ?? '', 255) ?: null, $urgNom, $urgTel, $tarifNom, $prix, 0,
-                       $free ? 'Confirmé' : 'En attente', $free ? 'GRATUIT' : 'EN_ATTENTE']);
+                       $free ? 'Confirmé' : 'En attente', $free ? 'GRATUIT' : 'EN_ATTENTE', $cat['cle'] ?? null, $cat['nom'] ?? null, $sexe]);
         $eid = (int)$pdo->lastInsertId();
         foreach ($reps as $x) $pdo->prepare("INSERT INTO equipe_reponses (equipe_id, champ_id, libelle, valeur) VALUES (?,?,?,?)")->execute([$eid, $x['champ_id'], $x['libelle'], $x['valeur']]);
         $pdo->commit();

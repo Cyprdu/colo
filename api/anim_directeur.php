@@ -144,7 +144,7 @@ try {
         $st = $pdo->prepare("SELECT cd.token, u.prenom, u.nom, u.email, u.tel, p.bafa_statut FROM candidatures cd JOIN users u ON u.id = cd.user_id
             LEFT JOIN animateur_profils p ON p.user_id = cd.user_id WHERE cd.camp_id = ? AND cd.statut = 'Accepté' ORDER BY u.prenom");
         $st->execute([$camp['id']]);
-        $ins = $pdo->prepare("SELECT token, prenom, nom, email, tel, bafa_statut, date_naissance, tarif_nom, prix_final, statut, statut_paiement, created_at FROM equipe_inscriptions
+        $ins = $pdo->prepare("SELECT token, prenom, nom, email, tel, bafa_statut, date_naissance, CONCAT_WS(' · ', categorie_nom, tarif_nom) tarif_nom, prix_final, statut, statut_paiement, created_at FROM equipe_inscriptions
             WHERE camp_id = ? AND statut <> 'Annulé' AND (statut_paiement <> 'EN_ATTENTE' OR created_at > (NOW() - INTERVAL 30 MINUTE)) ORDER BY created_at");
         $ins->execute([$camp['id']]);
         anim_json(['quota' => (int)$camp['quota_max_anim'] ?: null, 'recrutes' => $st->fetchAll(PDO::FETCH_ASSOC),

@@ -62,14 +62,40 @@ function equipe_ensure(PDO $pdo): void {
         ) DEFAULT CHARSET=utf8mb4");
         // demandes « Me prévenir quand la page est renseignée » (une par inscription d'animateur)
         $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_alertes (equipe_id INT PRIMARY KEY, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, envoye_at DATETIME NULL) DEFAULT CHARSET=utf8mb4");
+        // Catégories d'encadrants (animation, cuisine, logistique…) : chacune a ses places ; tarifs et questions peuvent lui être réservés (categorie = clé, NULL = toutes)
+        $pdo->exec("CREATE TABLE IF NOT EXISTS equipe_categories (
+            id INT AUTO_INCREMENT PRIMARY KEY, camp_id INT NOT NULL, cle VARCHAR(16) NOT NULL, nom VARCHAR(80) NOT NULL,
+            quota INT NULL, quota_f INT NULL, quota_g INT NULL, position INT NOT NULL DEFAULT 0, INDEX idx_eqcat_camp (camp_id)
+        ) DEFAULT CHARSET=utf8mb4");
+        foreach (['equipe_tarifs' => ['categorie' => 'VARCHAR(16) NULL'], 'equipe_champs' => ['categorie' => 'VARCHAR(16) NULL'],
+                  'equipe_inscriptions' => ['categorie' => 'VARCHAR(16) NULL', 'categorie_nom' => 'VARCHAR(80) NULL', 'sexe' => 'VARCHAR(10) NULL']] as $t => $add) {
+            $cols = $pdo->query("SHOW COLUMNS FROM $t")->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($add as $c => $def) if (!in_array($c, $cols, true)) $pdo->exec("ALTER TABLE $t ADD COLUMN $c $def");
+        }
     } catch (Throwable $e) { error_log('equipe_ensure: ' . $e->getMessage()); }
     $done = true;
 }
 
 function equipe_tarifs(PDO $pdo, int $campId): array {
-    $st = $pdo->prepare("SELECT id, nom, prix, montant_libre, montant_min FROM equipe_tarifs WHERE camp_id = ? ORDER BY position, id");
+    $st = $pdo->prepare("SELECT id, nom, prix, montant_libre, montant_min, categorie FROM equipe_tarifs WHERE camp_id = ? ORDER BY position, id");
     $st->execute([$campId]);
     return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function equipe_categories(PDO $pdo, int $campId): array {
+    $st = $pdo->prepare("SELECT cle, nom, quota, quota_f, quota_g FROM equipe_categories WHERE camp_id = ? ORDER BY position, id");
+    $st->execute([$campId]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/** Places restantes d'une catégorie : ['total', 'f', 'g'] (null = pas de limite) */
+function equipe_cat_restantes(PDO $pdo, int $campId, array $cat): array {
+    $st = $pdo->prepare("SELECT COUNT(*) n, SUM(sexe = 'Femme') f, SUM(sexe = 'Homme') g FROM equipe_inscriptions WHERE camp_id = ? AND categorie = ? AND statut <> 'Annulé'
+        AND (statut_paiement <> 'EN_ATTENTE' OR created_at > (NOW() - INTERVAL " . EQUIPE_ATTENTE_MIN . " MINUTE))");
+    $st->execute([$campId, $cat['cle']]);
+    $p = $st->fetch(PDO::FETCH_ASSOC);
+    $r = fn($q, $n) => (int)$q > 0 ? max(0, (int)$q - (int)$n) : null;
+    return ['total' => $r($cat['quota'], $p['n']), 'f' => $r($cat['quota_f'], $p['f']), 'g' => $r($cat['quota_g'], $p['g'])];
 }
 
 /** Plus petit montant accepté d'un tarif libre : le minimum du directeur, sinon le prix du tarif */
@@ -127,8 +153,9 @@ function equipe_config(PDO $pdo, array $camp): array {
     equipe_ensure($pdo);
     return [
         'infos' => equipe_infos_niveaux($camp), 'active' => !empty($camp['equipe_active']), 'visibilite' => ($camp['equipe_visibilite'] ?? 'prive') === 'public' ? 'public' : 'prive', 'lien' => $camp['equipe_lien'] ?? null, 'age_min' => $camp['equipe_age_min'] ?? null, 'quota' => $camp['equipe_quota'] ?? null,
-        'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => $t['montant_min'] !== null ? (float)$t['montant_min'] : null], equipe_tarifs($pdo, (int)$camp['id'])),
-        'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], equipe_champs($pdo, (int)$camp['id'])),
+        'categories' => array_map(fn($c) => ['cle' => $c['cle'], 'nom' => $c['nom'], 'quota' => $c['quota'], 'quota_f' => $c['quota_f'], 'quota_g' => $c['quota_g']], equipe_categories($pdo, (int)$camp['id'])),
+        'tarifs' => array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'libre' => (int)$t['montant_libre'], 'min' => $t['montant_min'] !== null ? (float)$t['montant_min'] : null, 'cat' => $t['categorie']], equipe_tarifs($pdo, (int)$camp['id'])),
+        'champs' => array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire'], 'cat' => $c['categorie']], equipe_champs($pdo, (int)$camp['id'])),
     ];
 }
 
@@ -163,6 +190,19 @@ function equipe_preparer(array $in): array|string {
     $champs = is_array($e['champs'] ?? null) ? array_slice($e['champs'], 0, 20) : [];
     $infos = equipe_infos_niveaux(['equipe_infos' => json_encode($e['infos'] ?? [])]);
 
+    $cleanK = []; $cles = [];
+    foreach (is_array($e['categories'] ?? null) ? array_slice($e['categories'], 0, 10) : [] as $i => $k) {
+        $nom = mb_substr(trim((string)($k['nom'] ?? '')), 0, 80);
+        if ($nom === '') continue;
+        $cle = preg_match('/^[a-z0-9]{8,16}$/', (string)($k['cle'] ?? '')) && !isset($cles[$k['cle']]) ? $k['cle'] : bin2hex(random_bytes(6));
+        $q = fn($n) => isset($k[$n]) && is_numeric($k[$n]) && (int)$k[$n] > 0 ? min((int)$k[$n], 5000) : null;
+        [$qt, $qf, $qg] = [$q('quota'), $q('quota_f'), $q('quota_g')];
+        if ($qt && (($qf ?? 0) > $qt || ($qg ?? 0) > $qt)) return "Catégorie « $nom » : les places femmes ou hommes dépassent ses places.";
+        $cles[$cle] = true;
+        $cleanK[] = [$cle, $nom, $qt, $qf, $qg, $i];
+    }
+    $cat = fn($x) => isset($cles[$x['cat'] ?? '']) ? $x['cat'] : null;
+
     $cleanT = [];
     foreach ($tarifs as $i => $t) {
         $nom = mb_substr(trim((string)($t['nom'] ?? '')), 0, 120);
@@ -172,7 +212,7 @@ function equipe_preparer(array $in): array|string {
         $min = $libre && isset($t['min']) && $t['min'] !== '' ? round(max(0, (float)str_replace(',', '.', (string)$t['min'])), 2) : null;
         if ($prix > EQUIPE_MAX_PRIX || ($min !== null && $min > EQUIPE_MAX_PRIX)) return 'Montant trop élevé.';
         if ($prix > 0 && $prix < 0.5 || ($min !== null && $min > 0 && $min < 0.5)) return 'Le montant minimum de paiement par carte est de 0,50 €.';
-        $cleanT[] = [$nom, $prix, $libre, $min, $i];
+        $cleanT[] = [$nom, $prix, $libre, $min, $i, $cat($t)];
     }
     $cleanC = [];
     foreach ($champs as $i => $c) {
@@ -186,9 +226,9 @@ function equipe_preparer(array $in): array|string {
             if (count($l) < 2) return "La liste « $lib » doit proposer au moins 2 choix.";
             $opts = implode("\n", array_map(fn($x) => mb_substr($x, 0, 120), $l));
         }
-        $cleanC[] = [(int)($c['id'] ?? 0), $lib, $type, $opts, !empty($c['obligatoire']) ? 1 : 0, $i];
+        $cleanC[] = [(int)($c['id'] ?? 0), $lib, $type, $opts, !empty($c['obligatoire']) ? 1 : 0, $i, $cat($c)];
     }
-    $out['B'] = compact('active', 'visib', 'ageMin', 'quota', 'infos', 'cleanT', 'cleanC') + ['renouveler' => !empty($e['renouveler_lien'])];
+    $out['B'] = compact('active', 'visib', 'ageMin', 'quota', 'infos', 'cleanK', 'cleanT', 'cleanC') + ['renouveler' => !empty($e['renouveler_lien'])];
     return $out;
 }
 
@@ -208,18 +248,21 @@ function equipe_ecrire(PDO $pdo, int $campId, array $p): void {
         if ($active) equipe_lien_principal($pdo, $campId, $visib, $renouveler);
         else $pdo->prepare("UPDATE animateur_liens SET actif = 0 WHERE token = (SELECT equipe_lien FROM camps WHERE id = ?) AND camp_id = ?")->execute([$campId, $campId]);
         // Tarifs : on remplace tout (les inscriptions existantes gardent le nom et le prix payés)
+        $pdo->prepare("DELETE FROM equipe_categories WHERE camp_id = ?")->execute([$campId]);
+        $ins = $pdo->prepare("INSERT INTO equipe_categories (camp_id, cle, nom, quota, quota_f, quota_g, position) VALUES (?,?,?,?,?,?,?)");
+        foreach ($cleanK as [$cle, $nom, $qt, $qf, $qg, $pos]) $ins->execute([$campId, $cle, $nom, $qt, $qf, $qg, $pos]);
         $pdo->prepare("DELETE FROM equipe_tarifs WHERE camp_id = ?")->execute([$campId]);
-        $ins = $pdo->prepare("INSERT INTO equipe_tarifs (camp_id, nom, prix, montant_libre, montant_min, position) VALUES (?,?,?,?,?,?)");
-        foreach ($cleanT as [$nom, $prix, $libre, $min, $pos]) $ins->execute([$campId, $nom, $prix, $libre, $min, $pos]);
+        $ins = $pdo->prepare("INSERT INTO equipe_tarifs (camp_id, nom, prix, montant_libre, montant_min, position, categorie) VALUES (?,?,?,?,?,?,?)");
+        foreach ($cleanT as [$nom, $prix, $libre, $min, $pos, $cat]) $ins->execute([$campId, $nom, $prix, $libre, $min, $pos, $cat]);
         // Questions : mise à jour par identifiant (les réponses déjà données gardent leur libellé)
         $st = $pdo->prepare("SELECT id FROM equipe_champs WHERE camp_id = ?"); $st->execute([$campId]);
         $exist = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)); $keep = [];
-        foreach ($cleanC as [$id, $lib, $type, $opts, $ob, $pos]) {
+        foreach ($cleanC as [$id, $lib, $type, $opts, $ob, $pos, $cat]) {
             if ($id && in_array($id, $exist, true)) {
-                $pdo->prepare("UPDATE equipe_champs SET libelle=?, type=?, options=?, obligatoire=?, position=? WHERE id=? AND camp_id=?")->execute([$lib, $type, $opts, $ob, $pos, $id, $campId]);
+                $pdo->prepare("UPDATE equipe_champs SET libelle=?, type=?, options=?, obligatoire=?, position=?, categorie=? WHERE id=? AND camp_id=?")->execute([$lib, $type, $opts, $ob, $pos, $cat, $id, $campId]);
                 $keep[] = $id;
             } else {
-                $pdo->prepare("INSERT INTO equipe_champs (camp_id, libelle, type, options, obligatoire, position) VALUES (?,?,?,?,?,?)")->execute([$campId, $lib, $type, $opts, $ob, $pos]);
+                $pdo->prepare("INSERT INTO equipe_champs (camp_id, libelle, type, options, obligatoire, position, categorie) VALUES (?,?,?,?,?,?,?)")->execute([$campId, $lib, $type, $opts, $ob, $pos, $cat]);
                 $keep[] = (int)$pdo->lastInsertId();
             }
         }

@@ -24,10 +24,25 @@ if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlenc
         if (c.type === 'case') return '<label class="flex items-center gap-3 text-[15px]"><input type="checkbox" id="' + id + '" data-q="' + c.id + '" style="accent-color:#26343b"> ' + E(c.libelle) + req + '</label>';
         return '<div><label class="ds-label" for="' + id + '">' + E(c.libelle) + req + '</label><input id="' + id + '" data-q="' + c.id + '" type="' + (c.type === 'nombre' ? 'number' : c.type === 'date' ? 'date' : 'text') + '" class="ds-input"></div>';
     }
+    function catBlock(d) {
+        if (!d.categories.length) return '';
+        var rest = function (k) { var r = k.restant || {}; return r.total === 0 ? 'complet' : (r.total != null ? r.total + ' place(s)' : ''); };
+        return '<div class="border-t border-[#e5e7eb] pt-5"><p class="ds-label">Votre rôle dans l’équipe *</p><div class="grid sm:grid-cols-2 gap-2">' + d.categories.map(function (k) {
+            return '<label class="ds-opt items-center"><input type="radio" name="cat" value="' + E(k.cle) + '" ' + (k.restant && k.restant.total === 0 ? 'disabled' : '') + '><span class="ds-tick"></span><span><span class="ds-opt-title block">' + E(k.nom) + '</span><span class="ds-opt-sub block">' + E(rest(k)) + '</span></span></label>';
+        }).join('') + '</div><div id="sexeBox" class="mt-4 hidden" style="max-width:260px"><label class="ds-label" for="sexe">Vous êtes *</label><select id="sexe" class="ds-select"><option value="">Choisir…</option><option value="Femme">Une femme</option><option value="Homme">Un homme</option></select></div></div>';
+    }
+    // Seuls les tarifs et questions communs à tous ou réservés à la catégorie choisie sont affichés (et envoyés)
+    function filtreCat() {
+        var c = document.querySelector('[name=cat]:checked'), cle = c ? c.value : '', k = I.categories.find(function (x) { return x.cle === cle; });
+        [].forEach.call(document.querySelectorAll('[data-cat]'), function (el) { el.hidden = !!el.dataset.cat && el.dataset.cat !== cle; });
+        var vis = [].filter.call(document.querySelectorAll('[name=tarif]'), function (r) { return !r.closest('[data-cat]').hidden; });
+        if (vis.length && !vis.some(function (r) { return r.checked; })) vis[0].checked = true;
+        document.getElementById('free').hidden = vis.length > 0;
+        if (document.getElementById('sexeBox')) document.getElementById('sexeBox').classList.toggle('hidden', !(k && k.sexe));
+    }
     function tarifBlock(d) {
-        if (!d.tarifs.length) return '<p class="ds-alert-ok">Participation gratuite.</p>';
-        return '<div class="space-y-2">' + d.tarifs.map(function (t, i) {
-            return '<label class="block rounded-2xl border-2 p-4 cursor-pointer" style="border-color:#e5e7eb"><span class="flex items-center gap-3"><input type="radio" name="tarif" value="' + t.id + '" ' + (i === 0 ? 'checked' : '') + ' style="accent-color:#26343b"><span class="font-extrabold text-[#26343b]">' + E(t.nom) + '</span><span class="ml-auto font-bold">' + (t.libre ? 'dès ' + A.money(t.min) : (t.prix > 0 ? A.money(t.prix) : 'Gratuit')) + '</span></span>' +
+        return '<p id="free" class="ds-alert-ok">Participation gratuite.</p><div class="space-y-2">' + d.tarifs.map(function (t, i) {
+            return '<label data-cat="' + E(t.cat || '') + '" class="block rounded-2xl border-2 p-4 cursor-pointer" style="border-color:#e5e7eb"><span class="flex items-center gap-3"><input type="radio" name="tarif" value="' + t.id + '" ' + (i === 0 ? 'checked' : '') + ' style="accent-color:#26343b"><span class="font-extrabold text-[#26343b]">' + E(t.nom) + '</span><span class="ml-auto font-bold">' + (t.libre ? 'dès ' + A.money(t.min) : (t.prix > 0 ? A.money(t.prix) : 'Gratuit')) + '</span></span>' +
                 (t.libre ? '<span class="block mt-3 ml-7"><label class="ds-label" for="m' + t.id + '">Votre montant (€, minimum ' + A.money(t.min) + ')</label><input id="m' + t.id + '" type="number" min="' + t.min + '" step="0.01" value="' + t.min + '" class="ds-input" style="max-width:200px"></span>' : '') + '</label>';
         }).join('') + '</div>';
     }
@@ -46,22 +61,25 @@ if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlenc
                 Object.keys(A.BAFA).map(function (k) { return '<option value="' + k + '"' + (k === 'aucun' ? ' selected' : '') + '>' + E(A.BAFA[k]) + '</option>'; }).join('') + '</select></div>' + inp('diplome', 'Numéro / intitulé' + opt('diplome'), 'text', '', 'maxlength="255"') + '</div>' : '') +
                 (NV.allergies || NV.regime ? '<div class="grid sm:grid-cols-2 gap-4">' + (NV.allergies ? '<div><label class="ds-label" for="allergies">Allergies' + opt('allergies') + '</label><textarea id="allergies" rows="2" maxlength="1000" class="ds-textarea"></textarea></div>' : '') + (NV.regime ? '<div><label class="ds-label" for="regime">Régime alimentaire' + opt('regime') + '</label><input id="regime" class="ds-input" maxlength="255"></div>' : '') + '</div>' : '') +
                 (NV.urgence ? '<div class="grid sm:grid-cols-2 gap-4">' + inp('un', 'Personne à prévenir en cas d’urgence' + opt('urgence'), 'text', '', 'maxlength="120"') + inp('ut', 'Téléphone de cette personne' + opt('urgence'), 'tel', '') + '</div>' : '') +
-                (d.champs.length ? '<div class="space-y-4 border-t border-[#e5e7eb] pt-5">' + d.champs.map(champ).join('') + '</div>' : '') +
+                catBlock(d) +
+                (d.champs.length ? '<div class="space-y-4 border-t border-[#e5e7eb] pt-5">' + d.champs.map(function (c) { return '<div data-cat="' + E(c.cat || '') + '">' + champ(c) + '</div>'; }).join('') + '</div>' : '') +
                 '<div class="border-t border-[#e5e7eb] pt-5"><p class="ds-label">Participation</p>' + tarifBlock(d) + '</div>' +
                 '<div id="err" class="ds-alert-err hidden"></div><button class="ds-btn" id="go" type="submit">' + (d.tarifs.length ? 'Continuer vers le paiement' : 'Valider mon inscription') + '</button></form>';
             document.getElementById('f').addEventListener('submit', send);
+            document.getElementById('f').addEventListener('change', function (e) { if (e.target.name === 'cat') filtreCat(); });
+            filtreCat();
         } catch (e) { box.innerHTML = '<h1 class="ds-h1">Lien indisponible</h1><p class="ds-lead">' + E(e.message) + '</p>'; }
     }
     async function send(ev) {
         ev.preventDefault();
         var $ = function (i) { return document.getElementById(i); }, er = $('err'), go = $('go'), v = function (i) { return $(i) ? $(i).value : ''; };
-        var rep = {}; [].forEach.call(document.querySelectorAll('[data-q]'), function (el) { rep[el.dataset.q] = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value; });
-        var t = document.querySelector('[name=tarif]:checked'), tid = t ? t.value : 0;
+        var rep = {}; [].forEach.call(document.querySelectorAll('[data-q]'), function (el) { if (el.closest('[data-cat]').hidden) return; rep[el.dataset.q] = el.type === 'checkbox' ? (el.checked ? '1' : '') : el.value; });
+        var t = document.querySelector('[name=tarif]:checked'), tid = t && !t.closest('[data-cat]').hidden ? t.value : 0, k = document.querySelector('[name=cat]:checked');
         er.classList.add('hidden'); go.disabled = true;
         try {
             var r = await A.api('api/equipe_inscrire.php?a=inscrire', { json: { lien: L, prenom: $('prenom').value, nom: $('nom').value, email: $('email').value, tel: $('tel').value, date_naissance: $('dn').value,
                 bafa_statut: v('bafa') || 'aucun', diplome: v('diplome'), allergies: v('allergies'), regime: v('regime'), urgence_nom: v('un'), urgence_tel: v('ut'),
-                tarif: tid, montant: tid && $('m' + tid) ? $('m' + tid).value : '', reponses: rep } });
+                categorie: k ? k.value : '', sexe: v('sexe'), tarif: tid, montant: tid && $('m' + tid) ? $('m' + tid).value : '', reponses: rep } });
             location.href = r.url || 'reservations?equipe=ok';
         } catch (e) { er.textContent = e.message; er.classList.remove('hidden'); er.scrollIntoView({ block: 'center' }); go.disabled = false; }
     }

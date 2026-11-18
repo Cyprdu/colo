@@ -57,7 +57,7 @@ function gestion_inscrits(PDO $pdo, array $ctx, string $session = ''): array {
     try {
         require_once __DIR__ . '/equipe.php'; equipe_ensure($pdo);
         $q = $pdo->prepare("SELECT q.id, q.token, q.prenom, q.nom, q.date_naissance, q.email, q.tel, q.bafa_statut, q.diplome, q.allergies, q.regime, q.urgence_nom, q.urgence_tel,
-                                   q.tarif_nom, q.prix_final, q.montant_paye, q.statut, q.statut_paiement, q.created_at, c.token session_token
+                                   CONCAT_WS(' · ', q.categorie_nom, q.tarif_nom) tarif_nom, q.prix_final, q.montant_paye, q.statut, q.statut_paiement, q.created_at, c.token session_token
                             FROM equipe_inscriptions q JOIN camps c ON c.id = q.camp_id WHERE q.camp_id IN ($in) ORDER BY q.nom, q.prenom");
         $q->execute($ids);
         $rep = $pdo->prepare("SELECT libelle, valeur FROM equipe_reponses WHERE equipe_id = ? ORDER BY id");
