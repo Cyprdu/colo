@@ -44,7 +44,77 @@ function act_toks(array $in, string $kind): array {
     return $ids;
 }
 
+function act_contact(array $in): array {
+    $id = adm_untok('cm', (string)($in['m'] ?? ''));
+    $m = $id ? adm_rows("SELECT * FROM contact_messages WHERE id = ?", [$id])[0] ?? null : null;
+    if (!$m) throw new AdmUserError('Message introuvable.');
+    return $m;
+}
+function act_me(): string { $u = $_SESSION['user']; return trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? '')) ?: (string)$u['email']; }
+
 return [
+    'note.add' => ['notes.write', false, function (array $in) {
+        global $pdo;
+        $objet = (string)($in['objet'] ?? '');
+        $need = ['contact' => 'contacts.read', 'demande' => 'demandes.read', 'paiement' => 'paiements.read', 'orga' => 'orgas.read', 'user' => 'users.read', 'mois' => 'compta.read'];
+        if (!isset($need[$objet]) || !adm_can($need[$objet])) throw new AdmUserError('Objet non autorisé.');
+        $ref = (string)($in['ref'] ?? '');
+        $texte = trim((string)($in['texte'] ?? ''));
+        if (!preg_match('/^[A-Za-z0-9_-]{6,80}$/', $ref) || $texte === '' || mb_strlen($texte) > 2000) throw new AdmUserError('Note vide ou trop longue.');
+        $pdo->prepare("INSERT INTO adm_notes (objet, ref, user_id, auteur, texte) VALUES (?, ?, ?, ?, ?)")->execute([$objet, $ref, (int)$_SESSION['user']['id'], act_me(), $texte]);
+        adm_audit('note_ajout', "$objet:$ref", mb_substr($texte, 0, 300));
+        return [];
+    }],
+    'contact.bulk' => ['contacts.write', false, function (array $in) {
+        global $pdo;
+        $op = (string)($in['op'] ?? '');
+        $sql = ['read' => "lu = 1", 'unread' => "lu = 0", 'archive' => "dossier = 'archive'", 'inbox' => "dossier = 'inbox', spam_raison = NULL", 'spam' => "dossier = 'spam', lu = 1"];
+        $v = $in['ids'] ?? ($in['m'] ?? []);
+        $ids = act_toks(['ids' => $v], 'cm');
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        if ($op === 'delete') {
+            adm_need_reauth_api();
+            $mails = array_column(adm_rows("SELECT email FROM contact_messages WHERE id IN ($ph)", $ids), 'email');
+            $pdo->prepare("DELETE FROM contact_reponses WHERE message_id IN ($ph)")->execute($ids);
+            $pdo->prepare("DELETE FROM contact_messages WHERE id IN ($ph)")->execute($ids);
+            adm_audit('contact_suppression', 'contact_messages', count($ids) . ' message(s)', ['emails' => $mails], null);
+            return ['msg' => count($ids) . ' message(s) supprimé(s).'];
+        }
+        if (!isset($sql[$op])) throw new AdmUserError('Action inconnue.');
+        $pdo->prepare("UPDATE contact_messages SET {$sql[$op]}, maj = NOW() WHERE id IN ($ph)")->execute($ids);
+        adm_audit('contact_' . $op, 'contact_messages', implode(',', array_map(fn($i) => '#' . $i, $ids)));
+        return ['msg' => count($ids) . ' message(s) mis à jour.'];
+    }],
+    'contact.set' => ['contacts.write', false, function (array $in) {
+        global $pdo;
+        $m = act_contact($in);
+        $etat = in_array($in['etat'] ?? '', ['nouveau', 'en_cours', 'traite'], true) ? $in['etat'] : $m['etat'];
+        $as = ($in['assigne'] ?? '') === '' ? null : adm_untok('u', (string)$in['assigne']);
+        if ($as !== null && (!$as || !adm_can('contacts.read', $as))) throw new AdmUserError('Ce membre n’a pas accès aux messages.');
+        $before = ['etat' => $m['etat'], 'assigne_a' => $m['assigne_a']];
+        $pdo->prepare("UPDATE contact_messages SET etat = ?, assigne_a = ?, statut = IF(? = 'traite', 'Traité', statut), maj = NOW() WHERE id = ?")->execute([$etat, $as, $etat, $m['id']]);
+        adm_audit('contact_statut', 'contact_messages#' . $m['id'], null, $before, ['etat' => $etat, 'assigne_a' => $as]);
+        if ($as && $as !== (int)$_SESSION['user']['id'] && $as !== (int)$m['assigne_a']) adm_notif_add('contact', 'a' . $m['id'] . ':' . $as . ':' . time(), 'Message assigné : ' . html_entity_decode((string)$m['motif']), 'admin_contacts.php?m=' . $m['token'], 'contacts.read');
+        return [];
+    }],
+    'contact.reply' => ['contacts.write', false, function (array $in) {
+        global $pdo;
+        $m = act_contact($in);
+        $texte = trim((string)($in['texte'] ?? ''));
+        if ($texte === '' || mb_strlen($texte) > 5000) throw new AdmUserError('La réponse doit faire entre 1 et 5000 caractères.');
+        $dec = fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $link = rtrim(defined('BASE_URL') ? BASE_URL : 'https://moncamp.fr', '/') . '/view_reply.php?t=' . rawurlencode((string)$m['token']);
+        $html = '<p>Bonjour ' . h($dec($m['prenom'])) . ',</p><p>' . nl2br(h($texte)) . '</p>'
+              . '<p style="color:#6b7780;font-size:13px;border-left:3px solid #e5e7eb;padding-left:10px">Votre message : « ' . h(mb_substr($dec($m['message']), 0, 400)) . ' »</p>'
+              . '<p><a href="' . h($link) . '">Retrouver cette réponse sur moncamp.fr</a></p>';
+        $sent = adm_mail((string)$m['email'], 'Re : ' . $dec($m['motif']) . ' · moncamp.fr', $html);
+        $traite = ($in['traite'] ?? '') === '1';
+        $pdo->prepare("INSERT INTO contact_reponses (message_id, user_id, auteur, texte, envoye) VALUES (?, ?, ?, ?, ?)")->execute([$m['id'], (int)$_SESSION['user']['id'], act_me(), $texte, $sent ? 1 : 0]);
+        $pdo->prepare("UPDATE contact_messages SET reponse = ?, replied_at = NOW(), lu = 1, maj = NOW(), etat = ?, statut = ? WHERE id = ?")
+            ->execute([nl2br(h($texte)), $traite ? 'traite' : 'en_cours', 'Traité', $m['id']]);
+        adm_audit('contact_reponse', 'contact_messages#' . $m['id'], $sent ? 'e-mail envoyé' : 'e-mail NON envoyé', ['etat' => $m['etat']], ['etat' => $traite ? 'traite' : 'en_cours']);
+        return ['msg' => $sent ? 'Réponse envoyée.' : 'Réponse enregistrée, mais l’e-mail n’a pas pu partir.'];
+    }],
     'notif.read' => ['', false, function (array $in) {
         global $pdo;
         $uid = (int)$_SESSION['user']['id'];

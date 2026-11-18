@@ -377,7 +377,7 @@
   }
   function done(j, src) {
     toast(j.msg || src.dataset.ok || 'Fait.');
-    if (j.go) { location.href = j.go; return; }
+    if (j.go || src.dataset.go) { location.href = j.go || src.dataset.go; return; }
     if (src.dataset.stay === undefined) setTimeout(function () { location.reload(); }, 450);
   }
   function confirmed(src) {
@@ -398,7 +398,7 @@
     confirmed(b).then(function (ok) {
       if (!ok) return;
       var body = { a: b.dataset.api };
-      Object.keys(b.dataset).forEach(function (k) { if (['api', 'confirm', 'ok', 'title', 'word', 'stay'].indexOf(k) < 0) body[k] = b.dataset[k]; });
+      Object.keys(b.dataset).forEach(function (k) { if (['api', 'confirm', 'ok', 'title', 'word', 'stay', 'go', 'sel'].indexOf(k) < 0) body[k] = b.dataset[k]; });
       if (b.dataset.sel) body.ids = [].map.call(document.querySelectorAll('input[name="sel[]"]:checked'), function (c) { return c.value; });
       b.disabled = true;
       api(body).then(function (j) { b.disabled = false; done(j, b); }, function (err) { b.disabled = false; toast(err.message, true); });

@@ -416,6 +416,18 @@ function adm_head(string $title, string $active = '', array $crumbs = []): void 
     if ($f) echo '<div class="note ' . ($f[0] === 'ok' ? 'ok' : 'err') . '">' . h($f[1]) . '</div>';
 }
 
+function adm_notes_box(string $objet, string $ref, array $notes): string {
+    $o = '<div class="mt"><h3 class="h3">' . ic('note') . ' Notes internes ' . adm_help('Visibles uniquement par l’équipe. Jamais envoyées au client.') . '</h3><div class="notes">';
+    foreach ($notes as $n) $o .= '<div class="note-i">' . nl2br(h($n['texte'])) . '<small>' . h($n['auteur']) . ' · ' . h(adm_date($n['created_at'])) . '</small></div>';
+    if (!$notes) $o .= '<p class="muted small">Aucune note.</p>';
+    $o .= '</div>';
+    if (adm_can('notes.write') || adm_is_supreme()) $o .= '<form class="row-l wrap-row" data-api="note.add" data-ok="Note ajoutée."><input type="hidden" name="objet" value="' . h($objet) . '"><input type="hidden" name="ref" value="' . h($ref) . '">'
+        . '<input class="in grow" name="texte" maxlength="2000" required placeholder="Ajouter une note…"><button class="btn ghost sm" type="submit">' . ic('plus') . ' Ajouter</button></form>';
+    return $o . '</div>';
+}
+
+function adm_notes(string $objet, string $ref): array { return adm_rows("SELECT auteur, texte, created_at FROM adm_notes WHERE objet = ? AND ref = ? ORDER BY id DESC", [$objet, $ref]); }
+
 function adm_empty(string $icon, string $text): string { return '<div class="empty-st">' . ic($icon, 'ic ic-xl') . '<p>' . h($text) . '</p></div>'; }
 
 function adm_pager(int $page, int $pages, callable $url): string {

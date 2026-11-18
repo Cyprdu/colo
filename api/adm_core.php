@@ -2,7 +2,7 @@
 if (basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'adm_core.php') { http_response_code(404); exit; }
 if (defined('ADM_CORE')) return;
 define('ADM_CORE', 1);
-const ADM_SCHEMA = 3;
+const ADM_SCHEMA = 5;
 
 function adm_perm_catalog(): array {
     return [
@@ -86,6 +86,24 @@ function adm_core_ensure(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS admin_audit (id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id INT NULL, email VARCHAR(190) NULL, ip VARCHAR(45) NOT NULL DEFAULT '', action VARCHAR(60) NOT NULL, cible VARCHAR(190) NULL, detail TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_audit_date (created_at), INDEX idx_audit_action (action)) DEFAULT CHARSET=utf8mb4");
     try { $pdo->exec("ALTER TABLE admin_audit ADD COLUMN IF NOT EXISTS avant TEXT NULL, ADD COLUMN IF NOT EXISTS apres TEXT NULL"); } catch (Throwable $e) { error_log('adm_core audit cols: ' . $e->getMessage()); }
     try { $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS bloque TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) { error_log('adm_core users.bloque: ' . $e->getMessage()); }
+    try {
+        $pdo->exec("ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS lu TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS dossier VARCHAR(10) NOT NULL DEFAULT 'inbox',
+            ADD COLUMN IF NOT EXISTS etat VARCHAR(10) NOT NULL DEFAULT 'nouveau', ADD COLUMN IF NOT EXISTS assigne_a INT NULL, ADD COLUMN IF NOT EXISTS ip VARCHAR(45) NULL,
+            ADD COLUMN IF NOT EXISTS spam_raison VARCHAR(120) NULL, ADD COLUMN IF NOT EXISTS maj DATETIME NULL");
+        if ($v < 4) $pdo->exec("UPDATE contact_messages SET etat = 'traite', lu = 1 WHERE statut = 'Traité'");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS contact_reponses (id INT AUTO_INCREMENT PRIMARY KEY, message_id INT NOT NULL, user_id INT NOT NULL, auteur VARCHAR(190) NOT NULL,
+            texte TEXT NOT NULL, envoye TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_msg (message_id)) DEFAULT CHARSET=utf8mb4");
+    } catch (Throwable $e) { error_log('adm_core contact: ' . $e->getMessage()); }
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS demandes_organisateur (id INT AUTO_INCREMENT PRIMARY KEY, token CHAR(32) NOT NULL UNIQUE, user_id INT NOT NULL,
+            structure VARCHAR(160) NOT NULL, type_structure VARCHAR(30) NOT NULL, siret VARCHAR(20) NULL, site VARCHAR(255) NULL, tel VARCHAR(30) NULL,
+            ville VARCHAR(120) NULL, sejours_an VARCHAR(20) NULL, agrement VARCHAR(120) NULL, message TEXT NULL,
+            statut VARCHAR(12) NOT NULL DEFAULT 'attente', motif TEXT NULL, decide_par INT NULL, decide_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, maj DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_user (user_id), KEY idx_statut (statut)) DEFAULT CHARSET=utf8mb4");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS demandes_organisateur_evts (id INT AUTO_INCREMENT PRIMARY KEY, demande_id INT NOT NULL, par INT NULL, qui VARCHAR(190) NOT NULL,
+            action VARCHAR(30) NOT NULL, texte TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_d (demande_id)) DEFAULT CHARSET=utf8mb4");
+    } catch (Throwable $e) { error_log('adm_core demandes: ' . $e->getMessage()); }
     $ins = $pdo->prepare("INSERT INTO adm_roles (code, nom, description, systeme) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE nom = nom");
     $insP = $pdo->prepare("INSERT IGNORE INTO adm_role_perms (role_id, perm) VALUES (?, ?)");
     foreach (adm_role_presets() as $code => [$nom, $desc, $perms]) {
