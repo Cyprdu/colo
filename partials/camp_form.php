@@ -210,7 +210,7 @@ $tick = $svg('check', 'w-3 h-3');
 
                 <div id="blockInternal" class="mt-6 space-y-7 <?= $online ? '' : 'hidden' ?>">
                     <div>
-                        <div class="flex items-center justify-between gap-3 mb-3"><p class="ds-label !mb-0">Tarifs proposés aux familles *</p>
+                        <div class="flex items-center justify-between gap-3 mb-3"><div class="ds-label !mb-0">Tarifs proposés aux familles * <details class="ds-help"><summary>?</summary><div>Un tarif appartient à l'organisme et peut servir à plusieurs séjours. « Conditions » règle ce tarif pour cette session seulement : nombre de places, dont filles ou garçons, âge ou tranche (ex. tarif « Étudiant » réservé aux études supérieures, 10 places).</div></details></div>
                             <button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="Tarifs.open()"><?= $svg('plus', 'w-4 h-4') ?> Choisir / créer des tarifs</button></div>
                         <div id="tarifsSelected" class="space-y-2"></div>
                         <input type="hidden" name="tarifs" id="tarifsHidden">
@@ -366,6 +366,8 @@ const CHAMP_TYPES = <?= json_encode(CHAMPS_TYPES, JSON_UNESCAPED_UNICODE) ?>;
 const ICON = { edit: <?= json_encode($svg('edit')) ?>, trash: <?= json_encode($svg('trash')) ?>, up: <?= json_encode($svg('up')) ?>, down: <?= json_encode($svg('down')) ?>, close: <?= json_encode($svg('close')) ?> };
 let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => fin_orga_tok((int)$o['id']), 'nom' => $o['nom'], 'email' => $o['email'] ?? '', 'tel' => $o['tel'] ?? '', 'web' => $o['web'] ?? '', 'motscles' => $orgaKw[(int)$o['id']] ?? []], $organisateurs), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 let SELECTED = <?= json_encode(array_map(fn($t) => (int)$t['id'], $currentTarifs ?? [])) ?>;
+let REGLES = <?= json_encode((object)array_filter(array_map(fn($t) => json_decode((string)($t['regles'] ?? ''), true) ?: null, array_column($currentTarifs ?? [], null, 'id'))), JSON_UNESCAPED_UNICODE) ?>;
+const TRANCHES = <?= json_encode(array_map(fn($t) => $t[0], TRANCHES), JSON_UNESCAPED_UNICODE) ?>;
 let TARIFS = <?= json_encode(array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'montant_libre' => (int)$t['montant_libre'], 'montant_min' => $t['montant_min'] ?? null, 'organisateur_id' => fin_orga_tok((int)($t['organisateur_id'] ?? 0))], $currentTarifs ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let CHAMPS = <?= json_encode(array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], $champsActuels ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'lieu' => $e['lieu'], 'description' => (string)$e['description']], $etapesActuelles ?? []), JSON_UNESCAPED_UNICODE) ?>;
@@ -563,11 +565,47 @@ $('tarifForm').addEventListener('submit', async e => {
     } catch (err) { $('tarifErr').textContent = err.message; }
     b.disabled = false;
 });
+// Conditions propres à chaque tarif pour cette session (places, filles / garçons, âge, tranches) : REGLES[id tarif]
+const TR = {
+    open: new Set(),
+    r(id) { return REGLES[id] = REGLES[id] || {}; },
+    sum(t) {
+        const r = REGLES[t.id] || {}, out = [Tarifs.label(t)];
+        if (r.quota) out.push(r.quota + ' place' + (r.quota > 1 ? 's' : ''));
+        if (r.quota_f || r.quota_g) out.push('dont ' + [r.quota_f ? r.quota_f + ' filles' : '', r.quota_g ? r.quota_g + ' garçons' : ''].filter(Boolean).join(', '));
+        if (r.age_min || r.age_max) out.push((r.age_min || 0) + ' à ' + (r.age_max || 99) + ' ans');
+        if ((r.tranches || []).length) out.push(r.tranches.map(k => TRANCHES[k]).join(', '));
+        if ((r.roles || []).length > 1) out.push('pour ' + r.roles.length + ' : ' + r.roles.map(x => x.nom || '?').join(' + '));
+        return out.join(' · ');
+    },
+    num(id, k, label) { const v = (REGLES[id] || {})[k]; return `<div><label class="ds-label">${label}</label><input type="number" min="0" class="ds-input" data-tr="${id}" data-r="${k}" value="${v == null ? '' : esc(v)}"></div>`; },
+    panel(t) {
+        const r = REGLES[t.id] || {}, id = t.id;
+        return `<div class="w-full mt-3 pt-3 border-t border-[#e5e7eb] space-y-4">
+            <div class="grid grid-cols-3 gap-3">${this.num(id, 'quota', 'Places à ce tarif')}${this.num(id, 'quota_f', 'Dont filles')}${this.num(id, 'quota_g', 'Dont garçons')}</div>
+            <div class="grid grid-cols-2 gap-3 max-w-xs">${this.num(id, 'age_min', 'Âge min')}${this.num(id, 'age_max', 'Âge max')}</div>
+            <div class="flex flex-wrap gap-2">${Object.entries(TRANCHES).map(([k, l]) => `<label class="ds-chip cursor-pointer"><input type="checkbox" class="accent-[#2f3d45]" data-tr="${id}" data-r="tranches" value="${k}" ${(r.tranches || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+            <p class="ds-hint !mt-0">Laissez vide ce qui ne s'applique pas. Une condition d'âge ou de tranche est contrôlée à l'inscription ; une fois ses places prises, le tarif n'est plus proposé.</p>
+        </div>`;
+    },
+    toggle(id) { this.open.has(id) ? this.open.delete(id) : this.open.add(id); renderSelectedTarifs(); },
+    input(el) {
+        const id = +el.dataset.tr, k = el.dataset.r, r = this.r(id);
+        if (k === 'tranches') r.tranches = [...document.querySelectorAll(`[data-tr="${id}"][data-r=tranches]:checked`)].map(x => x.value);
+        else if (el.value === '') delete r[k]; else r[k] = Math.max(0, parseInt(el.value, 10) || 0);
+        const t = TARIFS.find(x => x.id === id), s = document.querySelector(`[data-tr-sum="${id}"]`);
+        if (t && s) s.textContent = this.sum(t);
+    }
+};
+$('tarifsSelected').addEventListener('input', e => { if (e.target.dataset.tr) TR.input(e.target); });
+$('tarifsSelected').addEventListener('change', e => { if (e.target.dataset.tr) TR.input(e.target); });
 function renderSelectedTarifs() {
     const list = SELECTED.map(id => TARIFS.find(t => t.id === id)).filter(Boolean);
     $('tarifsSelected').innerHTML = list.length ? list.map(t => `
-        <div class="ds-row !py-3"><div class="min-w-0"><p class="ds-opt-title truncate">${esc(t.nom)}</p><p class="ds-opt-sub">${Tarifs.label(t)}</p></div>
-        <button type="button" class="ds-iconbtn" aria-label="Retirer ${esc(t.nom)}" onclick="Tarifs.toggle(${t.id}, false)">${ICON.close}</button></div>`).join('')
+        <div class="ds-row !py-3 flex-wrap"><div class="min-w-0 flex-1"><p class="ds-opt-title truncate">${esc(t.nom)}</p><p class="ds-opt-sub" data-tr-sum="${t.id}">${esc(TR.sum(t))}</p></div>
+        <div class="flex items-center gap-1 flex-none"><button type="button" class="ds-btn ds-btn-light ds-btn-sm" aria-expanded="${TR.open.has(t.id)}" onclick="TR.toggle(${t.id})">Conditions</button>
+        <button type="button" class="ds-iconbtn" aria-label="Retirer ${esc(t.nom)}" onclick="Tarifs.toggle(${t.id}, false)">${ICON.close}</button></div>
+        ${TR.open.has(t.id) ? TR.panel(t) : ''}</div>`).join('')
         : '<p class="ds-hint !mt-0">Aucun tarif pour le moment : ajoutez-en au moins un.</p>';
     $('tarifsHidden').value = JSON.stringify(SELECTED);
 }
@@ -619,7 +657,7 @@ const HERIT = {
     description: { label: 'la description et les mots-clés', f: ['description'], a: ['tags'] },
     lieu: { label: 'le lieu et le parcours', f: ['adresse', 'ville', 'cp', 'pays', 'itinerant'], a: ['etapes'] },
     public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'age_mode', 'tranches[]', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
-    inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs'] },
+    inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs', 'tarif_regles'] },
     paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement'] },
     fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]', 'champs_demandes[]'] },
     questions: { label: 'les questions aux familles', a: ['champs'] },
@@ -647,7 +685,7 @@ const SM = {
             else if (el.type === 'radio') { if (el.checked) f[n] = el.value; else if (!(n in f)) f[n] = ''; }
             else f[n] = el.value;
         });
-        return { f, tags: MC.get(), tarifs: [...SELECTED], champs: clone(CHAMPS), etapes: clone(ETAPES), anim: window.AnimModes ? AnimModes.collect() : null, image_url: (this.c && this.c.snap && this.c.snap.image_url) || '' };
+        return { f, tags: MC.get(), tarifs: [...SELECTED], tarif_regles: clone(REGLES), champs: clone(CHAMPS), etapes: clone(ETAPES), anim: window.AnimModes ? AnimModes.collect() : null, image_url: (this.c && this.c.snap && this.c.snap.image_url) || '' };
     },
     apply(st) {
         this.loading = true;
@@ -661,7 +699,7 @@ const SM = {
             else el.value = v == null ? '' : v;
         });
         MC.set(st.tags || []);
-        SELECTED = [...(st.tarifs || [])]; CHAMPS = clone(st.champs || []); ETAPES = clone(st.etapes || []);
+        SELECTED = [...(st.tarifs || [])]; REGLES = clone(st.tarif_regles || {}); CHAMPS = clone(st.champs || []); ETAPES = clone(st.etapes || []);
         if (window.AnimModes && st.anim) { $('am-recrute').checked = false; $('am-equipe').checked = false; AnimModes.load(clone(st.anim)); }
         if (SELECTED.some(id => !TARIFS.some(t => t.id === id))) Tarifs.load().then(renderSelectedTarifs);
         renderSelectedTarifs(); Champs.render(); Etapes.render(); $('etapesBox').classList.toggle('hidden', !document.querySelector('input[name=itinerant]').checked);
@@ -831,7 +869,7 @@ async function envoyer(confirmInscrits) {
             const e = SM.eff(s), inh = !s.principal && s.herit.visuels;
             const mode = inh ? 'inherit' : (s.img ? 'file' : 'keep');
             if (mode === 'file') fd.append('image_' + s.key, s.img);
-            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, champs: e.champs, etapes: e.etapes, anim: e.anim || null, image: mode, image_url: (s.snap.image_url || '') };
+            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, tarif_regles: e.tarif_regles || {}, champs: e.champs, etapes: e.etapes, anim: e.anim || null, image: mode, image_url: (s.snap.image_url || '') };
         });
         const openTok = SM.list.map(s => s.token).find(Boolean) || '';
         fd.set('payload', JSON.stringify({ common: { nom: $('f-nom').value, organisateur_id: $('orga-select').value, categories: CP.value() }, sessions, confirm_inscrits: !!confirmInscrits }));

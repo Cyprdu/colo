@@ -50,7 +50,8 @@ try {
     require_once 'api/regles.php';
     require_once 'api/security.php';
     regles_ensure($pdo);
-    $besoinTranche = regles_besoin_tranche($camp);
+    $reglesT = regles_tarifs_du_camp($pdo, (int)$camp['id']);
+    $besoinTranche = regles_besoin_tranche($camp, $reglesT);
     $trancheDe = [];
     if ($enfants) {
         $st = $pdo->prepare("SELECT enfant_id, tranche FROM inscriptions WHERE tranche IS NOT NULL AND enfant_id IN (" . implode(',', array_fill(0, count($enfants), '?')) . ") ORDER BY id");
@@ -82,7 +83,12 @@ try {
     require_once 'api/champs.php';
     $champs = champs_du_camp($pdo, (int)$camp['id']);
 
-    foreach ($tarifs as &$t) $t['plancher'] = tarif_plancher($t);
+    $occupees = places_occupees($pdo, $camp);
+    foreach ($tarifs as &$t) {
+        $t['plancher'] = tarif_plancher($t);
+        $t['regles'] = (object)($reglesT[(int)$t['id']] ?? []);
+        $t['restant'] = is_numeric($t['id']) ? places_restantes($camp, $reglesT, $occupees, (int)$t['id']) : null;
+    }
     unset($t);
     // Frères et sœurs déjà inscrits à ce séjour (la remise fratrie s'applique aussi si on réserve à un autre moment)
     $stmtFr = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND statut_paiement = 'PAYE' AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule')");
@@ -90,7 +96,7 @@ try {
     $dejaInscritsNb = (int)$stmtFr->fetchColumn();
     // JSON injecté dans <script> : champs utiles seulement (id, prénom, nom : jamais de colonnes santé/binaires, qui feraient échouer json_encode et casser toute la page), balises échappées
     $jf = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP;
-    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? ''], $enfants), $jf) ?: '[]';
+    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? '', 'sexe' => $e['sexe'] ?? '', 'age' => age_au($e['date_naissance'] ?? null, $camp['date_debut']), 'tranche' => $trancheDe[(int)$e['id']] ?? ''], $enfants), $jf) ?: '[]';
     $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
     $retourInscr = urlencode('inscription?camp_t=' . $camp_token);
     require_once 'api/annulation_lib.php';
@@ -420,7 +426,7 @@ $vaccTxt = function (array $e): string {
         }
         if (step === 3) { initStep3(); showCustomFields(); }
         if (step === 4) {
-            if (!validateFreeAmounts() || !validateCustomFields()) return;
+            if (!validateTarifs() || !validateFreeAmounts() || !validateCustomFields()) return;
             updateSummary(); syncHiddenInputs();
         }
 
@@ -462,6 +468,26 @@ $vaccTxt = function (array $e): string {
     }
 
     // --- ÉTAPE 3 : TARIFS PAR ENFANT ---
+    const TR_LIB = <?= json_encode(array_map(fn($t) => $t[0], TRANCHES), $jf) ?>;
+    const escH = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const trancheOf = id => { const s = document.querySelector(`.tranche-sel[data-child="${id}"]`); return s ? s.value : ''; };
+    // Tarif inaccessible pour cet enfant (âge, tranche, places) : la raison, sinon '' ; le serveur refait tous ces contrôles
+    function tarifKo(t, child) {
+        const r = t.regles || {}, rs = t.restant || {};
+        if (r.age_max != null && child.age != null && (child.age < r.age_min || child.age > r.age_max)) return 'Réservé aux ' + r.age_min + ' à ' + r.age_max + ' ans';
+        if ((r.tranches || []).length && !r.tranches.includes(trancheOf(child.id))) return 'Réservé : ' + r.tranches.map(k => TR_LIB[k]).join(', ');
+        if (rs.total === 0) return 'Complet';
+        if (child.sexe === 'Femme' && rs.f === 0) return 'Complet pour les filles';
+        if (child.sexe === 'Homme' && rs.g === 0) return 'Complet pour les garçons';
+        return '';
+    }
+    function validateTarifs() {
+        for (const id of selectedChildIds) {
+            const c = allChildren.find(x => x.id == id), t = tariffs.find(x => x.id == (selections[id] || {}).tariffId);
+            if (!t || tarifKo(t, c)) { ColoUI.alert('Aucun tarif disponible pour ' + c.prenom + ' sur cette session.'); return false; }
+        }
+        return true;
+    }
     function initStep3() {
         const container = document.getElementById('tariffs-container');
         container.innerHTML = '';
@@ -470,10 +496,13 @@ $vaccTxt = function (array $e): string {
             const child = allChildren.find(c => c.id == childId);
             if (!child) return;
 
-            if (!selections[childId]) selections[childId] = { tariffId: tariffs[0].id, customPrice: 0 };
+            const cur = selections[childId] && tariffs.find(t => t.id == selections[childId].tariffId);
+            if (!cur || tarifKo(cur, child)) selections[childId] = { tariffId: (tariffs.find(t => !tarifKo(t, child)) || tariffs[0]).id, customPrice: 0 };
 
             let options = '';
             tariffs.forEach(t => {
+                const ko = tarifKo(t, child);
+                if (ko) { options += `<div class="border rounded-lg p-3 mb-2 border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed"><div class="flex justify-between items-center gap-3"><span class="font-medium">${escH(t.nom)}</span><span class="text-xs font-semibold text-[#5b4a1c]">${escH(ko)}</span></div></div>`; return; }
                 const isSelected = selections[childId].tariffId == t.id;
                 const borderClass = isSelected ? 'border-[#2f3d45] bg-[#f1f5f9]' : 'border-gray-200 hover:border-[#a9b8c6]';
                 
@@ -487,7 +516,7 @@ $vaccTxt = function (array $e): string {
 
                 options += `<div class="border rounded-lg p-3 mb-2 cursor-pointer ${borderClass}" onclick="updateSelection('${childId}', '${t.id}', null)">
                     <div class="flex justify-between items-center">
-                        <div class="flex items-center"><input type="radio" ${isSelected ? 'checked' : ''} class="mr-2"> <span class="font-medium">${t.nom}</span></div>
+                        <div class="flex items-center"><input type="radio" ${isSelected ? 'checked' : ''} class="mr-2"> <span class="font-medium">${escH(t.nom)}</span></div>
                         <span class="font-bold">${t.prix} €</span>
                     </div>
                     ${inputHtml}

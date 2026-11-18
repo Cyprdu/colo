@@ -12,7 +12,8 @@ require_once 'api/attente.php';
 require_once 'api/tarifs.php';
 require_once 'api/champs.php';
 require_once 'api/etapes.php';
-options_ensure($pdo); attente_ensure($pdo); tarifs_ensure($pdo);
+require_once 'api/regles.php';
+options_ensure($pdo); attente_ensure($pdo); tarifs_ensure($pdo); regles_ensure($pdo);
 
 // Le séjour doit appartenir à un organisme du directeur connecté
 $stmt = $pdo->prepare("SELECT c.* FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id WHERE c.token = ? AND o.user_id = ? AND COALESCE(c.supprime, 0) = 0");
@@ -24,7 +25,7 @@ $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE user_id = ? ORDER BY no
 $stmt->execute([$_SESSION['user']['id']]);
 $organisateurs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$stmt = $pdo->prepare("SELECT t.* FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE ct.camp_id = ? ORDER BY t.nom");
+$stmt = $pdo->prepare("SELECT t.*, ct.regles FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE ct.camp_id = ? ORDER BY t.nom");
 $stmt->execute([$camp['id']]);
 $currentTarifs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 require_once 'api/camp_groupe.php';

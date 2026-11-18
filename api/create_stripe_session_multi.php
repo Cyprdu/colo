@@ -96,26 +96,25 @@ try {
             backWithError($c['prenom'] . ' est déjà inscrit(e) à ce séjour (ou son paiement est en cours).', $campToken, $site);
         }
     }
-    $quota = (int)$camp['quota_global'];
-    if ($quota > 0 && count($already) + count($ordered) > $quota) {
-        $left = max(0, $quota - count($already));
-        backWithError($left === 0 ? 'Ce séjour est complet.' : "Il ne reste que $left place" . ($left > 1 ? 's' : '') . ' pour ce séjour.', $campToken, $site);
-    }
-    foreach (['quota_fille' => 'Femme', 'quota_garcon' => 'Homme'] as $col => $sexe) {
-        $q = (int)($camp[$col] ?? 0);
-        if ($q <= 0) continue;
-        $taken = count(array_filter($already, function ($r) use ($sexe) { return $r['sexe'] === $sexe; }));
-        $asked = count(array_filter($ordered, function ($c) use ($sexe) { return $c['sexe'] === $sexe; }));
-        if ($asked > 0 && $taken + $asked > $q) {
-            backWithError('Il n\'y a plus assez de places pour ' . ($sexe === 'Femme' ? 'les filles' : 'les garçons') . ' sur ce séjour.', $campToken, $site);
-        }
-    }
 
     // 4. Tarifs du séjour (seuls ceux rattachés à CE séjour sont acceptés)
     $stmt = $pdo->prepare("SELECT t.* FROM tarifs t JOIN camps_tarifs ct ON t.id = ct.tarif_id WHERE ct.camp_id = ?");
     $stmt->execute([$camp['id']]);
     $tarifs = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $t) $tarifs[(int)$t['id']] = $t;
+
+    // 4 bis. Conditions de chaque tarif (âge, tranche) puis places : séjour, tarif, filles / garçons
+    $regles = regles_tarifs_du_camp($pdo, (int)$camp['id']);
+    $demandes = [];
+    foreach ($ordered as $c) {
+        $tid = (int)($selectedTarifs[$c['id']] ?? 0);
+        $tid = isset($tarifs[$tid]) ? $tid : null;
+        $ko = $tid ? admission_probleme(regles_crit($regles[$tid] ?? []), age_au($c['date_naissance'] ?? null, $camp['date_debut']), $trancheDe[(int)$c['id']], (string)$c['prenom'], 'Le tarif « ' . $tarifs[$tid]['nom'] . ' »') : null;
+        if ($ko) backWithError($ko, $campToken, $site);
+        $demandes[] = ['tarif_id' => $tid, 'sexe' => $c['sexe'] ?? null];
+    }
+    $ko = places_probleme($camp, $regles, places_occupees($pdo, $camp), $demandes, array_column($tarifs, 'nom', 'id'));
+    if ($ko) backWithError($ko, $campToken, $site);
 
     // 5. Date lisible de la session (affichée sur le paiement)
     [$s1, $s2] = normalizeSessionDates($camp['date_debut'], $camp['date_fin']);

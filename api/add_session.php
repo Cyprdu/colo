@@ -34,8 +34,8 @@ if (!campsHaveGroupColumn($pdo)) sendJson(['error' => "Les sessions multiples ne
 try {
     // Les créations de table/colonne (DDL) valident implicitement une transaction : elles se font AVANT d'en ouvrir une
     require_once 'etapes.php'; require_once 'options.php'; require_once 'attente.php';
-    require_once 'champs.php';
-    etapes_ensure($pdo); options_ensure($pdo); attente_ensure($pdo); champs_ensure($pdo);
+    require_once 'champs.php'; require_once 'regles.php';
+    etapes_ensure($pdo); options_ensure($pdo); attente_ensure($pdo); champs_ensure($pdo); regles_ensure($pdo);
     // Le camp source doit appartenir à un organisme de l'utilisateur connecté
     $stmt = $pdo->prepare("SELECT c.* FROM camps c JOIN organisateurs o ON o.id = c.organisateur_id
                            WHERE c.token = ? AND o.user_id = ? AND COALESCE(c.supprime, 0) = 0");
@@ -90,7 +90,7 @@ try {
     $newId = (int)$pdo->lastInsertId();
 
     // Tarifs et moyens de paiement rattachés au camp
-    foreach (['camps_tarifs' => 'tarif_id', 'camps_paiements' => 'paiement_id'] as $table => $col) {
+    foreach (['camps_tarifs' => 'tarif_id, regles', 'camps_paiements' => 'paiement_id'] as $table => $col) {
         try {
             $pdo->prepare("INSERT IGNORE INTO $table (camp_id, $col) SELECT ?, $col FROM $table WHERE camp_id = ?")->execute([$newId, $src['id']]);
         } catch (Throwable $e) { /* table absente : sans importance */ }

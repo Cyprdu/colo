@@ -90,7 +90,7 @@ function camp_snapshot(PDO $pdo, array $c): array {
         $anim = ['recrute' => !empty($c['recrute_animateurs']), 'remuneration' => ($c['anim_remuneration'] ?? null) !== null ? (float)$c['anim_remuneration'] : null, 'equipe' => equipe_config($pdo, $c), 'campToken' => $c['token']];
     } catch (Throwable $e) { error_log('camp_snapshot anim: ' . $e->getMessage()); }
     return [
-        'f' => $f, 'tags' => $tags, 'tarifs' => array_map('intval', $tar->fetchAll(PDO::FETCH_COLUMN)),
+        'f' => $f, 'tags' => $tags, 'tarifs' => array_map('intval', $tar->fetchAll(PDO::FETCH_COLUMN)), 'tarif_regles' => (object)regles_tarifs_du_camp($pdo, $id),
         'champs' => array_map(fn($x) => ['id' => $x['id'], 'libelle' => $x['libelle'], 'type' => $x['type'], 'options' => (string)$x['options'], 'obligatoire' => $x['obligatoire']], champs_du_camp($pdo, $id)),
         'etapes' => array_map(fn($e) => ['jour' => (int)$e['jour'], 'lieu' => $e['lieu'], 'description' => (string)$e['description']], etapes_du_camp($pdo, $id)),
         'anim' => $anim, 'image_url' => (string)($c['image_url'] ?? ''),
@@ -108,6 +108,7 @@ function camp_in_depuis_session(array $common, array $s): array {
     $in['type'] = implode(', ', $tags);
     $in['motscles'] = json_encode($tags, JSON_UNESCAPED_UNICODE);
     $in['tarifs'] = json_encode(array_values(array_map('intval', (array)($s['tarifs'] ?? []))));
+    $in['tarif_regles'] = is_array($s['tarif_regles'] ?? null) ? $s['tarif_regles'] : [];
     $in['etapes'] = json_encode(array_values((array)($s['etapes'] ?? [])), JSON_UNESCAPED_UNICODE);
     return $in;
 }
@@ -159,12 +160,13 @@ function camp_sauver_groupe(PDO $pdo, int $uid, string $openToken, array $p): ar
         if ($tok !== '' && !$row) throw new CampException("Une session ne fait pas partie de ce séjour. Rechargez la page.");
         if (!empty($s['principal'])) $principalKey = $key;
         $in = camp_in_depuis_session($common, $s);
-        [$data, $tarifIds, $err, $classement] = camp_lire_formulaire($pdo, $uid, $in);
+        $lu = camp_lire_formulaire($pdo, $uid, $in);
+        [$data, $tarifIds, $err, $classement] = $lu;
         if ($err) throw new CampException(count($sessions) > 1 ? 'Session ' . camp_libelle_session(['date_debut' => $in['date_debut'] ?? '']) . ' : ' . $err : $err);
         try { camp_valider_champs($s['champs'] ?? []); } catch (InvalidArgumentException $e) { throw new CampException('Session ' . camp_libelle_session($data) . ' : ' . $e->getMessage()); }
         $anim = is_array($s['anim'] ?? null) ? equipe_preparer($s['anim']) : null;
         if (is_string($anim)) throw new CampException('Animateurs, session ' . camp_libelle_session($data) . ' : ' . $anim);
-        $prep[$key] = ['s' => $s, 'in' => $in, 'data' => $data, 'tarifs' => $tarifIds, 'classement' => $classement, 'row' => $row, 'key' => $key, 'anim' => $anim];
+        $prep[$key] = ['s' => $s, 'in' => $in, 'data' => $data, 'tarifs' => $tarifIds, 'regles' => $lu[4] ?? [], 'classement' => $classement, 'row' => $row, 'key' => $key, 'anim' => $anim];
         if (!empty($classement['motscles']['refus'])) $refus = array_merge($refus, $classement['motscles']['refus']);
     }
     if ($principalKey === null) $principalKey = array_key_first($prep);
@@ -240,7 +242,7 @@ function camp_sauver_groupe(PDO $pdo, int $uid, string $openToken, array $p): ar
             }
             // un séjour jusque-là sans groupe qui reçoit des sessions : sa ligne ouverte rejoint le groupe
             if ($groupe && $row && empty($row['groupe_id']) && campsHaveGroupColumn($pdo)) $pdo->prepare('UPDATE camps SET groupe_id = ? WHERE id = ?')->execute([$groupe, $id]);
-            camp_enregistrer_tarifs($pdo, $id, $x['tarifs']);
+            camp_enregistrer_tarifs($pdo, $id, $x['tarifs'], $x['regles']);
             camp_enregistrer_attente($pdo, $id, $x['in']);
             options_enregistrer($pdo, $id, $x['in']);
             etapes_enregistrer($pdo, $id, !empty($data['itinerant']), $x['in']['etapes'] ?? '[]');
