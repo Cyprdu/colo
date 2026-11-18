@@ -1,9 +1,11 @@
 <?php
-// api/dashboard_stats.php?organisateur_id=N[&type=&sejour=&session=&moyen=&du=Y-m-d&au=Y-m-d] : activité d'un organisme pour dashboard_organisme.php.
-// Un seul jeu de filtres pilote les cartes et les graphes : type de séjour, séjour (jeton de sa session principale), session (jeton), période d'inscription, moyen de paiement.
-// Réservé au propriétaire de l'organisme. Aucune donnée personnelle : uniquement des totaux. Les montants viennent des inscriptions (carte comme chèque, espèces...).
+// api/dashboard_stats.php?organisateur_id=N[&type=&sejour=&session=&moyen=&du=Y-m-d&au=Y-m-d][&csv=1] : activité d'un organisme pour dashboard_organisme.php.
+// Un seul jeu de filtres pilote les cartes, les graphes et la liste des paiements : type de séjour, séjour (jeton de sa session principale), session (jeton),
+// période, moyen de paiement. La cascade « où va l'argent » et les versements (fin_ledger) ne sont PAS filtrés : ils sont calculés par la page.
+// Réservé au propriétaire de l'organisme. Liste des paiements : nom de famille seulement ; csv=1 l'exporte (formules neutralisées).
 require_once 'config.php';
 require_once 'options.php';
+require_once 'compta_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -61,7 +63,7 @@ try {
     foreach ($out['filtres']['sessions'] as &$s) { $gid = $tokGid[$s['t']] ?? 0; $s['s'] = $groupes[$gid]['t'] ?? ''; } unset($s);
 
     $empty = ['ca_cents' => 0, 'inscrits' => 0, 'remplissage' => 0, 'places' => 0, 'a_encaisser_cents' => 0];
-    if (!$ids) ds_fin($out + ['kpi' => $empty, 'serie' => ['labels' => [], 'ca' => [], 'ins' => []], 'sejours' => [], 'moyens' => []]);
+    if (!$ids) ds_fin($out + ['kpi' => $empty, 'serie' => ['labels' => [], 'ca' => [], 'ins' => []], 'sejours' => [], 'moyens' => [], 'paiements' => []]);
     $in = implode(',', $ids);
     $dt = [$du . ' 00:00:00', $au . ' 23:59:59'];
 
@@ -99,7 +101,36 @@ try {
     $q->execute($dt);
     $moy = array_map(fn($r) => ['k' => $r['m'], 'l' => $lib[$r['m']] ?? 'Non précisé', 'n' => (int)$r['n'], 'montant_cents' => (int)round($r['montant'] * 100), 'a_regler_cents' => (int)round($r['ar'] * 100)], $q->fetchAll(PDO::FETCH_ASSOC));
 
-    ds_fin($out + ['kpi' => ['ca_cents' => (int)round($k['ca'] * 100), 'inscrits' => (int)$k['n'], 'remplissage' => $places ? (int)round($ins / $places * 100) : 0, 'places' => $places, 'a_encaisser_cents' => (int)round($k['ar'] * 100)],
+    // ---- liste des paiements : carte (fin_paiements) et hors carte (inscriptions + commission retenue), mêmes filtres
+    $csv = ($_GET['csv'] ?? '') === '1'; $lim = $csv ? 5000 : 300; $rows = [];
+    $fam = "COALESCE(NULLIF(e.nom, ''), 'Équipe d''animation')";
+    if ($f['moyen'] === '' || $f['moyen'] === 'carte') {
+        $q = $pdo->prepare("SELECT p.created_at d, $fam fam, c.nom camp, p.brut_cents brut, p.rembourse_cents remb, p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, 'carte' moy, i.reservation_token tok
+                            FROM fin_paiements p JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id
+                            WHERE p.camp_id IN ($in) AND p.created_at BETWEEN ? AND ? ORDER BY p.created_at DESC LIMIT $lim");
+        $q->execute($dt); $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+    }
+    if ($f['moyen'] !== 'carte') {
+        $q = $pdo->prepare("SELECT i.date_inscription d, $fam fam, c.nom camp, ROUND(i.prix_final * 100) brut, 0 remb, ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv,
+                                   i.statut_paiement st, NULL dd, i.moyen_paiement moy, i.reservation_token tok
+                            FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
+                            WHERE i.camp_id IN ($in) AND $CANC AND i.statut_paiement IN ('PAYE', 'A_REGLER') AND COALESCE(i.moyen_paiement, '') NOT IN ('', 'carte')
+                              AND i.date_inscription BETWEEN ? AND ?" . ($f['moyen'] !== '' ? " AND i.moyen_paiement = ?" : '') . " ORDER BY i.date_inscription DESC LIMIT $lim");
+        $q->execute($f['moyen'] !== '' ? [$dt[0], $dt[1], $f['moyen']] : $dt); $rows = array_merge($rows, $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+    usort($rows, fn($a, $b) => strcmp($b['d'], $a['d']));
+    $etat = function (array $r): string {
+        $dd = $r['dd'] ? date('d/m/Y', strtotime($r['dd'])) : '';
+        $s = ['attente' => 'Versement prévu le ' . $dd, 'en_cours' => 'Versement en cours', 'verse' => 'Versé', 'litige' => 'Litige en cours', 'bloque' => 'Bloqué',
+              'rembourse' => 'Remboursé', 'PAYE' => 'Payé directement', 'A_REGLER' => 'À encaisser'][$r['st']] ?? $r['st'];
+        return $s . ((int)$r['remb'] > 0 && $r['st'] !== 'rembourse' ? ' · remboursé en partie' : '');
+    };
+    $pay = array_map(fn($r) => ['d' => $r['d'], 'fam' => html_entity_decode((string)$r['fam']), 'camp' => html_entity_decode((string)$r['camp']), 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'],
+        'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'], 'pv' => (int)$r['pv'], 'st' => $etat($r), 'moy' => $lib[$r['moy']] ?? 'Non précisé', 'tok' => (string)$r['tok'], 'k' => $r['st']], array_slice($rows, 0, $lim));
+    if ($csv) compta_csv('paiements-' . $du . '-' . $au . '.csv', ['Date', 'Famille', 'Séjour', 'Moyen', 'Payé', 'Remboursé', 'Commission', 'Pour vous', 'Statut'],
+        (function () use ($pay) { foreach ($pay as $p) yield [date('d/m/Y', strtotime($p['d'])), $p['fam'], $p['camp'], $p['moy'], compta_eur($p['brut']), compta_eur($p['remb']), compta_eur($p['com']), compta_eur($p['pv']), $p['st']]; })());
+
+    ds_fin($out + ['paiements' => $pay, 'kpi' => ['ca_cents' => (int)round($k['ca'] * 100), 'inscrits' => (int)$k['n'], 'remplissage' => $places ? (int)round($ins / $places * 100) : 0, 'places' => $places, 'a_encaisser_cents' => (int)round($k['ar'] * 100)],
         'serie' => ['labels' => $labels, 'ca' => array_column($serie, 'ca'), 'ins' => array_column($serie, 'ins')], 'sejours' => array_slice($sj, 0, 8), 'moyens' => $moy]);
 } catch (Throwable $e) {
     error_log('dashboard_stats: ' . $e->getMessage());
