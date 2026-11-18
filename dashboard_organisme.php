@@ -220,7 +220,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         <div class="fd-kpis" id="kpis" aria-live="polite">
             <?php foreach ([['brut', 'Encaissé brut', 'Paiements par carte reçus sur la période (avant commission, frais et remboursements).'], ['net', 'Net pour vous', 'Encaissé − commission − frais Stripe − remboursements (± ajustements).', 'dark'],
                             ['com', 'Commission moncamp.fr', "Commission : $comTxt par inscription. Jamais rendue en cas d'annulation."], ['frais', 'Frais Stripe', "Frais réels de Stripe pour chaque paiement (et litige), débités par Stripe sur votre compte."],
-                            ['remb', 'Remboursé', 'Montants rendus aux familles sur la période.'], ['attente', 'En attente de versement', "Déjà sur votre compte Stripe (ou chez moncamp.fr avant l'activation de votre compte), $autoTxt. Montant à ce jour."],
+                            ['remb', 'Remboursé', 'Montant rendu à la famille (annulation). La commission moncamp.fr est conservée et les frais Stripe ne sont pas rendus par Stripe. Le remboursement est pris sur votre solde Stripe.'], ['attente', 'En attente de versement', "Déjà sur votre compte Stripe (ou chez moncamp.fr avant l'activation de votre compte), $autoTxt. Montant à ce jour."],
                             ['prochain', 'Prochain virement', "Montant et date du prochain virement vers votre banque, d'après votre solde Stripe (date de disponibilité des fonds) ou le virement déjà en route (date d'arrivée annoncée par Stripe)."], ['dette', 'Dette compensée', "Remboursement avancé par moncamp.fr quand votre solde Stripe ne suffisait pas. Retenu automatiquement sur vos prochains paiements."]] as $k): ?>
                 <div class="fd-kpi <?= $k[3] ?? '' ?>" id="kp-<?= $k[0] ?>"><div class="k"><?= $k[1] ?><?= $help($k[2]) ?></div><div class="v"><span class="sk" style="width:60%"></span></div><div class="s"></div></div>
             <?php endforeach; ?>
@@ -346,7 +346,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     var dfr = function (s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : ''; };
     var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
     var PILL = { moncamp: 'warn', stripe: 'info', route: 'info', banque: 'ok', partiel: 'warn', rembourse: 'bad', annule: 'bad', litige: 'bad', bloque: 'warn', PAYE: 'ok', A_REGLER: 'warn' };
-    var D = null, GRAN = '', seq = 0;
+    var D = null, GRAN = '', seq = 0, HREMB = <?= json_encode($help('Montant rendu à la famille (annulation). La commission moncamp.fr est conservée et les frais Stripe ne sont pas rendus par Stripe. Le remboursement est pris sur votre solde Stripe.')) ?>;
 
     // ---------- période
     function range(p) {
@@ -551,7 +551,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             + '<div class="fd-sub">Séjour</div><dl class="fd-dl">' + row('Séjour', esc(r.camp)) + row('Session', esc(r.sesl)) + row('Moyen', esc(r.moyl)) + '</dl>'
             + '<div class="fd-sub">Montants</div><dl class="fd-dl">' + row('Montant payé', eur(r.brut)) + row('Commission moncamp.fr', '− ' + eur(r.com))
             + row('Frais de paiement Stripe', '− ' + eur(r.frais) + (r.fest ? ' (estimés)' : (card && !r.frais && r.fo ? ' (bientôt connus)' : '')))
-            + row('Compensation de dette', '− ' + eur(r.comp)) + row('Remboursé', '− ' + eur(r.remb))
+            + row('Compensation de dette', '− ' + eur(r.comp)) + row('Remboursé' + HREMB, '− ' + eur(r.remb))
             + '<span class="sep"></span>' + row('<b>Net</b>', '<b>' + eur(r.net) + '</b>') + (r.tva ? row('dont TVA incluse', eur(r.tva)) : '') + '</dl>';
         if (card) h += '<div class="fd-sub">Versement</div><dl class="fd-dl">' + row('Déjà versé', eur(r.verse)) + (r.st === 'stripe' ? row('Versement', 'automatique, dès que disponible') : '') + (r.vtok ? row('Justificatif', '<a class="underline" href="virement.php?t=' + encodeURIComponent(r.vtok) + '">Voir le versement</a>') : '') + '</dl>';
         h += '<div class="fd-sub">Documents</div><div style="display:flex;gap:8px;flex-wrap:wrap">'
