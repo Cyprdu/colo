@@ -176,7 +176,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <a class="fd-btn" href="mes_camps.php">Inscrits</a>
+            <a class="fd-btn" href="mes_camps.php">Séjours et inscrits</a>
+            <a class="fd-btn" href="edit_organisateur.php?o=<?= $orgaTok ?>">Mon organisme</a>
+            <a class="fd-btn" href="messagerie.php">Messages</a>
             <a class="fd-btn" href="annulations_organisme.php?o=<?= $orgaTok ?>">Annulations<?= $nbAnnul ? ' (' . $nbAnnul . ')' : '' ?></a>
             <a class="fd-btn" href="marketing.php?o=<?= $orgaTok ?>">Marketing</a>
             <a class="fd-btn" href="aide_paiements.php">Aide</a>

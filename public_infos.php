@@ -26,6 +26,8 @@ try {
     error_log('public_infos: ' . $e->getMessage());
     $error = true;
 }
+// « Finances et versements » (?finances=1) : un seul organisme, pas de choix, on ouvre directement son tableau de bord
+if (isset($_GET['finances']) && count($organisateurs) === 1) { header('Location: dashboard_organisme.php?o=' . fin_orga_tok((int)$organisateurs[0]['id'])); exit; }
 
 function pi_logo($url) {
     $url = trim((string)$url);
