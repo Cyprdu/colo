@@ -7,7 +7,8 @@ function stripe_webhook_process(PDO $pdo, $event): array {
     mk_ensure($pdo);
 
     $feePI = null; // paiement dont on relève les frais Stripe réels, une fois la transaction validée
-    $feeAdj = null; // destination : [payment_intent, commission prélevée] pour rendre un éventuel excédent (code promo)
+    $feeAdj = null;
+    $copie = null; // destination : PaymentIntent dont on recopie description et métadonnées sur le paiement côté organisme // destination : [payment_intent, commission prélevée] pour rendre un éventuel excédent (code promo)
     try {
         $pdo->beginTransaction();
 
@@ -62,6 +63,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                     $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total, $mode, $comp);
                     if ($pi && $n) $feePI = (string)$pi;
                     if ($pi && $mode !== 'legacy') $feeAdj = [(string)$pi, (int)($meta->commission ?? 0) + $comp];
+                    if ($pi && $mode === 'destination') $copie = (string)$pi;
                     fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
                     // Inscription de l'équipe d'animation (adultes, hors inscriptions d'enfants) : mêmes règles de commission
                     if (($meta->type ?? '') === 'equipe_inscription') {
@@ -127,7 +129,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
         }
 
         $pdo->commit();
-        return [200, 'ok', ['type' => $event->type, 'feePI' => $feePI, 'feeAdj' => $feeAdj]];
+        return [200, 'ok', ['type' => $event->type, 'feePI' => $feePI, 'feeAdj' => $feeAdj, 'copie' => $copie]];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('WEBHOOK ERROR (' . ($event->type ?? '?') . '): ' . $e->getMessage());
@@ -140,5 +142,6 @@ function stripe_webhook_after(PDO $pdo, array $a): void {
     if (!$a) return;
     if (in_array($a['type'], ['charge.refunded', 'charge.dispute.closed'], true)) { try { $r = []; fin_process_reversals($pdo, $r); fin_reprises_run($pdo); } catch (Throwable $e) { error_log('webhook reversement: ' . $e->getMessage()); } }
     if ($a['feeAdj']) fin_fee_excess_refund($pdo, $a['feeAdj'][0], $a['feeAdj'][1]);
+    if (!empty($a['copie'])) fin_copy_to_destination($pdo, $a['copie']);
     if ($a['feePI']) { try { fin_sync_fees($pdo, $a['feePI']); } catch (Throwable $e) { error_log('webhook frais Stripe: ' . $e->getMessage()); } }
 }

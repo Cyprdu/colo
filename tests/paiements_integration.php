@@ -203,4 +203,24 @@ $r = stripe_webhook_process($pdo, $ev('evt_22', 'checkout.session.completed', ['
     'metadata' => ['reservation_token' => 'tokI', 'mode' => 'direct', 'organisateur_id' => '2', 'commission' => (string)fin_commission_split(6000)[0], 'compensation' => '2000']], 'acct_D'));
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'comp:pi_I'")->fetchColumn() === -2000, 'dette compensée et journalisée (« compensée le … »)');
 
+// ---------------------------------------------------------------- 12. paiement lisible dans le Stripe de l'organisme
+$pdo->exec("CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY, prenom VARCHAR(50), nom VARCHAR(50), email VARCHAR(80))");
+$pdo->exec("INSERT INTO users (id, prenom, nom, email) VALUES (9, 'Claire', 'Durand', 'claire@example.test')");
+$pdo->exec("UPDATE camps SET date_debut = '2027-07-12', date_fin = '2027-07-18' WHERE id = 2");
+$l = fin_lisible($pdo, ['tokB', 'tokC']);
+$m = $l['payment_intent_data']['metadata'];
+ok($l['payment_intent_data']['description'] === 'Hiver · 12–18 juil. · Tom D., Zoé D.', 'description courte : séjour, dates, enfants');
+ok($m['Séjour'] === 'Hiver' && $m['Session'] === 'du 12/07/2027 au 18/07/2027' && $m['Enfant(s)'] === 'Tom Durand, Zoé Durand' && $m['Parent'] === 'Claire Durand'
+    && $m['Email parent'] === 'claire@example.test' && $m['Commission moncamp.fr'] === '3,73 €' && $m['Inscriptions'] === 'tokB,tokC' && count($m) <= 50, 'métadonnées lisibles (aucune donnée de santé)');
+ok(fin_periode_courte('2027-07-28', '2027-08-03') === '28 juil.–3 août' && mb_strlen(fin_lisible_params(str_repeat('x', 900), null, null, [], '', '', 0, [])['payment_intent_data']['metadata']['Séjour']) === 500, 'dates sur deux mois ; valeurs limitées à 500 caractères');
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = (object)['description' => 'Hiver · 12–18 juil. · Tom D.', 'metadata' => (object)['Séjour' => 'Hiver'],
+    'latest_charge' => (object)['transfer' => (object)['destination' => 'acct_D', 'destination_payment' => 'py_1']]];
+$GLOBALS['stripe_calls'] = [];
+ok(fin_copy_to_destination($pdo, 'pi_D'), 'destination : copie sur le paiement côté organisme');
+$u = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'charges.update'))[0][1];
+ok($u[0] === 'py_1' && $u[1]['metadata'] === ['Séjour' => 'Hiver'] && $u[2] === ['stripe_account' => 'acct_D', 'idempotency_key' => 'moncamp-copie-pi_D'], 'mise à jour de py_… avec l\'en-tête stripe_account, idempotente');
+$GLOBALS['stripe_resp']['charges.update'] = new \Stripe\Exception\ApiErrorException('réseau');
+$nAud = (int)$pdo->query("SELECT COUNT(*) FROM fin_audit WHERE action = 'copie_metadonnees_echec'")->fetchColumn();
+ok(!fin_copy_to_destination($pdo, 'pi_D') && (int)$pdo->query("SELECT COUNT(*) FROM fin_audit WHERE action = 'copie_metadonnees_echec'")->fetchColumn() === $nAud + 1, 'échec non bloquant, journalisé');
+
 echo "Tout est bon.\n";
