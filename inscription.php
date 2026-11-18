@@ -79,6 +79,7 @@ try {
     $jf = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP;
     $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? ''], $enfants), $jf) ?: '[]';
     $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
+    $retourInscr = urlencode('inscription?camp_t=' . $camp_token);
     require_once 'api/annulation_lib.php';
     $moyensOk = fin_moyens_du_camp($camp); $libMoyens = options_paiements();
     $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
@@ -88,6 +89,20 @@ try {
 }
 
 $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
+
+// Étape 2 : fiche de chaque enfant rendue côté serveur (lecture directe des colonnes et du JSON de la fiche, valeurs échappées)
+$hv = fn($v, $vide = 'Non renseigné') => trim((string)$v) === '' ? '<span class="verif-vide">' . $vide . '</span>' : htmlspecialchars(trim((string)$v));
+$ouiNon = fn($v) => !empty($v) ? '<span class="verif-oui">Oui</span>' : '<span class="verif-non">Non</span>';
+$vaccTxt = function (array $e): string {
+    $j = fiche_json($e); $out = [];
+    foreach (FICHE_VACCINS as $k => $l) {
+        $st = (string)($j["v_$k"] ?? ''); $d = (string)($j["d_$k"] ?? '');
+        if ($st === 'oui') $out[] = $l . ($d !== '' ? ' (' . fiche_date_fr($d) . ')' : '');
+        elseif ($st === 'non' && in_array($k, FICHE_VACCINS_OBLIG, true)) $out[] = $l . ' : non';
+    }
+    if (!$out && !empty($j['dtp'])) $out[] = 'DTP ' . $j['dtp'];
+    return implode(', ', $out);
+};
 ?>
 
 <main class="flex-1 py-10">
@@ -98,22 +113,11 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             <p class="text-gray-600">Séjour : <span class="font-bold text-[#3d6a8e]"><?= htmlspecialchars($camp['nom']) ?></span></p>
         </div>
 
-        <div class="mb-8 mx-auto max-w-2xl">
-            <div class="flex justify-between items-center relative z-0">
-                <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-gray-200 -z-10"></div>
-                <?php for($i=1; $i<=4; $i++): ?>
-                    <div id="step-icon-<?= $i ?>" class="w-10 h-10 rounded-full flex items-center justify-center font-bold border-4 transition-colors duration-300 <?= $i===1 ? 'bg-[#2f3d45] text-white border-[#d3dbe0]' : 'bg-gray-200 text-gray-400 border-white' ?>">
-                        <?= $i ?>
-                    </div>
-                <?php endfor; ?>
-            </div>
-            <div class="flex justify-between text-xs text-gray-500 mt-2 font-medium px-1">
-                <span>Enfants</span>
-                <span class="pl-2">Vérification</span>
-                <span class="pl-2">Tarifs</span>
-                <span>Paiement</span>
-            </div>
-        </div>
+        <ol class="ins-steps" aria-label="Étapes de l'inscription">
+            <?php foreach (['Enfants', 'Vérification', 'Tarifs', 'Paiement'] as $i0 => $lab): $i = $i0 + 1; ?>
+                <li id="step-icon-<?= $i ?>" class="ins-step" data-state="<?= $i === 1 ? 'on' : 'todo' ?>"<?= $i === 1 ? ' aria-current="step"' : '' ?>><span class="ins-num"><?= $i ?></span><span><?= $lab ?></span></li>
+            <?php endforeach; ?>
+        </ol>
 
         <?php if (!empty($_SESSION['flash_error'])): ?>
             <div class="mb-6 mx-auto max-w-2xl rounded-xl border border-[#ebe3c8] bg-[#f8f5ea] px-5 py-4 text-sm font-semibold text-[#5b4a1c]" role="alert"><?= htmlspecialchars($_SESSION['flash_error']) ?></div>
@@ -129,7 +133,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 <?php if (empty($enfants)): ?>
                     <div class="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                         <p class="text-gray-500 mb-4">Aucun enfant enregistré.</p>
-                        <a href="add_child.php" class="px-5 py-2 bg-[#2f3d45] text-white rounded-lg">Ajouter un enfant</a>
+                        <a href="add_child?retour=<?= $retourInscr ?>" class="px-5 py-2 bg-[#2f3d45] text-white rounded-lg">Ajouter un enfant</a>
                     </div>
                 <?php else: ?>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -154,15 +158,16 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                                     <?php elseif($isInscrit): ?>
                                         <span class="inline-block mt-1 text-xs font-bold text-[#3b4a54] bg-[#eef2f4] px-2 py-0.5 rounded">Déjà inscrit<?= ($enfant['sexe'] ?? '') === 'Femme' ? 'e' : '' ?></span>
                                     <?php elseif ($blq && $blq['manque']): ?>
-                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($blq['manque'][0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
+                                        <span class="block mt-1 text-xs font-semibold text-[#5b4a1c]">Fiche à compléter : <?= htmlspecialchars(implode(', ', $blq['manque'])) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>&retour=<?= $retourInscr ?>#<?= fiche_rubrique_critere($blq['manque'][0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter la fiche</a></span>
                                     <?php endif; ?>
                                     <?php if (!$blq || !$blq['manque']): $sg = options_enfant_souhaites($camp, $enfant); if ($sg): ?>
-                                        <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
+                                        <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>&retour=<?= $retourInscr ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
                                     <?php endif; endif; ?>
                                 </div>
                             </label>
                         <?php endforeach; ?>
                     </div>
+                    <a href="add_child?retour=<?= $retourInscr ?>" class="inline-block mt-4 text-sm font-semibold text-[#3d6a8e] hover:underline">+ Ajouter un enfant</a>
                 <?php endif; ?>
 
                 <div class="mt-8 flex justify-end">
@@ -173,22 +178,69 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             </div>
 
             <div id="step-2" class="hidden p-6 md:p-8 fade-in">
-                <h2 class="text-xl font-bold text-gray-800 mb-4">2. Vérification des informations</h2>
-                
-                <div class="mb-6 bg-[#f8f5ea] border-l-4 border-[#d9cfa6] p-4 rounded-r-lg text-sm text-[#5b4a1c]">
-                    Merci de vérifier l'exactitude de toutes les données ci-dessous.
-                    <span class="font-bold block mt-1">Validation possible dans <span id="timer-display">5</span>s.</span>
+                <h2 class="text-xl font-bold text-[#26343b]">2. Vérification des informations</h2>
+                <p class="text-sm text-[#6b7780] mt-1 mb-5">Ces informations seront transmises à l'organisateur. Vérifiez-les avant de continuer ; « Modifier » vous ramène ici ensuite.</p>
+
+                <div id="children-details-container" class="space-y-5">
+                <?php foreach ($enfants as $enfant):
+                    $eid = (int)$enfant['id']; $ej = fiche_json($enfant);
+                    $lien = 'modif_child?id=' . urlencode((string)$enfant['public_id']) . '&retour=' . $retourInscr;
+                    $ageE = !empty($enfant['date_naissance']) ? (new DateTime($enfant['date_naissance']))->diff(new DateTime())->y : null;
+                    $doc = fn($tok, $type, $rub) => !empty($enfant[$tok]) ? '<a href="api/secure_file.php?type=' . $type . '&file=' . urlencode($enfant[$tok]) . '" target="_blank" rel="noopener" class="verif-lien">Voir</a>' : '<a href="' . htmlspecialchars($lien) . '#' . $rub . '" class="verif-manque">Manquant : ajouter</a>';
+                    $resp = function (int $n) use ($enfant, $hv) {
+                        $nom = trim(($enfant["resp{$n}_civilite"] ?? '') . ' ' . ($enfant["resp{$n}_prenom"] ?? '') . ' ' . ($enfant["resp{$n}_nom"] ?? ''));
+                        $st = trim((string)($enfant["resp{$n}_statut"] ?? ''));
+                        return $hv($nom . ($st !== '' ? " ($st)" : '')) . '<br><span class="text-[#6b7780]">' . htmlspecialchars(implode(' · ', array_filter([trim((string)($enfant["resp{$n}_email"] ?? '')), trim((string)($enfant["resp{$n}_tel"] ?? ''))]))) . '</span>';
+                    };
+                ?>
+                    <article class="verif-card hidden border border-[#e5e7eb] rounded-2xl overflow-hidden" data-child="<?= $eid ?>">
+                        <header class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-[#f8fafb] border-b border-[#e5e7eb]">
+                            <div class="flex items-center gap-3">
+                                <span class="w-11 h-11 rounded-full bg-[#2f3d45] text-white flex items-center justify-center font-bold text-lg"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)$enfant['prenom'], 0, 1))) ?></span>
+                                <div><h3 class="font-extrabold text-[#26343b] text-[17px]"><?= htmlspecialchars($enfant['prenom'] . ' ' . $enfant['nom']) ?></h3>
+                                <p class="text-[13px] text-[#6b7780]"><?= !empty($enfant['date_naissance']) ? 'Né(e) le ' . date('d/m/Y', strtotime($enfant['date_naissance'])) . ' · ' . $ageE . ' ans' : 'Date de naissance non renseignée' ?></p></div>
+                            </div>
+                            <a href="<?= htmlspecialchars($lien) ?>" class="ds-btn ds-btn-light ds-btn-sm">Modifier</a>
+                        </header>
+                        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                            <section><h4 class="ds-eyebrow mb-2">Identité et contact</h4><dl class="verif-dl">
+                                <div><dt>Sexe</dt><dd><?= $hv(['Homme' => 'Garçon', 'Femme' => 'Fille', 'Autre' => 'Autre'][$enfant['sexe'] ?? ''] ?? '', 'Non renseigné') ?></dd></div>
+                                <div><dt>Civilité</dt><dd><?= $hv($enfant['civilite'] ?? '', 'Non renseignée') ?></dd></div>
+                                <div><dt>Adresse</dt><dd><?= $hv(trim(($enfant['adresse'] ?? '') . ' ' . ($enfant['code_postal'] ?? '') . ' ' . ($enfant['ville'] ?? '') . ' ' . ($enfant['pays'] ?? ''))) ?></dd></div>
+                                <div><dt>Contact de l'enfant</dt><dd><?= $hv(implode(' · ', array_filter([trim((string)($enfant['email_enfant'] ?? '')), trim((string)($enfant['tel_mobile_enfant'] ?? '')), trim((string)($enfant['tel_fixe_enfant'] ?? ''))])), '—') ?></dd></div>
+                            </dl></section>
+                            <section><h4 class="ds-eyebrow mb-2">Responsables légaux</h4><dl class="verif-dl">
+                                <div><dt>Responsable 1</dt><dd><?= $resp(1) ?></dd></div>
+                                <div><dt>Responsable 2</dt><dd><?= trim(($enfant['resp2_nom'] ?? '') . ($enfant['resp2_prenom'] ?? '')) !== '' ? $resp(2) : '<span class="verif-vide">—</span>' ?></dd></div>
+                                <div><dt>Urgence</dt><dd><?= $hv(trim(($enfant['urgence_nom'] ?? '') . ' ' . ($enfant['urgence_tel'] ?? ''))) ?></dd></div>
+                            </dl></section>
+                            <section><h4 class="ds-eyebrow mb-2">Santé</h4><dl class="verif-dl">
+                                <div><dt>Allergies</dt><dd><?= $hv($enfant['allergies'] ?? '') ?></dd></div>
+                                <div><dt>Problème de santé</dt><dd><?= $hv($enfant['infos_sante'] ?? '') ?></dd></div>
+                                <div><dt>Traitement</dt><dd><?= $hv($enfant['traitements'] ?? '') ?></dd></div>
+                                <div><dt>Régime</dt><dd><?= $hv($enfant['regime_alimentaire'] ?? '') ?></dd></div>
+                                <div><dt>Taille / poids</dt><dd><?= $hv(trim((!empty($enfant['taille']) ? $enfant['taille'] . ' cm' : '') . (!empty($enfant['poids']) ? ' / ' . $enfant['poids'] . ' kg' : ''), ' /')) ?></dd></div>
+                                <div><dt>Médecin</dt><dd><?= $hv(trim(($enfant['medecin_nom'] ?? '') . ' ' . ($enfant['medecin_tel'] ?? ''))) ?></dd></div>
+                                <div><dt>Vaccins</dt><dd><?= $hv($vaccTxt($enfant)) ?></dd></div>
+                            </dl></section>
+                            <section><h4 class="ds-eyebrow mb-2">Documents et autorisations</h4><dl class="verif-dl">
+                                <div><dt>Fiche sanitaire</dt><dd><?= $doc('fiche_sanitaire_token', 'sanitaire', 'documents') ?></dd></div>
+                                <div><dt>Carnet de santé</dt><dd><?= $doc('carnet_sante_token', 'sante', 'documents') ?></dd></div>
+                                <div><dt>Accord parental</dt><dd><?= $ouiNon($enfant['accord_parental'] ?? 0) ?></dd></div>
+                                <div><dt>Droit à l'image</dt><dd><?= $ouiNon($enfant['droit_image'] ?? 0) ?></dd></div>
+                                <div><dt>Contact direct</dt><dd><?= $ouiNon($enfant['autorisation_contact'] ?? 0) ?></dd></div>
+                            </dl></section>
+                            <?php if (trim((string)($enfant['commentaires'] ?? '')) !== ''): ?><section class="md:col-span-2"><h4 class="ds-eyebrow mb-2">Commentaires</h4><p class="text-sm text-[#26343b]"><?= nl2br(htmlspecialchars($enfant['commentaires'])) ?></p></section><?php endif; ?>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
                 </div>
 
-                <div id="children-details-container" class="space-y-8">
-                    </div>
-
-                <div class="mt-8 pt-6 border-t flex justify-between items-center">
+                <div class="mt-8 pt-6 border-t flex flex-wrap justify-between items-center gap-3">
                     <button type="button" onclick="goToStep(1)" class="text-gray-500 hover:text-gray-800">← Retour</button>
-                    <button type="button" id="btn-validate-step2" onclick="goToStep(3)" disabled class="px-6 py-3 bg-gray-300 text-gray-500 font-bold rounded-lg cursor-not-allowed transition-colors">
-                        Valider et Continuer
-                    </button>
+                    <button type="button" id="btn-validate-step2" onclick="goToStep(3)" disabled class="ds-btn" aria-describedby="timer-note">Valider et continuer</button>
                 </div>
+                <p id="timer-note" class="text-right text-xs text-[#6b7780] mt-2">Validation possible dans <span id="timer-display">5</span> s.</p>
             </div>
 
             <div id="step-3" class="hidden p-6 md:p-8 fade-in">
@@ -347,24 +399,19 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             updateSummary(); syncHiddenInputs();
         }
 
-        // UI
         [1, 2, 3, 4].forEach(i => {
             document.getElementById(`step-${i}`).classList.add('hidden');
             const icon = document.getElementById(`step-icon-${i}`);
-            icon.className = `w-10 h-10 rounded-full flex items-center justify-center font-bold border-4 transition-colors duration-300 ${i === step ? 'bg-[#2f3d45] text-white border-[#d3dbe0]' : (i < step ? 'bg-[#2f3d45] text-white border-white' : 'bg-gray-200 text-gray-400 border-white')}`;
-            if(i < step) icon.innerHTML = "✓"; else icon.innerHTML = i;
+            icon.dataset.state = i === step ? 'on' : (i < step ? 'done' : 'todo');
+            icon.querySelector('.ins-num').textContent = i < step ? '✓' : i;
+            if (i === step) icon.setAttribute('aria-current', 'step'); else icon.removeAttribute('aria-current');
         });
         document.getElementById(`step-${step}`).classList.remove('hidden');
     }
 
     // --- ÉTAPE 2 : VÉRIFICATION COMPLÈTE & TIMER ---
     function initStep2() {
-        const container = document.getElementById('children-details-container');
-        container.innerHTML = '';
-        selectedChildIds.forEach(id => {
-            const child = allChildren.find(c => c.id == id);
-            if(child) container.innerHTML += renderChildCard(child);
-        });
+        document.querySelectorAll('.verif-card').forEach(c => c.classList.toggle('hidden', !selectedChildIds.includes(c.dataset.child)));
 
         // Gestion du Timer (Reset complet)
         const btn = document.getElementById('btn-validate-step2');
@@ -372,9 +419,8 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         let timeLeft = 5;
         
         btn.disabled = true;
-        btn.classList.add('bg-gray-300', 'cursor-not-allowed', 'text-gray-500');
-        btn.classList.remove('bg-[#2f3d45]', 'hover:bg-[#1f2a30]', 'text-white');
-        
+        timerDisplay.textContent = timeLeft;
+        document.getElementById('timer-note').classList.remove('hidden');
         if (timerInterval) clearInterval(timerInterval);
         
         timerInterval = setInterval(() => {
@@ -384,9 +430,8 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
             if (timeLeft <= 0) {
                 clearInterval(timerInterval);
                 btn.disabled = false;
-                btn.textContent = "Valider et Continuer";
-                btn.classList.remove('bg-gray-300', 'cursor-not-allowed', 'text-gray-500');
-                btn.classList.add('bg-[#2f3d45]', 'hover:bg-[#1f2a30]', 'text-white');
+                btn.textContent = "Valider et continuer";
+                document.getElementById('timer-note').classList.add('hidden');
             }
         }, 1000);
     }
@@ -504,68 +549,26 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
         document.getElementById('final-total').textContent = total.toFixed(2) + ' €';
     }
 
-    // --- GÉNÉRATEUR FICHE COMPLÈTE (Étape 2) ---
-    function renderChildCard(c) {
-        const v = (val) => val && val !== 'null' ? val : '<i class="text-gray-400">Non renseigné</i>';
-        const b = (val) => val == 1 ? '<span class="text-[#3b4a54] font-bold">OUI</span>' : '<span class="text-red-500">NON</span>';
-        
-        // Liens documents
-        const docLink = (token, label) => token ? `<a href="api/secure_file.php?type=${label == 'Carnet' ? 'sante' : 'sanitaire'}&file=${encodeURIComponent(token)}" target="_blank" class="text-[#3d6a8e] underline">Voir ${label}</a>` : '<span class="text-red-500">Manquant</span>';
-
-        return `
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden text-sm">
-            <div class="bg-gray-50 px-5 py-3 border-b flex justify-between items-center">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-[#2f3d45] text-white flex items-center justify-center font-bold text-lg">${c.prenom.charAt(0)}</div>
-                    <div><h3 class="font-bold text-gray-800 text-lg">${c.prenom} ${c.nom}</h3><p class="text-xs text-gray-500">Né(e) le ${new Date(c.date_naissance).toLocaleDateString()}</p></div>
-                </div>
-                <a href="modif_child?id=${encodeURIComponent(c.public_id)}" class="text-[#3d6a8e] border border-[#d3dbe0] bg-white px-3 py-1 rounded hover:bg-[#f1f5f9] transition">Modifier</a>
-            </div>
-            
-            <div class="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-8">
-                <div class="col-span-full font-bold text-xs uppercase text-gray-400 border-b pb-1 mt-2">Identité & Contact</div>
-                <div><span class="block text-gray-500">Sexe</span> ${v(c.sexe)}</div>
-                <div><span class="block text-gray-500">Civilité</span> ${v(c.civilite)}</div>
-                <div><span class="block text-gray-500">Email</span> ${v(c.email_enfant)}</div>
-                <div><span class="block text-gray-500">Mobile</span> ${v(c.tel_mobile_enfant)}</div>
-                <div><span class="block text-gray-500">Fixe</span> ${v(c.tel_fixe_enfant)}</div>
-                <div class="lg:col-span-3"><span class="block text-gray-500">Adresse</span> ${v(c.adresse)} ${v(c.code_postal)} ${v(c.ville)} ${v(c.pays)}</div>
-
-                <div class="col-span-full font-bold text-xs uppercase text-gray-400 border-b pb-1 mt-4">Santé</div>
-                <div><span class="block text-gray-500">Taille/Poids</span> ${v(c.taille)}cm / ${v(c.poids)}kg</div>
-                <div><span class="block text-gray-500">Médecin</span> ${v(c.medecin_nom)} (${v(c.medecin_tel)})</div>
-                <div><span class="block text-gray-500">Vaccins</span> ${v(c.vaccins_data)}</div>
-                <div class="lg:col-span-3"><span class="block text-gray-500">Allergies</span> <span class="text-red-600 font-medium">${v(c.allergies)}</span></div>
-                <div class="lg:col-span-3"><span class="block text-gray-500">Régime</span> ${v(c.regime_alimentaire)}</div>
-
-                <div class="col-span-full font-bold text-xs uppercase text-gray-400 border-b pb-1 mt-4">Responsables</div>
-                <div><span class="block text-gray-500">Resp. 1 (${v(c.resp1_statut)})</span> ${v(c.resp1_nom)} ${v(c.resp1_prenom)}</div>
-                <div><span class="block text-gray-500">Contact 1</span> ${v(c.resp1_email)} / ${v(c.resp1_tel)}</div>
-                <div><span class="block text-gray-500">Profession 1</span> ${v(c.resp1_profession)}</div>
-                
-                <div><span class="block text-gray-500">Resp. 2 (${v(c.resp2_statut)})</span> ${v(c.resp2_nom)} ${v(c.resp2_prenom)}</div>
-                <div><span class="block text-gray-500">Contact 2</span> ${v(c.resp2_email)} / ${v(c.resp2_tel)}</div>
-                <div><span class="block text-gray-500">Profession 2</span> ${v(c.resp2_profession)}</div>
-
-                <div class="col-span-full font-bold text-xs uppercase text-gray-400 border-b pb-1 mt-4">Documents & Autorisations</div>
-                <div><span class="block text-gray-500">Carnet Santé</span> ${docLink(c.carnet_sante_token, 'Carnet')}</div>
-                <div><span class="block text-gray-500">Fiche Liaison</span> ${docLink(c.fiche_sanitaire_token, 'Fiche')}</div>
-                <div><span class="block text-gray-500">Date Création</span> ${v(c.date_creation)}</div>
-
-                <div><span class="block text-gray-500">Droit Image</span> ${b(c.droit_image)}</div>
-                <div><span class="block text-gray-500">Contact</span> ${b(c.autorisation_contact)}</div>
-                <div><span class="block text-gray-500">Accord Parent.</span> ${b(c.accord_parental)}</div>
-                <div><span class="block text-gray-500">CGV</span> ${b(c.cgv_accepte)}</div>
-                <div><span class="block text-gray-500">Newsletter</span> ${b(c.newsletter_accepte)}</div>
-                
-                <div class="col-span-full mt-2"><span class="block text-gray-500">Commentaires</span> <div class="bg-gray-50 p-2 rounded text-gray-700 italic border">${v(c.commentaires)}</div></div>
-            </div>
-        </div>`;
-    }
 </script>
 
 <style>
     .fade-in { animation: fadeIn 0.3s ease-out; }
+    .ins-steps { display: flex; max-width: 620px; margin: 0 auto 32px; padding: 0; list-style: none; }
+    .ins-step { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ds-muted); }
+    .ins-step + .ins-step::before { content: ''; position: absolute; top: 17px; left: calc(-50% + 24px); right: calc(50% + 24px); height: 2px; border-radius: 2px; background: var(--ds-line); transition: background .25s; }
+    .ins-step:is([data-state=on], [data-state=done])::before { background: var(--ds-btn); }
+    .ins-num { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; background: #fff; border: 1.5px solid var(--ds-line); color: var(--ds-muted); transition: all .25s; }
+    .ins-step[data-state=on] { color: var(--ds-ink); }
+    .ins-step[data-state=on] .ins-num { background: var(--ds-btn); border-color: var(--ds-btn); color: #fff; box-shadow: 0 0 0 4px rgba(47, 61, 69, .12); }
+    .ins-step[data-state=done] .ins-num { background: #eef2f4; border-color: #d3dbe0; color: var(--ds-btn); }
+    .verif-dl > div { display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 6px 0; border-bottom: 1px solid #f1f3f5; font-size: 14px; }
+    .verif-dl dt { color: var(--ds-muted); }
+    .verif-dl dd { color: var(--ds-ink); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+    .verif-vide { color: #9aa4ab; font-weight: 500; font-style: italic; }
+    .verif-oui { color: var(--ds-btn); font-weight: 700; } .verif-non { color: #8a6d1f; font-weight: 700; }
+    .verif-lien { color: var(--ds-accent); text-decoration: underline; }
+    .verif-manque { color: #8a6d1f; font-weight: 700; text-decoration: underline; }
+    #btn-validate-step2:disabled { opacity: .45; cursor: not-allowed; transform: none; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 

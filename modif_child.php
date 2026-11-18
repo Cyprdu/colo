@@ -29,28 +29,28 @@ sante_ensure($pdo);
 $enfant = enfant_par_jeton($pdo, $token, $parent_id);
 if (!$enfant) { header('Location: children'); exit; }
 $child_id = (int)$enfant['id'];
-$self = 'modif_child?id=' . $token;
+$retour = retour_interne($_GET['retour'] ?? '');   // ex. retour vers l'inscription au séjour en cours
+$self = 'modif_child?id=' . $token . ($retour !== '' ? '&retour=' . urlencode($retour) : '');
 
 // ---------- champs modifiables par rubrique (liste blanche : jamais de nom de colonne venant du formulaire) ----------
 $TXT = [
     'parents' => ['resp1_civilite','resp1_nom','resp1_prenom','resp1_email','resp1_tel','resp1_statut','resp1_profession',
                   'resp2_civilite','resp2_nom','resp2_prenom','resp2_email','resp2_tel','resp2_statut','resp2_profession'],
     'enfant'  => ['civilite','sexe','prenom','nom','date_naissance','adresse','code_postal','ville','pays','email_enfant','tel_mobile_enfant','tel_fixe_enfant'],
-    'sante'   => ['infos_sante','allergies','traitements','regime_alimentaire','taille','poids','medecin_nom','medecin_tel','urgence_nom','urgence_tel','urgence_lien'],
+    'sante'   => ['taille','poids','medecin_nom','medecin_tel','urgence_nom','urgence_tel','urgence_lien'],
     'autorisations' => ['commentaires'],
 ];
 $BOOL = ['autorisations' => ['droit_image','autorisation_contact','accord_parental','cgv_accepte'], 'newsletter' => ['newsletter_accepte']];
-$LONG = ['infos_sante','allergies','traitements','commentaires'];
+$LONG = ['commentaires'];
 $TELS = ['resp1_tel','resp2_tel','tel_mobile_enfant','tel_fixe_enfant','medecin_tel','urgence_tel'];
 $MAILS = ['resp1_email','resp2_email','email_enfant'];
+// clés stockées dans le JSON de la fiche (vaccins_data), par rubrique
+$JSONK = ['parents' => FICHE_JSON_PARENTS, 'sante' => ['autre_nom', 'all_alim', 'all_med', 'all_aut']];
+foreach (array_keys(FICHE_VACCINS) as $k) array_push($JSONK['sante'], "v_$k", "d_$k");
 
 $flash = $_SESSION['flash_child'] ?? null; unset($_SESSION['flash_child']);
 $message = $flash[1] ?? ''; $message_type = $flash[0] ?? '';
 $sectionOuverte = '';
-
-$tableauSante = function (array $post) {
-    return json_encode(['dtp' => mb_substr(trim((string)($post['vaccin_dtp'] ?? '')), 0, 100), 'bcg' => mb_substr(trim((string)($post['vaccin_bcg'] ?? '')), 0, 100), 'autre' => mb_substr(trim((string)($post['vaccin_autre'] ?? '')), 0, 200)]);
-};
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = (string)($_POST['act'] ?? 'save:all');
@@ -65,13 +65,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $put = function (string $col, $v) use (&$sets, &$vals) { $sets[] = "`$col` = ?"; $vals[] = $v; };
         $wantSections = [];
         if (strpos($act, 'save:') === 0) { $s = substr($act, 5); $wantSections = $s === 'all' ? array_keys(FICHE_RUBRIQUES) : [$s]; }
-        elseif ($act === 'generer_fiche') $wantSections = ['sante'];
+        elseif ($act === 'generer_fiche') $wantSections = ['enfant', 'parents', 'sante'];
+        // le formulaire de génération (onglet Documents) envoie ses propres champs g[...] ; seuls les champs présents sont mis à jour
+        $src = $act === 'generer_fiche' ? (array)($_POST['g'] ?? []) : $_POST;
+        $json = fiche_json($enfant); $jsonTouche = false;
 
         // --- champs texte / cases des rubriques demandées ---
         foreach ($wantSections as $sec) {
             if (!isset(FICHE_RUBRIQUES[$sec])) throw new Exception('Rubrique inconnue.');
+            foreach ($JSONK[$sec] ?? [] as $k) {
+                if (!array_key_exists($k, $src)) continue;
+                $v = mb_substr(trim((string)$src[$k]), 0, 200);
+                if (strpos($k, 'v_') === 0 && !in_array($v, ['', 'oui', 'non'], true)) throw new Exception('Réponse invalide.');
+                if (strpos($k, 'd_') === 0 && $v !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) || $v > date('Y-m-d'))) throw new Exception('Date de vaccin invalide : ' . $v);
+                if (strpos($k, '_tel_') !== false && $v !== '' && !preg_match('/^[0-9 +().-]{6,30}$/', $v)) throw new Exception("Numéro de téléphone invalide : " . $v);
+                if (strpos($k, 'all_') === 0) $v = $v === '1' ? '1' : '0';
+                $json[$k] = $v; $jsonTouche = true;
+            }
+            if ($sec === 'sante') foreach (FICHE_YN as $k => [$q, $neg]) {   // questions oui / non : « Non » enregistre explicitement « Aucun(e) »
+                if (!array_key_exists("yn_$k", $src)) continue;
+                $r = (string)$src["yn_$k"]; $txt = mb_substr(trim((string)($src[$k] ?? '')), 0, 2000);
+                if ($r === 'oui' && ($txt === '' || fiche_est_negatif($txt))) throw new Exception("Vous avez répondu « Oui » : précisez. (" . $q . ")");
+                $v = $r === 'non' ? $neg : ($r === 'oui' ? $txt : '');
+                if (in_array($k, FICHE_YN_JSON, true)) { $json[$k] = $v; $jsonTouche = true; } else { $enfant[$k] = $v; $put($k, $v); }
+            }
             foreach ($TXT[$sec] ?? [] as $k) {
-                $v = trim((string)($_POST[$k] ?? ''));
+                if (!array_key_exists($k, $src)) continue;
+                $v = trim((string)$src[$k]);
                 $v = mb_substr($v, 0, in_array($k, $LONG, true) ? 2000 : 255);
                 $enfant[$k] = $v;
                 if (in_array($k, $MAILS, true) && $v !== '' && !filter_var($v, FILTER_VALIDATE_EMAIL)) throw new Exception("Adresse e-mail invalide : " . $v);
@@ -84,12 +104,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (in_array($k, ['prenom', 'nom'], true) && $v === '') throw new Exception("Le prénom et le nom sont obligatoires.");
                 $put($k, $v);
             }
-            foreach ($BOOL[$sec] ?? [] as $k) { $enfant[$k] = isset($_POST[$k]) ? 1 : 0; $put($k, $enfant[$k]); }
-            if ($sec === 'sante') { $put('vaccins_data', $tableauSante($_POST)); $enfant['vaccins_data'] = $tableauSante($_POST); }
+            if ($act !== 'generer_fiche') foreach ($BOOL[$sec] ?? [] as $k) { $enfant[$k] = isset($_POST[$k]) ? 1 : 0; $put($k, $enfant[$k]); }
         }
+        if ($jsonTouche) { $enfant['vaccins_data'] = json_encode($json, JSON_UNESCAPED_UNICODE); $put('vaccins_data', $enfant['vaccins_data']); }
 
         // --- consentement explicite avant toute donnée de santé ---
-        $santeEnJeu = in_array('sante', $wantSections, true) && trim(implode('', array_map(fn($k) => (string)($enfant[$k] ?? ''), ['infos_sante','allergies','traitements','regime_alimentaire','medecin_nom','medecin_tel','urgence_nom']))) !== ''
+        $santeEnJeu = in_array('sante', $wantSections, true) && trim(implode('', array_map(fn($k) => (string)($enfant[$k] ?? ''), ['infos_sante','allergies','traitements','regime_alimentaire','medecin_nom','medecin_tel','urgence_nom']))) . implode('', array_diff(array_intersect_key($json, array_flip([...$JSONK['sante'], ...FICHE_YN_JSON])), ['0'])) !== ''
             || in_array($act, ['doc_carnet', 'doc_fiche', 'generer_fiche'], true);
         if ($santeEnJeu && empty($enfant['sante_consent_at'])) {
             if (empty($_POST['consent_sante'])) throw new Exception("Cochez le consentement au traitement des données de santé pour enregistrer ces informations.");
@@ -154,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($oldFiles as [$d, $n]) sante_unlink($d, $n);   // seulement après l'écriture en base
         $_SESSION['flash_child'] = ['success', $ok];
         $dest = $sectionOuverte ?: (count($wantSections) === 1 ? $wantSections[0] : '');
+        if ($retour !== '' && $act === 'save:all') { header('Location: ' . $retour); exit; }
         header('Location: ' . $self . ($dest ? '#' . $dest : '')); exit;
     } catch (Throwable $ex) {
         foreach ($newFiles ?? [] as [$d, $n]) sante_unlink($d, $n);   // le fichier écrit n'est pas resté orphelin
@@ -171,18 +192,63 @@ if ($message_type !== 'error') {
 }
 [$pct, $manque, $rubOk] = fiche_completude($enfant);
 
-$e = fn($k) => htmlspecialchars((string)($enfant[$k] ?? ''));
-$vac = json_decode((string)($enfant['vaccins_data'] ?? ''), true) ?: [];
-$in = function ($k, $label, $type = 'text', $extra = '') use ($e) {
-    echo '<div><label class="ds-label" for="f-' . $k . '">' . $label . '</label><input id="f-' . $k . '" type="' . $type . '" name="' . $k . '" value="' . $e($k) . '" class="ds-input" ' . $extra . '></div>';
+$json = fiche_json($enfant);
+$P = '';   // préfixe des champs : '' pour les onglets, 'g' pour le formulaire de génération de la fiche sanitaire
+$nm = function ($k) use (&$P) { return $P === '' ? $k : $P . '[' . $k . ']'; };
+$id = function ($k) use (&$P) { return ($P === '' ? 'f-' : $P . '-') . $k; };
+$e = fn($k) => htmlspecialchars((string)($enfant[$k] ?? $json[$k] ?? ''));
+$in = function ($k, $label, $type = 'text', $extra = '') use ($e, $nm, $id) {
+    echo '<div><label class="ds-label" for="' . $id($k) . '">' . $label . '</label><input id="' . $id($k) . '" type="' . $type . '" name="' . $nm($k) . '" value="' . $e($k) . '" class="ds-input" ' . $extra . '></div>';
 };
-$ta = function ($k, $label, $rows = 3, $ph = '') use ($e) {
-    echo '<div><label class="ds-label" for="f-' . $k . '">' . $label . '</label><textarea id="f-' . $k . '" name="' . $k . '" rows="' . $rows . '" maxlength="2000" class="ds-textarea" placeholder="' . $ph . '">' . $e($k) . '</textarea></div>';
+$ta = function ($k, $label, $rows = 3, $ph = '') use ($e, $nm, $id) {
+    echo '<div><label class="ds-label" for="' . $id($k) . '">' . $label . '</label><textarea id="' . $id($k) . '" name="' . $nm($k) . '" rows="' . $rows . '" maxlength="2000" class="ds-textarea" placeholder="' . $ph . '">' . $e($k) . '</textarea></div>';
 };
-$civ = function ($k, $label) use ($enfant) {
-    echo '<div><label class="ds-label" for="f-' . $k . '">' . $label . '</label><select id="f-' . $k . '" name="' . $k . '" class="ds-select"><option value="">—</option>';
+$civ = function ($k, $label) use ($enfant, $nm, $id) {
+    echo '<div><label class="ds-label" for="' . $id($k) . '">' . $label . '</label><select id="' . $id($k) . '" name="' . $nm($k) . '" class="ds-select"><option value="">—</option>';
     foreach (['M.', 'Mme'] as $o) echo '<option' . (($enfant[$k] ?? '') === $o ? ' selected' : '') . '>' . $o . '</option>';
     echo '</select></div>';
+};
+$sexe = function () use ($enfant, $nm, $id) {
+    echo '<div><label class="ds-label" for="' . $id('sexe') . '">Sexe</label><select id="' . $id('sexe') . '" name="' . $nm('sexe') . '" class="ds-select">';
+    foreach (['Homme' => 'Garçon', 'Femme' => 'Fille', 'Autre' => 'Autre'] as $v => $l) echo '<option value="' . $v . '"' . (($enfant['sexe'] ?? '') === $v ? ' selected' : '') . '>' . $l . '</option>';
+    echo '</select></div>';
+};
+$seg = function ($k, $etat, $label) use ($nm) {   // boutons Oui / Non
+    $h = '<span class="yn-seg" role="radiogroup" aria-label="' . htmlspecialchars($label) . '">';
+    foreach (['oui' => 'Oui', 'non' => 'Non'] as $v => $l) $h .= '<label><input type="radio" name="' . $nm($k) . '" value="' . $v . '"' . ($etat === $v ? ' checked' : '') . '>' . $l . '</label>';
+    return $h . '</span>';
+};
+$yn = function ($k) use ($enfant, $json, $nm, $id, $seg) {   // question oui / non : « Oui » déroule le champ à préciser
+    [$q, , $aide] = FICHE_YN[$k];
+    $val = (string)(in_array($k, FICHE_YN_JSON, true) ? ($json[$k] ?? '') : ($enfant[$k] ?? ''));
+    $etat = fiche_yn_etat($val);
+    echo '<div class="yn border border-[#e5e7eb] rounded-2xl p-4"><div class="flex flex-wrap items-center justify-between gap-3"><p class="font-bold text-[14.5px] text-[#26343b]">' . $q . '</p>' . $seg("yn_$k", $etat, $q) . '</div><div class="yn-body mt-3 space-y-3">';
+    if ($k === 'allergies') {
+        echo '<div class="flex flex-wrap gap-x-5 gap-y-2">';
+        foreach (['all_alim' => 'Alimentaires', 'all_med' => 'Médicamenteuses', 'all_aut' => 'Autres (animaux, plantes, pollen)'] as $c => $l)
+            echo '<label class="flex items-center gap-2 text-[14px] text-[#26343b] cursor-pointer"><input type="hidden" name="' . $nm($c) . '" value="0"><input type="checkbox" name="' . $nm($c) . '" value="1" class="w-4 h-4"' . (!empty($json[$c]) ? ' checked' : '') . '>' . $l . '</label>';
+        echo '</div>';
+    }
+    echo '<label class="sr-only" for="' . $id($k) . '">Précisez</label><textarea id="' . $id($k) . '" name="' . $nm($k) . '" rows="2" maxlength="2000" class="ds-textarea" placeholder="Précisez : ' . htmlspecialchars($aide) . '">' . ($etat === 'oui' ? htmlspecialchars($val) : '') . '</textarea></div></div>';
+};
+$vaccins = function () use ($json, $nm, $seg) {   // tableau du CERFA : oui / non puis date du dernier rappel
+    $old = array_filter(['DTP' => $json['dtp'] ?? '', 'BCG' => $json['bcg'] ?? '', 'Autres' => $json['autre'] ?? '']);
+    if ($old) echo '<p class="text-[12.5px] text-[#6b7780] mb-2">Saisie précédente : ' . htmlspecialchars(implode(' ; ', array_map(fn($k, $v) => "$k $v", array_keys($old), $old))) . '</p>';
+    echo '<div class="border border-[#e5e7eb] rounded-2xl divide-y divide-[#eef0f2]">';
+    foreach (FICHE_VACCINS as $k => $lib) {
+        $ob = in_array($k, FICHE_VACCINS_OBLIG, true);
+        echo '<div class="yn flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"><span class="flex-1 min-w-[160px] text-[14px] font-semibold text-[#26343b]">' . $lib . ($ob ? ' <span class="text-[11.5px] font-bold text-[#8a6d1f]">obligatoire</span>' : '') . '</span>' . $seg("v_$k", (string)($json["v_$k"] ?? ''), $lib . ' : vacciné ?') . '<span class="yn-body flex flex-wrap gap-2">';
+        if ($k === 'autre') echo '<input name="' . $nm('autre_nom') . '" aria-label="Nom du vaccin" placeholder="Lequel ?" class="ds-input" style="width:150px" value="' . htmlspecialchars((string)($json['autre_nom'] ?? '')) . '">';
+        echo '<input type="date" name="' . $nm("d_$k") . '" aria-label="' . $lib . ' : date du dernier rappel" title="Date du dernier rappel" max="' . date('Y-m-d') . '" class="ds-input" style="width:170px" value="' . htmlspecialchars((string)($json["d_$k"] ?? '')) . '"></span></div>';
+    }
+    echo '</div>';
+};
+$santeForm = function (bool $urgence) use ($in, $yn, $vaccins) {
+    echo '<div class="mt-6 space-y-3">'; foreach (array_keys(FICHE_YN) as $k) $yn($k); echo '</div>';
+    echo '<div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">'; $in('taille', 'Taille (cm)', 'number', 'min="30" max="230"'); $in('poids', 'Poids (kg)', 'number', 'min="5" max="200" step="0.1"'); echo '</div>';
+    echo '<h3 class="ds-eyebrow mt-7 mb-1">Vaccinations</h3><p class="text-[13px] text-[#6b7780] mb-3">Reportez la date du dernier rappel inscrite dans le carnet de santé.</p>'; $vaccins();
+    echo '<h3 class="ds-eyebrow mt-7 mb-4">Médecin traitant</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-5">'; $in('medecin_nom', 'Nom du médecin'); $in('medecin_tel', 'Téléphone', 'tel'); echo '</div>';
+    if ($urgence) { echo '<h3 class="ds-eyebrow mt-7 mb-4">Personne à prévenir en cas d\'urgence</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-5">'; $in('urgence_nom', 'Nom et prénom'); $in('urgence_tel', 'Téléphone', 'tel'); $in('urgence_lien', 'Lien avec l\'enfant'); echo '</div>'; }
 };
 $chk = function ($k, $label, $hint = '') use ($enfant) {
     echo '<label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" name="' . $k . '" value="1" class="mt-1 w-4 h-4"' . (!empty($enfant[$k]) ? ' checked' : '') . '><span><span class="block text-[14px] font-semibold text-[#26343b]">' . $label . '</span>' . ($hint ? '<span class="block text-[12.5px] text-[#6b7780]">' . $hint . '</span>' : '') . '</span></label>';
@@ -212,14 +278,23 @@ require_once 'partials/header.php';
   .fc-dot { width:9px; height:9px; border-radius:50%; background:#d6a85a; flex:none }
   .fc-dot.ok { background:#5f8a74 }
   .js .fc-panel { display:none } .js .fc-panel.on { display:block }
+  [data-fm][hidden] { display:none !important }
+  .yn:not(:has(input[value="oui"]:checked)) .yn-body { display:none }
+  .yn-seg { display:inline-flex; flex:none; border:1.5px solid #d5dbe0; border-radius:12px; overflow:hidden }
+  .yn-seg label { position:relative; padding:7px 18px; font-size:14px; font-weight:700; color:#3b4a54; cursor:pointer }
+  .yn-seg label + label { border-left:1.5px solid #d5dbe0 }
+  .yn-seg input { position:absolute; opacity:0; pointer-events:none }
+  .yn-seg label:has(input:checked) { background:#2f3d45; color:#fff }
+  .yn-seg label:has(input:focus-visible) { outline:2px solid #3d6a8e; outline-offset:-3px }
   @media (max-width: 1023px) { .fc-nav { display:flex; overflow-x:auto; gap:4px } }
 </style>
 
 <main class="ds-page" style="max-width:1100px">
-    <a href="children" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+    <a href="<?= htmlspecialchars($retour !== '' ? $retour : 'children') ?>" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Mes enfants
+        <?= $retour !== '' ? "Retour à l'inscription" : 'Mes enfants' ?>
     </a>
+    <?php if ($retour !== ''): ?><div class="ds-alert-ok mt-5 text-[14px]">Complétez la fiche de <?= htmlspecialchars($enfant['prenom']) ?>, puis cliquez sur « Enregistrer et revenir » : vous retrouverez l'inscription au séjour.</div><?php endif; ?>
 
     <?php if ($message): ?>
         <div class="<?= $message_type === 'success' ? 'ds-alert-ok' : 'ds-alert-err' ?> mt-5 font-semibold" role="<?= $message_type === 'success' ? 'status' : 'alert' ?>"><?= htmlspecialchars($message) ?></div>
@@ -280,7 +355,8 @@ require_once 'partials/header.php';
                     <h3 class="ds-eyebrow mt-7 mb-4"><?= $titre ?></h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                         <?php $civ("resp{$n}_civilite", 'Civilité'); $in("resp{$n}_statut", "Lien avec l'enfant", 'text', 'placeholder="Père, mère, tuteur…"');
-                        $in("resp{$n}_nom", 'Nom'); $in("resp{$n}_prenom", 'Prénom'); $in("resp{$n}_email", 'E-mail', 'email'); $in("resp{$n}_tel", 'Téléphone', 'tel'); $in("resp{$n}_profession", 'Profession'); ?>
+                        $in("resp{$n}_nom", 'Nom'); $in("resp{$n}_prenom", 'Prénom'); $in("resp{$n}_email", 'E-mail', 'email'); $in("resp{$n}_tel", 'Téléphone portable', 'tel'); $in("resp{$n}_tel_dom", 'Téléphone domicile', 'tel'); $in("resp{$n}_tel_trav", 'Téléphone travail', 'tel'); $in("resp{$n}_profession", 'Profession');
+                        if ($n === 2) { echo '<div class="sm:col-span-2">'; $in('resp2_adresse', 'Adresse (si différente de celle de l\'enfant)'); echo '</div>'; } ?>
                     </div>
                 <?php endforeach; ?>
                 <?php $save('parents'); ?>
@@ -306,8 +382,7 @@ require_once 'partials/header.php';
                 </div>
                 <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <?php $civ('civilite', 'Civilité'); ?>
-                    <div><label class="ds-label" for="f-sexe">Sexe</label><select id="f-sexe" name="sexe" class="ds-select">
-                        <?php foreach (['Homme' => 'Garçon', 'Femme' => 'Fille', 'Autre' => 'Autre'] as $v => $l): ?><option value="<?= $v ?>"<?= ($enfant['sexe'] ?? '') === $v ? ' selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></div>
+                    <?php $sexe(); ?>
                     <?php $in('prenom', 'Prénom', 'text', 'required'); $in('nom', 'Nom', 'text', 'required'); $in('date_naissance', 'Date de naissance', 'date', 'max="' . date('Y-m-d') . '"'); ?>
                     <div class="sm:col-span-2"><?php $in('adresse', 'Adresse'); ?></div>
                     <?php $in('code_postal', 'Code postal'); $in('ville', 'Ville'); $in('pays', 'Pays'); $in('email_enfant', 'E-mail de l\'enfant', 'email'); $in('tel_mobile_enfant', 'Mobile', 'tel'); $in('tel_fixe_enfant', 'Téléphone fixe', 'tel'); ?>
@@ -318,21 +393,7 @@ require_once 'partials/header.php';
             <section id="p-sante" class="fc-panel ds-card p-6 sm:p-8" data-panel="sante">
                 <h2 class="ds-h1" style="font-size:24px">Santé</h2>
                 <p class="ds-lead" style="font-size:14px">Ces informations alimentent la fiche sanitaire de liaison. Seuls vous et le directeur d'un séjour où l'enfant est inscrit peuvent les voir.</p>
-                <div class="mt-6 space-y-5">
-                    <?php $ta('allergies', 'Allergies (alimentaires, médicamenteuses…)', 2, 'Aucune'); $ta('infos_sante', 'Problèmes de santé, handicap, précautions', 3, 'Rien à signaler'); $ta('traitements', 'Traitement médical en cours', 2, 'Aucun');
-                    $in('regime_alimentaire', 'Régime alimentaire', 'text', 'placeholder="Sans porc, végétarien…"'); ?>
-                </div>
-                <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5"><?php $in('taille', 'Taille (cm)', 'number', 'min="30" max="230"'); $in('poids', 'Poids (kg)', 'number', 'min="5" max="200" step="0.1"'); ?></div>
-                <h3 class="ds-eyebrow mt-7 mb-4">Vaccinations</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                    <div><label class="ds-label" for="f-vaccin_dtp">DTP : dernier rappel</label><input id="f-vaccin_dtp" name="vaccin_dtp" class="ds-input" value="<?= htmlspecialchars($vac['dtp'] ?? '') ?>" placeholder="jj/mm/aaaa"></div>
-                    <div><label class="ds-label" for="f-vaccin_bcg">BCG</label><input id="f-vaccin_bcg" name="vaccin_bcg" class="ds-input" value="<?= htmlspecialchars($vac['bcg'] ?? '') ?>" placeholder="Date ou Non"></div>
-                    <div><label class="ds-label" for="f-vaccin_autre">Autres vaccins</label><input id="f-vaccin_autre" name="vaccin_autre" class="ds-input" value="<?= htmlspecialchars($vac['autre'] ?? '') ?>"></div>
-                </div>
-                <h3 class="ds-eyebrow mt-7 mb-4">Médecin traitant</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5"><?php $in('medecin_nom', 'Nom du médecin'); $in('medecin_tel', 'Téléphone', 'tel'); ?></div>
-                <h3 class="ds-eyebrow mt-7 mb-4">Personne à prévenir en cas d'urgence</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-5"><?php $in('urgence_nom', 'Nom et prénom'); $in('urgence_tel', 'Téléphone', 'tel'); $in('urgence_lien', 'Lien avec l\'enfant'); ?></div>
+                <?php $santeForm(true); ?>
                 <div class="mt-7"><?php $consentBloc(); ?></div>
                 <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
                     <?php if (!empty($enfant['sante_consent_at'])): ?><button type="submit" name="act" value="purge_sante" class="text-[13.5px] font-bold text-[#5b4a1c] underline" onclick="return confirm('Effacer définitivement toutes les données de santé et les documents de cet enfant ?')">Effacer les données de santé</button><?php else: ?><span></span><?php endif; ?>
@@ -378,15 +439,29 @@ require_once 'partials/header.php';
                         <?php $statut($ficheOk, $ficheTxt, 'sanitaire', $enfant['fiche_sanitaire_token'] ?? null, 'del_fiche', 'Supprimer la fiche sanitaire ?'); ?>
                     </div>
                     <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label class="ds-opt"><input type="radio" name="fm" value="import" checked><span class="ds-tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><span class="ds-opt-title block">Importer ma fiche</span><span class="ds-opt-sub block">PDF ou photo</span></span></label>
-                        <label class="ds-opt"><input type="radio" name="fm" value="gen"><span class="ds-tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><span class="ds-opt-title block">La générer</span><span class="ds-opt-sub block">À partir des informations saisies</span></span></label>
+                        <label class="ds-opt"><input type="radio" name="fm" value="import"><span class="ds-tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><span class="ds-opt-title block">Importer ma fiche</span><span class="ds-opt-sub block">PDF ou photo</span></span></label>
+                        <label class="ds-opt"><input type="radio" name="fm" value="gen" checked><span class="ds-tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><span class="ds-opt-title block">La générer</span><span class="ds-opt-sub block">À partir des informations saisies</span></span></label>
                     </div>
-                    <div data-fm="import" class="mt-4 flex flex-wrap items-center gap-3">
+                    <div data-fm="import" class="mt-4 flex flex-wrap items-center gap-3" hidden>
                         <input type="file" name="fiche[]" multiple accept="application/pdf,image/*,.heic,.heif" class="ds-file flex-1 min-w-[220px]" style="width:auto">
                         <button type="submit" name="act" value="doc_fiche" class="ds-btn"><?= $ficheOk ? 'Remplacer' : 'Importer' ?></button>
                         <details class="ds-help"><summary>?</summary><div>Un PDF, ou une ou plusieurs photos / scans (JPG, PNG, WebP, HEIC), convertis en PDF. 8 Mo maximum par fichier.</div></details>
                     </div>
-                    <div data-fm="gen" class="mt-4 flex flex-wrap items-center gap-3" hidden>
+                    <div data-fm="gen" class="mt-4">
+                        <?php $P = 'g'; ?>
+                        <p class="text-[13.5px] text-[#6b7780]">Toutes les rubriques de la fiche officielle (CERFA 10008*02). Vos réponses mettent aussi à jour la fiche de l'enfant.</p>
+                        <h4 class="ds-eyebrow mt-6 mb-4">1. Le mineur</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5"><?php $in('nom', 'Nom', 'text', 'required'); $in('prenom', 'Prénom', 'text', 'required'); $in('date_naissance', 'Date de naissance', 'date', 'max="' . date('Y-m-d') . '"'); $sexe(); ?></div>
+                        <h4 class="ds-eyebrow mt-7">2. Santé et vaccinations</h4>
+                        <?php $santeForm(false); ?>
+                        <h4 class="ds-eyebrow mt-7 mb-4">3. Responsables du mineur</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <?php foreach ([1, 2] as $n) { $in("resp{$n}_nom", "Responsable $n : nom"); $in("resp{$n}_prenom", 'Prénom'); $in("resp{$n}_tel", 'Téléphone portable', 'tel'); $in("resp{$n}_tel_dom", 'Téléphone domicile', 'tel'); $in("resp{$n}_tel_trav", 'Téléphone travail', 'tel');
+                                if ($n === 1) { $in('adresse', 'Adresse'); $in('code_postal', 'Code postal'); $in('ville', 'Ville'); echo '<div class="sm:col-span-2 border-t border-[#e5e7eb]"></div>'; } else $in('resp2_adresse', 'Adresse (si différente)'); } ?>
+                        </div>
+                        <?php $P = ''; ?>
+                        <h4 class="ds-eyebrow mt-7 mb-4">4. Signature</h4>
+                        <div class="flex flex-wrap items-center gap-3">
                         <div class="w-full">
                             <p class="ds-label">Signature du responsable légal</p>
                             <canvas id="sig" width="600" height="200" class="w-full max-w-[340px] h-[113px] rounded-xl border-[1.5px] border-dashed border-[#c9d1d8] bg-white touch-none cursor-crosshair"></canvas>
@@ -395,7 +470,8 @@ require_once 'partials/header.php';
                         </div>
                         <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-[220px]"><input type="checkbox" name="certifie" value="1" class="w-4 h-4"><span class="text-[13.5px] text-[#26343b]">Je certifie l'exactitude des informations</span></label>
                         <button type="submit" name="act" value="generer_fiche" id="gen-go" class="ds-btn"><?= $ficheOk ? 'Régénérer' : 'Générer la fiche' ?></button>
-                        <details class="ds-help"><summary>?</summary><div>La fiche officielle (CERFA 10008*02) est remplie avec les rubriques Parents, Enfant et Santé, puis signée par vous. Complétez-les d'abord ; la signature est conservée chiffrée.</div></details>
+                        <details class="ds-help"><summary>?</summary><div>La fiche officielle (CERFA 10008*02) est remplie avec les réponses ci-dessus, puis signée par vous. La signature est conservée chiffrée.</div></details>
+                        </div>
                     </div>
                 </div>
 
@@ -416,8 +492,8 @@ require_once 'partials/header.php';
             <?php if (sec_turnstile_enabled()): ?><div class="ds-card p-4"><?= sec_turnstile_widget() ?></div><?php endif; ?>
 
             <div class="flex flex-wrap justify-end gap-3">
-                <a href="children" class="ds-btn ds-btn-light">Fermer</a>
-                <button type="submit" name="act" value="save:all" class="ds-btn">Tout enregistrer</button>
+                <a href="<?= htmlspecialchars($retour !== '' ? $retour : 'children') ?>" class="ds-btn ds-btn-light"><?= $retour !== '' ? 'Retour' : 'Fermer' ?></a>
+                <button type="submit" name="act" value="save:all" class="ds-btn"><?= $retour !== '' ? 'Enregistrer et revenir' : 'Tout enregistrer' ?></button>
             </div>
         </div>
     </form>

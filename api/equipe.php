@@ -296,7 +296,9 @@ function equipe_infos(PDO $pdo, int $campId): array {
     $r = $st->fetch(PDO::FETCH_ASSOC) ?: [];
     $b = json_decode((string)($r['blocs'] ?? '[]'), true);
     $d = $pdo->prepare("SELECT id, nom, taille FROM equipe_docs WHERE camp_id = ? ORDER BY id"); $d->execute([$campId]);
-    return ['blocs' => is_array($b) ? $b : [], 'message' => (string)($r['message'] ?? ''), 'message_at' => $r['message_at'] ?? null,
+    // un bloc sans texte (titre suggéré laissé vide par l'éditeur) n'est pas une information publiée
+    $b = is_array($b) ? array_values(array_filter($b, fn($x) => is_array($x) && trim((string)($x['texte'] ?? '')) !== '')) : [];
+    return ['blocs' => $b, 'message' => (string)($r['message'] ?? ''), 'message_at' => $r['message_at'] ?? null,
             'date_versement' => $r['date_versement'] ?? null, 'montre_equipe' => (int)($r['montre_equipe'] ?? 0), 'docs' => $d->fetchAll(PDO::FETCH_ASSOC)];
 }
 

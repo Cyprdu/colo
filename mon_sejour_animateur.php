@@ -43,7 +43,7 @@ $statutTxt = $annule ? 'Inscription annulée' : ($paid ? 'Inscription confirmée
 <main class="ds-page" style="max-width:860px">
     <p class="ds-eyebrow">Espace animateur<?= $role !== 'animateur' ? ' · vue ' . ($role === 'directeur' ? 'directeur' : 'admin') : '' ?></p>
     <h1 class="ds-h1 mt-2"><?= $h($camp['nom']) ?></h1>
-    <p class="ds-lead"><?= $h($camp['orga_nom']) ?> · <?= $h($camp['ville']) ?> · <?= $jour($camp['date_debut']) ?> – <?= $jour($camp['date_fin']) ?></p>
+    <p class="ds-lead"><?= $h(implode(' · ', array_filter([trim((string)$camp['orga_nom']), trim((string)$camp['ville']), $jour($camp['date_debut']) . ' – ' . $jour($camp['date_fin'])]))) ?></p>
     <p class="mt-3"><span class="text-[12px] font-bold px-3 py-1 rounded-full inline-block <?= $annule ? 'bg-[#f3e3e3] text-[#7a2b2b]' : ($paid ? 'bg-[#eef2f4] text-[#26343b]' : 'bg-[#f8f5ea] text-[#5b4a1c]') ?>"><?= $statutTxt ?></span>
         <span class="text-[13px] text-[#6b7780] ml-2"><?= $h($e['prenom'] . ' ' . $e['nom']) ?></span></p>
 

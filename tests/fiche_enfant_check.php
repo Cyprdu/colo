@@ -47,7 +47,7 @@ $e = $pdo->query("SELECT * FROM enfants WHERE id = 1")->fetch();
 ok(strncmp(sante_pdf_fiche($e + ['allergies' => 'arachide', 'traitements' => '', 'urgence_nom' => 'Tata é'], 'Jean Dupont'), '%PDF', 4) === 0, 'PDF fiche sanitaire généré (accents compris)');
 [$pct, $manque] = fiche_completude($e);
 ok($pct < 50 && count($manque) > 5, "complétude faible d'une fiche vide ($pct %)");
-$full = array_merge($e, ['resp1_nom' => 'a', 'resp1_prenom' => 'b', 'resp1_email' => 'c', 'resp1_tel' => 'd', 'adresse' => 'x', 'code_postal' => '1', 'ville' => 'v', 'medecin_nom' => 'm', 'medecin_tel' => '1', 'urgence_nom' => 'u', 'urgence_tel' => '1', 'taille' => '140', 'poids' => '30', 'accord_parental' => 1, 'cgv_accepte' => 1, 'fiche_sanitaire_token' => 'x', 'carnet_sante_token' => 'y']);
+$full = array_merge($e, ['resp1_nom' => 'a', 'resp1_prenom' => 'b', 'resp1_email' => 'c', 'resp1_tel' => 'd', 'adresse' => 'x', 'code_postal' => '1', 'ville' => 'v', 'medecin_nom' => 'm', 'medecin_tel' => '1', 'urgence_nom' => 'u', 'urgence_tel' => '1', 'taille' => '140', 'poids' => '30', 'accord_parental' => 1, 'cgv_accepte' => 1, 'fiche_sanitaire_token' => 'x', 'carnet_sante_token' => 'y', 'allergies' => 'Aucune', 'infos_sante' => 'Aucun', 'traitements' => 'Aucun', 'regime_alimentaire' => 'Aucun', 'vaccins_data' => '{"antecedents":"Aucun","reco":"Aucune"}']);
 ok(fiche_completude($full)[0] === 100, 'complétude 100 % quand tout est fourni');
 
 // accès : le document est rattaché à l'enfant 1
