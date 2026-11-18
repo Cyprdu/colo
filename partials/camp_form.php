@@ -215,15 +215,16 @@ $tick = $svg('check', 'w-3 h-3');
                         <div id="tarifsSelected" class="space-y-2"></div>
                         <input type="hidden" name="tarifs" id="tarifsHidden">
                     </div>
-                    <div class="grid md:grid-cols-2 gap-5">
-                        <div><label class="ds-label" for="q-tot">Nombre total de places *</label><input id="q-tot" type="number" min="0" name="quota_global" class="ds-input" value="<?= $val('quota_global') ?>"></div>
-                        <div><label class="ds-label" for="f-frat">Remise fratrie (%)</label><input id="f-frat" type="number" min="0" max="100" name="remise_fratrie" class="ds-input" value="<?= $val('remise_fratrie', 0) ?>"></div>
-                    </div>
-                    <div class="ds-row">
+                    <div class="max-w-sm"><label class="ds-label" for="q-tot">Nombre total de places * <details class="ds-help"><summary>?</summary><div>Toutes les personnes inscrites à cette session, quel que soit leur tarif. Les places propres à un tarif ou aux filles / garçons se règlent dans « Conditions » de chaque tarif et dans « Public et places ».</div></details></label><input id="q-tot" type="number" min="0" name="quota_global" class="ds-input" value="<?= $val('quota_global') ?>"></div>
+                    <details class="rounded-2xl border border-[#e5e7eb] p-4" <?= $edit && ((int)($camp['remise_fratrie'] ?? 0) > 0 || (isset($att['attente_paiement']) && empty($att['attente_paiement']))) ? 'open' : '' ?>>
+                    <summary class="cursor-pointer font-semibold text-[#26343b]">Options avancées : remise fratrie, réservation sans paiement immédiat</summary>
+                    <div class="max-w-sm mt-4"><label class="ds-label" for="f-frat">Remise fratrie (%) <details class="ds-help"><summary>?</summary><div>Appliquée à partir du deuxième enfant d'une même famille sur cette session, y compris quand le premier a été inscrit et payé plus tôt.</div></details></label><input id="f-frat" type="number" min="0" max="100" name="remise_fratrie" class="ds-input" value="<?= $val('remise_fratrie', 0) ?>"></div>
+                    <div class="ds-row mt-4">
                         <div><p class="ds-opt-title">Réservation « en attente de paiement »</p><p class="ds-opt-sub">Le parent réserve et règle plus tard ; sa place est gardée puis libérée automatiquement. Sinon : 30 minutes, le temps du paiement.</p>
                             <div id="attenteJours" class="mt-3 flex items-center gap-2 text-sm text-[#3b4a54]">Délai maximum <input type="number" name="attente_jours" min="1" max="<?= ATTENTE_MAX_JOURS ?>" value="<?= (int)($att['attente_jours'] ?? ATTENTE_DEFAUT_JOURS) ?>" class="ds-input !w-20 !py-2 text-center" aria-label="Délai en jours"> jour(s)</div></div>
                         <label class="ds-switch"><input type="checkbox" name="attente_paiement" id="attenteToggle" value="1" <?= !isset($att['attente_paiement']) || !empty($att['attente_paiement']) ? 'checked' : '' ?> aria-label="Autoriser les réservations en attente de paiement"><span></span></label>
                     </div>
+                    </details>
                 </div>
             </section>
 
