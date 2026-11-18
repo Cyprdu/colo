@@ -97,7 +97,7 @@ try {
 
     // ---- transactions de la période : carte (fin_paiements) et hors carte (inscriptions)
     $fam = "COALESCE(NULLIF(e.nom, ''), 'Équipe d''animation')";
-    $st = $pdo->prepare("SELECT p.id, p.created_at d, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, p.brut_cents brut, p.rembourse_cents remb,
+    $st = $pdo->prepare("SELECT p.id, p.created_at d, COALESCE(p.dispo_le, DATE(p.created_at + INTERVAL 7 DAY)) vdate, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, p.brut_cents brut, p.rembourse_cents remb,
                                 p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, p.mode, p.payment_intent pi, i.reservation_token tok, p.annul_com ann,
                                 IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) frais, (p.mode = 'direct' OR p.frais_orga = 1) fo, p.frais_stripe_cents IS NULL fnc, p.compensation_cents comp, p.verse_cents verse, p.tva_taux_pct tva,
                                 (SELECT t.token FROM fin_transfert_lignes l JOIN fin_transferts t ON t.id = l.transfert_id WHERE l.paiement_id = p.id ORDER BY t.id DESC LIMIT 1) vtok,
@@ -110,7 +110,7 @@ try {
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     $st = $pdo->prepare("SELECT i.id, i.date_inscription d, $fam fam, e.prenom enf, u.prenom pp, u.nom pn, c.id camp_id, c.nom camp, ROUND(i.prix_final * 100) brut, 0 remb,
                                 ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv, i.statut_paiement st, NULL dd, 'hors' mode, NULL pi, i.reservation_token tok, 0 ann, 0 frais, 0 fo, 0 fnc,
-                                0 comp, 0 verse, NULL tva, NULL vtok, NULL po, i.moyen_paiement moy
+                                0 comp, 0 verse, NULL tva, NULL vtok, NULL po, NULL vdate, i.moyen_paiement moy
                          FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN users u ON u.id = e.parent_id
                          LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
                          WHERE c.organisateur_id = ? AND $CANC AND i.statut_paiement IN ('PAYE', 'A_REGLER') AND COALESCE(i.moyen_paiement, '') NOT IN ('', 'carte')
@@ -128,9 +128,13 @@ try {
             if ($r['mode'] === 'legacy' && $k !== 'verse') { $k = 'moncamp'; }
             elseif ($ps === 'paye' && $k === 'verse') { $k = 'banque'; }
             elseif ($ps === 'envoye' && $k === 'verse') { $k = 'route'; $route = $pa ? ' · arrivée prévue le ' . date('d/m/Y', strtotime($pa)) : ''; }
-            else { $k = 'stripe'; }
+            else {
+                $k = 'stripe';
+                $vd = max((string)$r['vdate'], date('Y-m-d'));
+                $route = ' · virement prévu ' . ($vd === date('Y-m-d') ? 'aujourd\'hui' : ($vd === date('Y-m-d', strtotime('+1 day')) ? 'demain' : 'le ' . date('d/m', strtotime($vd))));
+            }
         }
-        $l = ['moncamp' => 'Chez moncamp.fr (compte à activer)', 'stripe' => 'Sur votre compte Stripe', 'route' => 'Virement en cours' . ($route ?? ''), 'banque' => 'Versé sur votre banque',
+        $l = ['moncamp' => 'Chez moncamp.fr (compte à activer)', 'stripe' => 'En attente' . ($route ?? ''), 'route' => 'Virement en cours' . ($route ?? ''), 'banque' => 'Versé sur votre banque',
               'litige' => 'Litige', 'bloque' => 'Suspendu', 'rembourse' => 'Remboursé', 'PAYE' => 'Reçu (hors carte)', 'A_REGLER' => 'À encaisser'][$k] ?? $k;
         if ((int)$r['remb'] > 0) return [$k === 'rembourse' ? 'rembourse' : 'partiel', $l . ' · remboursé en partie'];
         return [$k, $l];
@@ -183,7 +187,7 @@ try {
         } else {
             $keys = array_flip(array_filter(explode(',', (string)($P['keys'] ?? ''))));
             $sel = $keys ? array_values(array_filter($tx, fn($t) => isset($keys[$t['k']]))) : $tx;
-            $h = ['Date', 'Famille', 'Enfant', 'Séjour', 'Session', 'Moyen', 'Montant payé', 'Commission moncamp.fr', 'Frais de paiement', 'Compensation de dette', 'Remboursé', 'Net organisme', 'TVA incluse', 'Statut', 'Référence Stripe'];
+            $h = ['Date', 'Famille', 'Enfant', 'Séjour', 'Session', 'Moyen', 'Montant payé', 'Commission moncamp.fr', 'Frais de paiement', 'Compensation de dette', 'Remboursé', 'Net organisme', 'TVA incluse', 'Statut', 'Référence paiement'];
             $g = (function () use ($sel, $e) { foreach ($sel as $t) yield [date('d/m/Y H:i', strtotime($t['d'])), $t['fam'], $t['enf'], $t['camp'], $t['sesl'], $t['moyl'], $e($t['brut']), $e($t['com']), $e($t['frais']), $e($t['comp']), $e($t['remb']), $e($t['net']), $e($t['tva']), $t['stl'], (string)$t['pi']]; })();
             $name = 'transactions-' . $du . '-' . $au;
         }

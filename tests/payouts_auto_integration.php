@@ -192,4 +192,8 @@ fin_ajustement_manuel($pdo, 1, 'credit', 500, 'Geste commercial', 'admin:1');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - ($pf - 5)) < 0.001, 'ajustement : crédit de 5 EUR');
 try { fin_ajustement_manuel($pdo, 1, 'dette', 100, '  ', 'admin:1'); $e = ''; } catch (InvalidArgumentException $x) { $e = 'refus'; }
 ok($e === 'refus', 'ajustement : motif obligatoire');
+// ---- date de disponibilité (virement prévu) relevée avec les frais
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = fn($id) => (object)['id' => $id, 'latest_charge' => (object)['id' => 'ch_' . $id, 'balance_transaction' => (object)['currency' => 'eur', 'fee' => 100, 'available_on' => strtotime('2026-11-25 12:00')]]];
+fin_sync_fees($pdo, 'pi_P');
+ok($pdo->query("SELECT dispo_le FROM fin_paiements WHERE inscription_id = 204")->fetchColumn() === '2026-11-25', 'date de disponibilité (available_on) enregistrée pour la date de virement prévue');
 echo "Tout est bon.\n";

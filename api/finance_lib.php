@@ -235,6 +235,7 @@ function fin_ensure(PDO $pdo): void {
         // prélevés avec la commission puis ajustés aux frais réels (fin_sync_fees). Historique (frais_orga = 0) inchangé.
         fin_add_col($pdo, 'fin_paiements', 'frais_orga', "TINYINT(1) NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_paiements', 'frais_estimes_cents', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_paiements', 'dispo_le', "DATE NULL");
         fin_add_col($pdo, 'fin_transferts', 'par_paiement', "TINYINT(1) NOT NULL DEFAULT 0");
         $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_payout_auto_v1'");
         $mig->execute();
@@ -514,6 +515,7 @@ function fin_fetch_stripe_fee(string $paymentIntent, ?string $account = null): ?
     $ch = $pi->latest_charge ?? null;
     $bt = (is_object($ch) && isset($ch->balance_transaction) && is_object($ch->balance_transaction)) ? $ch->balance_transaction : null;
     if (!$bt || strtolower((string)$bt->currency) !== 'eur') return null;
+    $GLOBALS['fin_dispo_le'] = !empty($bt->available_on) ? date('Y-m-d', (int)$bt->available_on) : null;
     if (empty($bt->fee_details)) return max(0, (int)$bt->fee);
     $fee = 0; // direct charges : la commission moncamp.fr (application_fee) figure aussi dans fee, on ne garde que les frais Stripe
     foreach ($bt->fee_details as $d) if (($d->type ?? '') !== 'application_fee') $fee += (int)$d->amount;
@@ -524,8 +526,10 @@ function fin_sync_fees(PDO $pdo, string $paymentIntent): bool {
     fin_ensure($pdo);
     $st = $pdo->prepare("SELECT o.stripe_account_id FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id WHERE p.payment_intent = ? AND p.mode = 'direct' LIMIT 1");
     $st->execute([$paymentIntent]);
+    $GLOBALS['fin_dispo_le'] = null;
     $fee = fin_fetch_stripe_fee($paymentIntent, $st->fetchColumn() ?: null); // direct : la charge est sur le compte de l'organisme
     if ($fee === null) return false;
+    if ($GLOBALS['fin_dispo_le']) $pdo->prepare("UPDATE fin_paiements SET dispo_le = ? WHERE payment_intent = ?")->execute([$GLOBALS['fin_dispo_le'], $paymentIntent]);
     $st = $pdo->prepare("SELECT id, brut_cents FROM fin_paiements WHERE payment_intent = ? ORDER BY id");
     $st->execute([$paymentIntent]);
     $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR);
