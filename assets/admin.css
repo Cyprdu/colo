@@ -260,3 +260,4 @@ a.kpi:hover { border-color:#a9b8c6; }
 a.sort { color:inherit; } a.sort.on { color:var(--ink); }
 .tbl tr.dim td { color:#9aa3ab; } .tbl tr.tot td { font-weight:800; background:#fbfbfc; border-top:2px solid var(--line); }
 @media (max-width: 1024px) { .tsearch { width:100%; } .exp { margin-left:0; } }
+.diff pre { background:var(--soft); border-radius:8px; padding:8px; margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; }

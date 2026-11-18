@@ -107,6 +107,14 @@ return [
         return ['msg' => $n ? 'Compte bloqué.' : 'Compte débloqué.'];
     }],
     'user.rgpd_unlock' => ['users.rgpd', true, function (array $in) { return []; }],
+    'tech.backup' => ['tech.backup', true, function (array $in) { return ['msg' => 'Préparation de la sauvegarde…']; }],
+    'audit.unlock' => ['audit.export', true, function (array $in) { return []; }],
+    'err.purge' => ['tech.logs', true, function (array $in) {
+        global $pdo;
+        $n = $pdo->exec("DELETE FROM app_erreurs WHERE created_at < (NOW() - INTERVAL 30 DAY)");
+        adm_audit('erreurs_purge', 'app_erreurs', "$n ligne(s) de plus de 30 jours");
+        return ['msg' => "$n erreur(s) anciennes supprimée(s)."];
+    }],
     'user.rgpd_delete' => ['users.rgpd', true, function (array $in) {
         global $pdo;
         require_once __DIR__ . '/api/rgpd_lib.php';
