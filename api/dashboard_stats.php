@@ -120,6 +120,7 @@ try {
         if ((int)$r['ann'] === 1) return ['annule', 'Annulé par la famille'];
         if ((int)$r['remb'] > 0 && (int)$r['remb'] >= (int)$r['brut']) return ['rembourse', 'Remboursé'];
         $k = $r['st']; $dd = $r['dd'] ? date('d/m/Y', strtotime($r['dd'])) : '';
+        if ($r['mode'] === 'legacy' && $k === 'verse') return ['verse', 'Transféré sur votre compte Stripe'];
         $l = ['attente' => 'En attente de versement', 'en_cours' => 'Versement en cours', 'verse' => 'Versé', 'litige' => 'Litige', 'bloque' => 'Suspendu',
               'rembourse' => 'Remboursé', 'PAYE' => 'Reçu (hors carte)', 'A_REGLER' => 'À encaisser'][$k] ?? $k;
         if ((int)$r['remb'] > 0) return [$k === 'rembourse' ? 'rembourse' : 'partiel', $l . ' · remboursé en partie'];

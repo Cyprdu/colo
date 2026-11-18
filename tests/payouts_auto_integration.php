@@ -56,4 +56,19 @@ $pdo->exec("UPDATE stripe_comptes SET payout_auto = 0");
 fin_account_setup($pdo, 1, 'acct_A');
 $c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'accounts.update'));
 ok($c && $c[0][1][1]['settings']['payouts']['schedule'] === ['interval' => 'daily', 'delay_days' => 'minimum'] && (int)$pdo->query("SELECT payout_auto FROM stripe_comptes")->fetchColumn() === 1, 'compte en versements automatiques quotidiens, délai minimal');
+// ---- C. paiements reçus par moncamp.fr avant l'activation (legacy) : transférés tout de suite quand le compte est prêt
+$pdo->exec("INSERT INTO enfants (id, parent_id, nom, prenom) VALUES (1, 9, 'Durand', 'Tom')");
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (201, 1, 1, 'Confirmé', 300, 'PAYE', 'tokL')");
+$pdo->exec("INSERT INTO fin_paiements (inscription_id, organisateur_id, camp_id, payment_intent, brut_cents, commission_cents, net_cents, commission_pct, date_deblocage, mode)
+            VALUES (201, 1, 1, 'pi_L', 30000, 780, 29220, 2.5, DATE_ADD(NOW(), INTERVAL 90 DAY), 'legacy')");
+$pdo->exec("UPDATE organisateurs SET portefeuille = portefeuille + 292.20 WHERE id = 1");
+$GLOBALS['fake_transfers'] = null; $GLOBALS['stripe_calls'] = [];
+$before = fin_ledger_totaux($pdo, 1);
+$r = fin_release_pending_now($pdo, 1);
+$tr = $GLOBALS['fake_transfers']->calls;
+ok($r['transferts'] === 1 && $r['montant_cents'] === 29220 && count($tr) === 1 && $tr[0][2]['idempotency_key'] === 'colomap-transfer-' . $pdo->query("SELECT MAX(id) FROM fin_transferts WHERE type = 'sejour'")->fetchColumn(), 'compte prêt : tout le net transféré tout de suite (séjour dans 90 jours), transfert idempotent');
+ok(strpos($tr[0][1]['description'], 'Été (Durand)') !== false && $tr[0][1]['metadata']['type'] === 'paiements_avant_activation', 'description lisible dans le Stripe de l\'organisme : ' . $tr[0][1]['description']);
+ok($pdo->query("SELECT statut FROM fin_paiements WHERE inscription_id = 201")->fetchColumn() === 'verse', 'ligne transférée');
+ok((int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'transfert'")->fetchColumn() === 29220 && fin_ledger_totaux($pdo, 1)['verse'] === $before['verse'], 'journal : transfert tracé, pas compté comme versement bancaire (le payout automatique le sera)');
+ok(fin_release_pending_now($pdo, 1)['transferts'] === 0 && count($GLOBALS['fake_transfers']->calls) === 1, 'rejeu : aucun second transfert');
 echo "Tout est bon.\n";

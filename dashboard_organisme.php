@@ -39,6 +39,7 @@ try {
         try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { error_log('dashboard sync: ' . $e->getMessage()); }
     }
     $historique = fin_overview($pdo, $orgaId)['historique_cents'];
+    if (fin_account_ready($acc)) { try { fin_release_pending_now($pdo, $orgaId); } catch (Throwable $e) { error_log('dashboard transfert: ' . $e->getMessage()); } } // paiements reçus avant l'activation
     if (!empty($acc['account_id'])) { try { fin_payouts_sync($pdo, $orgaId); } catch (Throwable $e) { error_log('dashboard payouts: ' . $e->getMessage()); } } // dates d'arrivée Stripe
     $st = $pdo->prepare("SELECT COUNT(*) FROM fin_annulations WHERE organisateur_id = ? AND lu = 0");
     $st->execute([$orgaId]);

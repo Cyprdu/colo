@@ -590,7 +590,9 @@ function fin_sync_account(PDO $pdo, int $orgaId): ?array {
     if (!$acct) return null;
     $row = fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
     if (!$row['payout_auto'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct); // passage en versements automatiques quotidiens
-    return fin_account($pdo, $orgaId);
+    $acc = fin_account($pdo, $orgaId);
+    if (fin_account_ready($acc)) fin_release_pending_now($pdo, $orgaId); // paiements reçus avant l'activation : transférés tout de suite
+    return $acc;
 }
 
 function fin_account(PDO $pdo, int $orgaId): ?array {
