@@ -63,10 +63,12 @@ $pdo->exec("INSERT INTO fin_paiements (inscription_id, organisateur_id, camp_id,
             VALUES (201, 1, 1, 'pi_L', 30000, 780, 29220, 2.5, DATE_ADD(NOW(), INTERVAL 90 DAY), 'legacy')");
 $pdo->exec("UPDATE organisateurs SET portefeuille = portefeuille + 292.20 WHERE id = 1");
 $GLOBALS['fake_transfers'] = null; $GLOBALS['stripe_calls'] = [];
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = (object)['id' => 'pi_L', 'latest_charge' => 'ch_L'];
 $before = fin_ledger_totaux($pdo, 1);
 $r = fin_release_pending_now($pdo, 1);
 $tr = $GLOBALS['fake_transfers']->calls;
-ok($r['transferts'] === 1 && $r['montant_cents'] === 29220 && count($tr) === 1 && $tr[0][2]['idempotency_key'] === 'colomap-transfer-' . $pdo->query("SELECT MAX(id) FROM fin_transferts WHERE type = 'sejour'")->fetchColumn(), 'compte prêt : tout le net transféré tout de suite (séjour dans 90 jours), transfert idempotent');
+ok($r['transferts'] === 1 && $r['montant_cents'] === 29220 && count($tr) === 1 && $tr[0][2]['idempotency_key'] === 'moncamp-tr-paiement-' . $pdo->query("SELECT id FROM fin_paiements WHERE inscription_id = 201")->fetchColumn() . '-' . $pdo->query("SELECT MAX(id) FROM fin_transferts WHERE type = 'sejour'")->fetchColumn()
+   && $tr[0][1]['source_transaction'] === 'ch_L', 'compte prêt : tout le net transféré tout de suite, adossé à la charge (fonds en attente acceptés), clé par paiement');
 ok(strpos($tr[0][1]['description'], 'Été (Durand)') !== false && $tr[0][1]['metadata']['type'] === 'paiements_avant_activation', 'description lisible dans le Stripe de l\'organisme : ' . $tr[0][1]['description']);
 ok($pdo->query("SELECT statut FROM fin_paiements WHERE inscription_id = 201")->fetchColumn() === 'verse', 'ligne transférée');
 ok((int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'transfert'")->fetchColumn() === 29220 && fin_ledger_totaux($pdo, 1)['verse'] === $before['verse'], 'journal : transfert tracé, pas compté comme versement bancaire (le payout automatique le sera)');

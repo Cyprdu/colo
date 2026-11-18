@@ -227,6 +227,10 @@ function fin_ensure(PDO $pdo): void {
         // Versements automatiques Stripe (quotidiens) : plus de retenue jusqu'au début du séjour ; date d'arrivée donnée par Stripe
         fin_add_col($pdo, 'stripe_comptes', 'payout_auto', "TINYINT(1) NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_transferts', 'arrivee', "DATE NULL");
+        // Transferts des paiements reçus par moncamp.fr : un Transfer par paiement, adossé à sa charge (source_transaction) pour ne pas exiger
+        // de solde disponible ; charge mise en cache, transferts créés selon cette règle marqués (clé d'idempotence par paiement)
+        fin_add_col($pdo, 'fin_paiements', 'charge_id', "VARCHAR(64) NULL");
+        fin_add_col($pdo, 'fin_transferts', 'par_paiement', "TINYINT(1) NOT NULL DEFAULT 0");
         $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_payout_auto_v1'");
         $mig->execute();
         if (!(int)$mig->fetchColumn()) {

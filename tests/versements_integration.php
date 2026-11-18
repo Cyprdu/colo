@@ -43,26 +43,37 @@ ok($ov['deblocable_cents'] === 12200, 'versable : 72 + 50 = 122 EUR');
 ok($ov['a_recevoir_cents'] === 17000, 'à recevoir au total : 170 EUR');
 
 // --- 1er versement : réserve gardée, ligne partielle
-$tid = fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour');
-ok($tid > 0, 'transfert préparé');
-$t = $pdo->query("SELECT * FROM fin_transferts WHERE id = $tid")->fetch(PDO::FETCH_ASSOC);
-ok((int)$t['montant_cents'] === 12200, 'montant du transfert : 122 EUR (réserve de 18 EUR retenue)');
-ok(fin_execute_transfer($pdo, $tid) === 'envoye', 'transfert envoyé (Stripe simulé)');
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = fn($pi) => (object)['id' => $pi, 'latest_charge' => 'ch_' . $pi];
+$tids = fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour');
+ok(count($tids) === 2, 'un transfert préparé par paiement');
+$in = implode(',', $tids);
+ok((int)$pdo->query("SELECT SUM(montant_cents) FROM fin_transferts WHERE id IN ($in)")->fetchColumn() === 12200, 'montant total : 122 EUR (réserve de 18 EUR retenue)');
+$c0 = count(($GLOBALS['fake_transfers'] ??= new \Stripe\FakeTransfers())->calls);
+ok(fin_execute_transfer($pdo, $tids[0]) === 'envoye' && fin_execute_transfer($pdo, $tids[1]) === 'envoye', 'transferts envoyés (Stripe simulé)');
+$tc = array_slice($GLOBALS['fake_transfers']->calls, $c0);
+$pidA = (int)$pdo->query("SELECT id FROM fin_paiements WHERE inscription_id = 101")->fetchColumn();
+$tA = (int)$pdo->query("SELECT transfert_id FROM fin_transfert_lignes WHERE paiement_id = $pidA")->fetchColumn();
+$cA = array_values(array_filter($tc, fn($c) => ($c[1]['metadata']['transfert_id'] ?? '') === (string)$tA))[0];
+ok($cA[1]['source_transaction'] === 'ch_pi1' && $cA[1]['amount'] === 7200 && $cA[2]['idempotency_key'] === 'moncamp-tr-paiement-' . $pidA . '-' . $tA,
+   'adossé à la charge du paiement (source_transaction), montant ≤ net du paiement, clé d\'idempotence par paiement');
+ok($pdo->query("SELECT charge_id FROM fin_paiements WHERE id = $pidA")->fetchColumn() === 'ch_pi1', 'charge mise en cache');
+$t = $pdo->query("SELECT * FROM fin_transferts WHERE id = " . (int)$pdo->query("SELECT l.transfert_id FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id WHERE p.inscription_id = 102")->fetchColumn())->fetch(PDO::FETCH_ASSOC);
+$tid = (int)$t['id']; // transfert du paiement B (pour le reversement plus bas)
 $p = $pdo->query("SELECT inscription_id i, statut s, verse_cents v FROM fin_paiements ORDER BY inscription_id")->fetchAll(PDO::FETCH_ASSOC);
 ok($p[0]['s'] === 'attente' && (int)$p[0]['v'] === 7200, 'ligne A : reste en attente (réserve) après 72 EUR versés');
 ok($p[1]['s'] === 'verse' && (int)$p[1]['v'] === 5000, 'ligne B : soldée');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - 48.00) < 0.001, 'portefeuille : 170 - 122 = 48 EUR');
-ok(fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour') === null, 'deuxième passage : rien à verser (réserve conservée, délai non écoulé)');
+ok(fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour') === [], 'deuxième passage : rien à verser (réserve conservée, délai non écoulé)');
 
 // --- la réserve est libérée quand le séjour A commence
 $pdo->exec("UPDATE camps SET date_debut = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE id = 1");
-$tid2 = fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour');
+$tid2 = fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour')[0] ?? 0;
 ok($tid2 > 0 && (int)$pdo->query("SELECT montant_cents FROM fin_transferts WHERE id = $tid2")->fetchColumn() === 1800, 'réserve libérée : 18 EUR versés');
 ok(fin_execute_transfer($pdo, $tid2) === 'envoye', 'second transfert envoyé');
 ok($pdo->query("SELECT statut FROM fin_paiements WHERE inscription_id = 101")->fetchColumn() === 'verse', 'ligne A soldée');
 // justificatif : lignes du transfert partiel
 $rc = fin_receipt($pdo, $t['token'], 0, true);
-ok(count($rc['lignes']) === 2 && (int)$rc['lignes'][0]['montant_ligne'] + (int)$rc['lignes'][1]['montant_ligne'] === 12200, 'justificatif : détail par inscription du versement');
+ok(count($rc['lignes']) === 1 && (int)$rc['lignes'][0]['montant_ligne'] === 5000, 'justificatif : détail de l\'inscription versée');
 
 // --- remboursement total de B APRÈS versement : reversement Stripe
 $wBefore = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn();  // 48 - 18 = 30 EUR
@@ -100,7 +111,7 @@ $ins->execute([104, 2, 'pi4', 2150, 150, 2000, date('Y-m-d H:i:s', strtotime('-1
 $pdo->exec("UPDATE organisateurs SET portefeuille = portefeuille + 20.00 WHERE id = 1");
 $w0 = round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn(), 2);
 $GLOBALS['stripe_fail'] = 'transfer';
-$tid3 = fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour');
+$tid3 = fin_prepare_transfer($pdo, 1, 'acct_1', 'sejour')[0] ?? 0;
 ok($tid3 > 0 && fin_execute_transfer($pdo, $tid3) === 'echec', 'transfert refusé par Stripe : échec définitif');
 $l = $pdo->query("SELECT statut, verse_cents FROM fin_paiements WHERE inscription_id = 104")->fetch(PDO::FETCH_ASSOC);
 ok($l['statut'] === 'attente' && (int)$l['verse_cents'] === 0, 'ligne remise en attente, rien de versé');

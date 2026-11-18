@@ -142,6 +142,21 @@ function fin_release_pending_now(PDO $pdo, int $orgaId): array {
     return fin_release_due($pdo, 'systeme', $orgaId, false, true);
 }
 
+/** Charge Stripe (ch_…) d'un paiement : latest_charge de son PaymentIntent, mise en cache dans fin_paiements.charge_id. null si pas de PaymentIntent. */
+function fin_paiement_charge(PDO $pdo, int $paiementId): ?string {
+    $st = $pdo->prepare("SELECT charge_id, payment_intent FROM fin_paiements WHERE id = ?");
+    $st->execute([$paiementId]);
+    $p = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$p) return null;
+    if (!empty($p['charge_id'])) return (string)$p['charge_id'];
+    if (empty($p['payment_intent'])) return null;
+    $lc = fin_stripe()->paymentIntents->retrieve((string)$p['payment_intent'])->latest_charge ?? null;
+    $ch = is_object($lc) ? (string)$lc->id : (string)$lc;
+    if ($ch === '') return null;
+    $pdo->prepare("UPDATE fin_paiements SET charge_id = ? WHERE payment_intent = ?")->execute([$ch, $p['payment_intent']]); // même charge pour tout le panier
+    return $ch;
+}
+
 /** Libellé lisible d'un transfert (séjours, familles, nombre d'inscriptions) pour le Stripe de l'organisme */
 function fin_transfer_libelle(PDO $pdo, int $tid): array {
     $st = $pdo->prepare("SELECT c.nom camp, COALESCE(NULLIF(e.nom, ''), 'Équipe') fam, p.inscription_id FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id
@@ -173,13 +188,15 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
                 $acc = fin_account($pdo, $orgaId);
                 if (!$acc || !fin_account_ready($acc)) { try { $acc = fin_sync_account($pdo, $orgaId); } catch (Throwable $e) { $acc = null; } }
                 if (!fin_account_ready($acc)) { $rep['reportes']++; continue; }
-                $tid = fin_prepare_transfer($pdo, $orgaId, $acc['account_id'], 'sejour', $force);
-                if (!$tid) { $rep['reportes']++; continue; }
-                $r = fin_execute_transfer($pdo, $tid, $acteur);
-                if ($r === 'envoye') {
-                    $rep['transferts']++;
-                    $rep['montant_cents'] += (int)$pdo->query("SELECT montant_cents FROM fin_transferts WHERE id = " . (int)$tid)->fetchColumn();
-                } elseif ($r === 'echec') { $rep['erreurs']++; }
+                $tids = fin_prepare_transfer($pdo, $orgaId, $acc['account_id'], 'sejour', $force);
+                if (!$tids) { $rep['reportes']++; continue; }
+                foreach ($tids as $tid) {
+                    $r = fin_execute_transfer($pdo, $tid, $acteur);
+                    if ($r === 'envoye') {
+                        $rep['transferts']++;
+                        $rep['montant_cents'] += (int)$pdo->query("SELECT montant_cents FROM fin_transferts WHERE id = " . (int)$tid)->fetchColumn();
+                    } elseif ($r === 'echec') { $rep['erreurs']++; }
+                }
             } catch (Throwable $e) {
                 $rep['erreurs']++;
                 error_log("fin_release_due orga $orgaId: " . $e->getMessage());
@@ -197,7 +214,7 @@ function fin_release_due(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
  * réserve le solde. Le montant = min(versable, solde du portefeuille) : points achetés, remboursements et dettes déjà déduits du solde sont donc compensés.
  * Retourne l'id du transfert ou null s'il n'y a rien à verser.
  */
-function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $type, bool $force = false): ?int {
+function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $type, bool $force = false): array {
     $pdo->beginTransaction();
     try {
         $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
@@ -207,7 +224,7 @@ function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $
                              WHERE organisateur_id = ? AND mode = 'legacy' AND statut = 'attente'" . ($force ? '' : ' AND date_deblocage <= NOW()') . " FOR UPDATE");
         $st->execute([$orgaId]);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-        if (!$rows) { $pdo->rollBack(); return null; }
+        if (!$rows) { $pdo->rollBack(); return []; }
         $camps = [];
         $in = implode(',', array_fill(0, count($rows), '?'));
         $cs = $pdo->prepare("SELECT id, date_debut, annul_jours_moitie FROM camps WHERE id IN (SELECT camp_id FROM fin_paiements WHERE id IN ($in))");
@@ -223,20 +240,24 @@ function fin_prepare_transfer(PDO $pdo, int $orgaId, string $accountId, string $
             $held += $p['held'];
         }
         $amt = min($due, $pf);
-        if ($amt <= 0 || !$w) { $pdo->rollBack(); return null; }
+        if ($amt <= 0 || !$w) { $pdo->rollBack(); return []; }
         $alloc = fin_allocate($amt, $w);
 
-        $token = bin2hex(random_bytes(30));
-        $pdo->prepare("INSERT INTO fin_transferts (token, organisateur_id, montant_cents, type, statut, stripe_account_id, nb_paiements) VALUES (?, ?, ?, ?, 'en_cours', ?, ?)")
-            ->execute([$token, $orgaId, $amt, $type, $accountId, count(array_filter($alloc))]);
-        $tid = (int)$pdo->lastInsertId();
+        // Un transfert par paiement (montant ≤ net restant du paiement) : chacun est adossé à la charge de son paiement (fin_execute_transfer)
+        $tr = $pdo->prepare("INSERT INTO fin_transferts (token, organisateur_id, montant_cents, type, statut, stripe_account_id, nb_paiements, par_paiement) VALUES (?, ?, ?, ?, 'en_cours', ?, 1, 1)");
         $li = $pdo->prepare("INSERT INTO fin_transfert_lignes (transfert_id, paiement_id, montant_cents) VALUES (?, ?, ?)");
         $up = $pdo->prepare("UPDATE fin_paiements SET statut = 'en_cours', transfert_id = ?, verse_cents = verse_cents + ? WHERE id = ?");
-        foreach ($alloc as $pid => $m) if ($m > 0) { $li->execute([$tid, $pid, $m]); $up->execute([$tid, $m, $pid]); }
+        $tids = [];
+        foreach ($alloc as $pid => $m) {
+            if ($m <= 0) continue;
+            $tr->execute([bin2hex(random_bytes(30)), $orgaId, $m, $type, $accountId]);
+            $tid = (int)$pdo->lastInsertId(); $tids[] = $tid;
+            $li->execute([$tid, $pid, $m]); $up->execute([$tid, $m, $pid]);
+        }
         $pdo->prepare("UPDATE organisateurs SET portefeuille = portefeuille - ? WHERE id = ?")->execute([$amt / 100, $orgaId]);
-        fin_audit($pdo, 'transfert_prepare', 'transfert', $tid, ['organisateur' => $orgaId, 'cents' => $amt, 'lignes' => count(array_filter($alloc)), 'versable' => $due, 'reserve' => $held, 'solde' => $pf], 'systeme');
+        fin_audit($pdo, 'transfert_prepare', 'transfert', $tids[0] ?? 0, ['organisateur' => $orgaId, 'cents' => $amt, 'transferts' => $tids, 'versable' => $due, 'reserve' => $held, 'solde' => $pf], 'systeme');
         $pdo->commit();
-        return $tid;
+        return $tids;
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
@@ -255,6 +276,16 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
     $pdo->prepare("UPDATE fin_transferts SET tentatives = tentatives + 1 WHERE id = ?")->execute([$tid]);
     $payout = $t['type'] === 'payout';
     [$lib, $libMeta] = $payout ? ['', []] : fin_transfer_libelle($pdo, $tid);
+    // Transfert d'un paiement reçu par moncamp.fr : adossé à sa charge (source_transaction), Stripe l'accepte même si les fonds sont encore
+    // en attente et les livre à l'organisme dès qu'ils sont disponibles. Clé d'idempotence par paiement.
+    $opts = ['idempotency_key' => 'colomap-transfer-' . $tid]; $src = [];
+    if (!$payout && !empty($t['par_paiement'])) {
+        $pid = (int)$pdo->query("SELECT paiement_id FROM fin_transfert_lignes WHERE transfert_id = " . (int)$tid . " LIMIT 1")->fetchColumn();
+        $opts = ['idempotency_key' => 'moncamp-tr-paiement-' . $pid . '-' . $tid];
+        try { $ch = fin_paiement_charge($pdo, $pid); }
+        catch (Throwable $e) { $pdo->prepare("UPDATE fin_transferts SET erreur = ? WHERE id = ?")->execute([mb_substr('Charge introuvable : ' . $e->getMessage(), 0, 450), $tid]); return 'incertain'; }
+        if ($ch) { $src = ['source_transaction' => $ch]; $libMeta['paiement'] = (string)$pid; }
+    }
     try {
         $tr = $payout ? fin_stripe()->payouts->create([
             'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'statement_descriptor' => 'MONCAMP.FR',
@@ -265,7 +296,7 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
             'transfer_group' => 'ORGA' . $t['organisateur_id'],
             'description' => $lib,
             'metadata' => array_merge(['transfert_id' => (string)$tid, 'organisateur_id' => (string)$t['organisateur_id'], 'type' => $t['type']], $libMeta),
-        ], ['idempotency_key' => 'colomap-transfer-' . $tid]);
+        ] + $src, $opts);
         $pdo->beginTransaction();
         $pdo->prepare("UPDATE fin_transferts SET statut = 'envoye', stripe_transfer_id = ?, erreur = NULL WHERE id = ?")->execute([$tr->id, $tid]);
         // Lignes partielles : la ligne repasse « attente » s'il reste de la réserve à verser, « verse » sinon
