@@ -3,6 +3,8 @@
 //  - camps.age_mode : 'age' (défaut, historique) | 'tranche' | 'les2' ; camps.tranches : codes de TRANCHES séparés par des virgules.
 //  - inscriptions.tranche : tranche déclarée par la famille pour l'enfant inscrit.
 //  - camps_tarifs.regles : règles d'un tarif pour une session (JSON, voir regles_tarif_lire ; NULL = aucune).
+//  - inscription_participants : participants d'une inscription à un tarif « à plusieurs » (rôles), le payeur inscrit compris ;
+//    une inscription sans ligne compte un seul participant (son enfant). Le prix reste porté par l'inscription.
 
 /** code => [libellé, âge minimum indicatif, âge maximum indicatif] (les bornes servent à la recherche par âge et à pré-remplir le choix) */
 const TRANCHES = [
@@ -22,6 +24,10 @@ function regles_ensure(PDO $pdo): void {
         if (!in_array('regles', $cols, true)) $pdo->exec("ALTER TABLE camps_tarifs ADD COLUMN regles TEXT NULL");
         $cols = $pdo->query("SHOW COLUMNS FROM inscriptions")->fetchAll(PDO::FETCH_COLUMN);
         if (!in_array('tranche', $cols, true)) $pdo->exec("ALTER TABLE inscriptions ADD COLUMN tranche VARCHAR(12) NULL");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS inscription_participants (
+            id INT AUTO_INCREMENT PRIMARY KEY, inscription_id INT NOT NULL, enfant_id INT NOT NULL, role VARCHAR(40) NOT NULL, tranche VARCHAR(12) NULL,
+            position INT NOT NULL DEFAULT 0, INDEX idx_ip_ins (inscription_id), INDEX idx_ip_enf (enfant_id)
+        ) DEFAULT CHARSET=utf8mb4");
     } catch (Throwable $e) { error_log('regles_ensure: ' . $e->getMessage()); }
     $done = true;
 }
@@ -89,7 +95,10 @@ function regles_crit_camp(array $camp): array {
 /** La session (ou l'un de ses tarifs) demande-t-elle la tranche de chaque enfant ? */
 function regles_besoin_tranche(array $camp, array $reglesTarifs = []): bool {
     if (age_mode($camp) !== 'age') return true;
-    foreach ($reglesTarifs as $r) if (!empty($r['tranches'])) return true;
+    foreach ($reglesTarifs as $r) {
+        if (!empty($r['tranches'])) return true;
+        foreach ($r['roles'] ?? [] as $x) if (!empty($x['tranches'])) return true;
+    }
     return false;
 }
 
@@ -112,7 +121,23 @@ function regles_tarif_lire($raw, int $qGlobal, string $nom): array|string {
         if ($out['age_max'] < $out['age_min']) return "Tarif « $nom » : l'âge maximum doit suivre l'âge minimum.";
     }
     if ($tr = tranches_valides($r['tranches'] ?? [])) $out['tranches'] = $tr;
+    // Inscription à plusieurs (père + fils, prix pour deux…) : un rôle par participant, chacun avec ses conditions facultatives
+    $roles = [];
+    foreach (array_slice(is_array($r['roles'] ?? null) ? $r['roles'] : [], 0, 6) as $x) {
+        $nomR = mb_substr(trim((string)($x['nom'] ?? '')), 0, 40);
+        if ($nomR === '' || !is_array($x)) continue;
+        $c = regles_tarif_lire(array_intersect_key($x, array_flip(['age_min', 'age_max', 'tranches'])), 0, "$nom » / « $nomR");
+        if (is_string($c)) return $c;
+        $roles[] = ['nom' => $nomR] + $c + (in_array($x['sexe'] ?? '', ['Homme', 'Femme'], true) ? ['sexe' => $x['sexe']] : []);
+    }
+    if (count($roles) === 1) return "Tarif « $nom » : une inscription à plusieurs demande au moins 2 rôles.";
+    if ($roles) $out['roles'] = $roles;
     return $out;
+}
+
+/** Critère d'un rôle : ses propres conditions s'il en a, sinon celles de la session */
+function regles_crit_role(array $role, array $camp): array {
+    return isset($role['age_min']) || !empty($role['tranches']) ? regles_crit($role) : regles_crit_camp($camp);
 }
 
 /** [id tarif => règles] d'une session */
@@ -129,10 +154,12 @@ function regles_crit(array $r): array {
     return ['mode' => 'les2', 'age_min' => $r['age_min'] ?? null, 'age_max' => $r['age_max'] ?? null, 'tranches' => $r['tranches'] ?? []];
 }
 
-/** Places occupées d'une session : une ligne [tarif_id, sexe] par personne inscrite (inscription active). */
+/** Places occupées d'une session : une ligne [tarif_id, enfant_id, sexe] par personne inscrite (inscription active, participants compris). */
 function places_occupees(PDO $pdo, array $camp): array {
     require_once __DIR__ . '/attente.php';
-    $st = $pdo->prepare("SELECT i.tarif_id, e.sexe FROM (SELECT tarif_id, enfant_id FROM inscriptions WHERE camp_id = ? AND " . attente_clause($camp) . ") i
+    $st = $pdo->prepare("SELECT i.tarif_id, COALESCE(p.enfant_id, i.enfant_id) enfant_id, COALESCE(pe.sexe, e.sexe) sexe
+                         FROM (SELECT id, tarif_id, enfant_id FROM inscriptions WHERE camp_id = ? AND " . attente_clause($camp) . ") i
+                         LEFT JOIN inscription_participants p ON p.inscription_id = i.id LEFT JOIN enfants pe ON pe.id = p.enfant_id
                          LEFT JOIN enfants e ON e.id = i.enfant_id");
     $st->execute([$camp['id']]);
     return $st->fetchAll(PDO::FETCH_ASSOC);

@@ -397,7 +397,29 @@ $vaccTxt = function (array $e): string {
             add(`tarifs[${childId}]`, sel.tariffId);
             const tt = tariffs.find(x => x.id == sel.tariffId);
             if (tt && tt.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == sel.tariffId) add(`custom_prices[${childId}]`, sel.customPrice);
+            rolesOf(childId).forEach((pid, i) => add(`participants[${childId}][${i}]`, pid || ''));
         });
+    }
+    // Tarif « à plusieurs » : une personne du compte par rôle (l'enfant choisi en occupe un)
+    const rolesDu = t => (t && t.regles && t.regles.roles) || [];
+    function rolesOf(childId) {
+        const sel = selections[childId] || {}, t = tariffs.find(x => x.id == sel.tariffId);
+        return rolesDu(t).length && sel.rolesFor == t.id ? sel.roles : [];
+    }
+    function convient(role, c) {
+        return (!role.sexe || role.sexe === c.sexe) && (role.age_max == null || c.age == null || (c.age >= role.age_min && c.age <= role.age_max));
+    }
+    function setRole(childId, i, v) { selections[childId].roles[i] = v; showCustomFields(); }
+    function validateRoles() {
+        const vus = new Set(selectedChildIds.map(String));
+        for (const id of selectedChildIds) {
+            const r = rolesOf(id); if (!r.length) continue;
+            const c = allChildren.find(x => x.id == id), t = tariffs.find(x => x.id == selections[id].tariffId);
+            if (r.some(x => !x)) { ColoUI.alert('Choisissez une personne pour chaque rôle du tarif « ' + t.nom + ' ».'); return false; }
+            if (r.filter(x => x == id).length !== 1) { ColoUI.alert(c.prenom + ' doit occuper un (et un seul) des rôles du tarif « ' + t.nom + ' ».'); return false; }
+            for (const x of r) if (x != id) { if (vus.has(String(x))) { ColoUI.alert('Une même personne ne peut pas être inscrite deux fois.'); return false; } vus.add(String(x)); }
+        }
+        return true;
     }
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('mainForm').addEventListener('submit', syncHiddenInputs);
@@ -426,7 +448,7 @@ $vaccTxt = function (array $e): string {
         }
         if (step === 3) { initStep3(); showCustomFields(); }
         if (step === 4) {
-            if (!validateTarifs() || !validateFreeAmounts() || !validateCustomFields()) return;
+            if (!validateTarifs() || !validateRoles() || !validateFreeAmounts() || !validateCustomFields()) return;
             updateSummary(); syncHiddenInputs();
         }
 
@@ -513,6 +535,14 @@ $vaccTxt = function (array $e): string {
                     const val = mine ? selections[childId].customPrice : Math.max(parseFloat(t.prix) || 0, fl);
                     inputHtml = `<div class="mt-2 pl-6 flex flex-wrap items-center gap-2 text-sm"><span class="text-gray-600">Montant libre :</span><input type="number" step="0.01" min="${fl}" value="${val}" class="w-24 border rounded p-1 text-right" data-custom="${childId}-${t.id}" oninput="updateSelection('${childId}', '${t.id}', this.value, true)" onclick="event.stopPropagation()"> € <span class="text-xs text-gray-500">(minimum ${fl.toFixed(2).replace('.', ',')} €)</span></div>`;
                 }
+                const roles = rolesDu(t);
+                if (isSelected && roles.length) {
+                    const sel = selections[childId];
+                    if (sel.rolesFor != t.id) { const i = roles.findIndex(r => convient(r, child)); sel.roles = roles.map((r, j) => j === Math.max(0, i) ? String(childId) : ''); sel.rolesFor = t.id; }
+                    inputHtml += `<div class="mt-3 pl-6 space-y-2 text-sm" onclick="event.stopPropagation()"><p class="text-gray-600">Ce tarif inscrit ${roles.length} personnes : choisissez qui occupe chaque rôle.</p>` +
+                        roles.map((r, i) => `<label class="flex flex-wrap items-center gap-2"><span class="w-32 font-semibold">${escH(r.nom)}</span><select class="border rounded p-1.5 bg-white" onchange="setRole('${childId}', ${i}, this.value)"><option value="">Choisir…</option>${allChildren.map(c => `<option value="${c.id}" ${sel.roles[i] == c.id ? 'selected' : ''}>${escH(c.prenom + ' ' + c.nom)}</option>`).join('')}</select></label>`).join('') +
+                        `<a href="add_child?retour=<?= $retourInscr ?>" class="inline-block text-xs font-semibold text-[#3d6a8e] underline">Ajouter une personne à mon compte</a></div>`;
+                }
 
                 options += `<div class="border rounded-lg p-3 mb-2 cursor-pointer ${borderClass}" onclick="updateSelection('${childId}', '${t.id}', null)">
                     <div class="flex justify-between items-center">
@@ -525,12 +555,14 @@ $vaccTxt = function (array $e): string {
 
             container.innerHTML += `<div class="bg-white border rounded-xl p-5 shadow-sm"><h3 class="font-bold text-lg mb-3 flex items-center"><div class="w-8 h-8 rounded-full bg-[#e5eaef] text-[#3d6a8e] flex items-center justify-center mr-2">${child.prenom.charAt(0)}</div> Tarif pour ${child.prenom}</h3>${options}</div>`;
         });
+        showCustomFields();
     }
 
     // Questions du directeur : seuls les enfants sélectionnés sont affichés (les autres sont désactivés, donc non envoyés)
     function showCustomFields() {
+        const tous = selectedChildIds.concat(...selectedChildIds.map(rolesOf)).map(String);
         document.querySelectorAll('#custom-fields fieldset').forEach(fs => {
-            const on = selectedChildIds.includes(fs.dataset.child);
+            const on = tous.includes(fs.dataset.child);
             fs.disabled = !on;
             fs.classList.toggle('hidden', !on);
         });
@@ -588,7 +620,7 @@ $vaccTxt = function (array $e): string {
             
             const fl = parseFloat(t.plancher) || 0;
             let price = (t.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == t.id) ? Math.max(sel.customPrice, fl) : parseFloat(t.prix);
-            let detail = `(${t.nom})`;
+            let detail = `(${escH(t.nom)}` + rolesOf(childId).filter(x => x != childId).map(x => ' · avec ' + escH((allChildren.find(c => c.id == x) || {}).prenom)).join('') + ')';
 
             if ((index + alreadyRegistered) > 0 && remisePercent > 0) {
                 const discount = price * (remisePercent / 100);

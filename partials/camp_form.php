@@ -609,12 +609,32 @@ const TR = {
             <div class="grid grid-cols-2 gap-3 max-w-xs">${this.num(id, 'age_min', 'Âge min')}${this.num(id, 'age_max', 'Âge max')}</div>
             <div class="flex flex-wrap gap-2">${Object.entries(TRANCHES).map(([k, l]) => `<label class="ds-chip cursor-pointer"><input type="checkbox" class="accent-[#2f3d45]" data-tr="${id}" data-r="tranches" value="${k}" ${(r.tranches || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>
             <p class="ds-hint !mt-0">Laissez vide ce qui ne s'applique pas. Une condition d'âge ou de tranche est contrôlée à l'inscription ; une fois ses places prises, le tarif n'est plus proposé.</p>
+            <details class="rounded-xl border border-[#e5e7eb] p-3" ${(r.roles || []).length ? 'open' : ''}><summary class="cursor-pointer text-sm font-semibold text-[#26343b]">Options avancées : inscription à plusieurs (ex. parent + enfant)</summary>
+                <p class="ds-hint">Ce tarif couvre plusieurs personnes, chacune dans un rôle, pour un prix d'ensemble. À l'inscription, la famille choisit qui occupe chaque rôle et remplit sa fiche ; chaque personne compte une place. Âge et sexe facultatifs ; sans condition, ceux de la session s'appliquent.</p>
+                <div class="space-y-2 mt-2">${(r.roles || []).map((x, i) => `<div class="grid grid-cols-2 sm:grid-cols-[1fr_80px_80px_150px_auto] gap-2 items-center">
+                    <input class="ds-input" maxlength="40" placeholder="Rôle (ex. Parent)" aria-label="Nom du rôle" data-tr="${id}" data-role="${i}" data-k="nom" value="${esc(x.nom || '')}">
+                    <input class="ds-input" type="number" min="0" placeholder="Âge min" aria-label="Âge minimum" data-tr="${id}" data-role="${i}" data-k="age_min" value="${x.age_min == null ? '' : esc(x.age_min)}">
+                    <input class="ds-input" type="number" min="0" placeholder="Âge max" aria-label="Âge maximum" data-tr="${id}" data-role="${i}" data-k="age_max" value="${x.age_max == null ? '' : esc(x.age_max)}">
+                    <select class="ds-select" aria-label="Sexe" data-tr="${id}" data-role="${i}" data-k="sexe">${[['', 'Fille ou garçon'], ['Femme', 'Femme / fille'], ['Homme', 'Homme / garçon']].map(([v, l]) => `<option value="${v}" ${(x.sexe || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+                    <button type="button" class="ds-iconbtn danger" aria-label="Retirer ce rôle" onclick="TR.role(${id}, ${i})">${ICON.trash}</button></div>`).join('')}</div>
+                <button type="button" class="ds-btn ds-btn-light ds-btn-sm mt-2" onclick="TR.role(${id})">Ajouter un rôle</button>
+            </details>
         </div>`;
     },
     toggle(id) { this.open.has(id) ? this.open.delete(id) : this.open.add(id); renderSelectedTarifs(); },
+    role(id, i) {
+        const r = this.r(id); r.roles = r.roles || [];
+        if (i === undefined) { if (!r.roles.length) r.roles.push({ nom: '' }); r.roles.push({ nom: '' }); } else r.roles.splice(i, 1);
+        if (r.roles.length < 2) delete r.roles;
+        SM.markDirty(); renderSelectedTarifs();
+    },
     input(el) {
         const id = +el.dataset.tr, k = el.dataset.r, r = this.r(id);
-        if (k === 'tranches') r.tranches = [...document.querySelectorAll(`[data-tr="${id}"][data-r=tranches]:checked`)].map(x => x.value);
+        if (el.dataset.role !== undefined) {
+            const x = r.roles[+el.dataset.role], kk = el.dataset.k;
+            if (kk === 'nom' || kk === 'sexe') x[kk] = el.value; else if (el.value === '') delete x[kk]; else x[kk] = Math.max(0, parseInt(el.value, 10) || 0);
+        }
+        else if (k === 'tranches') r.tranches = [...document.querySelectorAll(`[data-tr="${id}"][data-r=tranches]:checked`)].map(x => x.value);
         else if (el.value === '') delete r[k]; else r[k] = Math.max(0, parseInt(el.value, 10) || 0);
         const t = TARIFS.find(x => x.id === id), s = document.querySelector(`[data-tr-sum="${id}"]`);
         if (t && s) s.textContent = this.sum(t);

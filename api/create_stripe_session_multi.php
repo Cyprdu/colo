@@ -86,11 +86,8 @@ try {
     }
 
     // 3. Places : une inscription « active » est payée, confirmée, ou en cours de paiement depuis moins de 30 min
-    $active = attente_clause($camp);
-    $stmt = $pdo->prepare("SELECT i.enfant_id, e.sexe FROM inscriptions i JOIN enfants e ON e.id = i.enfant_id WHERE i.camp_id = ? AND $active");
-    $stmt->execute([$camp['id']]);
-    $already = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $alreadyIds = array_map('intval', array_column($already, 'enfant_id'));
+    $occupees = places_occupees($pdo, $camp);
+    $alreadyIds = array_map('intval', array_column($occupees, 'enfant_id'));
     foreach ($ordered as $c) {
         if (in_array((int)$c['id'], $alreadyIds, true)) {
             backWithError($c['prenom'] . ' est déjà inscrit(e) à ce séjour (ou son paiement est en cours).', $campToken, $site);
@@ -105,15 +102,45 @@ try {
 
     // 4 bis. Conditions de chaque tarif (âge, tranche) puis places : séjour, tarif, filles / garçons
     $regles = regles_tarifs_du_camp($pdo, (int)$camp['id']);
-    $demandes = [];
+    $demandes = []; $lots = []; // [id enfant => [[personne, rôle, tranche], …]] pour un tarif « à plusieurs »
+    $pris = array_fill_keys(array_map(fn($c) => (int)$c['id'], $ordered), true);
+    $age = fn($p) => age_au($p['date_naissance'] ?? null, $camp['date_debut']);
     foreach ($ordered as $c) {
-        $tid = (int)($selectedTarifs[$c['id']] ?? 0);
+        $cid = (int)$c['id'];
+        $tid = (int)($selectedTarifs[$cid] ?? 0);
         $tid = isset($tarifs[$tid]) ? $tid : null;
-        $ko = $tid ? admission_probleme(regles_crit($regles[$tid] ?? []), age_au($c['date_naissance'] ?? null, $camp['date_debut']), $trancheDe[(int)$c['id']], (string)$c['prenom'], 'Le tarif « ' . $tarifs[$tid]['nom'] . ' »') : null;
+        $ko = $tid ? admission_probleme(regles_crit($regles[$tid] ?? []), $age($c), $trancheDe[$cid], (string)$c['prenom'], 'Le tarif « ' . $tarifs[$tid]['nom'] . ' »') : null;
         if ($ko) backWithError($ko, $campToken, $site);
-        $demandes[] = ['tarif_id' => $tid, 'sexe' => $c['sexe'] ?? null];
+        $roles = $tid ? ($regles[$tid]['roles'] ?? []) : [];
+        if (!$roles) { $demandes[] = ['tarif_id' => $tid, 'sexe' => $c['sexe'] ?? null]; continue; }
+        // Chaque rôle reçoit une personne du compte ; l'enfant choisi en occupe un ; personne deux fois, personne déjà inscrite
+        $choix = array_map('intval', (array)($_POST['participants'][$cid] ?? []));
+        $ids = array_map(fn($i) => $choix[$i] ?? 0, array_keys($roles));
+        if (count(array_keys($ids, $cid, true)) !== 1) backWithError($c['prenom'] . ' doit occuper un (et un seul) des rôles du tarif « ' . $tarifs[$tid]['nom'] . ' ».', $campToken, $site);
+        $autres = array_values(array_diff(array_filter($ids), [$cid]));
+        $st = $pdo->prepare("SELECT * FROM enfants WHERE parent_id = ? AND id IN (" . implode(',', array_fill(0, max(1, count($autres)), '?')) . ")");
+        $st->execute(array_merge([$userId], $autres ?: [0]));
+        $gens = [$cid => $c] + array_column($st->fetchAll(PDO::FETCH_ASSOC), null, 'id');
+        foreach ($roles as $i => $role) {
+            $p = $gens[$ids[$i]] ?? null;
+            if (!$p) backWithError('Choisissez qui participe en tant que « ' . $role['nom'] . ' » (tarif « ' . $tarifs[$tid]['nom'] . ' »).', $campToken, $site);
+            $pid = (int)$p['id'];
+            if ($pid !== $cid) {
+                if (isset($pris[$pid]) || in_array($pid, $alreadyIds, true)) backWithError($p['prenom'] . ' est déjà inscrit(e) ou choisi(e) pour un autre rôle.', $campToken, $site);
+                $pris[$pid] = true;
+                $trancheDe[$pid] = tranches_valides([(string)($_POST['tranche'][$pid] ?? '')])[0] ?? null;
+                if (($age($p) ?? 0) < 18 && ($manque = options_enfant_manquants($camp, $p))) backWithError('La fiche de ' . $p['prenom'] . ' est incomplète. Champs exigés par l’organisateur : ' . implode(', ', $manque) . '.', $campToken, $site);
+            }
+            if (!empty($role['sexe']) ? ($p['sexe'] ?? null) !== $role['sexe'] : !options_sexe_admis($camp, $p['sexe'] ?? null)) backWithError('Le rôle « ' . $role['nom'] . ' » ne convient pas à ' . $p['prenom'] . '.', $campToken, $site);
+            if ($pid !== $cid || isset($role['age_min']) || !empty($role['tranches'])) {
+                $ko = admission_probleme(regles_crit_role($role, $camp), $age($p), $trancheDe[$pid], (string)$p['prenom'], 'Le rôle « ' . $role['nom'] . ' »');
+                if ($ko) backWithError($ko, $campToken, $site);
+            }
+            $lots[$cid][] = [$p, $role['nom'], $trancheDe[$pid]];
+            $demandes[] = ['tarif_id' => $tid, 'sexe' => $p['sexe'] ?? null];
+        }
     }
-    $ko = places_probleme($camp, $regles, places_occupees($pdo, $camp), $demandes, array_column($tarifs, 'nom', 'id'));
+    $ko = places_probleme($camp, $regles, $occupees, $demandes, array_column($tarifs, 'nom', 'id'));
     if ($ko) backWithError($ko, $campToken, $site);
 
     // 5. Date lisible de la session (affichée sur le paiement)
@@ -132,6 +159,12 @@ try {
             [$ok, $err] = champs_valider($champs, (array)($posted[$child['id']] ?? []), $child['prenom']);
             if ($err) backWithError($err, $campToken, $site);
             $reponses[(int)$child['id']] = $ok;
+            foreach ($lots[(int)$child['id']] ?? [] as [$p, $role]) {   // autres participants : leurs réponses rejoignent l'inscription, préfixées
+                if ((int)$p['id'] === (int)$child['id']) continue;
+                [$ok, $err] = champs_valider($champs, (array)($posted[$p['id']] ?? []), $p['prenom']);
+                if ($err) backWithError($err, $campToken, $site);
+                foreach ($ok as $x) $reponses[(int)$child['id']][] = ['libelle' => mb_substr($p['prenom'] . ' (' . $role . ') · ' . $x['libelle'], 0, 255)] + $x;
+            }
         }
     }
 
@@ -163,6 +196,7 @@ try {
         }
         $cents = (int)round($base * 100);
         $desc = $camp['nom'] . ' · ' . $sessionLabel . ' · ' . $nomTarif;
+        if (!empty($lots[$cid])) $desc .= ' · ' . implode(', ', array_map(fn($x) => $x[0]['prenom'] . ' (' . $x[1] . ')', $lots[$cid]));
         if (($index + $dejaInscrits) > 0 && $remise > 0) {   // remise fratrie : à partir du 2e enfant de la famille sur ce séjour
             $cents = (int)round($cents * (1 - $remise / 100));
             $desc .= ' · remise fratrie -' . rtrim(rtrim(number_format($remise, 2, '.', ''), '0'), '.') . '%';
@@ -193,7 +227,6 @@ try {
         } elseif ($horsStripe) { // règlement direct à l'organisateur : place réservée, aucun appel à Stripe
             $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'Confirmé', $price, 'A_REGLER', $token, strtoupper($moyen), 0, $moyen, $trancheDe[(int)$o['child']['id']]]);
             $horsTokens[] = $token;
-            try { require_once __DIR__ . '/moyens_paiement_lib.php'; fin_hors_commission_due($pdo, (int)$pdo->lastInsertId(), 'reservation'); } catch (Throwable $e) { error_log('commission hors carte: ' . $e->getMessage()); }
         } else {
             $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'En attente', $price, 'EN_ATTENTE', $token, 'NON_DEFINI', 0, 'carte', $trancheDe[(int)$o['child']['id']]]);
             $payTokens[] = $token;
@@ -211,6 +244,10 @@ try {
         }
         $insId = (int)$pdo->lastInsertId();
         $createdIds[] = $insId;
+        if ($o['cents'] !== 0 && $horsStripe) {   // après lecture de l'identifiant : cette écriture change lastInsertId()
+            try { require_once __DIR__ . '/moyens_paiement_lib.php'; fin_hors_commission_due($pdo, $insId, 'reservation'); } catch (Throwable $e) { error_log('commission hors carte: ' . $e->getMessage()); }
+        }
+        foreach ($lots[(int)$o['child']['id']] ?? [] as $n => [$p, $role, $tr]) $pdo->prepare("INSERT INTO inscription_participants (inscription_id, enfant_id, role, tranche, position) VALUES (?, ?, ?, ?, ?)")->execute([$insId, $p['id'], $role, $tr, $n]);
         foreach ($reponses[(int)$o['child']['id']] ?? [] as $r) {
             $pdo->prepare("INSERT INTO inscription_reponses (inscription_id, champ_id, libelle, valeur) VALUES (?, ?, ?, ?)")
                 ->execute([$insId, $r['champ_id'], $r['libelle'], $r['valeur']]);
