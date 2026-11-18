@@ -167,7 +167,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
 
                 <div class="mt-8 flex justify-end">
                     <button type="button" onclick="goToStep(2)" class="px-6 py-3 bg-[#2f3d45] text-white font-bold rounded-lg hover:bg-[#1f2a30] transition">
-                        Suivant &rarr;
+                        Suivant →
                     </button>
                 </div>
             </div>
@@ -238,7 +238,7 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                 <div class="mt-8 pt-6 border-t flex justify-between items-center">
                     <button type="button" onclick="goToStep(2)" class="text-gray-500 hover:text-gray-800">← Retour</button>
                     <button type="button" onclick="goToStep(4)" class="px-6 py-3 bg-[#2f3d45] text-white font-bold rounded-lg hover:bg-[#1f2a30] transition">
-                        Voir le récapitulatif &rarr;
+                        Voir le récapitulatif →
                     </button>
                 </div>
             </div>
@@ -279,7 +279,9 @@ $remise_pourcent = floatval($camp['remise_fratrie'] ?? 0);
                         <span id="btn-payer-txt">Payer en ligne</span>
                     </button>
                     
-                    <?php require_once __DIR__ . '/partials/logos_paiement.php'; echo logos_paiement(); ?>
+                    <div class="mt-6 flex justify-center">
+                        <img src="https://moncamp.fr/uploads/pay.png" alt="Moyens de paiement sécurisés acceptés" class="w-full max-w-sm h-auto object-contain">
+                    </div>
                 </div>
                 <div class="mt-4 text-center">
                     <button type="button" onclick="goToStep(3)" class="text-sm text-gray-500 hover:underline">Modifier les tarifs</button>
