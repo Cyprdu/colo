@@ -5,8 +5,10 @@
 //  - chaque organisme fixe, par séjour, ses conditions : 100 % jusqu'à N jours avant le début, 50 % jusqu'à M jours, ensuite rien (défaut 30 / 15) ;
 //  - moncamp.fr GARDE sa commission (frais de dossier et de gestion : Stripe ne rend pas ses frais) ;
 //  - remboursement à la famille = part remboursable du montant payé − commission retenue (jamais négatif) ;
-//  - l'organisme est débité uniquement de ce montant (sa part nette remboursée) : fin_apply_refund, déclenché par le webhook charge.refunded, ajuste son solde ;
-//    s'il a déjà été versé, le solde devient négatif et se compense sur ses versements suivants. Aucune validation manuelle.
+//  - l'organisme est débité uniquement de ce montant (sa part nette remboursée) : fin_apply_refund, déclenché par le webhook charge.refunded, l'écrit au journal ;
+//    paiement « destination » : Stripe reprend le montant sur le compte de l'organisme (reverse_transfer, commission non rendue) ; s'il a déjà été versé
+//    sur sa banque, son solde Stripe devient négatif (« à compenser ») et se compense sur ses encaissements suivants. Paiement legacy : solde négatif
+//    compensé sur ses versements suivants. Aucune validation manuelle.
 // Une commande de plusieurs enfants : chaque inscription a sa propre ligne de paiement, donc son propre montant (prorata naturel).
 require_once __DIR__ . '/finance_lib.php';
 
@@ -93,7 +95,7 @@ function fin_annul_executer(PDO $pdo, string $resaToken, int $parentId, string $
         $refundId = null;
         if ($rembourse > 0) { // 0 : conditions à 0 % ou commission supérieure à la part remboursable, rien à rendre
             $refundId = fin_stripe()->refunds->create(
-                ['payment_intent' => $p['payment_intent'], 'amount' => $rembourse, 'metadata' => ['annulation' => (string)$annulId, 'inscription' => (string)$c['inscription_id']]],
+                ['payment_intent' => $p['payment_intent'], 'amount' => $rembourse, 'metadata' => ['annulation' => (string)$annulId, 'inscription' => (string)$c['inscription_id']]] + fin_refund_params($p),
                 ['idempotency_key' => 'annul-' . $c['inscription_id'] . '-' . $rembourse]
             )->id;
             $pdo->prepare("UPDATE fin_annulations SET refund_id = ? WHERE id = ?")->execute([$refundId, $annulId]);

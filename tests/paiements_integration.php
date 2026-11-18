@@ -127,4 +127,16 @@ ok($t['en_attente'] === (12500 - 373) - (5000 - 155), 'remboursé après verseme
 $bal(-4845, 11627);
 ok(fin_payouts_run($pdo)['payouts'] === 0, 'solde Stripe négatif : aucun versement');
 
+// ---------------------------------------------------------------- 6. annulation par la famille (destination) : commission conservée, l'organisme est débité
+require __DIR__ . '/../api/annulation_lib.php';
+$p = $pdo->query("SELECT * FROM fin_paiements WHERE inscription_id = 2")->fetch(PDO::FETCH_ASSOC);
+ok(fin_refund_params($p) === ['reverse_transfer' => true, 'refund_application_fee' => false] && fin_refund_params(['mode' => 'legacy']) === [], 'remboursement destination : reverse_transfer, commission non rendue ; legacy inchangé');
+[$rb] = fin_annul_montants((int)$p['brut_cents'], (int)$p['commission_cents'], 40, 30, 15);
+$pdo->prepare("UPDATE fin_paiements SET annul_attendu = ?, annul_com = 1 WHERE id = ?")->execute([$rb, $p['id']]);
+$avant = fin_ledger_totaux($pdo, 2);
+stripe_webhook_process($pdo, $ev('evt_8', 'charge.refunded', ['id' => 'ch_D', 'payment_intent' => 'pi_D', 'amount_refunded' => $rb, 'amount' => 12500]));
+$apres = fin_ledger_totaux($pdo, 2);
+ok($apres['rembourse'] - $avant['rembourse'] === 2407 && $apres['commission'] === $avant['commission'], 'annulation : 24,07 EUR rendus, commission conservée au journal');
+ok((int)$pdo->query("SELECT rembourse_cents FROM fin_paiements WHERE inscription_id = 3")->fetchColumn() === 0, 'annulation : le frère ou la sœur n\'est pas touché');
+
 echo "Tout est bon.\n";

@@ -343,6 +343,15 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
     // Annulation par la famille (fin_annul_executer) : le remboursement revient à CETTE inscription (montant attendu), pas au prorata des frères et sœurs,
     // et la commission moncamp.fr est conservée : seul le net de l'organisme est débité, du montant remboursé.
     $reste = $refundedCents - (int)array_sum(array_column($rows, 'rembourse_cents'));
+    // Part du remboursement qui ne vient pas d'une annulation ciblée : répartie au prorata des SEULES inscriptions non annulées
+    $annul = 0; $base = 0; $r2 = $reste;
+    foreach ($rows as $p) {
+        $att = (int)$p['annul_attendu'];
+        if ($att > 0 && $r2 >= $att) { $r2 -= $att; $annul += (int)$p['rembourse_cents'] + $att; }
+        elseif ((int)$p['annul_com'] === 1) $annul += (int)$p['rembourse_cents'];
+        else $base += (int)$p['brut_cents'];
+    }
+    $libre = max(0, $refundedCents - $annul);
     foreach ($rows as $p) {
         $brut = (int)$p['brut_cents'];
         $att = (int)$p['annul_attendu'];
@@ -354,7 +363,7 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
             $pdo->prepare("UPDATE fin_paiements SET annul_attendu = 0, annul_com = 1 WHERE id = ?")->execute([$p['id']]);
         } else {
             if ((int)$p['annul_com'] === 1) continue; // inscription déjà annulée par la famille : le prorata ne la concerne plus
-            $newRef = $refundedCents >= $capturedCents ? $brut : (int)round($brut * $refundedCents / $capturedCents);
+            $newRef = ($refundedCents >= $capturedCents || $libre >= $base) ? $brut : (int)round($brut * $libre / $base);
             $newNetRef = null;
         }
         $newRef = min($brut, max((int)$p['rembourse_cents'], $newRef));

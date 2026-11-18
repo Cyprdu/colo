@@ -332,7 +332,7 @@ function equipe_annuler(PDO $pdo, array $e, array $camp, int $userId): array {
     } catch (Throwable $x) { if ($pdo->inTransaction()) $pdo->rollBack(); error_log('equipe_annuler: ' . $x->getMessage()); return [false, 'Une erreur est survenue, réessayez plus tard.']; }
     try {
         if ($rembourse > 0) {
-            $rid = fin_stripe()->refunds->create(['payment_intent' => $p['payment_intent'], 'amount' => $rembourse, 'metadata' => ['annulation' => (string)$annulId, 'inscription' => (string)$pid]],
+            $rid = fin_stripe()->refunds->create(fin_refund_params($p) + ['payment_intent' => $p['payment_intent'], 'amount' => $rembourse, 'metadata' => ['annulation' => (string)$annulId, 'inscription' => (string)$pid]],
                 ['idempotency_key' => 'annul-' . $pid . '-' . $rembourse])->id;
             $pdo->prepare("UPDATE fin_annulations SET refund_id = ? WHERE id = ?")->execute([$rid, $annulId]);
         }

@@ -2,6 +2,15 @@
 // api/destination_lib.php : opérations Stripe propres aux « destination charges » (inclus par finance_lib.php).
 // Tous les appels passent par fin_stripe() (remplacé par tests/stripe_stub.php dans les tests) et ont une clé d'idempotence.
 
+/**
+ * Paramètres Stripe d'un remboursement selon le modèle du paiement. Destination : reverse_transfer = l'organisme est débité du remboursé
+ * (s'il a déjà été versé, son solde Stripe devient négatif et se compense sur ses encaissements suivants : « à compenser ») ;
+ * refund_application_fee = false : moncamp.fr garde sa commission (règle d'annulation de annulation_lib.php), true : rendue au prorata.
+ */
+function fin_refund_params(array $p, bool $rendreCommission = false): array {
+    return ($p['mode'] ?? 'legacy') === 'destination' ? ['reverse_transfer' => true, 'refund_application_fee' => $rendreCommission] : [];
+}
+
 /** Charge d'un PaymentIntent (objet), avec son transfert et sa commission (application_fee) */
 function fin_charge_of(string $paymentIntent) {
     $ch = fin_stripe()->paymentIntents->retrieve($paymentIntent, ['expand' => ['latest_charge']])->latest_charge ?? null;
