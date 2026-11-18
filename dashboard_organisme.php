@@ -325,7 +325,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     <!-- Hors carte -->
     <section class="fd-panel" role="tabpanel" id="pan-hors" aria-labelledby="tab-hors" hidden>
-        <p style="font-size:14px;color:var(--ds-muted);margin:0 0 10px">Règlements choisis par les familles hors carte (chèque, virement, espèces, ANCV…), pas encore reçus. Marquez-les reçus à l'encaissement<?= $help("Commission moncamp.fr sur les paiements hors carte : " . number_format(fin_hors_stripe_pct(), 1, ',', ' ') . " %, retenue sur vos prochains versements par carte.") ?></p>
+        <p style="font-size:14px;color:var(--ds-muted);margin:0 0 10px">Règlements choisis par les familles hors carte (chèque, virement, espèces, ANCV…), pas encore reçus. Marquez-les reçus à l'encaissement<?= $help("Commission moncamp.fr sur les règlements hors carte (espèces, chèque…) : " . number_format(fin_hors_stripe_pct(), 1, ',', ' ') . " %. Elle est due dès la réservation, même si l'inscription est annulée ensuite, et devient une dette retenue sur vos prochains paiements par carte.") ?></p>
         <div class="fd-tw"><table class="fd-t" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Séjour</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Moyen</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th><th><span class="fd-th" style="cursor:default">Inscrit le</span></th><th></th></tr></thead><tbody id="hBody"></tbody></table></div>
     </section>
 
@@ -628,7 +628,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     $('lBody').addEventListener('keydown', function (e) { var tr = e.target.closest('.fd-tr'); if (tr && e.key === 'Enter') detail(tr.dataset.k, tr); });
     document.addEventListener('click', function (e) {
         var b = e.target.closest('[data-recu]'); if (!b) return;
-        if (!confirm('Confirmer la réception de ce règlement ? La commission hors carte sera retenue sur vos prochains versements par carte.')) return;
+        if (!confirm('Confirmer la réception de ce règlement ?')) return;
         b.disabled = true; var fd = new FormData(); fd.append('csrf', CSRF); fd.append('t', b.dataset.recu);
         fetch('api/marquer_recu.php', { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); })
             .then(function (d) { if (d.error) { alert(d.error); b.disabled = false; return; } if (!$('drawer').hidden) closeDr(); load(); })
