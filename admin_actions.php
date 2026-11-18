@@ -36,7 +36,39 @@ function act_set_staff(int $id, array $roles, array $perms): void {
     } catch (Throwable $e) { $pdo->rollBack(); throw $e; }
 }
 
+function act_toks(array $in, string $kind): array {
+    $v = $in['ids'] ?? [];
+    $v = is_array($v) ? $v : explode(',', (string)$v);
+    $ids = array_values(array_unique(array_filter(array_map(fn($t) => adm_untok($kind, trim((string)$t)), array_slice($v, 0, 500)))));
+    if (!$ids) throw new AdmUserError('Aucun élément sélectionné.');
+    return $ids;
+}
+
 return [
+    'notif.read' => ['', false, function (array $in) {
+        global $pdo;
+        $uid = (int)$_SESSION['user']['id'];
+        $ids = act_toks($in, 'n');
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        if (($in['read'] ?? '1') === '1') $pdo->prepare("INSERT IGNORE INTO adm_notif_lus (notif_id, user_id) SELECT id, ? FROM adm_notifs WHERE id IN ($ph)")->execute(array_merge([$uid], $ids));
+        else $pdo->prepare("DELETE FROM adm_notif_lus WHERE user_id = ? AND notif_id IN ($ph)")->execute(array_merge([$uid], $ids));
+        return [];
+    }],
+    'notif.allread' => ['', false, function (array $in) {
+        global $pdo;
+        $uid = (int)$_SESSION['user']['id'];
+        [$w, $p] = adm_notif_where();
+        $type = (string)($in['type'] ?? '');
+        if ($type !== '') { $w .= ' AND n.type = ?'; $p[] = $type; }
+        $role = (string)($in['role'] ?? '');
+        if ($role !== '') {
+            $rp = array_column(adm_rows("SELECT rp.perm FROM adm_role_perms rp JOIN adm_roles r ON r.id = rp.role_id WHERE r.code = ?", [$role]), 'perm');
+            $w .= $rp ? ' AND n.perm IN (' . implode(',', array_fill(0, count($rp), '?')) . ')' : ' AND 0=1';
+            $p = array_merge($p, $rp);
+        }
+        $pdo->prepare("INSERT IGNORE INTO adm_notif_lus (notif_id, user_id) SELECT n.id, ? FROM adm_notifs n WHERE $w")->execute(array_merge([$uid], $p));
+        return [];
+    }],
     'team.add' => ['supreme', true, function (array $in) {
         $email = trim((string)($in['email'] ?? ''));
         $id = (int)adm_one("SELECT id FROM users WHERE email = ?", [$email]);

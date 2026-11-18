@@ -404,6 +404,17 @@
       api(body).then(function (j) { b.disabled = false; done(j, b); }, function (err) { b.disabled = false; toast(err.message, true); });
     });
   });
+  function selSync() {
+    var n = document.querySelectorAll('input[name="sel[]"]:checked').length, b = $('#bulk');
+    if (b) b.hidden = !n;
+    document.querySelectorAll('[data-selcount]').forEach(function (s) { s.textContent = n; });
+  }
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('[data-selall]')) { document.querySelectorAll('input[name="sel[]"]').forEach(function (c) { c.checked = t.checked; }); selSync(); }
+    else if (t.matches && t.matches('input[name="sel[]"]')) selSync();
+    else if (t.matches && t.matches('[data-autosubmit]')) t.form.submit();
+  });
   window.ADM = { api: api, toast: toast, confirmBox: confirmBox, dialog: dialog, el: el, icon: icon };
 
   if (DATA.page === 'list') listActions();
