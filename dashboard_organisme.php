@@ -157,18 +157,18 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
             <div class="mk-stat dark"><div class="k">Prochain versement<?= $help("Somme versée sur votre compte bancaire au prochain jour de versement. Elle comprend les inscriptions payées depuis au moins " . (int)$fin['delai_jours'] . " jours, hors réserve. Le jour est fixe chaque semaine" . ($fin['jour_nom'] ? " (" . $fin['jour_nom'] . ")" : "") . ".") ?></div><div class="v"><?= fin_eur($fin['prochain']['cents'] ?? 0) ?></div><div class="s"><?= $fin['prochain'] ? date('d/m/Y', strtotime($fin['prochain']['d'])) : 'date à venir' ?></div></div>
             <div class="mk-stat"><div class="k">Réserve<?= $help(number_format($fin['reserve_pct'], 0, ',', ' ') . " % de chaque paiement est gardé de côté tant qu'une famille peut annuler et être remboursée. Il vous est versé automatiquement ensuite : ce n'est pas un frais.") ?></div><div class="v"><?= fin_eur($fin['reserve_cents']) ?></div></div>
             <div class="mk-stat"><div class="k">Déjà versé<?= $help("Total des versements envoyés sur votre compte bancaire via Stripe.") ?></div><div class="v"><?= fin_eur($fin['verse_cents']) ?></div></div>
-            <div class="mk-stat"><div class="k">Commission<?= $help("Commission ColoMap : " . number_format(fin_commission_pct(), 1, ',', ' ') . " %" . (fin_commission_fixe_cents() > 0 ? " + " . fin_eur(fin_commission_fixe_cents()) : "") . " du montant payé par inscription, frais bancaires de paiement par carte inclus. Aucun autre frais.") ?></div><div class="v"><?= fin_eur($fin['commission_nette_cents']) ?></div></div>
+            <div class="mk-stat"><div class="k">Commission<?= $help("Commission moncamp.fr : " . number_format(fin_commission_pct(), 1, ',', ' ') . " %" . (fin_commission_fixe_cents() > 0 ? " + " . fin_eur(fin_commission_fixe_cents()) : "") . " du montant payé par inscription, frais bancaires de paiement par carte inclus. Aucun autre frais.") ?></div><div class="v"><?= fin_eur($fin['commission_nette_cents']) ?></div></div>
             <div class="mk-stat"><div class="k">Points marketing</div><div class="v"><?= number_format((int)$fin['points'], 0, ',', ' ') ?></div></div>
         </div>
         <?php if ($fin['solde_cents'] < 0): ?><div class="ds-alert-err" style="margin-top:14px">Solde négatif : <?= fin_eur(-$fin['solde_cents']) ?> seront retirés de vos prochains versements. <?= $help("Une famille a été remboursée après que vous avez reçu l'argent.") ?></div><?php endif; ?>
-        <?php if ($fin['historique_cents'] > 0): ?><div class="ds-alert-ok" style="margin-top:14px">Solde de l'ancien système : <?= fin_eur($fin['historique_cents']) ?> <?= $help("Réglé manuellement par l'équipe ColoMap : contactez-nous pour le recevoir.") ?></div><?php endif; ?>
+        <?php if ($fin['historique_cents'] > 0): ?><div class="ds-alert-ok" style="margin-top:14px">Solde de l'ancien système : <?= fin_eur($fin['historique_cents']) ?> <?= $help("Réglé manuellement par l'équipe moncamp.fr : contactez-nous pour le recevoir.") ?></div><?php endif; ?>
     </section>
 
     <!-- Versements -->
     <section class="mk-section" style="margin-top:16px">
         <div class="ds-card" style="padding:16px 20px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:12px"><span class="ds-tile-ico" style="width:40px;height:40px"><?= mk_icon($ready ? 'check' : 'bank', 20) ?></span>
-                <b class="text-[#26343b]"><?= $statusTxt ?></b><?= $help($ready ? "L'argent des inscriptions est versé automatiquement sur votre compte bancaire, chaque semaine, sans attendre le séjour." : "Pour être payé, renseignez votre identité et votre IBAN directement chez Stripe (5 minutes). ColoMap ne voit ni ne conserve ces données." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?></div>
+                <b class="text-[#26343b]"><?= $statusTxt ?></b><?= $help($ready ? "L'argent des inscriptions est versé automatiquement sur votre compte bancaire, chaque semaine, sans attendre le séjour." : "Pour être payé, renseignez votre identité et votre IBAN directement chez Stripe (5 minutes). moncamp.fr ne voit ni ne conserve ces données." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
                 <?php if (!$ready): ?><a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= fin_orga_tok($orgaId) ?>"><?= $hasAccount ? 'Continuer' : 'Activer mes versements' ?></a>
                 <?php elseif (($acc['type'] ?? '') === 'express'): ?><a class="ds-btn ds-btn-light" href="api/connect_dashboard.php?organisateur_id=<?= $orgaId ?>" target="_blank" rel="noopener">Espace Stripe</a><?php endif; ?>
@@ -202,7 +202,7 @@ $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmls
     <!-- Derniers paiements -->
     <?php if ($recent): ?>
     <section class="mk-section">
-        <h2 style="margin:0">Derniers paiements<?= $help("Payé par la famille, commission ColoMap, puis net pour vous.") ?></h2>
+        <h2 style="margin:0">Derniers paiements<?= $help("Payé par la famille, commission moncamp.fr, puis net pour vous.") ?></h2>
         <div class="mk-table-wrap" style="margin-top:12px"><table class="mk-table" style="min-width:560px">
             <thead><tr><th>Date</th><th>Séjour</th><th class="num">Payé</th><th class="num">Commission</th><th class="num">Net</th></tr></thead><tbody>
             <?php foreach (array_slice($recent, 0, 8) as $p): ?>

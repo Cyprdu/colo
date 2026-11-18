@@ -28,7 +28,7 @@ function err_page(): void {
     http_response_code(500);
     $wantsJson = (strpos((string)($_SERVER['REQUEST_URI'] ?? ''), '/api/') !== false) || stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') === 0;
     if ($wantsJson) { header('Content-Type: application/json; charset=utf-8'); echo json_encode(['error' => 'Une erreur est survenue. Réessayez dans un instant.']); return; }
-    echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Petit souci - ColoMap</title>'
+    echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Petit souci - moncamp.fr</title>'
        . '<style>body{font-family:Montserrat,system-ui,sans-serif;background:#f8f5ea;color:#26343b;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}'
        . '.c{max-width:440px;padding:32px;text-align:center}h1{font-size:24px;margin:0 0 8px}p{color:#4b5964;line-height:1.5}a,button{display:inline-block;margin-top:16px;padding:12px 22px;border-radius:12px;background:#2f3d45;color:#fff;font-weight:700;text-decoration:none;border:0;font:inherit;cursor:pointer}</style></head>'
        . '<body><div class="c"><h1>Petit souci de notre côté</h1><p>La page n\'a pas pu s\'afficher. C\'est enregistré et nous allons regarder. Réessayez dans un instant.</p><button onclick="location.reload()">Actualiser</button> <a href="/">Accueil</a></div></body></html>';

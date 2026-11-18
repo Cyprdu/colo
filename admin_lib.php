@@ -16,6 +16,7 @@ const ADM_IDLE_MAX   = 1800;  // 30 min d'inactivité : session admin close
 const ADM_REAUTH_TTL = 600;   // 10 min de validité après saisie du mot de passe
 const ADM_PER_PAGE   = 25;
 
+require_once __DIR__ . '/partials/logo.php';
 require_once __DIR__ . '/api/config.php';
 
 /* ------------------------------------------------------------------ en-têtes */
@@ -305,11 +306,11 @@ function adm_head(string $title, string $active = ''): void {
     $name = trim(($me['prenom'] ?? '') . ' ' . ($me['nom'] ?? ''));
     echo '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="robots" content="noindex,nofollow"><meta name="csrf" content="' . h(adm_csrf()) . '">'
-       . '<title>' . h($title) . ' · Administration ColoMap</title><link rel="icon" type="image/png" href="favico.png">'
+       . '<title>' . h($title) . ' · Administration moncamp.fr</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">'
        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
        . '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
        . '<link rel="stylesheet" href="assets/admin.css?v=3"></head><body>' . adm_sprite()
-       . '<div class="adm" id="adm"><aside class="side" id="side"><a class="brand" href="admin.php">' . ic('shield', 'ic ic-lg') . '<span>ColoMap<small>Administration</small></span></a><nav>';
+       . '<div class="adm" id="adm"><aside class="side" id="side"><a class="brand" href="admin.php">' . mc_logo('light', false, 30) . '<span>moncamp.fr<small>Administration</small></span></a><nav>';
     foreach (adm_nav() as $grp => $items) {
         echo '<div class="grp">' . h($grp) . '</div>';
         foreach ($items as [$href, $icon, $label, $badge]) {

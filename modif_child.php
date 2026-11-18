@@ -195,7 +195,7 @@ $consentBloc = function () use ($enfant) {
         echo '<p class="text-[13px] text-[#6b7780]">Consentement au traitement des données de santé enregistré le ' . htmlspecialchars(date('d/m/Y', strtotime($enfant['sante_consent_at']))) . '.</p>';
         return;
     }
-    echo '<label class="flex items-start gap-3 cursor-pointer bg-[#f8f5ea] border border-[#ebe3c8] rounded-xl p-4"><input type="checkbox" name="consent_sante" value="1" class="mt-1 w-4 h-4"><span class="text-[13.5px] text-[#26343b]"><strong>Consentement (données de santé).</strong> J\'accepte que ColoMap enregistre, de façon chiffrée, les informations de santé de mon enfant et ses documents médicaux, uniquement pour les transmettre aux organisateurs des séjours auxquels je l\'inscris. Je peux les effacer à tout moment depuis cette page. <a href="legal#confidentialite" class="underline text-[#3d6a8e]" target="_blank">Politique de confidentialité</a></span></label>';
+    echo '<label class="flex items-start gap-3 cursor-pointer bg-[#f8f5ea] border border-[#ebe3c8] rounded-xl p-4"><input type="checkbox" name="consent_sante" value="1" class="mt-1 w-4 h-4"><span class="text-[13.5px] text-[#26343b]"><strong>Consentement (données de santé).</strong> J\'accepte que moncamp.fr enregistre, de façon chiffrée, les informations de santé de mon enfant et ses documents médicaux, uniquement pour les transmettre aux organisateurs des séjours auxquels je l\'inscris. Je peux les effacer à tout moment depuis cette page. <a href="legal#confidentialite" class="underline text-[#3d6a8e]" target="_blank">Politique de confidentialité</a></span></label>';
 };
 $fileUrl = fn($type, $name) => 'api/secure_file.php?type=' . $type . '&file=' . urlencode((string)$name);
 $age = null;
@@ -204,7 +204,7 @@ if (!empty($enfant['date_naissance'])) { try { $age = (new DateTime($enfant['dat
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Fiche de <?= htmlspecialchars($enfant['prenom']) ?> - ColoMap</title>
+<title>Fiche de <?= htmlspecialchars($enfant['prenom']) ?> - moncamp.fr</title>
 <style>
   .fc-nav a { display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:12px; font-size:14.5px; font-weight:600; color:#3b4a54; white-space:nowrap }
   .fc-nav a:hover { background:#f1f3f5 }

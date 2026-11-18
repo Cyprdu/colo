@@ -41,7 +41,7 @@ $h = fn($s) => htmlspecialchars((string)$s);
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Ajouter un enfant - ColoMap</title>
+<title>Ajouter un enfant - moncamp.fr</title>
 
 <main class="ds-page ds-fade" style="max-width:640px">
     <a href="children" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">

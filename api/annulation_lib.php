@@ -3,7 +3,7 @@
 //
 // RÈGLES (annoncées à la famille AVANT le paiement et rappelées sur la page d'annulation) :
 //  - chaque organisme fixe, par séjour, ses conditions : 100 % jusqu'à N jours avant le début, 50 % jusqu'à M jours, ensuite rien (défaut 30 / 15) ;
-//  - ColoMap GARDE sa commission (frais de dossier et de gestion : Stripe ne rend pas ses frais) ;
+//  - moncamp.fr GARDE sa commission (frais de dossier et de gestion : Stripe ne rend pas ses frais) ;
 //  - remboursement à la famille = part remboursable du montant payé − commission retenue (jamais négatif) ;
 //  - l'organisme est débité uniquement de ce montant (sa part nette remboursée) : fin_apply_refund, déclenché par le webhook charge.refunded, ajuste son solde ;
 //    s'il a déjà été versé, le solde devient négatif et se compense sur ses versements suivants. Aucune validation manuelle.
@@ -40,7 +40,7 @@ function fin_jours_avant(string $dateDebut): int {
 /** Phrase de conditions d'un séjour, pour le parent (avant paiement et page d'annulation) */
 function fin_annul_texte(int $jt, int $jm): string {
     return 'Annulation : remboursement à 100 % jusqu\'à ' . $jt . ' jours avant le début du séjour, à 50 % jusqu\'à ' . $jm . ' jours avant, puis aucun remboursement. '
-         . 'La commission de service ColoMap (frais de dossier et de gestion : ' . number_format(fin_commission_pct(), 2, ',', ' ') . ' % + ' . fin_eur(fin_commission_fixe_cents())
+         . 'La commission de service moncamp.fr (frais de dossier et de gestion : ' . number_format(fin_commission_pct(), 2, ',', ' ') . ' % + ' . fin_eur(fin_commission_fixe_cents())
          . ' par inscription) reste acquise : elle est déduite du remboursement.';
 }
 
@@ -124,7 +124,7 @@ function fin_annul_notifier(PDO $pdo, int $annulId): void {
         sendMailGmail($a['email'], $a['orga'], 'Annulation d\'une inscription - ' . $a['camp'],
             '<p>Bonjour,</p><p>L\'inscription de <b>' . $h($a['prenom'] . ' ' . $a['nom']) . '</b> au séjour <b>' . $h($a['camp']) . '</b> a été annulée par la famille (motif : '
             . $h(FIN_ANNUL_MOTIFS[$a['motif']] ?? $a['motif']) . ').</p><p>Remboursement à la famille : ' . $h(fin_eur((int)$a['rembourse_cents']))
-            . ', déduit de votre solde (commission ColoMap conservée). La place est libérée.</p><p>ColoMap</p>');
+            . ', déduit de votre solde (commission moncamp.fr conservée). La place est libérée.</p><p>moncamp.fr</p>');
     } catch (Throwable $e) { error_log('fin_annul_notifier: ' . $e->getMessage()); }
 }
 

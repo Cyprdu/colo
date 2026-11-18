@@ -50,7 +50,7 @@ try {
             'price_data' => [
                 'currency' => 'eur',
                 'unit_amount' => $pack['cents'],
-                'product_data' => ['name' => $pack['name'] . ' (' . $pack['points'] . ' pts)', 'description' => mb_substr('Crédits marketing ColoMap pour : ' . $orga['nom'], 0, 300)],
+                'product_data' => ['name' => $pack['name'] . ' (' . $pack['points'] . ' pts)', 'description' => mb_substr('Crédits marketing moncamp.fr pour : ' . $orga['nom'], 0, 300)],
             ],
             'quantity' => 1,
         ]],

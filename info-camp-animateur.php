@@ -8,7 +8,7 @@ $self = 'info-camp-animateur.php?t=' . urlencode($t);
 if (!isset($_SESSION['user'])) { header('Location: login.php?redirect=' . urlencode($self)); exit; }
 $is_anim = !empty($_SESSION['user']['is_animateur']);
 ?>
-<title>Séjour - Espace animateur - ColoMap</title>
+<title>Séjour - Espace animateur - moncamp.fr</title>
 <main class="ds-page" style="max-width:860px">
     <a href="missions" class="text-[14px] font-semibold text-[#6b7780] hover:text-[#26343b]">&larr; Missions</a>
 <?php if (!$is_anim): ?>

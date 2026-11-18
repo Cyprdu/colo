@@ -1,5 +1,5 @@
 <?php
-// api/buy_points_wallet.php : achat d'un pack de points directement avec l'argent que l'organisme a gagné sur ColoMap
+// api/buy_points_wallet.php : achat d'un pack de points directement avec l'argent que l'organisme a gagné sur moncamp.fr
 // (solde « à recevoir », net de commission). Aucun paiement par carte. Opération atomique et verrouillée :
 // débit du solde + crédit des points + écriture dans le journal d'audit.
 require_once 'config.php';

@@ -5,7 +5,7 @@
 //  - la famille choisit un moyen parmi ceux acceptés par le séjour (camps.moyens_paiement). Carte = Stripe Checkout (inchangé).
 //  - autre moyen : l'inscription est enregistrée (place réservée), statut_paiement = 'A_REGLER', moyen_paiement = code ; AUCUN appel à Stripe.
 //  - l'organisateur marque « reçu » quand il a encaissé (seulement pour SES inscriptions) : fin_marquer_recu().
-//    ColoMap retient alors une commission (défaut 1 %, réglable) : écriture dans fin_commissions_hors + débit du portefeuille de l'organisme,
+//    moncamp.fr retient alors une commission (défaut 1 %, réglable) : écriture dans fin_commissions_hors + débit du portefeuille de l'organisme,
 //    donc déduite de ses prochains versements par carte ; si la cagnotte carte est insuffisante le solde reste négatif (suivi, compensé plus tard).
 
 const FIN_DEFAULT_HORS_PCT = 1.0;
@@ -61,7 +61,7 @@ function fin_marquer_recu(PDO $pdo, string $resaToken, int $userId): array {
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$com / 100, $i['organisateur_id']]);
         fin_audit($pdo, 'paiement_hors_stripe_recu', 'inscription', $i['id'], ['moyen' => $i['moyen_paiement'], 'brut' => $brut, 'commission' => $com, 'pct' => $pct], 'user:' . $userId);
         $pdo->commit();
-        return [true, 'Règlement enregistré. Commission ColoMap de ' . fin_eur($com) . ' déduite de vos prochains versements par carte.'];
+        return [true, 'Règlement enregistré. Commission moncamp.fr de ' . fin_eur($com) . ' déduite de vos prochains versements par carte.'];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('fin_marquer_recu: ' . $e->getMessage());

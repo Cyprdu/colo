@@ -1,4 +1,4 @@
-/* ColoMap : autocomplétion de la barre de recherche de l'en-tête (api/search_suggest.php).
+/* moncamp.fr : autocomplétion de la barre de recherche de l'en-tête (api/search_suggest.php).
    Légère : 2 lettres minimum, 180 ms de pause avant l'appel, réponses gardées en mémoire, un seul appel à la fois. Sans JavaScript, la recherche marche comme avant. */
 (function () {
     'use strict';

@@ -21,7 +21,7 @@ function sendMailGmail($toEmail, $toName, $subject, $bodyContent) {
         $mail->Port       = 587;                                    
 
         // --- Expéditeur et Destinataire ---
-        $mail->setFrom('colomap.secu@gmail.com', 'ColoMap'); // Doit être le même que Username
+        $mail->setFrom('colomap.secu@gmail.com', 'moncamp.fr'); // Doit être le même que Username
         $mail->addAddress($toEmail, $toName);     
 
         // --- Contenu ---

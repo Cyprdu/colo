@@ -38,14 +38,14 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 require_once 'partials/mk_icons.php';
 ?>
-<title>Marketing et visibilité - ColoMap</title>
+<title>Marketing et visibilité - moncamp.fr</title>
 <link rel="stylesheet" href="assets/mk.css?v=1">
 
 <main class="mk-wrap">
     <a href="profile.php" class="mk-back"><?= mk_icon('back', 16) ?> Tableau de bord</a>
 
     <section class="mk-hero">
-        <p class="ds-eyebrow" style="color:rgba(255,255,255,.75)">Marketing ColoMap</p>
+        <p class="ds-eyebrow" style="color:rgba(255,255,255,.75)">Marketing moncamp.fr</p>
         <h1>Remplissez vos séjours avec les familles qui les cherchent</h1>
         <p>Votre séjour est déjà visible gratuitement. Les boosts le placent devant les familles au moment où elles comparent, et vous voyez précisément ce que chaque point investi rapporte : impressions, clics, inscriptions et coût par inscription.</p>
         <div class="mk-actions">
@@ -135,7 +135,7 @@ require_once 'partials/mk_icons.php';
                 <?php endif; ?>
             </div>
             <div class="mk-stat">
-                <div class="k">Effet mesuré sur ColoMap</div>
+                <div class="k">Effet mesuré sur moncamp.fr</div>
                 <?php if ($proof): ?>
                     <div class="v">x<?= number_format($proof['multiplicateur'], 1, ',', ' ') ?></div>
                     <div class="s">Les séjours boostés reçoivent <?= number_format($proof['multiplicateur'], 1, ',', ' ') ?> fois plus de visites par affichage que les autres (30 derniers jours, <?= number_format($proof['boost_impressions'], 0, ',', ' ') ?> impressions observées).</div>

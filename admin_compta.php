@@ -139,9 +139,9 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
 <?php endif; ?>
 <section class="kpis">
   <div class="kpi"><span class="ico"><?= ic('euro') ?></span><div><b><?= $e($sum['ca']) ?></b><span>Chiffre d'affaires encaissé</span><small><?= $sum['nb'] ?> paiement<?= $sum['nb'] > 1 ? 's' : '' ?> · remboursé : <?= $e($sum['rembourse']) ?></small></div></div>
-  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions ColoMap</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
+  <div class="kpi"><span class="ico"><?= ic('chart') ?></span><div><b><?= $e($sum['commission']) ?></b><span>Commissions moncamp.fr</span><small>nettes des remboursements, frais Stripe inclus</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('card') ?></span><div><b><?= $e($sum['frais'] + $sum['litige']) ?></b><span>Frais Stripe réels</span><small>dont litiges : <?= $e($sum['litige']) ?></small></div></div>
-  <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette ColoMap</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
+  <div class="kpi<?= $sum['marge'] < 0 ? ' bad' : '' ?>"><span class="ico"><?= ic('star') ?></span><div><b><?= $e($sum['marge']) ?></b><span>Marge nette moncamp.fr</span><small>commission − frais Stripe (paiements relevés)</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('ticket') ?></span><div><b><?= $e($hs['commission']) ?></b><span>Commissions hors carte</span><small><?= $hs['nb'] ?> règlement<?= $hs['nb'] > 1 ? 's' : '' ?> (<?= $e($hs['brut']) ?>) · retenues sur les versements par carte</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('building') ?></span><div><b><?= $e($sum['du_total']) ?></b><span>Dû aux organismes</span><small>net total de la période</small></div></div>
   <div class="kpi"><span class="ico"><?= ic('check') ?></span><div><b><?= $e($sum['verse']) ?></b><span>Déjà versé</span><small>transferts exécutés</small></div></div>
@@ -249,7 +249,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
     <div class="kv"><span>− Frais de litige</span><b><?= $e($rc['litige']) ?></b></div>
     <div class="kv"><span>dont commissions hors carte (retenues sur les versements : l'argent reste chez vous)</span><b><?= $e($rc['hors']) ?></b></div>
     <div class="kv"><span>− Transferts envoyés aux organismes</span><b><?= $e($rc['transferts']) ?></b></div>
-    <div class="kv"><span><b>= Fonds ColoMap attendus (Stripe + banque)</b></span><b><?= $e($rc['theorique']) ?></b></div>
+    <div class="kv"><span><b>= Fonds moncamp.fr attendus (Stripe + banque)</b></span><b><?= $e($rc['theorique']) ?></b></div>
     <?php if ($rc['frais_inconnus'] > 0): ?><p class="muted small"><?= $rc['frais_inconnus'] ?> paiement(s) sans frais relevés : le théorique est surévalué d'autant.</p><?php endif; ?>
   </section>
   <section class="card"><h2 class="sec"><?= ic('bank') ?> D'après Stripe (réel)</h2>
@@ -268,7 +268,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
   <div class="kv"><span>Solde Stripe disponible</span><b><?= $e($stripeBal['disponible']) ?></b></div>
   <div class="kv"><span>− Dû aux organismes (net non encore transféré)</span><b><?= $e($rc['du_orgas']) ?></b></div>
   <div class="kv"><span><b>= Montant versable sur votre banque sans toucher aux fonds des organismes</b></span><b class="big"><?= $e($rc['versable']) ?></b></div>
-  <p class="muted small">C'est votre commission accumulée (marge + frais Stripe déjà payés). Le virement se fait dans Stripe (Soldes &gt; Virement) : ColoMap ne déclenche jamais de virement vers votre banque.</p>
+  <p class="muted small">C'est votre commission accumulée (marge + frais Stripe déjà payés). Le virement se fait dans Stripe (Soldes &gt; Virement) : moncamp.fr ne déclenche jamais de virement vers votre banque.</p>
 </section>
 <?php endif; ?>
 <h2 class="sec"><?= ic('bank') ?> Virements Stripe vers la banque de la plateforme</h2>
@@ -306,7 +306,7 @@ $tabs = ['synthese' => 'Synthèse', 'organismes' => 'Par organisme', 'versements
 ?>
 <div class="cols">
   <section class="card"><h2 class="sec"><?= ic('euro') ?> Commission « tout compris »</h2>
-    <p class="muted">Un seul prélèvement par inscription : <b>pourcentage + part fixe</b>. Il inclut les frais de paiement Stripe (facturés à ColoMap) : l'organisme ne voit qu'une commission. Le changement ne s'applique qu'aux <b>prochains paiements</b> ; chaque paiement conserve le taux de sa vente.</p>
+    <p class="muted">Un seul prélèvement par inscription : <b>pourcentage + part fixe</b>. Il inclut les frais de paiement Stripe (facturés à moncamp.fr) : l'organisme ne voit qu'une commission. Le changement ne s'applique qu'aux <b>prochains paiements</b> ; chaque paiement conserve le taux de sa vente.</p>
     <form method="post" action="admin_compta.php">
       <input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="commission">
       <label class="fld"><span class="fl">Pourcentage du montant payé <small>(0 à 30 %)</small></span><input class="in" name="pct" inputmode="decimal" value="<?= h(number_format($rg['commission_pct'], 2, ',', '')) ?>" required></label>

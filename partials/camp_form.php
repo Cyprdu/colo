@@ -1,5 +1,5 @@
 <?php
-// partials/camp_form.php : formulaire « Publier un séjour » / « Modifier le séjour » (design system ColoMap).
+// partials/camp_form.php : formulaire « Publier un séjour » / « Modifier le séjour » (design system moncamp.fr).
 // Attend : $camp (array|null : null = création), $organisateurs, $currentTarifs, $champsActuels, $themesList, $paysList, $att
 require_once __DIR__ . '/../api/options.php';
 require_once __DIR__ . '/../api/champs.php';
@@ -173,9 +173,9 @@ $tick = $svg('check', 'w-3 h-3');
                 </div>
             </section>
 
-            <?= $sec('s-inscription', 'ticket', 'Inscriptions', "Inscriptions en ligne via ColoMap, ou simple vitrine renvoyant vers votre site.") ?>
+            <?= $sec('s-inscription', 'ticket', 'Inscriptions', "Inscriptions en ligne via moncamp.fr, ou simple vitrine renvoyant vers votre site.") ?>
                 <div class="ds-row">
-                    <div><p class="ds-opt-title">Activer les inscriptions en ligne</p><p class="ds-opt-sub">Tarifs, places, paiement par carte et suivi des inscrits sur ColoMap.</p></div>
+                    <div><p class="ds-opt-title">Activer les inscriptions en ligne</p><p class="ds-opt-sub">Tarifs, places, paiement par carte et suivi des inscrits sur moncamp.fr.</p></div>
                     <label class="ds-switch"><input type="checkbox" name="inscription_en_ligne" id="toggleOnline" <?= $online ? 'checked' : '' ?> aria-label="Activer les inscriptions en ligne"><span></span></label>
                 </div>
                 <div id="tosBox" class="hidden mt-3 ds-alert-err text-sm">
@@ -219,7 +219,7 @@ $tick = $svg('check', 'w-3 h-3');
                 <div class="mt-5"><label class="ds-label" for="f-instr">Consignes de paiement (facultatif)</label><textarea id="f-instr" name="instructions_paiement" rows="2" maxlength="1000" class="ds-textarea" placeholder="Ex : chèques à l'ordre de l'association X, à envoyer avant le 15 juin."><?= $val('instructions_paiement') ?></textarea></div>
                 <?php /* bloc d'aide ciblé : commission sur les paiements hors carte */ require_once __DIR__ . '/../api/finance_lib.php'; ?>
                 <details class="mt-4 text-sm" style="color:#5b4a1c"><summary class="cursor-pointer font-bold" style="color:#26343b">Chèque, espèces, virement : et la commission ? <span aria-hidden="true" style="display:inline-block;width:20px;height:20px;line-height:18px;text-align:center;border:1.5px solid #26343b;border-radius:50%;font-size:12px">?</span></summary>
-                    <p class="mt-2">Pour un paiement hors carte, vous encaissez directement. Une fois que vous le marquez « reçu » dans la liste des inscrits, ColoMap retient <?= number_format(fin_hors_stripe_pct(), 1, ',', ' ') ?> % du montant, déduits de vos prochains versements par carte (rien à payer à part).</p></details>
+                    <p class="mt-2">Pour un paiement hors carte, vous encaissez directement. Une fois que vous le marquez « reçu » dans la liste des inscrits, moncamp.fr retient <?= number_format(fin_hors_stripe_pct(), 1, ',', ' ') ?> % du montant, déduits de vos prochains versements par carte (rien à payer à part).</p></details>
             </section>
 
             <?= $sec('s-fiche', 'file', "Informations sur la fiche enfant", "Ce que vous demandez aux parents.") ?>
@@ -251,7 +251,7 @@ $tick = $svg('check', 'w-3 h-3');
                 <button type="button" class="ds-btn ds-btn-light mt-4" onclick="Champs.add()"><?= $svg('plus', 'w-4 h-4') ?> Ajouter une question</button>
             </section>
 
-            <?= $sec('s-anim', 'whistle', "Animateurs de l'équipe", "Recruter via ColoMap, inscrire votre équipe, ou les deux.") ?>
+            <?= $sec('s-anim', 'whistle', "Animateurs de l'équipe", "Recruter via moncamp.fr, inscrire votre équipe, ou les deux.") ?>
                 <?php $animLegacy = true; include __DIR__ . '/anim_modes.php'; /* point d'accroche animateurs : voir partials/anim_modes.php */ ?>
             </section>
 
@@ -831,7 +831,7 @@ async function envoyer(confirmInscrits) {
             return;
         }
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
-        // Réglages des animateurs : par session (recrutement ColoMap, inscription de l'équipe), une fois les sessions enregistrées
+        // Réglages des animateurs : par session (recrutement moncamp.fr, inscription de l'équipe), une fois les sessions enregistrées
         if (window.AnimModes) {
             for (const s of SM.list) {
                 const tk = d.tokens && d.tokens[s.key]; if (!tk) continue;

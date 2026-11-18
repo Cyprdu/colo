@@ -75,7 +75,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
 
-<title>Vérification - ColoMap</title>
+<title>Vérification - moncamp.fr</title>
 
 <main class="ds-page flex items-center justify-center" style="max-width:480px">
     <div class="w-full ds-fade">

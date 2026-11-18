@@ -1,4 +1,4 @@
-/* ColoMap : choix guidé des catégories d'un séjour, puis des précisions de chaque catégorie.
+/* moncamp.fr : choix guidé des catégories d'un séjour, puis des précisions de chaque catégorie.
    Usage : CategoriesPicker.mount(element, { catalogue: [...api/get_categories.php .categories], value: { order: [], values: {} }, max: 4, onChange: function (value) {} })
    value = { order: ['spirituel', 'montagne'], values: { montagne: { niveau: ['debutant'] } } } : la première catégorie est la principale.
    Retourne { value(), set(value) } */

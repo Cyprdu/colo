@@ -14,7 +14,7 @@ function rgpd_table_exists(PDO $pdo, string $table): bool { return (bool)rgpd_co
 /** Toutes les données qu'on détient sur cet utilisateur (structure lisible, prête pour un export JSON) */
 function rgpd_export(PDO $pdo, int $uid): array {
     $strip = ['password', 'remember_token', 'verification_token', 'reset_token', 'url_token', 'google_id'];
-    $out = ['genere_le' => date('c'), 'service' => 'ColoMap (moncamp.fr)'];
+    $out = ['genere_le' => date('c'), 'service' => 'moncamp.fr (moncamp.fr)'];
 
     $st = $pdo->prepare("SELECT * FROM users WHERE id = ?"); $st->execute([$uid]);
     $u = $st->fetch(PDO::FETCH_ASSOC) ?: [];

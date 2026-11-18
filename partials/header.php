@@ -11,6 +11,7 @@ $body_class = $body_class ?? 'bg-gray-100';
 // Publicité : à activer page par page ($ads_enabled = true avant l'inclusion), jamais sur les pages de compte, paiement ou messagerie
 $ads_enabled = $ads_enabled ?? false;
 require_once __DIR__ . '/ads.php';
+require_once __DIR__ . '/logo.php';
 
 function clean_url($url) {
     return str_replace(".php", "", $url);
@@ -57,7 +58,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <?php if (!empty($base_href)) echo '<base href="' . htmlspecialchars($base_href) . '">'; /* pages dans un sous-dossier d'adresse (/organisme/xxx) */ ?>
     <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
 
-    <title><?= htmlspecialchars($page_title ?? 'ColoMap - Trouvez le camp parfait') ?></title>
+    <title><?= htmlspecialchars($page_title ?? 'moncamp.fr - Trouvez le camp parfait') ?></title>
     
     <?php if ($ads_enabled): ?>
     <?php /* Publicité : uniquement sur les pages de contenu. Consentement refusé par défaut (Consent Mode v2) AVANT le script, le message de consentement certifié est géré par AdSense. */ ?>
@@ -76,7 +77,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     </style>
     <?php endif; ?>
 
-    <link rel="icon" type="image/png" href="favico.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -109,7 +110,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ColoMap">
+<meta name="apple-mobile-web-app-title" content="moncamp.fr">
 <link rel="apple-touch-icon" href="/icon-192.png">
 
 <meta name="theme-color" content="#26343b">
@@ -135,13 +136,8 @@ if ('serviceWorker' in navigator) {
             <div class="flex items-center h-[68px] gap-4 lg:gap-6">
 
                 <!-- Logo -->
-                <a href="<?php echo $home_url; ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="ColoMap, accueil">
-                    <svg width="26" height="28" viewBox="0 0 26 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#26343b"/>
-                        <rect x="9" y="22.5" width="2" height="3.2" fill="#26343b"/>
-                        <path d="M17.5 26.5L22 17l4 9.5h-8.5Z" fill="#26343b"/>
-                    </svg>
-                    <span class="font-display text-[20px] text-[#26343b] leading-none">ColoMap</span>
+                <a href="<?php echo $home_url; ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="moncamp.fr, accueil">
+                    <?= mc_logo('dark', true, 30) ?>
                 </a>
 
                 <!-- Recherche rapide -->
@@ -307,7 +303,7 @@ if ('serviceWorker' in navigator) {
     <div id="mobile-menu" class="fixed top-0 right-0 h-full w-4/5 max-sm bg-white z-50 transform translate-x-full transition-transform duration-300 ease-in-out shadow-2xl">
         <div class="p-4 flex flex-col h-full">
             <div class="flex items-center justify-between mb-6">
-                <a href="<?php echo clean_url('../'); ?>" class="text-2xl font-bold"><span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">ColoMap</span></a>
+                <a href="<?php echo clean_url('../'); ?>" class="text-2xl font-bold"><?= mc_logo('dark', true, 26) ?></a>
                 <button id="close-menu-button" class="p-2 rounded-md text-gray-400 hover:text-gray-600"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
 

@@ -18,7 +18,7 @@ require_once __DIR__ . '/../api/marketing_lib.php';
         </div>
 
         <div class="mk-stat" style="margin-top:16px;padding:14px 16px">
-            <div class="k">Gains disponibles sur ColoMap</div>
+            <div class="k">Gains disponibles sur moncamp.fr</div>
             <div class="v" style="font-size:22px"><?= number_format($mkWalletCents / 100, 2, ',', ' ') ?> €</div>
             <div class="s">Votre chiffre d'affaires net de commission, pas encore versé. Payer vos points avec ce solde évite tout paiement par carte.</div>
         </div>

@@ -137,7 +137,7 @@ function equipe_enregistrer(PDO $pdo, array $camp, array $in): ?string {
     equipe_ensure($pdo);
     $campId = (int)$camp['id'];
 
-    // (A) recrutement via ColoMap
+    // (A) recrutement via moncamp.fr
     if (array_key_exists('recrute', $in)) {
         $rem = null;
         if (!empty($in['recrute']) && isset($in['remuneration']) && $in['remuneration'] !== '' && $in['remuneration'] !== null) {
@@ -320,7 +320,7 @@ function equipe_infos(PDO $pdo, int $campId): array {
 
 /**
  * Annulation par l'animateur lui-même : mêmes conditions que les familles (api/annulation_lib.php : 100 % / 50 % / 0 selon les jours avant le début,
- * commission ColoMap retenue). Gratuit ou non payé : annulation directe. Retourne [ok, message].
+ * commission moncamp.fr retenue). Gratuit ou non payé : annulation directe. Retourne [ok, message].
  */
 function equipe_annuler(PDO $pdo, array $e, array $camp, int $userId): array {
     if ($e['statut'] === 'Annulé') return [false, 'Cette inscription est déjà annulée.'];

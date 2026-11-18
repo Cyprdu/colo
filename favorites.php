@@ -6,7 +6,7 @@ if (!isset($_SESSION['user'])) { header('Location: login.php?next=favorites'); e
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Mes favoris - ColoMap</title>
+<title>Mes favoris - moncamp.fr</title>
 <style>
     .fav-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(216px, 1fr)); gap:28px 20px; }
     .fcard { display:flex; flex-direction:column; transition:opacity .3s ease, transform .3s ease; }
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const href = 'camp_details?t=' + encodeURIComponent(c.token);
         const logo = c.organisateur_logo ? `<img src="${esc(media(c.organisateur_logo))}" alt="" onerror="this.remove()">` : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa3ab"/></svg>';
         return `<article class="fcard" data-id="${esc(c.id)}">
-            ${c.organisateur_slug ? `<a href="organisme/${esc(c.organisateur_slug)}" class="fcard-org">` : '<div class="fcard-org">'}<span class="fcard-avatar">${logo}</span><span class="fcard-org-name">${esc(c.organisateur_nom || 'ColoMap')}</span>${c.organisateur_slug ? '</a>' : '</div>'}
+            ${c.organisateur_slug ? `<a href="organisme/${esc(c.organisateur_slug)}" class="fcard-org">` : '<div class="fcard-org">'}<span class="fcard-avatar">${logo}</span><span class="fcard-org-name">${esc(c.organisateur_nom || 'moncamp.fr')}</span>${c.organisateur_slug ? '</a>' : '</div>'}
             <div class="fcard-media"><a href="${href}" aria-label="${esc(c.nom)}"><img src="${esc(media(c.image_url))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${PLACEHOLDER}'"></a>
                 <button type="button" class="fcard-heart" data-camp-id="${esc(c.id)}" aria-label="Retirer des favoris">${HEART}</button></div>
             <a href="${href}" class="block">

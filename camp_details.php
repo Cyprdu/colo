@@ -328,7 +328,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         current = camp;
         const r = normRange(camp.date_debut, camp.date_fin);
         const dateStr = fmtRange(r);
-        document.title = `${camp.nom} - ColoMap`;
+        document.title = `${camp.nom} - moncamp.fr`;
 
         $('hero-title').textContent = camp.nom;
         $('hero-location').textContent = camp.ville || '';
@@ -425,7 +425,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>`;
         } else if (camp.inscription_en_ligne == 1 && places > 0) {
             cta = isLoggedIn
-                ? `<a href="inscription?camp_t=${encodeURIComponent(camp.token)}" class="cd-btn">Réserver via ColoMap</a>`
+                ? `<a href="inscription?camp_t=${encodeURIComponent(camp.token)}" class="cd-btn">Réserver via moncamp.fr</a>`
                 : `<a href="login.php?redirect=${encodeURIComponent(location.origin + '/camp_details?t=' + camp.token)}" class="cd-btn">Se connecter pour réserver</a>`;
         } else if (camp.inscription_en_ligne == 1 && places === 0) {
             cta = `<button type="button" disabled class="cd-btn" style="background:#eceef1;color:#9aa3ab;cursor:not-allowed">Inscriptions closes</button>`;
@@ -433,7 +433,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         // Parcours unique : « mon enfant » (réservation actuelle) ou « animateur » (tarif et formulaire de CETTE session)
         const eq = EQ[camp.token];
         if (eq) {
-            if (cta) cta = cta.replace('Réserver via ColoMap', "J’inscris mon enfant").replace('Réserver ma place', "J’inscris mon enfant");
+            if (cta) cta = cta.replace('Réserver via moncamp.fr', "J’inscris mon enfant").replace('Réserver ma place', "J’inscris mon enfant");
             cta = `<div class="space-y-4">${cta ? `<div><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-2">Pour mon enfant</p>${cta}</div>` : ''}
                 <div class="${cta ? 'border-t border-[#e5e7eb] pt-4' : ''}"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-2">Équipe d’animation</p>
                 ${eq.tarifs.map(t => `<p class="flex items-baseline justify-between gap-3 mb-2"><span class="font-bold text-[#26343b]">${esc(t[0])}</span><span class="font-extrabold text-[#26343b]">${esc(t[1])}</span></p>`).join('')}
@@ -593,13 +593,13 @@ document.addEventListener('DOMContentLoaded', async function () {
         const camp = current, r = normRange(camp.date_debut, camp.date_fin);
         if (!r) return;
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') && !window.MSStream;
-        const title = `Séjour ColoMap: ${camp.nom}`;
+        const title = `Séjour moncamp.fr: ${camp.nom}`;
         const details = `Séjour à ${camp.ville}. Plus d'infos: ${location.href}`;
         const where = [camp.adresse, camp.ville].filter(Boolean).join(', ');
         const compact = d => ymd(d).replace(/-/g, '');
         const end = new Date(r.b); end.setDate(end.getDate() + 1);   // fin exclusive dans les agendas
         if (isIOS) {
-            const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ColoMap//Sejour//FR', 'BEGIN:VEVENT',
+            const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//moncamp.fr//Sejour//FR', 'BEGIN:VEVENT',
                 `UID:${Date.now()}@colomap.fr`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
                 `DTSTART;VALUE=DATE:${compact(r.a)}`, `DTEND;VALUE=DATE:${compact(end)}`, `SUMMARY:${title}`, `DESCRIPTION:${details}`, `LOCATION:${where}`,
                 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');

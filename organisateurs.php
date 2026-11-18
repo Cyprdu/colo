@@ -60,7 +60,7 @@ require_once 'partials/header.php';
 $initial = mb_strtoupper(mb_substr($prenom, 0, 1)) ?: 'O';
 $photo = trim((string)($_SESSION['user']['photo_url'] ?? ''));
 ?>
-<title>Espace organisateur - ColoMap</title>
+<title>Espace organisateur - moncamp.fr</title>
 
 <main class="ds-page" style="max-width:1000px">
     <header class="flex items-center gap-4 ds-fade">

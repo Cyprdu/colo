@@ -1,4 +1,4 @@
-/* Back-office ColoMap : aucune donnée n'est injectée en HTML, tout passe par textContent (pas de XSS possible). */
+/* Back-office moncamp.fr : aucune donnée n'est injectée en HTML, tout passe par textContent (pas de XSS possible). */
 (function () {
   'use strict';
   var $ = function (s, r) { return (r || document).querySelector(s); };

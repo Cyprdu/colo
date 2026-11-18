@@ -21,7 +21,7 @@ if ($token) {
 }
 ?>
 
-<title>Nouveau mot de passe - ColoMap</title>
+<title>Nouveau mot de passe - moncamp.fr</title>
 
 <main class="ds-page flex items-center justify-center" style="max-width:460px">
     <div class="w-full ds-card p-8 ds-fade">

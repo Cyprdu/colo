@@ -20,7 +20,7 @@ $pdf->AddPage();
 $pdf->SetFont('Arial', 'B', 16);
 $pdf->Cell(0, 9, fin_pdf_txt('Justificatif de versement'), 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
-$pdf->Cell(0, 5, fin_pdf_txt('ColoMap - moncamp.fr'), 0, 1, 'L');
+$pdf->Cell(0, 5, fin_pdf_txt('moncamp.fr - moncamp.fr'), 0, 1, 'L');
 $pdf->Ln(4);
 $pdf->SetFont('Arial', 'B', 11);
 $pdf->Cell(0, 6, fin_pdf_txt($v['orga_nom']), 0, 1, 'L');
@@ -74,6 +74,6 @@ if ($connect) {
 }
 $pdf->Ln(6);
 $pdf->SetFont('Arial', 'I', 8);
-$pdf->MultiCell(0, 4, fin_pdf_txt('Document généré automatiquement par ColoMap. Il détaille les sommes encaissées pour le compte de l\'organisme et la commission de service prélevée.'), 0, 'L');
+$pdf->MultiCell(0, 4, fin_pdf_txt('Document généré automatiquement par moncamp.fr. Il détaille les sommes encaissées pour le compte de l\'organisme et la commission de service prélevée.'), 0, 'L');
 $pdf->Output('I', 'Justificatif_versement_' . substr($v['token'], 0, 8) . '.pdf');
 exit;

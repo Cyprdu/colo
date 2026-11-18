@@ -230,7 +230,7 @@ function fin_execute_transfer(PDO $pdo, int $tid, string $acteur = 'systeme'): s
         $tr = fin_stripe()->transfers->create([
             'amount' => (int)$t['montant_cents'], 'currency' => 'eur', 'destination' => $t['stripe_account_id'],
             'transfer_group' => 'ORGA' . $t['organisateur_id'],
-            'description' => 'ColoMap : reversement des inscriptions (réf. ' . substr($t['token'], 0, 10) . ')',
+            'description' => 'moncamp.fr : reversement des inscriptions (réf. ' . substr($t['token'], 0, 10) . ')',
             'metadata' => ['transfert_id' => (string)$tid, 'organisateur_id' => (string)$t['organisateur_id'], 'type' => $t['type']],
         ], ['idempotency_key' => 'colomap-transfer-' . $tid]);
         $pdo->beginTransaction();
@@ -372,13 +372,13 @@ function fin_reversal_exec(PDO $pdo, int $opId): string {
     try {
         $rev = fin_stripe()->transfers->createReversal($o['stripe_transfer_id'], [
             'amount' => (int)$o['montant_cents'],
-            'description' => 'ColoMap : remboursement d\'une inscription après versement',
+            'description' => 'moncamp.fr : remboursement d\'une inscription après versement',
             'metadata' => ['reversal_op' => (string)$opId, 'organisateur_id' => (string)$o['organisateur_id']],
         ], ['idempotency_key' => 'colomap-rev-' . $opId]);
         $pdo->beginTransaction();
         $up = $pdo->prepare("UPDATE fin_reversal_ops SET statut = 'ok', stripe_reversal_id = ?, erreur = NULL WHERE id = ? AND statut = 'prevu'");
         $up->execute([$rev->id, $opId]);
-        if ($up->rowCount() === 1) { // l'argent est revenu chez ColoMap : le solde de l'organisme n'a plus à rester négatif de ce montant
+        if ($up->rowCount() === 1) { // l'argent est revenu chez moncamp.fr : le solde de l'organisme n'a plus à rester négatif de ce montant
             $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([(int)$o['montant_cents'] / 100, $o['organisateur_id']]);
             fin_audit($pdo, 'reversement_ok', 'reversement', $opId, ['cents' => (int)$o['montant_cents'], 'stripe' => $rev->id], 'systeme');
         }

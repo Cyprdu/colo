@@ -22,6 +22,6 @@ $sessionsMeta = []; $etapesActuelles = []; $camp = null; $currentTarifs = []; $c
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Publier un séjour - ColoMap</title>
+<title>Publier un séjour - moncamp.fr</title>
 <?php include 'partials/camp_form.php'; ?>
 <?php require_once 'partials/footer.php'; ?>

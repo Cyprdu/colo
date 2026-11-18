@@ -1,6 +1,6 @@
 <?php
 // register.php : création de compte (parent ou animateur)
-$auth_title    = 'Inscription - ColoMap';
+$auth_title    = 'Inscription - moncamp.fr';
 $scene_kicker  = 'Rejoignez la communauté';
 $scene_title   = 'Votre colo commence ici.';
 $scene_text    = 'Créez votre compte en une minute : réservez, suivez chaque séjour et échangez avec les organisateurs.';

@@ -13,7 +13,7 @@ $retour = $tokenCamp !== '' ? 'gestion_camp.php?t=' . rawurlencode($tokenCamp) .
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Dossier de l'inscrit - ColoMap</title>
+<title>Dossier de l'inscrit - moncamp.fr</title>
 <meta name="robots" content="noindex, nofollow">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <main class="ds-page" style="max-width:1000px">
@@ -43,7 +43,7 @@ let D = null;
         if (!r.ok) throw new Error(d.error || 'Dossier indisponible.');
         D = d; $('head').innerHTML = Dossier.head(d); Dossier.tabs(d, $('tabs'), { recu: false });
         $('state').classList.add('hidden'); $('content').classList.remove('hidden');
-        document.title = d.enfant.prenom + ' ' + d.enfant.nom + ' - Dossier - ColoMap';
+        document.title = d.enfant.prenom + ' ' + d.enfant.nom + ' - Dossier - moncamp.fr';
         const h = location.hash.slice(1); if (h) { const b = document.querySelector('[data-dtab="' + h + '"]'); if (b) b.click(); }
     } catch (e) { $('state').textContent = ColoUI.friendly(e, 'Impossible de charger ce dossier.'); }
 })();

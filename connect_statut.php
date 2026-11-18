@@ -61,7 +61,7 @@ $csrf = fin_csrf();
             </label>
         <?php endforeach; ?>
         </div>
-        <div class="mk-tip" style="margin-top:18px"><?= mk_icon('shield', 20) ?><div>À l'étape suivante, Stripe vous demandera votre identité et votre IBAN. <b>ColoMap ne voit ni ne conserve ces informations.</b> Compter 5 minutes. Le site de l'organisme et la nature de l'activité (séjours de vacances pour enfants) sont déjà renseignés.</div></div>
+        <div class="mk-tip" style="margin-top:18px"><?= mk_icon('shield', 20) ?><div>À l'étape suivante, Stripe vous demandera votre identité et votre IBAN. <b>moncamp.fr ne voit ni ne conserve ces informations.</b> Compter 5 minutes. Le site de l'organisme et la nature de l'activité (séjours de vacances pour enfants) sont déjà renseignés.</div></div>
         <div style="margin-top:20px"><button class="ds-btn" type="submit">Continuer vers Stripe <?= mk_icon('arrow', 16) ?></button></div>
     </form>
 <?php endif; ?>

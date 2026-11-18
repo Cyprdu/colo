@@ -32,7 +32,7 @@ function geo_chercher(string $q, int $timeout = 4): ?array {
     if ($wait > 0 && $wait < 1.2) usleep((int)($wait * 1000000));
     @file_put_contents($lock, (string)microtime(true));
     $url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=0&q=' . rawurlencode($q);
-    $ua = 'ColoMap/1.0 (+https://moncamp.fr)';   // l'usage de Nominatim exige un User-Agent ; aucune donnée personnelle
+    $ua = 'moncamp.fr/1.0 (+https://moncamp.fr)';   // l'usage de Nominatim exige un User-Agent ; aucune donnée personnelle
     $body = null;
     if (function_exists('curl_init')) {
         $ch = curl_init($url);

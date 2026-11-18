@@ -12,7 +12,7 @@ if ($token === '') { header('Location: mes_camps.php'); exit; }
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Gestion du séjour - ColoMap</title>
+<title>Gestion du séjour - moncamp.fr</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
 .gm-tab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border-radius: 12px; font-size: 14.5px; font-weight: 700; color: #3b4a54; text-align: left; transition: background .15s ease; white-space: nowrap; }
@@ -257,8 +257,8 @@ function equipe() {
     return `<div class="grid sm:grid-cols-2 gap-4">
       <div class="ds-card p-5"><p class="ds-eyebrow">Animateurs inscrits</p><p class="text-2xl font-extrabold text-[#26343b] mt-2">${an}</p><button type="button" class="ds-btn ds-btn-light ds-btn-sm mt-3" data-goto="inscrits-anim">Voir la liste</button></div>
       <div class="ds-card p-5"><p class="font-bold text-[#26343b]">Infos pour mon équipe</p><p class="text-sm text-[#6b7780] mt-1">Message, programme, documents, date de versement.</p><a class="ds-btn ds-btn-light ds-btn-sm mt-3" href="equipe_gestion.php?t=${encodeURIComponent(D.camp.principal)}">Ouvrir</a></div>
-      <div class="ds-card p-5"><p class="font-bold text-[#26343b]">Réglages animateurs</p><p class="text-sm text-[#6b7780] mt-1">Recrutement via ColoMap, tarifs et questions de l'équipe, lien privé ou public.</p><a class="ds-btn ds-btn-light ds-btn-sm mt-3" href="edit_camp.php?t=${encodeURIComponent(D.camp.principal)}#s-anim">Modifier</a></div>
-      <div class="ds-card p-5"><p class="font-bold text-[#26343b]">Candidatures</p><p class="text-sm text-[#6b7780] mt-1">Animateurs qui postulent via ColoMap.</p><a class="ds-btn ds-btn-light ds-btn-sm mt-3" href="demandes-animation.php">Voir les candidatures</a></div></div>`;
+      <div class="ds-card p-5"><p class="font-bold text-[#26343b]">Réglages animateurs</p><p class="text-sm text-[#6b7780] mt-1">Recrutement via moncamp.fr, tarifs et questions de l'équipe, lien privé ou public.</p><a class="ds-btn ds-btn-light ds-btn-sm mt-3" href="edit_camp.php?t=${encodeURIComponent(D.camp.principal)}#s-anim">Modifier</a></div>
+      <div class="ds-card p-5"><p class="font-bold text-[#26343b]">Candidatures</p><p class="text-sm text-[#6b7780] mt-1">Animateurs qui postulent via moncamp.fr.</p><a class="ds-btn ds-btn-light ds-btn-sm mt-3" href="demandes-animation.php">Voir les candidatures</a></div></div>`;
 }
 function plus() {
     const card = (t, d, href, l) => `<div class="ds-card p-5"><p class="font-bold text-[#26343b]">${t}</p><p class="text-sm text-[#6b7780] mt-1">${d}</p><a class="ds-btn ds-btn-light ds-btn-sm mt-3" href="${href}">${l}</a></div>`;
@@ -301,7 +301,7 @@ document.addEventListener('click', async e => {
     if (!t) { const row = e.target.closest('[data-open]'); if (row) { const [k, v] = row.dataset.open.split(':'); openDossier(k, v); } return; }
     if (t.id === 'dosClose') return closeDossier();
     if (t.dataset.tab) go(t.dataset.tab);
-    else if (t.dataset.recu) { if (await ColoUI.confirm('Confirmer que vous avez bien reçu ce règlement ? ColoMap retiendra sa commission sur vos prochains versements par carte.')) marquerRecu(t); }
+    else if (t.dataset.recu) { if (await ColoUI.confirm('Confirmer que vous avez bien reçu ce règlement ? moncamp.fr retiendra sa commission sur vos prochains versements par carte.')) marquerRecu(t); }
     else if (t.dataset.help) ColoUI.alert(HELP[t.dataset.help], { title: 'Aide' });
     else if (t.dataset.dup) openDup(t.dataset.dup);
     else if (t.dataset.ins) { filt.session = t.dataset.ins; filt.type = 'enfants'; go('inscrits'); }

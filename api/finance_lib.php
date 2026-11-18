@@ -1,18 +1,18 @@
 <?php
-// api/finance_lib.php : flux d'argent entre les familles, ColoMap et les organismes (Stripe Connect).
+// api/finance_lib.php : flux d'argent entre les familles, moncamp.fr et les organismes (Stripe Connect).
 //
 // ARCHITECTURE : « separate charges and transfers » avec comptes Connect EXPRESS
-//   1. la famille paie ColoMap (Checkout) ; le webhook enregistre UNE ligne fin_paiements par inscription
+//   1. la famille paie moncamp.fr (Checkout) ; le webhook enregistre UNE ligne fin_paiements par inscription
 //      (brut, commission calculée ICI côté serveur, net, date de déblocage = début du séjour + délai) ;
 //   2. à la date de déblocage, un job (api/cron_virements.php) transfère le net de l'organisme vers son compte Connect
 //      (Transfer + clé d'idempotence) ; Stripe verse ensuite sur le compte bancaire de l'organisme (IBAN saisi chez Stripe) ;
 //   3. remboursements / litiges : ajustent le solde ; un solde négatif bloque les transferts suivants (compensation).
 // organisateurs.portefeuille = solde « à recevoir » (net de commission, avant transfert).
-// Aucune donnée bancaire ni pièce d'identité ne transite plus par ColoMap : tout est collecté par Stripe.
+// Aucune donnée bancaire ni pièce d'identité ne transite plus par moncamp.fr : tout est collecté par Stripe.
 //
-// COMMISSION « TOUT COMPRIS » : la commission ColoMap (pourcentage + part fixe en centimes, réglable dans Administration > Comptabilité)
-// inclut les frais de paiement Stripe. Stripe facture ColoMap (≈ 1,5 % + 0,25 € par carte européenne standard) ; l'organisme ne voit
-// qu'une seule commission. Les frais Stripe RÉELS de chaque paiement sont relevés (balance_transaction) : marge ColoMap = commission - frais.
+// COMMISSION « TOUT COMPRIS » : la commission moncamp.fr (pourcentage + part fixe en centimes, réglable dans Administration > Comptabilité)
+// inclut les frais de paiement Stripe. Stripe facture moncamp.fr (≈ 1,5 % + 0,25 € par carte européenne standard) ; l'organisme ne voit
+// qu'une seule commission. Les frais Stripe RÉELS de chaque paiement sont relevés (balance_transaction) : marge moncamp.fr = commission - frais.
 // Réglages facultatifs (api/config.php, valeurs par défaut si rien en base) :
 //   PLATFORM_COMMISSION_PERCENT (défaut 2.5)   PLATFORM_COMMISSION_FIXED_CENTS (défaut 30)   (calendrier des versements : api/versements_lib.php, réglages dans Administration > Comptabilité > Versements)
 //   STRIPE_CONNECT_WEBHOOK_SECRET (endpoint « événements des comptes connectés »)   CRON_SECRET
@@ -277,7 +277,7 @@ function fin_apply_refund(PDO $pdo, string $paymentIntent, int $refundedCents, i
     $st->execute([$paymentIntent]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     // Annulation par la famille (fin_annul_executer) : le remboursement revient à CETTE inscription (montant attendu), pas au prorata des frères et sœurs,
-    // et la commission ColoMap est conservée : seul le net de l'organisme est débité, du montant remboursé.
+    // et la commission moncamp.fr est conservée : seul le net de l'organisme est débité, du montant remboursé.
     $reste = $refundedCents - (int)array_sum(array_column($rows, 'rembourse_cents'));
     foreach ($rows as $p) {
         $brut = (int)$p['brut_cents'];
@@ -326,7 +326,7 @@ function fin_dispute(PDO $pdo, string $paymentIntent, string $phase, ?int $captu
     fin_audit($pdo, 'litige_' . $phase, 'payment_intent', $paymentIntent, [], 'webhook');
 }
 
-/** Frais de litige Stripe (15 € en général) : répartis au prorata sur les inscriptions du paiement, à la charge de ColoMap */
+/** Frais de litige Stripe (15 € en général) : répartis au prorata sur les inscriptions du paiement, à la charge de moncamp.fr */
 function fin_record_dispute_fee(PDO $pdo, string $paymentIntent, int $feeCents): void {
     $st = $pdo->prepare("SELECT id, brut_cents FROM fin_paiements WHERE payment_intent = ? ORDER BY id");
     $st->execute([$paymentIntent]);
@@ -337,7 +337,7 @@ function fin_record_dispute_fee(PDO $pdo, string $paymentIntent, int $feeCents):
 }
 
 // ---------------------------------------------------------------------------------------------
-// Frais Stripe RÉELS (balance_transaction de la charge) et marge ColoMap
+// Frais Stripe RÉELS (balance_transaction de la charge) et marge moncamp.fr
 // ---------------------------------------------------------------------------------------------
 /** Frais Stripe réels d'un PaymentIntent, en centimes d'euro (null si indisponible : sera retenté par le cron / la page Comptabilité) */
 function fin_fetch_stripe_fee(string $paymentIntent): ?int {
@@ -376,7 +376,7 @@ function fin_backfill_fees(PDO $pdo, int $limit = 40): array {
 function fin_sql_com_nette(string $a = 'p'): string {
     return "($a.commission_cents - IF($a.annul_com = 1, 0, ROUND($a.commission_cents * $a.rembourse_cents / $a.brut_cents)))";
 }
-/** Marge nette ColoMap d'une ligne = commission conservée - frais Stripe - frais de litige (null si les frais ne sont pas connus) */
+/** Marge nette moncamp.fr d'une ligne = commission conservée - frais Stripe - frais de litige (null si les frais ne sont pas connus) */
 function fin_sql_marge(string $a = 'p'): string {
     return "(" . fin_sql_com_nette($a) . " - $a.frais_stripe_cents - $a.frais_litige_cents)";
 }
@@ -428,7 +428,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
     $orgaId = (int)$orga['id'];
     $profile = [
         'mcc' => '7032', // 7032 : camps de loisirs et de sport (colonies, séjours)
-        'product_description' => "Organisation de séjours, colonies et camps de vacances pour enfants et adolescents, vendus sur la plateforme ColoMap (moncamp.fr).",
+        'product_description' => "Organisation de séjours, colonies et camps de vacances pour enfants et adolescents, vendus sur la plateforme moncamp.fr (moncamp.fr).",
         'name' => mb_substr((string)$orga['nom'], 0, 100),
     ];
     if (!empty($orga['web']) && filter_var($orga['web'], FILTER_VALIDATE_URL) && preg_match('#^https?://#i', $orga['web'])) $profile['url'] = $orga['web'];
@@ -536,7 +536,7 @@ function fin_tva_incluse(int $ttcCents, $taux): int {
 
 /**
  * Détail du prix payé par la famille pour des inscriptions (ids) : ce que contient le prix, sans rien ajouter au montant.
- * Part de l'organisateur = payé - commission ColoMap - TVA incluse. Null si aucun paiement suivi (anciennes commandes).
+ * Part de l'organisateur = payé - commission moncamp.fr - TVA incluse. Null si aucun paiement suivi (anciennes commandes).
  */
 function fin_order_breakdown(PDO $pdo, array $inscriptionIds): ?array {
     $inscriptionIds = array_values(array_filter(array_map('intval', $inscriptionIds)));

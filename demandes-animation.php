@@ -1,16 +1,16 @@
 <?php
 // demandes-animation.php : tableau de bord directeur de la gestion des animateurs.
-// Par séjour : (A) recrutement via ColoMap (candidatures + dossier complet) et/ou (B) inscription de l'équipe d'animation (liste, export, liens), réglages.
+// Par séjour : (A) recrutement via moncamp.fr (candidatures + dossier complet) et/ou (B) inscription de l'équipe d'animation (liste, export, liens), réglages.
 // Point d'accroche pour edit_camp.php : un lien vers  demandes-animation.php?camp=<jeton du séjour>  (le séjour s'ouvre directement).
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); exit; }
 ?>
-<title>Gestion des animateurs - ColoMap</title>
+<title>Gestion des animateurs - moncamp.fr</title>
 <main class="ds-page">
     <a href="organisateurs" class="text-[14px] font-semibold text-[#6b7780] hover:text-[#26343b]">&larr; Espace organisateur</a>
     <h1 class="ds-h1 mt-3">Gestion des animateurs</h1>
-    <p class="ds-lead">Pour chaque séjour, recrutez via ColoMap et/ou ouvrez l'inscription de votre propre équipe d'animation.</p>
+    <p class="ds-lead">Pour chaque séjour, recrutez via moncamp.fr et/ou ouvrez l'inscription de votre propre équipe d'animation.</p>
 
     <div class="mt-8 grid gap-6 lg:grid-cols-[300px_1fr] items-start">
         <aside><div id="sejours" class="space-y-2" role="list"></div></aside>
@@ -36,7 +36,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
             return '<button role="listitem" type="button" data-t="' + E(s.token) + '" class="ds-tile w-full text-left" style="padding:14px;display:block;' + (on ? 'border-color:#26343b' : '') + '">' +
                 '<span class="block font-extrabold text-[15px] text-[#26343b]">' + E(s.nom) + '</span>' +
                 '<span class="block text-[12px] text-[#6b7780] mt-1">' + E(A.range(s.date_debut, s.date_fin)) + '</span>' +
-                '<span class="flex flex-wrap gap-2 mt-2">' + (Number(s.recrute_animateurs) ? '<span class="ds-badge">Recrute via ColoMap</span>' : '') + (Number(s.equipe_active) ? '<span class="ds-badge">Équipe : ' + s.equipe_inscrits + ' inscrit(s)</span>' : '') + (!Number(s.recrute_animateurs) && !Number(s.equipe_active) ? '<span class="ds-badge">Non défini</span>' : '') +
+                '<span class="flex flex-wrap gap-2 mt-2">' + (Number(s.recrute_animateurs) ? '<span class="ds-badge">Recrute via moncamp.fr</span>' : '') + (Number(s.equipe_active) ? '<span class="ds-badge">Équipe : ' + s.equipe_inscrits + ' inscrit(s)</span>' : '') + (!Number(s.recrute_animateurs) && !Number(s.equipe_active) ? '<span class="ds-badge">Non défini</span>' : '') +
                 (s.en_attente ? '<span class="ds-badge" style="background:#26343b;color:#fff">' + s.en_attente + ' à traiter</span>' : '') + '</span></button>';
         }).join('') : '<div class="ds-card p-5 text-[14px] text-[#6b7780]">Aucun séjour pour le moment.</div>';
         [].forEach.call($('sejours').querySelectorAll('button'), function (b) { b.addEventListener('click', function () { open(b.dataset.t); }); });
@@ -76,7 +76,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
         try {
             var rows = await A.api(API + '?a=candidatures&camp=' + encodeURIComponent(cur.token));
             if (!rows.length) {
-                pane.innerHTML = '<p class="text-[#6b7780]">' + (Number(cur.recrute_animateurs) ? 'Aucune candidature pour le moment. Votre séjour est visible des animateurs.' : 'Les candidatures arrivent ici si vous activez « Recruter des animateurs via ColoMap » dans les réglages. L\u2019équipe inscrite par lien se trouve dans l\u2019onglet Équipe.') + '</p>'; return;
+                pane.innerHTML = '<p class="text-[#6b7780]">' + (Number(cur.recrute_animateurs) ? 'Aucune candidature pour le moment. Votre séjour est visible des animateurs.' : 'Les candidatures arrivent ici si vous activez « Recruter des animateurs via moncamp.fr » dans les réglages. L\u2019équipe inscrite par lien se trouve dans l\u2019onglet Équipe.') + '</p>'; return;
             }
             pane.innerHTML = '<div class="space-y-3">' + rows.map(function (r) {
                 return '<div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e7eb] p-4"><div><p class="font-extrabold text-[#26343b]">' + E(r.prenom + ' ' + r.nom) + '</p>' +
@@ -115,7 +115,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
     $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeM(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeM(); });
 
-    /* ---- Équipe : animateurs recrutés via ColoMap + équipe inscrite par lien ---- */
+    /* ---- Équipe : animateurs recrutés via moncamp.fr + équipe inscrite par lien ---- */
     async function paneEquipe() {
         var pane = $('pane');
         try {
@@ -130,7 +130,7 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
                             '<div class="text-[13px] text-[#3b4a54] text-right"><a class="underline" href="mailto:' + E(x.email) + '">' + E(x.email) + '</a><br>' + E(x.tel || '') + '</div></div>';
                     }).join('') + '</div>' : '<p class="text-[#6b7780]">Personne ne s’est encore inscrit. Créez un lien dans l’onglet « Liens d’inscription ».</p>');
             }
-            html += '<h3 class="font-extrabold text-[#26343b] mt-6 mb-3">Animateurs recrutés via ColoMap (' + d.recrutes.length + (d.quota ? ' / ' + d.quota : '') + ')</h3>' +
+            html += '<h3 class="font-extrabold text-[#26343b] mt-6 mb-3">Animateurs recrutés via moncamp.fr (' + d.recrutes.length + (d.quota ? ' / ' + d.quota : '') + ')</h3>' +
                 (d.recrutes.length ? '<div class="space-y-2">' + d.recrutes.map(function (x) {
                     return '<div class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#e5e7eb] p-4"><div><p class="font-bold text-[#26343b]">' + E(x.prenom + ' ' + x.nom) + '</p><p class="text-[12px] text-[#6b7780]">' + E(A.BAFA[x.bafa_statut || 'aucun']) + '</p></div>' +
                         '<div class="text-[13px] text-[#3b4a54] text-right"><a class="underline" href="mailto:' + E(x.email) + '">' + E(x.email) + '</a><br>' + E(x.tel || '') + '</div></div>';

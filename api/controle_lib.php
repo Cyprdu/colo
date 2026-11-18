@@ -10,7 +10,7 @@ function ctl_site(): string { return rtrim(defined('BASE_URL') ? BASE_URL : 'htt
 /** [code HTTP, corps, ms] ; $post = tableau (formulaire) ou null ; $head = true : en-têtes seulement */
 function ctl_http(string $url, ?array $post = null, bool $head = false): array {
     $t = microtime(true); $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 9, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_FOLLOWLOCATION => false, CURLOPT_USERAGENT => 'ColoMap-controle/1.0', CURLOPT_NOBODY => $head]);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 9, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_FOLLOWLOCATION => false, CURLOPT_USERAGENT => 'moncamp.fr-controle/1.0', CURLOPT_NOBODY => $head]);
     if ($post !== null) curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query($post)]);
     $b = curl_exec($ch); $c = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
     return [$b === false ? 0 : $c, $b === false ? $err : (string)$b, (int)round((microtime(true) - $t) * 1000)];

@@ -75,9 +75,9 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= htmlspecialchars($auth_title ?? 'ColoMap') ?></title>
+    <title><?= htmlspecialchars($auth_title ?? 'moncamp.fr') ?></title>
     <meta name="robots" content="noindex, follow">
-    <link rel="icon" type="image/png" href="/favico.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#26343b">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -295,9 +295,8 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
         </svg>
 
         <div class="scene-copy">
-            <a href="/" class="scene-logo" aria-label="ColoMap, retour à l'accueil">
-                <svg width="30" height="32" viewBox="0 0 26 28" fill="none" aria-hidden="true"><path d="M10 1.5L5.2 9h2.8L3.6 15.4h3.2L2 22.5h16L13.2 15.4h3.2L12 9h2.8L10 1.5Z" fill="#f3e9c9"/><rect x="9" y="22.5" width="2" height="3.2" fill="#f3e9c9"/><path d="M17.5 26.5L22 17l4 9.5h-8.5Z" fill="#fff"/></svg>
-                ColoMap
+            <a href="/" class="scene-logo" aria-label="moncamp.fr, retour à l'accueil">
+                <?php require_once __DIR__ . '/logo.php'; echo mc_logo('light', true, 32); ?>
             </a>
             <?php if (!empty($scene_kicker)): ?><p class="scene-kicker"><?= htmlspecialchars($scene_kicker) ?></p><?php endif; ?>
             <h2 class="scene-title"><?= htmlspecialchars($scene_title ?? '') ?></h2>

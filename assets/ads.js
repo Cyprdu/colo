@@ -1,4 +1,4 @@
-/* ColoMap : chargement différé des annonces AdSense.
+/* moncamp.fr : chargement différé des annonces AdSense.
    Les emplacements sont déclarés dans le HTML (.ad-box[data-ad-slot]) ; l'annonce n'est demandée que lorsque
    l'emplacement approche de l'écran. Cela préserve le LCP/INP (aucune requête publicitaire au chargement)
    et améliore la visibilité (Active View) des annonces réellement demandées. */

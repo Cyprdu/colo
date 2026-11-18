@@ -4,7 +4,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redirect=' . urlencode('espace-animation.php')); exit; }
 ?>
-<title>Mes candidatures - Espace animateur - ColoMap</title>
+<title>Mes candidatures - Espace animateur - moncamp.fr</title>
 <main class="ds-page" style="max-width:860px">
     <div class="flex flex-wrap items-end justify-between gap-4">
         <div><p class="ds-eyebrow">Espace animateur</p><h1 class="ds-h1">Mes candidatures</h1></div>

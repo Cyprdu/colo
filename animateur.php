@@ -5,7 +5,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 if (empty($_SESSION['user']['is_animateur'])) { header('Location: login.php?redirect=' . urlencode('animateur.php')); exit; }
 ?>
-<title>Accueil animateur - ColoMap</title>
+<title>Accueil animateur - moncamp.fr</title>
 <main class="ds-page">
     <header>
         <p class="ds-eyebrow">Espace animateur</p>

@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return v === v.toUpperCase() ? v.toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : v;
     }
 
-    // Une image qui ne charge pas est remplacée par le visuel ColoMap (taille inchangée)
+    // Une image qui ne charge pas est remplacée par le visuel moncamp.fr (taille inchangée)
     document.addEventListener('error', function (ev) {
         const img = ev.target;
         if (!(img instanceof HTMLImageElement)) return;
@@ -419,7 +419,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return camps.map((c, i) => campCard(c) + ((AD_SQUARE_SLOT && (i + 1) % 7 === 0 && i < camps.length - 1) ? adCard() : '')).join('');
     }
     function adCard() {
-        return `<div class="camp-card ad-card" aria-label="Publicité"><div class="ad-sq"><span class="ad-sq-label">Publicité</span><div class="ad-box" data-ad-slot="${AD_SQUARE_SLOT}" data-ad-format="rectangle" data-fallback="1"></div><div class="ad-sq-fb"><b>ColoMap</b><span>Trouvez la colonie idéale</span></div></div></div>`;
+        return `<div class="camp-card ad-card" aria-label="Publicité"><div class="ad-sq"><span class="ad-sq-label">Publicité</span><div class="ad-box" data-ad-slot="${AD_SQUARE_SLOT}" data-ad-format="rectangle" data-fallback="1"></div><div class="ad-sq-fb"><b>moncamp.fr</b><span>Trouvez la colonie idéale</span></div></div></div>`;
     }
 
     // ------------------------------------------------------------
@@ -440,7 +440,7 @@ document.addEventListener('DOMContentLoaded', function () {
         <article class="camp-card fade-in-anim">
             ${camp.organisateur_slug ? `<a href="organisme/${esc(camp.organisateur_slug)}" class="camp-org" aria-label="Voir les séjours de ${esc(camp.organisateur_nom)}">` : '<div class="camp-org">'}
                 <span class="camp-avatar">${logo}</span>
-                <span class="camp-org-name">${esc(camp.organisateur_nom || 'ColoMap')}</span>
+                <span class="camp-org-name">${esc(camp.organisateur_nom || 'moncamp.fr')}</span>
             ${camp.organisateur_slug ? '</a>' : '</div>'}
             <div class="camp-mediawrap">
                 <a href="${href}" class="camp-media" aria-label="${esc(camp.nom)}"><img src="${esc(img)}" alt="${esc(camp.nom)}" loading="lazy" decoding="async"></a>
@@ -527,7 +527,7 @@ document.addEventListener('DOMContentLoaded', function () {
         <section class="mt-12" aria-label="Rechercher une colonie">
             <div class="relative bg-[#f8f5ea] rounded-3xl px-6 py-12 text-center overflow-hidden">
                 <svg class="pointer-events-none absolute bottom-0 left-0 h-[120px] w-auto opacity-90" viewBox="0 0 200 150" aria-hidden="true" focusable="false"><polygon points="30.0,86.0 40.9,110.3 35.7,110.3 47.0,128.2 38.7,128.2 51.8,150.0 8.2,150.0 21.3,128.2 13.0,128.2 24.3,110.3 19.1,110.3" fill="#dfe3cf"/><rect x="27.8" y="150.0" width="4.4" height="5.8" fill="#dfe3cf"/><polygon points="70.0,58.0 85.6,93.0 78.1,93.0 94.4,118.7 82.5,118.7 101.3,150.0 38.7,150.0 57.5,118.7 45.6,118.7 61.9,93.0 54.4,93.0" fill="#cfd6bd"/><rect x="67.8" y="150.0" width="4.4" height="8.3" fill="#cfd6bd"/><polygon points="112.0,94.0 121.5,115.3 117.0,115.3 126.9,131.0 119.6,131.0 131.0,150.0 93.0,150.0 104.4,131.0 97.1,131.0 107.0,115.3 102.5,115.3" fill="#e4e6d4"/><rect x="109.8" y="150.0" width="4.4" height="5.0" fill="#e4e6d4"/><polygon points="150.0,74.0 162.9,102.9 156.7,102.9 170.2,124.2 160.3,124.2 175.8,150.0 124.2,150.0 139.7,124.2 129.8,124.2 143.3,102.9 137.1,102.9" fill="#d6dcc5"/><rect x="147.8" y="150.0" width="4.4" height="6.8" fill="#d6dcc5"/></svg><svg class="pointer-events-none absolute bottom-0 right-0 h-[120px] w-auto opacity-90" viewBox="0 0 200 150" aria-hidden="true" focusable="false"><polygon points="170.0,86.0 180.9,110.3 175.7,110.3 187.0,128.2 178.7,128.2 191.8,150.0 148.2,150.0 161.3,128.2 153.0,128.2 164.3,110.3 159.1,110.3" fill="#dfe3cf"/><rect x="167.8" y="150.0" width="4.4" height="5.8" fill="#dfe3cf"/><polygon points="130.0,58.0 145.6,93.0 138.1,93.0 154.4,118.7 142.5,118.7 161.3,150.0 98.7,150.0 117.5,118.7 105.6,118.7 121.9,93.0 114.4,93.0" fill="#cfd6bd"/><rect x="127.8" y="150.0" width="4.4" height="8.3" fill="#cfd6bd"/><polygon points="88.0,94.0 97.5,115.3 93.0,115.3 102.9,131.0 95.6,131.0 107.0,150.0 69.0,150.0 80.4,131.0 73.1,131.0 83.0,115.3 78.5,115.3" fill="#e4e6d4"/><rect x="85.8" y="150.0" width="4.4" height="5.0" fill="#e4e6d4"/><polygon points="50.0,74.0 62.9,102.9 56.7,102.9 70.2,124.2 60.3,124.2 75.8,150.0 24.2,150.0 39.7,124.2 29.8,124.2 43.3,102.9 37.1,102.9" fill="#d6dcc5"/><rect x="47.8" y="150.0" width="4.4" height="6.8" fill="#d6dcc5"/></svg>
-                <p class="relative font-display text-[30px] text-[#26343b] leading-none">ColoMap</p>
+                <p class="relative font-display text-[30px] text-[#26343b] leading-none">moncamp.fr</p>
                 <p class="relative mt-3 text-[16px] text-[#4b5964] max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
                 <a href="recherche" class="relative mt-6 inline-block bg-[#2f3d45] hover:bg-[#1f2a30] text-white text-[16px] font-semibold px-12 py-3 rounded-lg transition-colors">Rechercher</a>
             </div>

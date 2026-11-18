@@ -2,7 +2,7 @@
 // api/anim_directeur.php : tout ce que fait un DIRECTEUR pour ses animateurs. Chaque action vérifie que le séjour / la candidature
 // appartient à un organisateur du directeur connecté. Aucun identifiant numérique en entrée ni en sortie (jetons uniquement).
 //   GET  ?a=sejours                          ses séjours + mode + compteurs
-//   GET  ?a=config&camp=<jeton>              réglages (A) recrutement ColoMap et (B) inscription de l'équipe
+//   GET  ?a=config&camp=<jeton>              réglages (A) recrutement moncamp.fr et (B) inscription de l'équipe
 //   POST ?a=config {camp, recrute, remuneration, equipe:{active, age_min, quota, tarifs[], champs[]}}
 //   GET  ?a=candidatures&camp=<jeton>        candidatures (camp facultatif = tous)
 //   GET  ?a=dossier&c=<jeton candidature>    dossier complet de l'animateur

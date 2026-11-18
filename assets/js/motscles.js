@@ -1,4 +1,4 @@
-/* ColoMap : champ de mots-clés à pastilles (alias, « hashtags »).
+/* moncamp.fr : champ de mots-clés à pastilles (alias, « hashtags »).
    Les règles sont celles du serveur (api/motscles.php) : le navigateur les rappelle, le serveur décide.
    Usage : MotsCles.mount(element, { initial: ['PAJE'], max: 12, suggest: function () { return ['EPJ']; }, onChange: function (liste) {}, placeholder: '…' })
    Retourne { get(), set(liste), refresh() } */

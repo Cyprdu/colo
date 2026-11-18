@@ -308,7 +308,7 @@ function adm_mail_reply(array $m): bool {
     if (!filter_var($m['email'], FILTER_VALIDATE_EMAIL)) return false;
     $link = rtrim(BASE_URL, '/') . '/view_reply.php?t=' . rawurlencode((string)$m['token']);
     $body = '<p>Bonjour ' . h($m['prenom']) . ',</p><p>Notre équipe a répondu à votre demande : « ' . h(mb_substr((string)$m['message'], 0, 150)) . ' ».</p>'
-          . '<p><a href="' . h($link) . '">Consulter la réponse</a></p><p>L\'équipe ColoMap</p>';
-    $headers = "MIME-Version: 1.0\r\nContent-type: text/html; charset=UTF-8\r\nFrom: ColoMap Support <auth@moncamp.fr>\r\nReply-To: auth@moncamp.fr\r\n";
-    return @mail($m['email'], 'Une réponse vous attend - ColoMap', $body, $headers);
+          . '<p><a href="' . h($link) . '">Consulter la réponse</a></p><p>L\'équipe moncamp.fr</p>';
+    $headers = "MIME-Version: 1.0\r\nContent-type: text/html; charset=UTF-8\r\nFrom: moncamp.fr Support <auth@moncamp.fr>\r\nReply-To: auth@moncamp.fr\r\n";
+    return @mail($m['email'], 'Une réponse vous attend - moncamp.fr', $body, $headers);
 }

@@ -43,7 +43,7 @@ if ($aRegler) {
 $body_class = 'bg-white';
 require_once 'partials/header.php';
 ?>
-<title>Gérer ma réservation - ColoMap</title>
+<title>Gérer ma réservation - moncamp.fr</title>
 <style>
     .rv-card { background:#fff; border:1px solid #e5e7eb; border-radius:24px; }
     .rv-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 18px; border-radius:12px; font-size:15px; font-weight:700; background:#2f3d45; color:#fff; transition:background .2s ease; text-align:center; }

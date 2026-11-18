@@ -243,7 +243,7 @@ try {
             'type' => 'multi_inscription',
         ],
         'payment_intent_data' => [
-            'description' => 'ColoMap · ' . mb_substr($camp['nom'], 0, 120) . ' · ' . $sessionLabel,
+            'description' => 'moncamp.fr · ' . mb_substr($camp['nom'], 0, 120) . ' · ' . $sessionLabel,
             'metadata' => ['reservation_token' => $tokensString, 'camp_id' => (string)$camp['id']],
         ],
     ];

@@ -1,6 +1,6 @@
 <?php
 // annuler_inscription.php?r=<jeton de réservation> : le parent annule lui-même une inscription payée ; remboursement automatique.
-// Le montant est calculé ICI (serveur) selon les conditions du séjour, commission ColoMap retenue ; le navigateur n'envoie que le motif.
+// Le montant est calculé ICI (serveur) selon les conditions du séjour, commission moncamp.fr retenue ; le navigateur n'envoie que le motif.
 require_once 'api/config.php';
 require_once 'api/annulation_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -27,7 +27,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 ?>
-<title>Annuler une inscription - ColoMap</title>
+<title>Annuler une inscription - moncamp.fr</title>
 <main class="ds-page" style="max-width:720px">
   <a href="reservations" class="text-sm font-semibold text-[#6b7780] hover:text-[#26343b]">&larr; Mes réservations</a>
   <h1 class="ds-h1 mt-2">Annuler une inscription</h1>
@@ -54,7 +54,7 @@ $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
       <p class="ds-lead"><?= $h(fin_annul_texte((int)$c['jt'], (int)$c['jm'])) ?></p>
       <ul class="mt-3 space-y-1">
         <li>Part remboursable aujourd'hui (<?= (int)$c['jours'] ?> jour<?= $c['jours'] > 1 ? 's' : '' ?> avant le début) : <b><?= (int)$c['pct'] ?> %</b></li>
-        <li>Commission de service ColoMap retenue : <b>− <?= $h(fin_eur((int)$c['retenue'])) ?></b></li>
+        <li>Commission de service moncamp.fr retenue : <b>− <?= $h(fin_eur((int)$c['retenue'])) ?></b></li>
         <li class="text-lg">Remboursement sur votre carte : <b><?= $h(fin_eur((int)$c['rembourse'])) ?></b></li>
       </ul>
       <p class="ds-lead mt-2" style="font-size:13px">Le remboursement est automatique et définitif. La place est libérée pour d'autres familles.</p>

@@ -14,9 +14,9 @@ const ADS_CLIENT = 'ca-pub-3659884670016121';
 
 /** Identifiants de blocs d'annonces (AdSense > Annonces > Par bloc d'annonces) */
 const ADS_SLOTS = [
-    'article'        => '2281873279',   // In-article : aide, à propos (bloc « ColoMap - In-article »)
+    'article'        => '2281873279',   // In-article : aide, à propos (bloc « moncamp.fr - In-article »)
     'detail_article' => '2281873279',   // In-article : fiche séjour
-    'detail'         => '8318853928',   // Display responsive : fiche séjour (bloc « ColoMap - Display responsive »)
+    'detail'         => '8318853928',   // Display responsive : fiche séjour (bloc « moncamp.fr - Display responsive »)
     'accueil'        => '8318853928',   // Display : accueil, sous les carrousels
     'recherche'      => '8318853928',   // Display : bas de la recherche
     // Pub CARRÉE insérée dans les carrousels de l'accueil (1 carte sur ~7). À créer dans AdSense > Annonces > Par bloc d'annonces :
