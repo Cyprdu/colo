@@ -799,7 +799,7 @@ function fin_receipt(PDO $pdo, string $token, int $userId, bool $isAdmin = false
     if ($v) {
         if (!$isAdmin && (int)$v['owner'] !== $userId) return null;
         $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut, l.montant_cents AS montant_ligne,
-                                    IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) AS frais_cents
+                                    IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) AS frais_cents, p.compensation_cents
                              FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id JOIN camps c ON c.id = p.camp_id WHERE l.transfert_id = ? ORDER BY c.date_debut, p.inscription_id");
         $st->execute([$v['id']]);
         $lignes = $st->fetchAll(PDO::FETCH_ASSOC);

@@ -260,9 +260,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         </div>
         <div class="fd-tw"><table class="fd-t" aria-describedby="tCount">
             <thead><tr><th style="width:36px;padding-left:12px"><input type="checkbox" id="tAll" aria-label="Tout sélectionner (page)"></th>
-                <?php foreach ([['d', 'Date', ''], ['fam', 'Famille', ''], ['camp', 'Séjour', ''], ['moyl', 'Moyen', ''], ['brut', 'Payé', 'num'], ['com', 'Commission', 'num'], ['frais', 'Frais Stripe', 'num'], ['remb', 'Remboursé', 'num'], ['pv', 'Net', 'num'], ['stl', 'Statut', '']] as $c): ?>
+                <?php foreach ([['d', 'Date', ''], ['fam', 'Famille', ''], ['camp', 'Séjour', ''], ['moyl', 'Moyen', ''], ['brut', 'Payé', 'num'], ['com', 'Commission', 'num'], ['frais', 'Frais de paiement', 'num'], ['comp', 'Compensation', 'num'], ['remb', 'Remboursé', 'num'], ['net', 'Net', 'num'], ['stl', 'Statut', '']] as $c): ?>
                 <th class="<?= $c[2] ?>" aria-sort="none" data-col="<?= $c[0] ?>"><button type="button" class="fd-th"><?= $c[1] ?></button></th><?php endforeach; ?></tr></thead>
-            <tbody id="tBody"><?php for ($i = 0; $i < 6; $i++): ?><tr><td colspan="11"><span class="sk" style="width:<?= 90 - $i * 7 ?>%"></span></td></tr><?php endfor; ?></tbody>
+            <tbody id="tBody"><?php for ($i = 0; $i < 6; $i++): ?><tr><td colspan="12"><span class="sk" style="width:<?= 90 - $i * 7 ?>%"></span></td></tr><?php endfor; ?></tbody>
             <tfoot id="tFoot"></tfoot>
         </table></div>
         <div class="fd-pg"><span id="tCount" aria-live="polite"></span>
@@ -523,11 +523,11 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             return '<tr class="fd-tr' + (on ? ' sel' : '') + '" tabindex="0" data-k="' + r.k + '"><td style="padding-left:12px"><input type="checkbox" data-sel="' + r.k + '"' + (on ? ' checked' : '') + ' aria-label="Sélectionner ' + esc(r.fam) + ' ' + dfr(r.d) + '"></td>'
                 + '<td class="mut" style="white-space:nowrap">' + dfr(r.d) + '</td><td><b>' + esc(r.fam) + '</b>' + (r.enf ? '<div class="mut" style="font-size:12px">' + esc(r.enf) + '</div>' : '') + '</td>'
                 + '<td style="max-width:240px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.camp) + '</div><div class="mut" style="font-size:12px">' + esc(r.sesl) + '</div></td><td class="mut">' + esc(r.moyl) + '</td>'
-                + '<td class="num"><b>' + eur(r.brut) + '</b></td><td class="num mut">' + (r.com ? '− ' + eur(r.com) : '–') + '</td><td class="num mut">' + (r.frais ? '− ' + eur(r.frais) : '–') + '</td><td class="num mut">' + (r.remb ? '− ' + eur(r.remb) : '–') + '</td>'
-                + '<td class="num"><b>' + eur(r.pv) + '</b></td><td><span class="mk-pill ' + (PILL[r.st] || '') + '" style="white-space:nowrap">' + esc(r.stl) + '</span></td></tr>';
-        }).join('') : '<tr><td colspan="11"><div class="fd-empty"><b>' + (D.tx.length ? 'Aucune transaction ne correspond' : 'Aucune transaction sur cette période') + '</b>' + (D.tx.length ? 'Modifiez la recherche ou les filtres.' : 'Elles apparaîtront ici dès le premier paiement.') + '</div></td></tr>';
-        var s = { brut: 0, com: 0, frais: 0, remb: 0, pv: 0 }; VIEW.forEach(function (r) { for (var k in s) s[k] += r[k]; });
-        $('tFoot').innerHTML = VIEW.length ? '<tr style="font-weight:800;background:#f8fafb"><td></td><td colspan="4">Total · ' + VIEW.length + ' transaction' + (VIEW.length > 1 ? 's' : '') + '</td><td class="num">' + eur(s.brut) + '</td><td class="num">− ' + eur(s.com) + '</td><td class="num">− ' + eur(s.frais) + '</td><td class="num">− ' + eur(s.remb) + '</td><td class="num">' + eur(s.pv) + '</td><td></td></tr>' : '';
+                + '<td class="num"><b>' + eur(r.brut) + '</b></td><td class="num mut">' + (r.com ? '− ' + eur(r.com) : '–') + '</td><td class="num mut">' + (r.frais ? '− ' + eur(r.frais) : '–') + '</td><td class="num mut">' + (r.comp ? '− ' + eur(r.comp) : '–') + '</td><td class="num mut">' + (r.remb ? '− ' + eur(r.remb) : '–') + '</td>'
+                + '<td class="num"><b>' + eur(r.net) + '</b></td><td><span class="mk-pill ' + (PILL[r.st] || '') + '" style="white-space:nowrap">' + esc(r.stl) + '</span></td></tr>';
+        }).join('') : '<tr><td colspan="12"><div class="fd-empty"><b>' + (D.tx.length ? 'Aucune transaction ne correspond' : 'Aucune transaction sur cette période') + '</b>' + (D.tx.length ? 'Modifiez la recherche ou les filtres.' : 'Elles apparaîtront ici dès le premier paiement.') + '</div></td></tr>';
+        var s = { brut: 0, com: 0, frais: 0, comp: 0, remb: 0, net: 0 }; VIEW.forEach(function (r) { for (var k in s) s[k] += r[k]; });
+        $('tFoot').innerHTML = VIEW.length ? '<tr style="font-weight:800;background:#f8fafb"><td></td><td colspan="4">Total · ' + VIEW.length + ' transaction' + (VIEW.length > 1 ? 's' : '') + '</td><td class="num">' + eur(s.brut) + '</td><td class="num">− ' + eur(s.com) + '</td><td class="num">− ' + eur(s.frais) + '</td><td class="num">− ' + eur(s.comp) + '</td><td class="num">− ' + eur(s.remb) + '</td><td class="num">' + eur(s.net) + '</td><td></td></tr>' : '';
         $('tCount').textContent = VIEW.length ? (T.page * T.per + 1) + '–' + Math.min(VIEW.length, (T.page + 1) * T.per) + ' sur ' + VIEW.length + (T.pre ? ' (' + PRE[T.pre][1] + ')' : '') + (D.tx_limite ? ' · limité aux 5 000 plus récentes, réduisez la période' : '') : '';
         $('tPage').textContent = (T.page + 1) + ' / ' + pages; $('tPrev').disabled = T.page === 0; $('tNext').disabled = T.page + 1 >= pages;
         $('tAll').checked = rows.length > 0 && rows.every(function (r) { return T.sel[r.k]; });
@@ -549,9 +549,10 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             + '<p style="margin:0 0 14px"><span class="mk-pill ' + (PILL[r.st] || '') + '">' + esc(r.stl) + '</span></p>'
             + '<div class="fd-sub" style="margin-top:0">Famille</div><dl class="fd-dl">' + row('Famille', esc(r.fam)) + (r.enf ? row('Enfant', esc(r.enf)) : '') + (r.parent ? row('Parent', esc(r.parent)) : '') + '</dl>'
             + '<div class="fd-sub">Séjour</div><dl class="fd-dl">' + row('Séjour', esc(r.camp)) + row('Session', esc(r.sesl)) + row('Moyen', esc(r.moyl)) + '</dl>'
-            + '<div class="fd-sub">Montants</div><dl class="fd-dl">' + row('Payé par la famille', eur(r.brut)) + row('Commission moncamp.fr', '− ' + eur(r.com)) + (card ? row('Frais de paiement Stripe', r.frais ? '− ' + eur(r.frais) + (r.fest ? ' (estimés, ajustés aux frais réels)' : '') : (r.fo ? 'relevés auprès de Stripe sous peu' : 'payés par moncamp.fr (ancien paiement)')) : '')
-            + (r.remb ? row('Remboursé', '− ' + eur(r.remb)) : '') + '<span class="sep"></span>' + row('<b>Net pour vous</b>', '<b>' + eur(r.pv) + '</b>')
-            + (r.comp ? row('Dette compensée sur ce paiement', eur(r.comp)) : '') + (r.tva ? row('dont TVA incluse', eur(r.tva)) : '') + '</dl>';
+            + '<div class="fd-sub">Montants</div><dl class="fd-dl">' + row('Montant payé', eur(r.brut)) + row('Commission moncamp.fr', '− ' + eur(r.com))
+            + row('Frais de paiement Stripe', '− ' + eur(r.frais) + (r.fest ? ' (estimés)' : (card && !r.frais && r.fo ? ' (bientôt connus)' : '')))
+            + row('Compensation de dette', '− ' + eur(r.comp)) + row('Remboursé', '− ' + eur(r.remb))
+            + '<span class="sep"></span>' + row('<b>Net</b>', '<b>' + eur(r.net) + '</b>') + (r.tva ? row('dont TVA incluse', eur(r.tva)) : '') + '</dl>';
         if (card) h += '<div class="fd-sub">Versement</div><dl class="fd-dl">' + row('Déjà versé', eur(r.verse)) + (r.st === 'stripe' ? row('Versement', 'automatique, dès que disponible') : '') + (r.vtok ? row('Justificatif', '<a class="underline" href="virement.php?t=' + encodeURIComponent(r.vtok) + '">Voir le versement</a>') : '') + '</dl>';
         h += '<div class="fd-sub">Documents</div><div style="display:flex;gap:8px;flex-wrap:wrap">'
             + (r.tok ? '<a class="fd-btn" href="generate_pdf_certificat.php?r=' + encodeURIComponent(r.tok) + '" target="_blank" rel="noopener">Reçu PDF</a>' : '')

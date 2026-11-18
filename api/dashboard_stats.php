@@ -141,7 +141,7 @@ try {
         $tx[] = ['k' => ($card ? 'p' : 'h') . $r['id'], 'd' => $r['d'], 'fam' => $txt($r['fam']), 'enf' => $txt($r['enf']), 'parent' => trim($txt($r['pp']) . ' ' . $txt($r['pn'])),
             'camp' => $txt($r['camp']), 'sej' => $campGrp[(int)$r['camp_id']][0] ?? '', 'ses' => $campGrp[(int)$r['camp_id']][1] ?? '', 'sesl' => $sessLab[(int)$r['camp_id']] ?? '',
             'moy' => $moy, 'moyl' => $lib[$moy] ?? 'Non précisé', 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'], 'frais' => (int)$r['frais'], 'fo' => (int)$r['fo'], 'fest' => (int)$r['fo'] && (int)$r['fnc'], 'pv' => (int)$r['pv'],
-            'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'] - (int)$r['frais'], 'comp' => (int)$r['comp'], 'verse' => (int)$r['verse'],
+            'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'] - (int)$r['frais'], 'comp' => (int)$r['comp'], 'net' => (int)$r['pv'] - (int)$r['comp'], 'verse' => (int)$r['verse'],
             'st' => $sk, 'stl' => $sl, 'dd' => $r['dd'] ? substr($r['dd'], 0, 10) : null, 'mode' => $r['mode'], 'pi' => $r['pi'] ? (string)$r['pi'] : null,
             'tok' => (string)$r['tok'], 'vtok' => $r['vtok'] ? (string)$r['vtok'] : null,
             'tva' => fin_tva_incluse((int)$r['brut'] - (int)$r['remb'], $card ? $r['tva'] : $tvaOrga)];
@@ -183,8 +183,8 @@ try {
         } else {
             $keys = array_flip(array_filter(explode(',', (string)($P['keys'] ?? ''))));
             $sel = $keys ? array_values(array_filter($tx, fn($t) => isset($keys[$t['k']]))) : $tx;
-            $h = ['Date', 'Famille', 'Enfant', 'Séjour', 'Session', 'Moyen', 'Payé', 'Remboursé', 'Commission', 'Frais Stripe', 'Net organisme', 'TVA incluse', 'Statut', 'Référence Stripe'];
-            $g = (function () use ($sel, $e) { foreach ($sel as $t) yield [date('d/m/Y H:i', strtotime($t['d'])), $t['fam'], $t['enf'], $t['camp'], $t['sesl'], $t['moyl'], $e($t['brut']), $e($t['remb']), $e($t['com']), $e($t['frais']), $e($t['pv']), $e($t['tva']), $t['stl'], (string)$t['pi']]; })();
+            $h = ['Date', 'Famille', 'Enfant', 'Séjour', 'Session', 'Moyen', 'Montant payé', 'Commission moncamp.fr', 'Frais de paiement', 'Compensation de dette', 'Remboursé', 'Net organisme', 'TVA incluse', 'Statut', 'Référence Stripe'];
+            $g = (function () use ($sel, $e) { foreach ($sel as $t) yield [date('d/m/Y H:i', strtotime($t['d'])), $t['fam'], $t['enf'], $t['camp'], $t['sesl'], $t['moyl'], $e($t['brut']), $e($t['com']), $e($t['frais']), $e($t['comp']), $e($t['remb']), $e($t['net']), $e($t['tva']), $t['stl'], (string)$t['pi']]; })();
             $name = 'transactions-' . $du . '-' . $au;
         }
         if ($fmt === 'xlsx') compta_xlsx($name . '.xlsx', $h, $g);
