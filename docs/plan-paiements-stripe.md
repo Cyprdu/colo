@@ -70,7 +70,15 @@ Principes : peu de texte, bulles « ? » pour le détail, pas de jargon, une seu
 - Les filtres ne déclenchent aucun rechargement tant qu'on n'a pas cliqué « Appliquer ».
 - Aucune donnée bancaire sur notre serveur ; toutes les écritures d'argent sont journalisées (qui, quand, IP, avant et après).
 
-## 7. Points à valider avec le propriétaire avant de coder
+## 7. Décisions retenues (valeurs par défaut validées, appliquer sans redemander)
+
+1. Le net arrive sur le compte Stripe de l'organisme dès le paiement ; le versement vers sa banque est différé (schedule `manual` piloté par le cron).
+2. Remboursement après versement : supporté par l'organisme, récupéré par compensation sur ses encaissements suivants ; affiché « à compenser ».
+3. Commission en cas d'annulation : conserver la règle actuelle de `annulation_lib.php` (la documenter dans le dashboard et `legal.php`).
+4. Versement bancaire : 3 jours après le début du séjour (réglable dans l'admin).
+5. Commission « tout compris » inchangée (frais hors UE inclus) ; afficher la marge réelle par paiement dans l'admin pour suivre le risque.
+
+## 8. Points à valider avec le propriétaire (historique)
 
 1. L'argent peut-il arriver sur le compte Stripe de l'organisme dès le paiement (avec versement bancaire différé par Stripe), ou doit-il rester chez nous jusqu'au séjour ? (recommandation : dès le paiement, versement bancaire différé de quelques jours.)
 2. Qui supporte un remboursement quand l'organisme a déjà été versé ? (recommandation : l'organisme, par compensation.)
