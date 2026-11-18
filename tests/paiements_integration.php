@@ -45,17 +45,17 @@ ok((int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference = 'pay:pi_A
 
 ok($pdo->query("SELECT mode FROM fin_paiements WHERE inscription_id = 900")->fetchColumn() === 'legacy', 'paiement existant : mode legacy');
 
-// ---------------------------------------------------------------- 3. session Checkout en destination charges
-ok(fin_destination_params($pdo, 2, [2500]) === [], 'compte non prêt : repli legacy (aucun paramètre destination)');
+// ---------------------------------------------------------------- 3. session Checkout : direct charges, repli destination puis legacy
+ok(fin_checkout_params($pdo, 2, [2500]) === [[], []], 'compte non prêt : repli legacy (aucun paramètre)');
 $pdo->exec("UPDATE organisateurs SET stripe_account_id = 'acct_D' WHERE id = 2");
 $pdo->exec("INSERT INTO stripe_comptes (organisateur_id, account_id, transfers_actif, payouts_enabled, details_submitted, charges_enabled) VALUES (2, 'acct_D', 1, 1, 1, 0)");
-$d = fin_destination_params($pdo, 2, [2500, 10000]);
-ok($d['payment_intent_data']['application_fee_amount'] === 93 + 280 && $d['payment_intent_data']['transfer_data']['destination'] === 'acct_D', 'commission = somme des commissions par inscription (0,93 + 2,80), net vers le compte de l\'organisme');
-ok(!isset($d['payment_intent_data']['on_behalf_of']), 'on_behalf_of seulement si le compte accepte les cartes');
+[$d, $o] = fin_checkout_params($pdo, 2, [2500, 10000]);
+ok($d['payment_intent_data']['application_fee_amount'] === 93 + 280 && $d['payment_intent_data']['transfer_data']['destination'] === 'acct_D' && $o === [], 'cartes pas encore activées : destination charges, commission = somme par inscription (0,93 + 2,80)');
 $pdo->exec("UPDATE stripe_comptes SET charges_enabled = 1 WHERE organisateur_id = 2");
 $pdo->exec("UPDATE organisateurs SET portefeuille = -5.00 WHERE id = 2"); // commission hors carte due
-$d = fin_destination_params($pdo, 2, [2500, 10000]);
-ok($d['payment_intent_data']['on_behalf_of'] === 'acct_D' && $d['metadata']['compensation'] === '500' && $d['payment_intent_data']['application_fee_amount'] === 873, 'dette de 5 EUR ajoutée à la commission prélevée');
+[$d, $o] = fin_checkout_params($pdo, 2, [2500, 10000]);
+ok($o === ['stripe_account' => 'acct_D'] && !isset($d['payment_intent_data']['transfer_data']) && $d['metadata']['mode'] === 'direct', 'compte prêt : direct charges, session créée sur le compte de l\'organisme');
+ok($d['metadata']['compensation'] === '500' && $d['payment_intent_data']['application_fee_amount'] === 873, 'dette de 5 EUR ajoutée à la commission prélevée');
 
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (2, 2, 2, 'En attente', 25.00, 'EN_ATTENTE', 'tokB'), (3, 2, 3, 'En attente', 100.00, 'EN_ATTENTE', 'tokC')");
 ok(fin_record_checkout($pdo, ['tokB', 'tokC'], 'pi_D', 'cs_D', 12500, 'destination', 500) === 2, 'paiement destination : 2 lignes');
@@ -135,7 +135,10 @@ ok(fin_payouts_run($pdo)['payouts'] === 0, 'solde Stripe négatif : aucun versem
 // ---------------------------------------------------------------- 6. annulation par la famille (destination) : commission conservée, l'organisme est débité
 require __DIR__ . '/../api/annulation_lib.php';
 $p = $pdo->query("SELECT * FROM fin_paiements WHERE inscription_id = 2")->fetch(PDO::FETCH_ASSOC);
-ok(fin_refund_params($p) === ['reverse_transfer' => true, 'refund_application_fee' => false] && fin_refund_params(['mode' => 'legacy']) === [], 'remboursement destination : reverse_transfer, commission non rendue ; legacy inchangé');
+$GLOBALS['stripe_calls'] = [];
+fin_refund($pdo, $p, 100, [], 'k-dest');
+$rc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'refunds.create'))[0][1];
+ok($rc[0]['reverse_transfer'] === true && $rc[0]['refund_application_fee'] === false && $rc[1] === ['idempotency_key' => 'k-dest'], 'remboursement destination : reverse_transfer, commission non rendue');
 [$rb] = fin_annul_montants((int)$p['brut_cents'], (int)$p['commission_cents'], 40, 30, 15);
 $pdo->prepare("UPDATE fin_paiements SET annul_attendu = ?, annul_com = 1 WHERE id = ?")->execute([$rb, $p['id']]);
 $avant = fin_ledger_totaux($pdo, 2);
@@ -154,5 +157,44 @@ ok(count(compta_journal($pdo, $from, $to, 2)) > 0, 'journal filtré par organism
 $GLOBALS['stripe_resp']['applicationFees.all'] = new class { function autoPagingIterator() { return [(object)['currency' => 'eur', 'amount' => 373, 'amount_refunded' => 0], (object)['currency' => 'eur', 'amount' => 155, 'amount_refunded' => 0]]; } };
 $rc = compta_fees_reconcile($pdo, $from, $to);
 ok($rc['n'] === 2 && $rc['ecart'] === $rc['stripe'] - $rc['attendu'], 'rapprochement : commissions Stripe comparées au journal (écart affiché)');
+
+// ---------------------------------------------------------------- 11. direct charges : frais Stripe à l'organisme, remboursement sur son solde, sinon avance + dette compensée
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (7, 3, 1, 'En attente', 80.00, 'EN_ATTENTE', 'tokH'), (8, 3, 2, 'En attente', 60.00, 'EN_ATTENTE', 'tokI')");
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = function ($id, $p = [], $o = []) { $GLOBALS['pi_opts'][$id] = $o;
+    return (object)['latest_charge' => (object)['id' => 'ch_' . $id, 'application_fee' => 'fee_' . $id, 'transfer' => null,
+        'balance_transaction' => (object)['currency' => 'eur', 'fee' => 145 + 230, 'fee_details' => [(object)['type' => 'stripe_fee', 'amount' => 145], (object)['type' => 'application_fee', 'amount' => 230]]]]]; };
+$r = stripe_webhook_process($pdo, $ev('evt_20', 'checkout.session.completed', ['id' => 'cs_H', 'payment_status' => 'paid', 'payment_intent' => 'pi_H', 'amount_total' => 8000, 'amount_subtotal' => 8000,
+    'metadata' => ['reservation_token' => 'tokH', 'mode' => 'direct', 'organisateur_id' => '2', 'commission' => '230', 'compensation' => '0']], 'acct_D'));
+stripe_webhook_after($pdo, $r[2]);
+$h = $pdo->query("SELECT * FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetch(PDO::FETCH_ASSOC);
+ok($h['mode'] === 'direct' && (int)$h['commission_cents'] === 230 && ($GLOBALS['pi_opts']['pi_H'] ?? []) === ['stripe_account' => 'acct_D'], 'paiement direct enregistré, frais lus sur le compte de l\'organisme');
+ok((int)$h['frais_stripe_cents'] === 145 && (int)$h['net_cents'] === 8000 - 230 - 145, 'frais Stripe (1,45 EUR, commission exclue) déduits du net de l\'organisme');
+fin_sync_fees($pdo, 'pi_H');
+ok((int)$pdo->query("SELECT net_cents FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetchColumn() === 7625 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais_paiement'")->fetchColumn() === 1, 'frais relevés deux fois : déduits une seule fois');
+$t = fin_ledger_totaux($pdo, 2);
+ok($t['frais'] === 145 && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'frais' AND reference = 'frais:" . $h['id'] . "'")->fetchColumn() === 0, 'journal : frais à la charge de l\'organisme, pas de moncamp.fr');
+$mg = array_values(array_filter(compta_marges($pdo, '2000-01-01', '2100-01-01', 2), fn($m) => $m['mode'] === 'direct'));
+ok((int)$mg[0]['marge'] === 230, 'marge moncamp.fr d\'un paiement direct = sa commission (jamais négative)');
+
+$GLOBALS['stripe_calls'] = []; $bal(10000, 0);
+fin_refund($pdo, $h, 3000, ['annulation' => '1'], 'k-ok');
+$c = array_column($GLOBALS['stripe_calls'], 1, 0);
+ok(!isset($c['transfers.create']) && $c['refunds.create'][1]['stripe_account'] === 'acct_D' && $c['refunds.create'][0]['refund_application_fee'] === false, 'solde suffisant : remboursé sur le compte de l\'organisme, commission non rendue');
+$nTr = count($GLOBALS['fake_transfers']->calls); $bal(1000, 0);
+fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
+$tr = array_slice($GLOBALS['fake_transfers']->calls, $nTr);
+ok($tr && $tr[0][1]['amount'] === 2000 && $tr[0][1]['destination'] === 'acct_D' && $tr[0][2]['idempotency_key'] === 'k-manque-avance', 'solde insuffisant : moncamp.fr avance les 20 EUR manquants');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 20.00) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'avance:k-manque'")->fetchColumn() === 2000, 'dette de 20 EUR : solde négatif et journal');
+fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 20.00) < 0.001, 'remboursement rejoué : dette comptée une fois');
+$r = stripe_webhook_process($pdo, $ev('evt_21', 'charge.refunded', ['id' => 'ch_pi_H', 'payment_intent' => 'pi_H', 'amount_refunded' => 6000, 'amount' => 8000], 'acct_D'));
+$h2 = $pdo->query("SELECT rembourse_cents, net_rembourse_cents FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetch(PDO::FETCH_NUM);
+ok(array_map('intval', $h2) === [6000, 6000] && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'commission' AND reference LIKE 'rem:pi_H:%'")->fetchColumn() === 0, 'remboursement direct : l\'organisme rend tout, aucune commission rendue');
+
+[$d, $o] = fin_checkout_params($pdo, 2, [6000]);
+ok($d['metadata']['compensation'] === '2000' && $d['payment_intent_data']['application_fee_amount'] === fin_commission_split(6000)[0] + 2000, 'paiement suivant : la dette s\'ajoute à la commission prélevée');
+$r = stripe_webhook_process($pdo, $ev('evt_22', 'checkout.session.completed', ['id' => 'cs_I', 'payment_status' => 'paid', 'payment_intent' => 'pi_I', 'amount_total' => 6000, 'amount_subtotal' => 6000,
+    'metadata' => ['reservation_token' => 'tokI', 'mode' => 'direct', 'organisateur_id' => '2', 'commission' => (string)fin_commission_split(6000)[0], 'compensation' => '2000']], 'acct_D'));
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'comp:pi_I'")->fetchColumn() === -2000, 'dette compensée et journalisée (« compensée le … »)');
 
 echo "Tout est bon.\n";

@@ -340,8 +340,8 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
     $sims = [1500, 2500, 10000, 50000, 200000];
 ?>
 <div class="cols">
-  <section class="card"><h2 class="sec"><?= ic('euro') ?> Commission « tout compris »</h2>
-    <p class="muted">Un seul prélèvement par inscription : <b>pourcentage + part fixe</b>. Il inclut les frais de paiement Stripe (facturés à moncamp.fr) : l'organisme ne voit qu'une commission. Le changement ne s'applique qu'aux <b>prochains paiements</b> ; chaque paiement conserve le taux de sa vente.</p>
+  <section class="card"><h2 class="sec"><?= ic('euro') ?> Commission moncamp.fr</h2>
+    <p class="muted">Prélevée sur chaque inscription : <b>pourcentage + part fixe</b>. Les frais de paiement Stripe sont en plus, débités par Stripe à l'organisme (direct charges) : la marge ne peut plus être négative. Anciens paiements et comptes pas encore ouverts aux cartes : frais payés par moncamp.fr. Le changement ne s'applique qu'aux <b>prochains paiements</b> ; chaque paiement conserve le taux de sa vente.</p>
     <form method="post" action="admin_compta.php">
       <input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="commission">
       <label class="fld"><span class="fl">Pourcentage du montant payé <small>(0 à 30 %)</small></span><input class="in" name="pct" inputmode="decimal" value="<?= h(number_format($rg['commission_pct'], 2, ',', '')) ?>" required></label>

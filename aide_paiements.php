@@ -6,13 +6,13 @@ require_once 'partials/header3.php';
 $n = fin_reglages()['payout_jours'];
 $jours = $n . ' jour' . ($n > 1 ? 's' : '');
 $com = number_format(fin_commission_pct(), 1, ',', ' ') . ' %' . (fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '');
-$ex = 10000; [$c] = fin_commission_split($ex);
+$ex = 10000; [$c] = fin_commission_split($ex); $frais = 150 + 25; // ordre de grandeur : carte européenne standard (1,5 % + 0,25 €)
 $faq = [
-    'Quand l\'argent arrive-t-il sur mon compte Stripe ?' => 'Dès que la famille paie. Vous le voyez dans « Où va l\'argent » et dans votre espace Stripe, commission déjà déduite.',
+    'Quand l\'argent arrive-t-il sur mon compte Stripe ?' => 'Dès que la famille paie. Vous le voyez dans « Où va l\'argent » et dans votre espace Stripe, commission et frais déjà déduits.',
     'Quand est-il viré sur ma banque ?' => 'Automatiquement, ' . $jours . ' après le début du séjour. Ce délai permet de rembourser une famille si le séjour est annulé.',
-    'Que couvre la commission ?' => 'Commission « tout compris » de ' . $com . ' par inscription : frais de paiement par carte, hébergement du site, support. Aucun autre frais.',
-    'Et si une famille annule ?' => 'Elle est remboursée selon les conditions de votre séjour. Vous êtes débité de ce qu\'elle récupère ; la commission moncamp.fr n\'est pas rendue.',
-    'Que veut dire « à compenser » ?' => 'Une famille a été remboursée après le virement sur votre banque. Le montant est retenu automatiquement sur vos prochains encaissements.',
+    'Commission et frais : quelle différence ?' => 'Deux lignes distinctes. Commission moncamp.fr : ' . $com . ' par inscription. Frais de paiement : ceux de Stripe, au centime près selon la carte (environ 1,5 % + 0,25 € pour une carte européenne), débités par Stripe. Rien d\'autre.',
+    'Et si une famille annule ?' => 'Elle est remboursée selon les conditions de votre séjour, sur votre solde Stripe. Ni la commission ni les frais Stripe ne sont rendus.',
+    'Que veut dire « Dette en cours » ?' => 'Votre solde Stripe ne suffisait pas pour rembourser une famille (séjour déjà versé) : moncamp.fr a avancé la différence. Elle est retenue automatiquement sur vos paiements suivants, en plus de la commission, et chaque compensation est datée dans votre tableau de bord.',
     'Et les paiements par chèque ou espèces ?' => 'La famille vous paie directement. Quand vous confirmez l\'avoir reçu, une petite commission (' . number_format(fin_hors_stripe_pct(), 1, ',', ' ') . ' %) est retenue sur vos paiements par carte suivants.',
 ];
 ?>
@@ -23,11 +23,12 @@ $faq = [
     <ol class="space-y-3 mb-12" aria-label="Trajet d'un paiement">
         <?php foreach ([
             ['La famille paie', fin_eur($ex), 'Carte bancaire, en ligne.'],
-            ['moncamp.fr garde sa commission', '− ' . fin_eur($c), $com . ' par inscription, frais de carte inclus.'],
-            ['Pour vous, sur votre compte Stripe', fin_eur($ex - $c), 'Tout de suite, visible dans votre tableau de bord.'],
-            ['Viré sur votre banque', fin_eur($ex - $c), $jours . ' après le début du séjour, automatiquement.'],
+            ['Commission moncamp.fr', '− ' . fin_eur($c), $com . ' par inscription.'],
+            ['Frais de paiement (Stripe)', '≈ − ' . fin_eur($frais), 'Frais réels de Stripe selon la carte (exemple : carte européenne).'],
+            ['Pour vous, sur votre compte Stripe', '≈ ' . fin_eur($ex - $c - $frais), 'Tout de suite, visible dans votre tableau de bord.'],
+            ['Viré sur votre banque', '≈ ' . fin_eur($ex - $c - $frais), $jours . ' après le début du séjour, automatiquement.'],
         ] as $i => [$t, $m, $s]): ?>
-        <li class="flex items-center gap-4 rounded-2xl border border-gray-200 p-4<?= $i === 2 ? ' bg-[#f3f6f8]' : '' ?>">
+        <li class="flex items-center gap-4 rounded-2xl border border-gray-200 p-4<?= $i === 3 ? ' bg-[#f3f6f8]' : '' ?>">
             <span class="w-9 h-9 flex-none rounded-full bg-[#2f3d45] text-white font-bold flex items-center justify-center"><?= $i + 1 ?></span>
             <span class="flex-1 min-w-0"><b class="text-[#26343b]"><?= htmlspecialchars($t) ?></b><br><span class="text-sm text-[#6b7780]"><?= htmlspecialchars($s) ?></span></span>
             <b class="text-lg text-[#26343b] whitespace-nowrap"><?= htmlspecialchars($m) ?></b>

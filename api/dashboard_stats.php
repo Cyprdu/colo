@@ -105,14 +105,14 @@ try {
     $csv = ($_GET['csv'] ?? '') === '1'; $lim = $csv ? 5000 : 300; $rows = [];
     $fam = "COALESCE(NULLIF(e.nom, ''), 'Équipe d''animation')";
     if ($f['moyen'] === '' || $f['moyen'] === 'carte') {
-        $q = $pdo->prepare("SELECT p.created_at d, $fam fam, c.nom camp, p.brut_cents brut, p.rembourse_cents remb, p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, 'carte' moy, i.reservation_token tok, p.annul_com ann
+        $q = $pdo->prepare("SELECT p.created_at d, $fam fam, c.nom camp, p.brut_cents brut, p.rembourse_cents remb, p.net_cents - p.net_rembourse_cents pv, p.statut st, p.date_deblocage dd, 'carte' moy, i.reservation_token tok, p.annul_com ann, IF(p.mode = 'direct', COALESCE(p.frais_stripe_cents, 0) + p.frais_litige_cents, 0) frais
                             FROM fin_paiements p JOIN camps c ON c.id = p.camp_id LEFT JOIN inscriptions i ON i.id = p.inscription_id LEFT JOIN enfants e ON e.id = i.enfant_id
                             WHERE p.camp_id IN ($in) AND p.created_at BETWEEN ? AND ? ORDER BY p.created_at DESC LIMIT $lim");
         $q->execute($dt); $rows = $q->fetchAll(PDO::FETCH_ASSOC);
     }
     if ($f['moyen'] !== 'carte') {
         $q = $pdo->prepare("SELECT i.date_inscription d, $fam fam, c.nom camp, ROUND(i.prix_final * 100) brut, 0 remb, ROUND(i.prix_final * 100) - COALESCE(h.commission_cents, 0) pv,
-                                   i.statut_paiement st, NULL dd, i.moyen_paiement moy, i.reservation_token tok, 0 ann
+                                   i.statut_paiement st, NULL dd, i.moyen_paiement moy, i.reservation_token tok, 0 ann, 0 frais
                             FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
                             WHERE i.camp_id IN ($in) AND $CANC AND i.statut_paiement IN ('PAYE', 'A_REGLER') AND COALESCE(i.moyen_paiement, '') NOT IN ('', 'carte')
                               AND i.date_inscription BETWEEN ? AND ?" . ($f['moyen'] !== '' ? " AND i.moyen_paiement = ?" : '') . " ORDER BY i.date_inscription DESC LIMIT $lim");
@@ -128,9 +128,9 @@ try {
         return $s . ((int)$r['remb'] > 0 && $r['st'] !== 'rembourse' ? ' · remboursé en partie' : '');
     };
     $pay = array_map(fn($r) => ['d' => $r['d'], 'fam' => html_entity_decode((string)$r['fam']), 'camp' => html_entity_decode((string)$r['camp']), 'brut' => (int)$r['brut'], 'remb' => (int)$r['remb'],
-        'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'], 'pv' => (int)$r['pv'], 'st' => $etat($r), 'moy' => $lib[$r['moy']] ?? 'Non précisé', 'tok' => (string)$r['tok'], 'k' => $r['st']], array_slice($rows, 0, $lim));
-    if ($csv) compta_csv('paiements-' . $du . '-' . $au . '.csv', ['Date', 'Famille', 'Séjour', 'Moyen', 'Payé', 'Remboursé', 'Commission', 'Pour vous', 'Statut'],
-        (function () use ($pay) { foreach ($pay as $p) yield [date('d/m/Y', strtotime($p['d'])), $p['fam'], $p['camp'], $p['moy'], compta_eur($p['brut']), compta_eur($p['remb']), compta_eur($p['com']), compta_eur($p['pv']), $p['st']]; })());
+        'com' => (int)$r['brut'] - (int)$r['remb'] - (int)$r['pv'] - (int)$r['frais'], 'frais' => (int)$r['frais'], 'pv' => (int)$r['pv'], 'st' => $etat($r), 'moy' => $lib[$r['moy']] ?? 'Non précisé', 'tok' => (string)$r['tok'], 'k' => $r['st']], array_slice($rows, 0, $lim));
+    if ($csv) compta_csv('paiements-' . $du . '-' . $au . '.csv', ['Date', 'Famille', 'Séjour', 'Moyen', 'Payé', 'Remboursé', 'Commission', 'Frais Stripe', 'Pour vous', 'Statut'],
+        (function () use ($pay) { foreach ($pay as $p) yield [date('d/m/Y', strtotime($p['d'])), $p['fam'], $p['camp'], $p['moy'], compta_eur($p['brut']), compta_eur($p['remb']), compta_eur($p['com']), compta_eur($p['frais']), compta_eur($p['pv']), $p['st']]; })());
 
     ds_fin($out + ['paiements' => $pay, 'kpi' => ['ca_cents' => (int)round($k['ca'] * 100), 'inscrits' => (int)$k['n'], 'remplissage' => $places ? (int)round($ins / $places * 100) : 0, 'places' => $places, 'a_encaisser_cents' => (int)round($k['ar'] * 100)],
         'serie' => ['labels' => $labels, 'ca' => array_column($serie, 'ca'), 'ins' => array_column($serie, 'ins')], 'sejours' => array_slice($sj, 0, 8), 'moyens' => $moy]);

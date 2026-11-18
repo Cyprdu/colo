@@ -91,9 +91,9 @@ try {
     ];
     if (!empty($_SESSION['user']['email'])) $params['customer_email'] = $_SESSION['user']['email'];
     $orgaId = (int)$pdo->query("SELECT organisateur_id FROM camps WHERE id = " . (int)$first['camp_id'])->fetchColumn();
-    $params = array_replace_recursive($params, fin_destination_params($pdo, $orgaId, array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems)));
+    [$extra, $opts] = fin_checkout_params($pdo, $orgaId, array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems));
 
-    $checkout = \Stripe\Checkout\Session::create($params);
+    $checkout = \Stripe\Checkout\Session::create(array_replace_recursive($params, $extra), $opts);
 
     $in = implode(',', array_fill(0, count($tokens), '?'));
     $pdo->prepare("UPDATE inscriptions SET stripe_session_id = ?, date_inscription = NOW() WHERE reservation_token IN ($in)")

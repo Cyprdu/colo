@@ -61,7 +61,7 @@ if ($connect) {
     $pdf->Cell(0, 8, fin_pdf_txt('Montant versé à l\'organisme : ' . eur((int)$v['montant_cents'])), 0, 1, 'L');
     $pdf->SetFont('Arial', 'I', 9);
     if ((int)$v['montant_cents'] !== $tn) $pdf->MultiCell(0, 5, fin_pdf_txt('Le montant versé diffère du net des inscriptions : des points marketing ou des compensations de remboursements ont été déduits du solde.'), 0, 'L');
-    $pdf->MultiCell(0, 5, fin_pdf_txt('Le versement est effectué vers le compte Stripe de l\'organisme, qui le verse ensuite sur son compte bancaire. Commission "tout compris" (frais de paiement inclus) : ' . number_format(fin_commission_pct(), 2, ',', ' ') . ' % + ' . fin_eur(fin_commission_fixe_cents()) . ' par inscription.'), 0, 'L');
+    $pdf->MultiCell(0, 5, fin_pdf_txt('Le versement est effectué vers le compte Stripe de l\'organisme, qui le verse ensuite sur son compte bancaire. Commission moncamp.fr : ' . number_format(fin_commission_pct(), 2, ',', ' ') . ' % + ' . fin_eur(fin_commission_fixe_cents()) . ' par inscription ; frais de paiement Stripe en plus, au tarif réel (paiements récents).'), 0, 'L');
 } else {
     $pdf->SetFont('Arial', '', 10);
     $pdf->Cell(80, 7, 'Montant brut', 1); $pdf->Cell(0, 7, eur((int)round($v['montant_total'] * 100)), 1, 1, 'R');

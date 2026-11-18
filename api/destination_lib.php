@@ -1,19 +1,38 @@
 <?php
-// api/destination_lib.php : opérations Stripe propres aux « destination charges » (inclus par finance_lib.php).
+// api/destination_lib.php : opérations Stripe des paiements sur compte connecté, « direct » ou « destination » (inclus par finance_lib.php).
 // Tous les appels passent par fin_stripe() (remplacé par tests/stripe_stub.php dans les tests) et ont une clé d'idempotence.
 
 /**
- * Paramètres Stripe d'un remboursement selon le modèle du paiement. Destination : reverse_transfer = l'organisme est débité du remboursé
- * (s'il a déjà été versé, son solde Stripe devient négatif et se compense sur ses encaissements suivants : « à compenser ») ;
- * refund_application_fee = false : moncamp.fr garde sa commission (règle d'annulation de annulation_lib.php), true : rendue au prorata.
+ * Rembourse $amount (centimes) d'un paiement ($p : ligne fin_paiements). Aucune commission rendue (refund_application_fee = false).
+ * Direct : le remboursement est pris sur le solde Stripe de l'organisme ; s'il ne suffit pas, moncamp.fr avance le manque (transfert vers son compte)
+ * et l'organisme a une dette (solde négatif + ligne « dette » au journal), prélevée avec la commission de ses paiements suivants.
+ * Destination : reverse_transfer (l'organisme est débité). Legacy : remboursement simple. Retourne l'identifiant du remboursement Stripe.
  */
-function fin_refund_params(array $p, bool $rendreCommission = false): array {
-    return ($p['mode'] ?? 'legacy') === 'destination' ? ['reverse_transfer' => true, 'refund_application_fee' => $rendreCommission] : [];
+function fin_refund(PDO $pdo, array $p, int $amount, array $meta, string $idem): string {
+    $params = ['payment_intent' => $p['payment_intent'], 'amount' => $amount, 'metadata' => $meta]; $opts = ['idempotency_key' => $idem];
+    $mode = $p['mode'] ?? 'legacy';
+    if ($mode === 'destination') $params += ['reverse_transfer' => true, 'refund_application_fee' => false];
+    if ($mode === 'direct') {
+        $st = $pdo->prepare("SELECT stripe_account_id FROM organisateurs WHERE id = ?"); $st->execute([$p['organisateur_id']]);
+        $acct = (string)$st->fetchColumn();
+        $params['refund_application_fee'] = false; $opts['stripe_account'] = $acct;
+        $b = fin_stripe()->balance->retrieve([], ['stripe_account' => $acct]); $solde = 0;
+        foreach (array_merge($b->available ?? [], $b->pending ?? []) as $x) if (strtolower((string)$x->currency) === 'eur') $solde += (int)$x->amount;
+        $manque = $amount - max(0, $solde);
+        if ($manque > 0) { // avance de moncamp.fr : l'organisme nous doit $manque
+            $tr = fin_stripe()->transfers->create(['amount' => $manque, 'currency' => 'eur', 'destination' => $acct, 'description' => 'moncamp.fr : avance pour un remboursement (dette)',
+                'metadata' => ['organisateur_id' => (string)$p['organisateur_id'], 'raison' => 'avance_remboursement']], ['idempotency_key' => $idem . '-avance']);
+            if (fin_ledger_add($pdo, 'dette', (int)$p['organisateur_id'], $manque, 'avance:' . $idem, 'paiement', $p['id'], 'Remboursement avancé par moncamp.fr', 'systeme', 'direct'))
+                $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$manque / 100, $p['organisateur_id']]);
+            fin_audit($pdo, 'dette_avance', 'organisateur', $p['organisateur_id'], ['cents' => $manque, 'solde_stripe' => $solde, 'transfert' => $tr->id ?? null], 'systeme');
+        }
+    }
+    return (string)fin_stripe()->refunds->create($params, $opts)->id;
 }
 
 /** Charge d'un PaymentIntent (objet), avec son transfert et sa commission (application_fee) */
-function fin_charge_of(string $paymentIntent) {
-    $ch = fin_stripe()->paymentIntents->retrieve($paymentIntent, ['expand' => ['latest_charge']])->latest_charge ?? null;
+function fin_charge_of(string $paymentIntent, ?string $account = null) {
+    $ch = fin_stripe()->paymentIntents->retrieve($paymentIntent, ['expand' => ['latest_charge']], $account ? ['stripe_account' => $account] : [])->latest_charge ?? null;
     return is_object($ch) ? $ch : null;
 }
 
@@ -22,13 +41,14 @@ function fin_charge_of(string $paymentIntent) {
  * $preleve = application_fee_amount demandé à la création de la session. Hors transaction ; un échec est journalisé et visible dans le rapprochement admin.
  */
 function fin_fee_excess_refund(PDO $pdo, string $paymentIntent, int $preleve): int {
-    $st = $pdo->prepare("SELECT COALESCE(SUM(commission_cents + compensation_cents), 0), MIN(organisateur_id) FROM fin_paiements WHERE payment_intent = ? AND mode = 'destination'");
+    $st = $pdo->prepare("SELECT COALESCE(SUM(p.commission_cents + p.compensation_cents), 0), MIN(p.organisateur_id), MAX(IF(p.mode = 'direct', o.stripe_account_id, NULL))
+                         FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id WHERE p.payment_intent = ? AND p.mode <> 'legacy'");
     $st->execute([$paymentIntent]);
-    [$du, $orga] = $st->fetch(PDO::FETCH_NUM);
+    [$du, $orga, $acct] = $st->fetch(PDO::FETCH_NUM);
     $excess = $preleve - (int)$du;
     if ($excess <= 0) return 0;
     try {
-        $fee = fin_charge_of($paymentIntent)->application_fee ?? null;
+        $fee = fin_charge_of($paymentIntent, $acct ?: null)->application_fee ?? null;
         if (!$fee) throw new Exception('commission Stripe introuvable');
         fin_stripe()->applicationFees->createRefund(is_object($fee) ? $fee->id : (string)$fee, ['amount' => $excess, 'metadata' => ['raison' => 'ajustement commission']], ['idempotency_key' => 'moncamp-fee-' . $paymentIntent]);
         fin_audit($pdo, 'commission_ajustee', 'payment_intent', $paymentIntent, ['rendu' => $excess, 'organisateur' => (int)$orga], 'webhook');
@@ -99,7 +119,7 @@ function fin_set_payout_jours(PDO $pdo, int $jours, string $acteur): void {
     $jours = max(0, min(30, $jours)); $old = fin_reglages(true)['payout_jours'];
     fin_put_reglage($pdo, 'payout_jours', (string)$jours, $acteur);
     $pdo->prepare("UPDATE fin_paiements p JOIN camps c ON c.id = p.camp_id SET p.date_deblocage = DATE_ADD(c.date_debut, INTERVAL ? DAY)
-                   WHERE p.mode = 'destination' AND p.statut IN ('attente', 'bloque', 'litige')")->execute([$jours]);
+                   WHERE p.mode <> 'legacy' AND p.statut IN ('attente', 'bloque', 'litige')")->execute([$jours]);
     fin_audit($pdo, 'payout_jours', 'reglage', 'versements', ['avant' => $old, 'apres' => $jours], $acteur);
     fin_reglages(true);
 }
@@ -114,7 +134,7 @@ function fin_payouts_run(PDO $pdo, string $acteur = 'cron', ?int $onlyOrga = nul
     if (!(int)$pdo->query("SELECT GET_LOCK('moncamp_payouts', 0)")->fetchColumn()) return $rep + ['verrou' => true];
     try {
         // organismes avec des séjours éligibles, ou de l'argent legacy transféré récemment (versements manuels : c'est à nous de le verser)
-        $ids = $onlyOrga ? [$onlyOrga] : $pdo->query("SELECT organisateur_id FROM fin_paiements WHERE mode = 'destination' AND statut = 'attente' AND date_deblocage <= NOW()
+        $ids = $onlyOrga ? [$onlyOrga] : $pdo->query("SELECT organisateur_id FROM fin_paiements WHERE mode <> 'legacy' AND statut = 'attente' AND date_deblocage <= NOW()
             UNION SELECT t.organisateur_id FROM fin_transferts t WHERE t.type <> 'payout' AND t.statut = 'envoye' AND t.created_at > NOW() - INTERVAL 30 DAY
               AND NOT EXISTS (SELECT 1 FROM fin_transferts x WHERE x.organisateur_id = t.organisateur_id AND x.type = 'payout' AND x.statut IN ('envoye', 'paye') AND x.created_at > t.created_at)")->fetchAll(PDO::FETCH_COLUMN);
         foreach ($ids as $orgaId) {
@@ -151,7 +171,7 @@ function fin_prepare_payout(PDO $pdo, int $orgaId, string $accountId, bool $forc
     $pdo->beginTransaction();
     try {
         $st = $pdo->prepare("SELECT id, statut, date_deblocage, GREATEST(0, net_cents - net_rembourse_cents - verse_cents) reste FROM fin_paiements
-                             WHERE organisateur_id = ? AND mode = 'destination' AND statut IN ('attente', 'bloque', 'litige') FOR UPDATE");
+                             WHERE organisateur_id = ? AND mode <> 'legacy' AND statut IN ('attente', 'bloque', 'litige') FOR UPDATE");
         $st->execute([$orgaId]);
         $ok = []; $hold = 0; $now = time();
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {

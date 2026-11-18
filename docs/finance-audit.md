@@ -16,14 +16,13 @@ Cartographie du code « separate charges and transfers » et sort de chaque él�
 | Remboursements initiés par le site | `annulation_lib.php`, `equipe.php` | `refunds.create` | Destination : `reverse_transfer = true`, `refund_application_fee = false` (commission conservée, règle actuelle) |
 | Checkout | `create_stripe_session_multi.php`, `create_stripe_session.php`, `equipe_inscrire.php` | Charge sur la plateforme | `fin_destination_params()` : destination + commission + `on_behalf_of` si le compte accepte les cartes. Compte non prêt → legacy (repli) |
 
-## Règles retenues (section 7 du plan)
-- Le net arrive sur le compte Stripe de l'organisme dès le paiement ; versements bancaires en `manual`, déclenchés par le cron **3 jours après le début du séjour** (réglage admin `payout_jours`).
-- Montant d'un versement = min(disponible Stripe, solde Stripe − part des séjours pas encore éligibles ou en litige). L'argent legacy déjà transféré est donc versé aussi.
-- Remboursement après versement : supporté par l'organisme ; le solde Stripe devient négatif et Stripe le compense sur les encaissements suivants (affiché « à compenser »).
-- Annulation par la famille : commission conservée (règle actuelle de `annulation_lib.php`).
-- Commission « tout compris » inchangée (`fin_commission_split()`), marge réelle par paiement dans l'admin.
+## Règles retenues (section 7 du plan, décisions définitives)
+- **Direct charges** : la session Checkout est créée sur le compte de l'organisme (`fin_checkout_params`, option `stripe_account`), `application_fee_amount` = commission + dette. Stripe débite ses frais réels à l'organisme (relevés dans `frais_stripe_cents`, déduits de `net_cents`, ligne `frais_paiement` du journal) : marge moncamp.fr = commission, jamais négative. Repli : destination charges si le compte ne reçoit que des transferts, legacy s'il n'est pas prêt.
+- Versements bancaires en `manual`, déclenchés par le cron **3 jours après le début du séjour** (réglage admin `payout_jours`). Montant = min(disponible Stripe, solde total − part des séjours pas encore éligibles ou en litige).
+- Remboursement (`fin_refund`) : pris sur le solde Stripe de l'organisme ; s'il ne suffit pas, moncamp.fr avance le manque (transfert) et l'organisme a une dette (`portefeuille` négatif, lignes `dette`), ajoutée à la commission de ses paiements suivants (plafonnée au net). Aucune commission rendue.
+- Commission moncamp.fr et frais de paiement Stripe affichés sur deux lignes (dashboard, aide, CGU, formulaire de séjour).
 
 ## Journal `fin_ledger` (ajout seulement)
-Vue de l'organisme, montants signés : `paiement` +brut, `commission` −commission (+ part rendue), `remboursement` −brut remboursé, `ajustement` (points payés avec le solde), `versement` −virement bancaire. `frais` (frais Stripe réels, à la charge de moncamp.fr) est exclu des totaux de l'organisme.
+Vue de l'organisme, montants signés : `paiement` +brut, `commission` −commission (+ part rendue, legacy/destination), `frais_paiement` −frais Stripe (direct), `remboursement` −brut remboursé, `dette` (avance / compensation, hors totaux), `ajustement` (points payés avec le solde), `versement` −virement bancaire. `frais` (frais Stripe réels, à la charge de moncamp.fr) est exclu des totaux de l'organisme.
 Pour vous = paiement + commission + remboursement + ajustement ; en attente = pour vous − versé (négatif = à compenser).
 Les reversements ne sont pas des lignes : le remboursement a déjà réduit « pour vous ». Les transferts legacy faits après le passage en versements manuels ne sont pas des lignes non plus : c'est le payout qui compte.

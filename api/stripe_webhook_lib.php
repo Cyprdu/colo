@@ -57,11 +57,11 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                     $up->execute(array_merge([$pi, $ratio], $tokens));
 
                     // Ventilation brut / commission / net par inscription (+ crédit du solde de l'organisme en legacy)
-                    $mode = ($meta->mode ?? '') === 'destination' ? 'destination' : 'legacy';
-                    $comp = $mode === 'destination' ? max(0, (int)($meta->compensation ?? 0)) : 0;
+                    $mode = in_array($meta->mode ?? '', ['direct', 'destination'], true) ? (string)$meta->mode : 'legacy'; // direct : événement du compte connecté
+                    $comp = $mode !== 'legacy' ? max(0, (int)($meta->compensation ?? 0)) : 0;
                     $n = fin_record_checkout($pdo, $tokens, $pi, (string)$obj->id, $total, $mode, $comp);
                     if ($pi && $n) $feePI = (string)$pi;
-                    if ($pi && $mode === 'destination') $feeAdj = [(string)$pi, (int)($meta->commission ?? 0) + $comp];
+                    if ($pi && $mode !== 'legacy') $feeAdj = [(string)$pi, (int)($meta->commission ?? 0) + $comp];
                     fin_audit($pdo, 'commande_payee', 'session', $obj->id, ['tokens' => count($tokens), 'total' => $total, 'lignes' => $n], 'webhook');
                     // Inscription de l'équipe d'animation (adultes, hors inscriptions d'enfants) : mêmes règles de commission
                     if (($meta->type ?? '') === 'equipe_inscription') {
@@ -104,7 +104,7 @@ function stripe_webhook_process(PDO $pdo, $event): array {
                 if (!empty($obj->payment_intent)) {
                     $won = ($obj->status ?? '') === 'won';
                     $amount = 0;
-                    if (!$won) { $ch = fin_stripe()->charges->retrieve($obj->charge); $amount = (int)$ch->amount; }
+                    if (!$won) { $ch = fin_stripe()->charges->retrieve($obj->charge, [], !empty($event->account) ? ['stripe_account' => $event->account] : []); $amount = (int)$ch->amount; }
                     fin_dispute($pdo, (string)$obj->payment_intent, $won ? 'won' : 'lost', $amount);
                 }
                 break;

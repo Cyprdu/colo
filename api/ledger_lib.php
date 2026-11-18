@@ -3,13 +3,16 @@
 //
 // Une ligne = un mouvement d'argent vu par l'organisme, montant signé en centimes :
 //   paiement +brut payé par la famille | commission −commission moncamp.fr (+ part rendue lors d'un remboursement)
-//   remboursement −brut rendu à la famille | ajustement (points payés avec le solde...) | versement −virement vers sa banque
-//   frais : frais Stripe réels, à la charge de moncamp.fr (exclus des totaux de l'organisme, servent à la marge).
-// Pour vous = paiement + commission + remboursement + ajustement ; en attente = pour vous − versé (négatif : à compenser).
+//   frais_paiement −frais Stripe débités à l'organisme (direct charges) | remboursement −brut rendu à la famille
+//   ajustement (points payés avec le solde...) | versement −virement vers sa banque
+//   frais : frais Stripe payés par moncamp.fr (paiements destination / legacy ; exclus des totaux de l'organisme, servent à la marge).
+//   dette : +remboursement avancé par moncamp.fr, −dette compensée sur un paiement (historique de la dette ; hors totaux, la dette en cours est
+//           organisateurs.portefeuille négatif).
+// Pour vous = paiement + commission + frais_paiement + remboursement + ajustement ; en attente = pour vous − versé.
 // Idempotence : (type, reference) unique ; la référence part de l'objet Stripe (pi_, po_, tr_...) : un webhook rejoué n'écrit rien.
 // Les reversements ne sont PAS des lignes : le remboursement a déjà réduit « pour vous ».
 
-const FIN_LEDGER_TYPES = ['paiement', 'commission', 'remboursement', 'ajustement', 'versement', 'frais'];
+const FIN_LEDGER_TYPES = ['paiement', 'commission', 'frais_paiement', 'remboursement', 'ajustement', 'versement', 'frais', 'dette'];
 
 function fin_ledger_ensure(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS fin_ledger (
@@ -90,8 +93,8 @@ function fin_ledger_totaux(PDO $pdo, int $orgaId): array {
     $st = $pdo->prepare("SELECT type, COALESCE(SUM(montant_cents), 0) FROM fin_ledger WHERE organisateur_id = ? GROUP BY type");
     $st->execute([$orgaId]);
     $s = $st->fetchAll(PDO::FETCH_KEY_PAIR) + array_fill_keys(FIN_LEDGER_TYPES, 0);
-    $pour = (int)$s['paiement'] + (int)$s['commission'] + (int)$s['remboursement'] + (int)$s['ajustement'];
+    $pour = (int)$s['paiement'] + (int)$s['commission'] + (int)$s['frais_paiement'] + (int)$s['remboursement'] + (int)$s['ajustement'];
     $verse = -(int)$s['versement'];
-    return ['encaisse' => (int)$s['paiement'], 'commission' => -(int)$s['commission'], 'rembourse' => -(int)$s['remboursement'], 'ajustement' => (int)$s['ajustement'],
+    return ['encaisse' => (int)$s['paiement'], 'commission' => -(int)$s['commission'], 'frais' => -(int)$s['frais_paiement'], 'rembourse' => -(int)$s['remboursement'], 'ajustement' => (int)$s['ajustement'],
             'pour_vous' => $pour, 'verse' => $verse, 'en_attente' => $pour - $verse];
 }
