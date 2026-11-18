@@ -15,17 +15,7 @@ function fin_refund(PDO $pdo, array $p, int $amount, array $meta, string $idem):
     if ($mode === 'direct') {
         $st = $pdo->prepare("SELECT stripe_account_id FROM organisateurs WHERE id = ?"); $st->execute([$p['organisateur_id']]);
         $acct = (string)$st->fetchColumn();
-        $params['refund_application_fee'] = false; $opts['stripe_account'] = $acct;
-        $b = fin_stripe()->balance->retrieve([], ['stripe_account' => $acct]); $solde = 0;
-        foreach (array_merge($b->available ?? [], $b->pending ?? []) as $x) if (strtolower((string)$x->currency) === 'eur') $solde += (int)$x->amount;
-        $manque = $amount - max(0, $solde);
-        if ($manque > 0) { // avance de moncamp.fr : l'organisme nous doit $manque
-            $tr = fin_stripe()->transfers->create(['amount' => $manque, 'currency' => 'eur', 'destination' => $acct, 'description' => 'moncamp.fr : avance pour un remboursement (dette)',
-                'metadata' => ['organisateur_id' => (string)$p['organisateur_id'], 'raison' => 'avance_remboursement']], ['idempotency_key' => $idem . '-avance']);
-            if (fin_ledger_add($pdo, 'dette', (int)$p['organisateur_id'], $manque, 'avance:' . $idem, 'paiement', $p['id'], 'Remboursement avancé par moncamp.fr', 'systeme', 'direct'))
-                $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$manque / 100, $p['organisateur_id']]);
-            fin_audit($pdo, 'dette_avance', 'organisateur', $p['organisateur_id'], ['cents' => $manque, 'solde_stripe' => $solde, 'transfert' => $tr->id ?? null], 'systeme');
-        }
+        $params['refund_application_fee'] = false; $opts['stripe_account'] = $acct; // pris sur le solde de l'organisme ; un solde négatif est géré par Stripe (compensation, puis prélèvement de son IBAN)
     }
     return (string)fin_stripe()->refunds->create($params, $opts)->id;
 }

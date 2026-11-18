@@ -306,8 +306,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     <!-- Dette -->
     <section class="fd-panel" role="tabpanel" id="pan-dette" aria-labelledby="tab-dette" hidden>
-        <div class="fd-card" style="max-width:720px"><h2 class="fd-h"><span>Dette et compensations<?= $help("Quand une famille est remboursée alors que votre solde ne suffit pas, moncamp.fr avance la différence. Elle est retenue avec la commission sur vos paiements par carte suivants, jamais plus que leur montant. Aucune démarche.") ?></span></h2>
+        <div class="fd-card" style="max-width:720px"><h2 class="fd-h"><span>Dette et compensations<?= $help("Somme due à moncamp.fr : commission sur les règlements hors carte, frais de paiement ou remboursement d'un ancien paiement. Elle est retenue avec la commission sur vos paiements par carte suivants (jamais plus que leur montant), prélevée par SEPA si un mandat est enregistré et qu'elle reste impayée 15 jours, ou réglable par carte.") ?></span></h2>
             <dl class="fd-dl" id="dTot"></dl>
+            <?php if ($solde && $solde['negatif'] < 0): ?><div class="ds-alert-err" style="margin-top:12px">Solde de votre compte de paiement : <b><?= fin_eur($solde['negatif']) ?></b> (remboursement plus élevé que l'argent disponible). Il est compensé par vos prochains paiements, puis prélevé sur votre compte bancaire.</div><?php endif; ?>
             <?php $sepa = fin_sepa_info($pdo, $orgaId); ?>
             <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--ds-soft);font-size:13.5px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
                 <?php if (!empty($sepa['sepa_pm'])): ?><span><b>Prélèvement SEPA actif</b><?= $sepa['sepa_last4'] ? ' · IBAN ••••' . htmlspecialchars($sepa['sepa_last4']) : '' ?> : une dette restée impayée 15 jours est prélevée automatiquement. Vous pouvez aussi payer vos boosts par prélèvement.</span>

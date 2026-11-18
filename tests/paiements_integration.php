@@ -192,13 +192,11 @@ fin_refund($pdo, $h, 3000, ['annulation' => '1'], 'k-ok');
 $c = array_column($GLOBALS['stripe_calls'], 1, 0);
 ok(!isset($c['transfers.create']) && $c['refunds.create'][1]['stripe_account'] === 'acct_D' && $c['refunds.create'][0]['refund_application_fee'] === false, 'solde suffisant : remboursé sur le compte de l\'organisme, commission non rendue');
 $nTr = count($GLOBALS['fake_transfers']->calls); $bal(1000, 0);
-$pf0 = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn(); // déjà négatif des frais de litige de E (dette)
+$pf0 = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn();
 fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
-$tr = array_slice($GLOBALS['fake_transfers']->calls, $nTr);
-ok($tr && $tr[0][1]['amount'] === 2000 && $tr[0][1]['destination'] === 'acct_D' && $tr[0][2]['idempotency_key'] === 'k-manque-avance', 'solde insuffisant : moncamp.fr avance les 20 EUR manquants');
-ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() - ($pf0 - 20.00)) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'avance:k-manque'")->fetchColumn() === 2000, 'dette de 20 EUR : solde négatif et journal');
-fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
-ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 20.00) < 0.001, 'remboursement rejoué : dette comptée une fois');
+ok(count($GLOBALS['fake_transfers']->calls) === $nTr && abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() - $pf0) < 0.001
+   && !(int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference = 'avance:k-manque'")->fetchColumn(), 'direct, solde insuffisant : aucune avance de moncamp.fr, Stripe gère le solde négatif de l’organisme');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -20.00 WHERE id = 2"); // dette (legacy, repli destination ou hors carte) pour la suite
 $r = stripe_webhook_process($pdo, $ev('evt_21', 'charge.refunded', ['id' => 'ch_pi_H', 'payment_intent' => 'pi_H', 'amount_refunded' => 6000, 'amount' => 8000], 'acct_D'));
 $h2 = $pdo->query("SELECT rembourse_cents, net_rembourse_cents FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetch(PDO::FETCH_NUM);
 ok(array_map('intval', $h2) === [6000, 6000] && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'commission' AND reference LIKE 'rem:pi_H:%'")->fetchColumn() === 0, 'remboursement direct : l\'organisme rend tout, aucune commission rendue');
