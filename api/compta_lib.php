@@ -187,7 +187,7 @@ function compta_revenus_rapprochement(PDO $pdo, ?array $ps): array {
                       FROM fin_ledger")->fetch(PDO::FETCH_ASSOC);
     $l = array_map('intval', $l);
     $points = 0;
-    try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
+    try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source IN ('carte', 'sepa')")->fetchColumn(); } catch (Throwable $e) {}
     $fraisEcart = (int)$pdo->query("SELECT COALESCE(SUM(frais_estimes_cents - COALESCE(frais_stripe_cents, frais_estimes_cents)), 0) FROM fin_paiements WHERE frais_orga = 1 AND mode = 'destination'")->fetchColumn();
     $detenu = (int)$pdo->query("SELECT COALESCE(SUM(GREATEST(0, net_cents - net_rembourse_cents - verse_cents)), 0) FROM fin_paiements WHERE mode = 'legacy' AND statut IN ('attente', 'bloque', 'litige', 'en_cours')")->fetchColumn();
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid', 'in_transit', 'pending')")->fetchColumn();
@@ -218,7 +218,7 @@ function compta_reconcile(PDO $pdo, ?array $stripe): array {
             FROM fin_paiements")->fetch(PDO::FETCH_ASSOC);
     $transferts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents - reverse_cents), 0) FROM fin_transferts WHERE statut = 'envoye' AND type <> 'payout'")->fetchColumn(); // net des reversements ; les payouts des comptes connectés ne sortent pas de notre solde
     $points = 0;
-    try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source = 'carte'")->fetchColumn(); } catch (Throwable $e) {}
+    try { $points = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM points_mouvements WHERE source IN ('carte', 'sepa')")->fetchColumn(); } catch (Throwable $e) {}
     $payouts = (int)$pdo->query("SELECT COALESCE(SUM(montant_cents), 0) FROM fin_payouts WHERE statut IN ('paid','in_transit','pending')")->fetchColumn();
     $nbPayouts = (int)$pdo->query("SELECT COUNT(*) FROM fin_payouts")->fetchColumn();
     $theorique = (int)$a['ca'] + $points - (int)$a['frais'] - (int)$a['litige'] - $transferts; // fonds censés rester chez Stripe ou être partis en banque

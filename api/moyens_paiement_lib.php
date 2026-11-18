@@ -39,6 +39,41 @@ function fin_instruction_moyen(string $code, ?string $consigneOrga): string {
  * Contrôles : l'inscription est dans un séjour d'un organisme appartenant à $userId, en attente de règlement hors Stripe.
  * Retourne [ok, message].
  */
+/**
+ * Commission moncamp.fr d'une inscription réglée hors carte : due dès la réservation (A_REGLER), même si elle est annulée ensuite.
+ * Dette de l'organisme (solde négatif, compensé sur ses paiements par carte suivants), journalisée. Idempotent (une ligne par inscription).
+ */
+function fin_hors_commission_due(PDO $pdo, int $inscriptionId, string $acteur = 'systeme'): int {
+    $st = $pdo->prepare("SELECT i.id, i.prix_final, i.moyen_paiement, i.camp_id, c.organisateur_id, c.nom camp, e.prenom, e.nom
+                         FROM inscriptions i JOIN camps c ON c.id = i.camp_id LEFT JOIN enfants e ON e.id = i.enfant_id WHERE i.id = ?");
+    $st->execute([$inscriptionId]);
+    $i = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$i || !$i['moyen_paiement'] || $i['moyen_paiement'] === 'carte' || (float)$i['prix_final'] <= 0) return 0;
+    $brut = (int)round((float)$i['prix_final'] * 100);
+    $pct = fin_hors_stripe_pct();
+    $com = min($brut, (int)round($brut * $pct / 100));
+    $ins = $pdo->prepare("INSERT IGNORE INTO fin_commissions_hors (inscription_id, organisateur_id, camp_id, moyen, brut_cents, commission_cents, pct) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $ins->execute([$i['id'], $i['organisateur_id'], $i['camp_id'], $i['moyen_paiement'], $brut, $com, $pct]);
+    if ($ins->rowCount() !== 1 || $com <= 0) return 0;
+    $d = fn($v) => html_entity_decode((string)$v, ENT_QUOTES, 'UTF-8');
+    $lib = mb_substr('Commission hors carte (' . $d($i['camp']) . ' · ' . (trim($d($i['prenom']) . ' ' . mb_strtoupper($d($i['nom']))) ?: 'inscription') . ')', 0, 120);
+    $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$com / 100, $i['organisateur_id']]);
+    fin_ledger_add($pdo, 'commission', (int)$i['organisateur_id'], -$com, 'hors:' . $i['id'], 'inscription', $i['id'], 'Commission paiement hors carte', $acteur);
+    fin_ledger_add($pdo, 'dette', (int)$i['organisateur_id'], $com, 'horsdette:' . $i['id'], 'inscription', $i['id'], $lib, $acteur);
+    fin_audit($pdo, 'commission_hors_due', 'inscription', $i['id'], ['moyen' => $i['moyen_paiement'], 'brut' => $brut, 'commission' => $com, 'pct' => $pct], $acteur);
+    return $com;
+}
+
+/** Rattrapage : réservations hors carte (à régler ou reçues) sans commission enregistrée */
+function fin_hors_commissions_rattrapage(PDO $pdo): int {
+    $n = 0;
+    foreach ($pdo->query("SELECT i.id FROM inscriptions i LEFT JOIN fin_commissions_hors h ON h.inscription_id = i.id
+                          WHERE h.id IS NULL AND i.statut_paiement IN ('A_REGLER', 'PAYE') AND COALESCE(i.moyen_paiement, '') NOT IN ('', 'carte') AND i.prix_final > 0 LIMIT 500")->fetchAll(PDO::FETCH_COLUMN) as $id) {
+        try { if (fin_hors_commission_due($pdo, (int)$id, 'rattrapage')) $n++; } catch (Throwable $e) { error_log('fin_hors_commissions_rattrapage: ' . $e->getMessage()); }
+    }
+    return $n;
+}
+
 function fin_marquer_recu(PDO $pdo, string $resaToken, int $userId): array {
     fin_ensure($pdo);
     if (!preg_match('/^[a-f0-9]{16,64}$/i', $resaToken)) return [false, 'Inscription introuvable.'];
@@ -51,19 +86,11 @@ function fin_marquer_recu(PDO $pdo, string $resaToken, int $userId): array {
         $i = $st->fetch(PDO::FETCH_ASSOC);
         if (!$i) { $pdo->rollBack(); return [false, 'Inscription introuvable.']; }
         if ($i['statut_paiement'] !== 'A_REGLER' || !$i['moyen_paiement'] || $i['moyen_paiement'] === 'carte') { $pdo->rollBack(); return [false, 'Cette inscription n\'est pas en attente d\'un règlement hors carte.']; }
-        $brut = (int)round((float)$i['prix_final'] * 100);
-        $pct = fin_hors_stripe_pct();
-        $com = min($brut, (int)round($brut * $pct / 100));
         $pdo->prepare("UPDATE inscriptions SET statut_paiement = 'PAYE', statut = 'Confirmé', montant_paye = prix_final WHERE id = ? AND statut_paiement = 'A_REGLER'")->execute([$i['id']]);
-        $ins = $pdo->prepare("INSERT IGNORE INTO fin_commissions_hors (inscription_id, organisateur_id, camp_id, moyen, brut_cents, commission_cents, pct) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $ins->execute([$i['id'], $i['organisateur_id'], $i['camp_id'], $i['moyen_paiement'], $brut, $com, $pct]);
-        if ($ins->rowCount() === 1 && $com > 0) { // déduite des prochains versements par carte : le solde peut devenir négatif (compensé par les paiements suivants)
-            $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$com / 100, $i['organisateur_id']]);
-            fin_ledger_add($pdo, 'commission', (int)$i['organisateur_id'], -$com, 'hors:' . $i['id'], 'inscription', $i['id'], 'Commission paiement hors carte', 'user:' . $userId);
-        }
-        fin_audit($pdo, 'paiement_hors_stripe_recu', 'inscription', $i['id'], ['moyen' => $i['moyen_paiement'], 'brut' => $brut, 'commission' => $com, 'pct' => $pct], 'user:' . $userId);
+        fin_hors_commission_due($pdo, (int)$i['id'], 'user:' . $userId); // déjà due dès la réservation : rien de plus si elle est enregistrée
+        fin_audit($pdo, 'paiement_hors_stripe_recu', 'inscription', $i['id'], ['moyen' => $i['moyen_paiement']], 'user:' . $userId);
         $pdo->commit();
-        return [true, 'Règlement enregistré. Commission moncamp.fr de ' . fin_eur($com) . ' déduite de vos prochains versements par carte.'];
+        return [true, 'Règlement enregistré.'];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('fin_marquer_recu: ' . $e->getMessage());

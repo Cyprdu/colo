@@ -153,7 +153,7 @@ require_once 'partials/mk_icons.php';
 
     <?php $gh = $orga ? gains_history($pdo, $orgaId, 8) : []; if ($gh): ?>
     <section class="mk-section">
-        <h2>Paiements avec mes gains</h2>
+        <h2>Anciens paiements avec mes gains</h2>
         <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:520px">
             <thead><tr><th>Date</th><th>Achat</th><th class="num">Montant</th><th class="num">Solde après</th><th>Réf.</th></tr></thead><tbody>
             <?php foreach ($gh as $g): ?><tr><td><?= date('d/m/Y H:i', strtotime($g['created_at'])) ?></td><td><?= htmlspecialchars($g['libelle']) ?><?= $g['statut'] === 'ok' ? '' : ' <span class="mk-pill bad">Refusé : solde</span>' ?></td><td class="num"><?= $g['statut'] === 'ok' ? '- ' . mk_money($g['montant_cents'] / 100) : '-' ?></td><td class="num"><?= mk_money($g['solde_apres_cents'] / 100) ?></td><td>G-<?= (int)$g['id'] ?></td></tr><?php endforeach; ?>
@@ -165,7 +165,6 @@ require_once 'partials/mk_icons.php';
         <h2>Questions fréquentes</h2>
         <div style="margin-top:10px">
             <details><summary>Comment le classement fonctionne-t-il ?</summary><p>La pertinence passe d'abord : recherche, âge, dates, prix et lieu filtrent les séjours, un boost n'en ajoute jamais un hors sujet. Chaque séjour a un score (places restantes, départ proche, taux de visite, nouveauté) que le boost multiplie : +55 % « À la une », +20 % « Dernière minute », jusqu'à +50 % qui s'estompe pour la Remontée. Une légère rotation évite que les mêmes séjours occupent toujours le haut de page. Les séjours à la une portent la mention « Sponsorisé ».</p></details>
-            <details><summary>Comment payer avec mes gains ?</summary><p>Vos inscriptions payées en ligne, nettes de commission, forment votre solde. Vous pouvez l'utiliser pour acheter des points : le montant est déduit de vos prochains versements, sans carte. Une confirmation vous est demandée avant tout débit.</p></details>
             <details><summary>Les points expirent-ils ?</summary><p>Non. Ils restent sur le solde de l'organisme et servent pour tous ses séjours.</p></details>
             <details><summary>Et si le séjour est complet ?</summary><p>Il est automatiquement rétrogradé dans la recherche, même boosté.</p></details>
             <details><summary>Puis-je être remboursé d'un boost ?</summary><p>Un boost activé ne peut pas être annulé. Les points non dépensés restent disponibles. <a class="underline" href="contact.php">Une question ?</a></p></details>

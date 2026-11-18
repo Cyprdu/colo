@@ -15,9 +15,9 @@ $st = ['orgas' => 0, 'avenir' => 0, 'inscrits' => 0, 'solde' => 0.0, 'attente' =
 $orgaIds = [];
 $statsOk = true;
 try {
-    $q = $pdo->prepare("SELECT id, portefeuille FROM organisateurs WHERE user_id = ?");
+    $q = $pdo->prepare("SELECT id, solde_points FROM organisateurs WHERE user_id = ?");
     $q->execute([$userId]);
-    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) { $orgaIds[] = (int)$o['id']; $st['solde'] += (float)$o['portefeuille']; }
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) { $orgaIds[] = (int)$o['id']; $st['solde'] += (int)$o['solde_points']; }
     $st['orgas'] = count($orgaIds);
     if ($orgaIds) {
         $in = implode(',', $orgaIds);
@@ -47,12 +47,12 @@ $tiles = [
     ['demandes-animation.php', 'anim', 'Animateurs', 'Candidatures et inscription de votre équipe.'],
     ['messagerie.php', 'mail', 'Messagerie', 'Les questions des familles.'],
     ['marketing.php', 'bolt', 'Marketing et boost', 'Points, mise en avant de vos séjours.'],
-    [$financeHref, 'euro', 'Finances et versements', 'Solde, versements et commissions.'],
+    [$financeHref, 'euro', 'Finances et versements', 'Virements, transactions et commissions.'],
 ];
 $kpis = [
     ['Séjours à venir', (string)$st['avenir'], 'mes_camps.php'],
     ['Inscrits à venir', (string)$st['inscrits'], 'mes_camps.php'],
-    ['Solde à recevoir', number_format($st['solde'], 2, ',', ' ') . ' €', $financeHref],
+    ['Points marketing', number_format($st['solde'], 0, ',', ' '), 'marketing.php'],
     ['En validation', (string)$st['attente'], 'mes_camps.php'],
 ];
 

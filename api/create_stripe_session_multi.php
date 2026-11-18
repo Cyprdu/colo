@@ -188,6 +188,7 @@ try {
         } elseif ($horsStripe) { // règlement direct à l'organisateur : place réservée, aucun appel à Stripe
             $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'Confirmé', $price, 'A_REGLER', $token, strtoupper($moyen), 0, $moyen]);
             $horsTokens[] = $token;
+            try { require_once __DIR__ . '/moyens_paiement_lib.php'; fin_hors_commission_due($pdo, (int)$pdo->lastInsertId(), 'reservation'); } catch (Throwable $e) { error_log('commission hors carte: ' . $e->getMessage()); }
         } else {
             $ins->execute([$camp['id'], $o['child']['id'], $o['tarif_id'], 'En attente', $price, 'EN_ATTENTE', $token, 'NON_DEFINI', 0, 'carte']);
             $payTokens[] = $token;
@@ -251,6 +252,7 @@ try {
     // Direct charges : paiement créé sur le compte Stripe de l'organisme, commission prélevée par moncamp.fr (repli destination / legacy si compte non prêt)
     [$extra, $opts] = fin_checkout_params($pdo, (int)$camp['organisateur_id'], array_map(fn($li) => (int)$li['price_data']['unit_amount'], $lineItems));
     $extra = array_replace_recursive($extra, fin_lisible($pdo, $payTokens)); // lisible dans le Stripe de l'organisme
+    $extra = fin_detail_frais($extra);
 
     $checkout = \Stripe\Checkout\Session::create(array_replace_recursive($params, $extra), $opts);
 

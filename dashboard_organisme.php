@@ -53,9 +53,11 @@ if (!$orga) fin_orga_404();
 $ready = fin_account_ready($acc);
 $hasAccount = !empty($orga['stripe_account_id']);
 $due = $acc && !empty($acc['exigences']) ? (json_decode($acc['exigences'], true) ?: []) : [];
-$autoTxt = 'versé automatiquement par Stripe dès que les fonds sont disponibles, en général sous 2 à 7 jours ouvrés';
+$autoTxt = 'viré chaque jour sur votre banque dès que l\'argent est disponible (en général 2 à 7 jours ouvrés après le paiement), ou tout de suite avec « Virer mon argent maintenant »';
+$solde = $ready ? fin_solde_compte($pdo, $orgaId) : null;
 $comTxt = number_format(fin_commission_pct(), 1, ',', ' ') . ' %' . (fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '');
 $detteDue = fin_dette_due($pdo, $orgaId); // « Payer ma dette » : affiché seulement si > 0
+if (($_GET['mandat'] ?? '') === 'ok' && !$success) $success = 'Mandat de prélèvement SEPA enregistré (activé dans quelques instants).';
 if (($_GET['dette'] ?? '') === 'ok' && !$success) $success = 'Paiement reçu : votre dette est soldée dans quelques instants (reçu envoyé par e-mail).';
 $tvaCur = $orga['tva_taux'] === null ? '' : rtrim(rtrim((string)$orga['tva_taux'], '0'), '.');
 
@@ -173,22 +175,34 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     <?php if (!$ready): ?>
     <section class="fd-stripe" role="alert" aria-labelledby="stripeAlertT">
-        <div><b id="stripeAlertT">Votre compte Stripe est à compléter : vous ne pouvez pas recevoir vos paiements</b>
-            <span>Identité et IBAN, environ 5 minutes chez Stripe.<?= $due ? ' Informations restantes : ' . count($due) . '.' : '' ?></span></div>
-        <a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= $orgaTok ?>">Compléter mon compte Stripe</a>
+        <div><b id="stripeAlertT">Votre compte de paiement est à compléter : vous ne pouvez pas recevoir vos paiements</b>
+            <span>Identité et IBAN, environ 5 minutes.<?= $due ? ' Informations restantes : ' . count($due) . '.' : '' ?></span></div>
+        <a class="ds-btn" href="<?= $hasAccount ? 'api/connect_onboarding.php?o=' : 'connect_statut.php?o=' ?><?= $orgaTok ?>">Compléter mon compte de paiement</a>
     </section>
     <?php endif; ?>
     <header class="fd-top" style="margin-top:10px">
         <div class="fd-id">
             <?php if (!empty($orga['logo_url'])): ?><img src="<?= htmlspecialchars($orga['logo_url']) ?>" alt=""><?php endif; ?>
             <div style="min-width:0"><p class="ds-eyebrow" style="margin:0">Finances</p><h1><?= htmlspecialchars($orga['nom']) ?></h1>
-                <div class="fd-acct"><span class="mk-pill <?= $ready ? 'ok' : 'warn' ?>"><?= $ready ? 'Compte Stripe actif' : 'Compte Stripe à compléter' ?></span>
-                    <?= $help($ready ? "Les paiements arrivent sur votre compte Stripe, puis sur votre banque : " . $autoTxt . ". Stripe garde votre IBAN : moncamp.fr ne le voit pas." : "Pour recevoir l'argent des inscriptions, complétez votre compte chez Stripe (identité, IBAN : 5 minutes)." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?>
+                <div class="fd-acct"><span class="mk-pill <?= $ready ? 'ok' : 'warn' ?>"><?= $ready ? 'Compte de paiement actif' : 'Compte de paiement à compléter' ?></span>
+                    <?= $help($ready ? "Les paiements arrivent sur votre compte de paiement, puis sur votre banque : " . $autoTxt . ". Votre IBAN est conservé par notre prestataire de paiement : moncamp.fr ne le voit pas." : "Pour recevoir l'argent des inscriptions, complétez votre compte de paiement (identité, IBAN : 5 minutes)." . ($due ? " Informations restantes : " . count($due) . "." : "")) ?>
                     <?php if ($ready && ($acc['type'] ?? '') === 'express'): ?><a class="underline" href="api/connect_dashboard.php?o=<?= $orgaTok ?>" target="_blank" rel="noopener">Espace Stripe ↗</a><?php endif; ?>
                     <span>· Commission <?= htmlspecialchars($comTxt) ?></span></div>
             </div>
         </div>
     </header>
+
+    <?php if ($solde): $av = $solde['avenir'] ? [array_key_first($solde['avenir']), reset($solde['avenir'])] : null; ?>
+    <section class="fd-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap" aria-label="Argent disponible">
+        <div style="display:flex;gap:28px;flex-wrap:wrap">
+            <div><div style="font-size:12.5px;font-weight:700;color:var(--ds-muted)">Disponible maintenant<?= $help("Argent prêt à partir sur votre banque. Il est viré automatiquement chaque jour, ou tout de suite avec le bouton.") ?></div><div style="font-size:24px;font-weight:800;color:var(--ds-ink)"><?= fin_eur(max(0, $solde['dispo'])) ?></div></div>
+            <div><div style="font-size:12.5px;font-weight:700;color:var(--ds-muted)">Disponible plus tard</div><div style="font-size:24px;font-weight:800;color:var(--ds-ink)"><?= fin_eur(max(0, $solde['attente'])) ?></div>
+                <?php if ($av): ?><div style="font-size:12.5px;color:var(--ds-muted)"><?= fin_eur($av[1]) ?> le <?= date('d/m', strtotime($av[0])) ?><?= count($solde['avenir']) > 1 ? ', puis la suite' : '' ?></div><?php endif; ?></div>
+        </div>
+        <form method="post" action="api/virer_maintenant.php"><input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>">
+            <button type="submit" class="ds-btn"<?= $solde['dispo'] < 100 || $orga['user_id'] != $userId ? ' disabled' : '' ?>>Virer mon argent maintenant</button></form>
+    </section>
+    <?php endif; ?>
 
     <div class="fd-bar" role="group" aria-label="Période et exports">
         <label class="sr" for="pPreset">Période</label>
@@ -219,9 +233,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     <section class="fd-panel" role="tabpanel" id="pan-apercu" aria-labelledby="tab-apercu" hidden>
         <div class="fd-kpis" id="kpis" aria-live="polite">
             <?php foreach ([['brut', 'Encaissé brut', 'Paiements par carte reçus sur la période (avant commission, frais et remboursements).'], ['net', 'Net pour vous', 'Encaissé − commission − frais Stripe − remboursements (± ajustements).', 'dark'],
-                            ['com', 'Commission moncamp.fr', "Commission : $comTxt par inscription. Jamais rendue en cas d'annulation."], ['frais', 'Frais Stripe', "Frais réels de Stripe pour chaque paiement (et litige), débités par Stripe sur votre compte."],
-                            ['remb', 'Remboursé', 'Montants rendus aux familles sur la période.'], ['attente', 'En attente de versement', "Déjà sur votre compte Stripe (ou chez moncamp.fr avant l'activation de votre compte), $autoTxt. Montant à ce jour."],
-                            ['prochain', 'Prochain virement', "Montant et date du prochain virement vers votre banque, d'après votre solde Stripe (date de disponibilité des fonds) ou le virement déjà en route (date d'arrivée annoncée par Stripe)."], ['dette', 'Dette compensée', "Remboursement avancé par moncamp.fr quand votre solde Stripe ne suffisait pas. Retenu automatiquement sur vos prochains paiements."]] as $k): ?>
+                            ['com', 'Commission moncamp.fr', "Commission : $comTxt par inscription. Jamais rendue en cas d'annulation."], ['frais', 'Frais de paiement', "Frais réels de chaque paiement par carte (et des litiges), à votre charge."],
+                            ['remb', 'Remboursé', 'Montant rendu à la famille (annulation). La commission moncamp.fr est conservée et les frais de paiement ne sont pas rendus. Le remboursement est pris sur votre solde.'], ['attente', 'En attente de versement', "Déjà sur votre compte Stripe (ou chez moncamp.fr avant l'activation de votre compte), $autoTxt. Montant à ce jour."],
+                            ['prochain', 'Prochain virement', "Montant et date du prochain virement vers votre banque, d'après la date de disponibilité de l'argent ou le virement déjà en route."], ['dette', 'Dette compensée', "Remboursement avancé par moncamp.fr quand votre solde ne suffisait pas. Retenu automatiquement sur vos prochains paiements."]] as $k): ?>
                 <div class="fd-kpi <?= $k[3] ?? '' ?>" id="kp-<?= $k[0] ?>"><div class="k"><?= $k[1] ?><?= $help($k[2]) ?></div><div class="v"><span class="sk" style="width:60%"></span></div><div class="s"></div></div>
             <?php endforeach; ?>
         </div>
@@ -247,12 +261,12 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             <button type="button" class="fd-btn" id="tExpSelCsv" data-fmt="csv" disabled>CSV</button>
         </div>
         <p style="font-size:12.5px;color:var(--ds-muted);margin:10px 0 0;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center">Où est l'argent :
-            <span class="mk-pill info">Sur votre compte Stripe</span> → <span class="mk-pill info">Virement en cours</span> → <span class="mk-pill ok">Versé sur votre banque</span>
-            <?= $help("Sur votre compte Stripe : le paiement est reçu, Stripe le garde le temps que les fonds soient disponibles. Virement en cours : Stripe a lancé le virement, avec sa date d'arrivée prévue. Versé sur votre banque : le virement est arrivé. Le passage d'un statut à l'autre est automatique.") ?></p>
+            <span class="mk-pill info">En attente</span> → <span class="mk-pill info">Virement en cours</span> → <span class="mk-pill ok">Versé sur votre banque</span>
+            <?= $help("En attente : le paiement est reçu, l'argent devient disponible quelques jours plus tard (date prévue affichée sur chaque transaction). Virement en cours : le virement vers votre banque est lancé, avec sa date d'arrivée prévue. Versé sur votre banque : le virement est arrivé. Le passage d'un statut à l'autre est automatique.") ?></p>
         <div id="tFilt" class="fd-filters" hidden>
             <label><span>Séjour</span><select id="fSej" class="ds-select"><option value="">Tous</option></select></label>
             <label><span>Session</span><select id="fSes" class="ds-select"><option value="">Toutes</option></select></label>
-            <label><span>Statut</span><select id="fSt" class="ds-select"><option value="">Tous</option><option value="stripe">Sur votre compte Stripe</option><option value="route">Virement en cours</option><option value="banque">Versé sur votre banque</option><option value="moncamp">Chez moncamp.fr</option><option value="partiel">Remboursé en partie</option><option value="rembourse">Remboursé</option><option value="annule">Annulé</option><option value="litige">Litige</option><option value="bloque">Suspendu</option><option value="PAYE">Reçu hors carte</option><option value="A_REGLER">À encaisser</option></select></label>
+            <label><span>Statut</span><select id="fSt" class="ds-select"><option value="">Tous</option><option value="stripe">En attente</option><option value="route">Virement en cours</option><option value="banque">Versé sur votre banque</option><option value="moncamp">Chez moncamp.fr</option><option value="partiel">Remboursé en partie</option><option value="rembourse">Remboursé</option><option value="annule">Annulé</option><option value="litige">Litige</option><option value="bloque">Suspendu</option><option value="PAYE">Reçu hors carte</option><option value="A_REGLER">À encaisser</option></select></label>
             <label><span>Moyen</span><select id="fMoy" class="ds-select"><option value="">Tous</option></select></label>
             <label><span>Du</span><input id="fDu" type="date" class="ds-input"></label>
             <label><span>Au</span><input id="fAu" type="date" class="ds-input"></label>
@@ -260,9 +274,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         </div>
         <div class="fd-tw"><table class="fd-t" aria-describedby="tCount">
             <thead><tr><th style="width:36px;padding-left:12px"><input type="checkbox" id="tAll" aria-label="Tout sélectionner (page)"></th>
-                <?php foreach ([['d', 'Date', ''], ['fam', 'Famille', ''], ['camp', 'Séjour', ''], ['moyl', 'Moyen', ''], ['brut', 'Payé', 'num'], ['com', 'Commission', 'num'], ['frais', 'Frais Stripe', 'num'], ['remb', 'Remboursé', 'num'], ['pv', 'Net', 'num'], ['stl', 'Statut', '']] as $c): ?>
+                <?php foreach ([['d', 'Date', ''], ['fam', 'Famille', ''], ['camp', 'Séjour', ''], ['moyl', 'Moyen', ''], ['brut', 'Payé', 'num'], ['com', 'Commission', 'num'], ['frais', 'Frais de paiement', 'num'], ['comp', 'Compensation', 'num'], ['remb', 'Remboursé', 'num'], ['net', 'Net', 'num'], ['stl', 'Statut', '']] as $c): ?>
                 <th class="<?= $c[2] ?>" aria-sort="none" data-col="<?= $c[0] ?>"><button type="button" class="fd-th"><?= $c[1] ?></button></th><?php endforeach; ?></tr></thead>
-            <tbody id="tBody"><?php for ($i = 0; $i < 6; $i++): ?><tr><td colspan="11"><span class="sk" style="width:<?= 90 - $i * 7 ?>%"></span></td></tr><?php endfor; ?></tbody>
+            <tbody id="tBody"><?php for ($i = 0; $i < 6; $i++): ?><tr><td colspan="12"><span class="sk" style="width:<?= 90 - $i * 7 ?>%"></span></td></tr><?php endfor; ?></tbody>
             <tfoot id="tFoot"></tfoot>
         </table></div>
         <div class="fd-pg"><span id="tCount" aria-live="polite"></span>
@@ -273,7 +287,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     <!-- Versements -->
     <section class="fd-panel" role="tabpanel" id="pan-versements" aria-labelledby="tab-versements" hidden>
         <div class="fd-grid2" style="margin-top:0">
-            <div class="fd-card"><h2 class="fd-h"><span>Versements en route<?= $help("Versements automatiques Stripe : " . $autoTxt . ". Date d'arrivée annoncée par Stripe.") ?></span></h2><div id="vNext"><span class="sk"></span></div></div>
+            <div class="fd-card"><h2 class="fd-h"><span>Versements en route<?= $help(ucfirst($autoTxt) . ". Date d'arrivée prévue affichée pour chaque virement.") ?></span></h2><div id="vNext"><span class="sk"></span></div></div>
             <div class="fd-card"><h2 class="fd-h">Versé sur votre banque</h2><dl class="fd-dl" id="vTot"><dt><span class="sk"></span></dt><dd></dd></dl></div>
         </div>
         <h2 class="fd-sub">Historique</h2>
@@ -292,8 +306,15 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     <!-- Dette -->
     <section class="fd-panel" role="tabpanel" id="pan-dette" aria-labelledby="tab-dette" hidden>
-        <div class="fd-card" style="max-width:720px"><h2 class="fd-h"><span>Dette et compensations<?= $help("Quand une famille est remboursée alors que votre solde Stripe ne suffit pas, moncamp.fr avance la différence. Elle est retenue avec la commission sur vos paiements par carte suivants, jamais plus que leur montant. Aucune démarche.") ?></span></h2>
+        <div class="fd-card" style="max-width:720px"><h2 class="fd-h"><span>Dette et compensations<?= $help("Somme due à moncamp.fr : commission sur les règlements hors carte, frais de paiement ou remboursement d'un ancien paiement. Elle est retenue avec la commission sur vos paiements par carte suivants (jamais plus que leur montant), prélevée par SEPA si un mandat est enregistré et qu'elle reste impayée 15 jours, ou réglable par carte.") ?></span></h2>
             <dl class="fd-dl" id="dTot"></dl>
+            <?php if ($solde && $solde['negatif'] < 0): ?><div class="ds-alert-err" style="margin-top:12px">Solde de votre compte de paiement : <b><?= fin_eur($solde['negatif']) ?></b> (remboursement plus élevé que l'argent disponible). Il est compensé par vos prochains paiements, puis prélevé sur votre compte bancaire.</div><?php endif; ?>
+            <?php $sepa = fin_sepa_info($pdo, $orgaId); ?>
+            <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--ds-soft);font-size:13.5px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+                <?php if (!empty($sepa['sepa_pm'])): ?><span><b>Prélèvement SEPA actif</b><?= $sepa['sepa_last4'] ? ' · IBAN ••••' . htmlspecialchars($sepa['sepa_last4']) : '' ?> : une dette restée impayée 15 jours est prélevée automatiquement. Vous pouvez aussi payer vos boosts par prélèvement.</span>
+                <?php elseif ($orga['user_id'] == $userId): ?><span>Enregistrez un mandat de prélèvement SEPA : vos boosts pourront être payés par prélèvement, et une dette restée impayée 15 jours sera prélevée automatiquement.</span>
+                <form method="post" action="api/mandat_sepa.php"><input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>"><button type="submit" class="fd-btn">Enregistrer un mandat SEPA</button></form><?php endif; ?>
+            </div>
             <?php if ($detteDue > 0 && $orga['user_id'] == $userId): ?>
             <form method="post" action="api/payer_dette.php" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                 <input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>">
@@ -305,7 +326,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     <!-- Hors carte -->
     <section class="fd-panel" role="tabpanel" id="pan-hors" aria-labelledby="tab-hors" hidden>
-        <p style="font-size:14px;color:var(--ds-muted);margin:0 0 10px">Règlements choisis par les familles hors carte (chèque, virement, espèces, ANCV…), pas encore reçus. Marquez-les reçus à l'encaissement<?= $help("Commission moncamp.fr sur les paiements hors carte : " . number_format(fin_hors_stripe_pct(), 1, ',', ' ') . " %, retenue sur vos prochains versements par carte.") ?></p>
+        <p style="font-size:14px;color:var(--ds-muted);margin:0 0 10px">Règlements choisis par les familles hors carte (chèque, virement, espèces, ANCV…), pas encore reçus. Marquez-les reçus à l'encaissement<?= $help("Commission moncamp.fr sur les règlements hors carte (espèces, chèque…) : " . number_format(fin_hors_stripe_pct(), 1, ',', ' ') . " %. Elle est due dès la réservation, même si l'inscription est annulée ensuite, et devient une dette retenue sur vos prochains paiements par carte.") ?></p>
         <div class="fd-tw"><table class="fd-t" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Séjour</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Moyen</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th><th><span class="fd-th" style="cursor:default">Inscrit le</span></th><th></th></tr></thead><tbody id="hBody"></tbody></table></div>
     </section>
 
@@ -313,7 +334,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     <section class="fd-panel" role="tabpanel" id="pan-rapports" aria-labelledby="tab-rapports" hidden>
         <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><h2 class="fd-h" style="margin:0">Rapport mensuel (période)<?= $help("Pour votre comptable : une ligne par mois, issue du journal comptable. TVA incluse calculée si un taux est renseigné.") ?></h2>
             <span style="display:flex;gap:6px"><button type="button" class="fd-btn" data-exp="mois" data-fmt="xlsx">Excel</button><button type="button" class="fd-btn" data-exp="mois" data-fmt="csv">CSV</button></span></div>
-        <div class="fd-tw"><table class="fd-t" style="min-width:980px"><thead><tr><?php foreach (['Mois', 'Encaissé', 'Commission', 'Frais Stripe', 'Remboursé', 'Net', 'Versé', 'Dette compensée', 'Hors carte reçu', 'TVA incluse'] as $i => $h): ?><th class="<?= $i ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="rBody"></tbody><tfoot id="rFoot"></tfoot></table></div>
+        <div class="fd-tw"><table class="fd-t" style="min-width:980px"><thead><tr><?php foreach (['Mois', 'Encaissé', 'Commission', 'Frais de paiement', 'Remboursé', 'Net', 'Versé', 'Dette compensée', 'Hors carte reçu', 'TVA incluse'] as $i => $h): ?><th class="<?= $i ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="rBody"></tbody><tfoot id="rFoot"></tfoot></table></div>
         <form method="post" class="fd-card" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
             <b style="color:var(--ds-ink)">TVA de vos séjours<?= $help("Prix TTC : les familles ne paient rien de plus. Si vous êtes assujetti, indiquez votre taux : la TVA incluse figurera sur leurs reçus et dans ce rapport. Ne remplace pas l'avis d'un comptable.") ?></b>
             <span style="display:flex;gap:8px;align-items:center">
@@ -346,7 +367,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     var dfr = function (s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : ''; };
     var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
     var PILL = { moncamp: 'warn', stripe: 'info', route: 'info', banque: 'ok', partiel: 'warn', rembourse: 'bad', annule: 'bad', litige: 'bad', bloque: 'warn', PAYE: 'ok', A_REGLER: 'warn' };
-    var D = null, GRAN = '', seq = 0;
+    var D = null, GRAN = '', seq = 0, HREMB = <?= json_encode($help('Montant rendu à la famille (annulation). La commission moncamp.fr est conservée et les frais de paiement ne sont pas rendus. Le remboursement est pris sur votre solde.')) ?>;
 
     // ---------- période
     function range(p) {
@@ -401,7 +422,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         kpi('frais', eur(c.frais), delta(c.frais, p.frais, false));
         kpi('remb', eur(c.remb), delta(c.remb, p.remb, false));
         kpi('attente', eur(D.kpi.en_attente), 'à ce jour');
-        var P = D.kpi.prochain, PE = { route: 'en route, arrivée prévue le ', dispo: 'virement lancé par Stripe le ', attente: 'fonds disponibles le ' };
+        var P = D.kpi.prochain, PE = { route: 'en route, arrivée prévue le ', dispo: 'virement lancé le ', attente: 'fonds disponibles le ' };
         kpi('prochain', P ? eur(P.m) + ' le ' + dfr(P.d).slice(0, 5) : '–', P ? PE[P.etat] + dfr(P.d) : 'aucun montant en attente');
         kpi('dette', eur(c.compense), D.kpi.dette > 0 ? '<b style="color:#b42318">Reste dû : ' + eur(D.kpi.dette) + '</b>' : 'aucune dette en cours');
         $('kp-dette').classList.toggle('alert', D.kpi.dette > 0);
@@ -409,7 +430,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     }
     function renderWf() {
         var c = D.kpi.cur, max = Math.max(c.brut, 1), rows = [
-            ['Encaissé par les familles', c.brut, '', ''], ['Commission moncamp.fr', -c.com, 'n', 'com'], ['Frais Stripe', -c.frais, 'n', 'frais'], ['Remboursements', -c.remb, 'r', 'remb']];
+            ['Encaissé par les familles', c.brut, '', ''], ['Commission moncamp.fr', -c.com, 'n', 'com'], ['Frais de paiement', -c.frais, 'n', 'frais'], ['Remboursements', -c.remb, 'r', 'remb']];
         if (c.ajust) rows.push(['Points marketing payés avec vos gains', c.ajust, 'n', '']);
         rows.push(['Net pour vous', c.net, 'tot', '']);
         rows.push(['Versé sur votre banque', -c.verse, 'n', 'verse'], ['En attente de versement (à ce jour)', D.kpi.en_attente, 'n', 'attente']);
@@ -419,7 +440,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             var act = r[3] ? ' role="button" tabindex="0" data-wf="' + r[3] + '" style="cursor:pointer"' : '';
             return '<div class="l' + (tot ? ' tot' : '') + '"' + act + '><span class="bar ' + (r[2] === 'tot' ? '' : r[2]) + '" style="width:' + w + 'px"></span><span' + (neg ? ' class="neg"' : '') + '>' + (tot ? '<b>' + r[0] + '</b>' : esc(r[0])) + '</span></div><div class="a' + (tot ? ' tot' : '') + (neg ? ' neg' : '') + '">' + (neg ? '− ' + eur(-r[1]) : eur(r[1])) + '</div>';
         }).join('');
-        $('wfNote').textContent = (D.kpi.prochain ? 'Prochain virement : ' + eur(D.kpi.prochain.m) + ' le ' + dfr(D.kpi.prochain.d).slice(0, 5) + '. ' : '') + 'Versé automatiquement par Stripe dès que les fonds sont disponibles (2 à 7 jours ouvrés).';
+        $('wfNote').textContent = (D.kpi.prochain ? 'Prochain virement : ' + eur(D.kpi.prochain.m) + ' le ' + dfr(D.kpi.prochain.d).slice(0, 5) + '. ' : '') + 'Viré chaque jour sur votre banque dès que l’argent est disponible, ou tout de suite avec « Virer mon argent maintenant ».';
     }
     $('wf').addEventListener('click', function (e) { var b = e.target.closest('[data-wf]'); if (!b) return; wfGo(b.dataset.wf); });
     $('wf').addEventListener('keydown', function (e) { var b = e.target.closest('[data-wf]'); if (b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); wfGo(b.dataset.wf); } });
@@ -484,7 +505,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 
     // ---------- transactions
     var T = { q: '', sort: 'd', dir: -1, page: 0, per: 50, sel: {}, f: {}, pre: '' }, VIEW = [];
-    var PRE = { com: [function (r) { return r.com > 0; }, 'avec commission'], frais: [function (r) { return r.frais > 0; }, 'avec frais Stripe'], remb: [function (r) { return r.remb > 0; }, 'remboursées'] };
+    var PRE = { com: [function (r) { return r.com > 0; }, 'avec commission'], frais: [function (r) { return r.frais > 0; }, 'avec frais de paiement'], remb: [function (r) { return r.remb > 0; }, 'remboursées'] };
     function fill(id, rows, val) { var el = $(id), first = el.options[0].outerHTML; el.innerHTML = first + rows.map(function (r) { return '<option value="' + esc(r[0]) + '">' + esc(r[1]) + '</option>'; }).join(''); el.value = val || ''; }
     function sesOpts() { var sj = $('fSej').value; fill('fSes', D.filtres.sessions.filter(function (s) { return !sj || s.s === sj; }).map(function (s) { return [s.t, s.l]; }), ''); }
     $('fSej').addEventListener('change', sesOpts);
@@ -523,11 +544,11 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             return '<tr class="fd-tr' + (on ? ' sel' : '') + '" tabindex="0" data-k="' + r.k + '"><td style="padding-left:12px"><input type="checkbox" data-sel="' + r.k + '"' + (on ? ' checked' : '') + ' aria-label="Sélectionner ' + esc(r.fam) + ' ' + dfr(r.d) + '"></td>'
                 + '<td class="mut" style="white-space:nowrap">' + dfr(r.d) + '</td><td><b>' + esc(r.fam) + '</b>' + (r.enf ? '<div class="mut" style="font-size:12px">' + esc(r.enf) + '</div>' : '') + '</td>'
                 + '<td style="max-width:240px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.camp) + '</div><div class="mut" style="font-size:12px">' + esc(r.sesl) + '</div></td><td class="mut">' + esc(r.moyl) + '</td>'
-                + '<td class="num"><b>' + eur(r.brut) + '</b></td><td class="num mut">' + (r.com ? '− ' + eur(r.com) : '–') + '</td><td class="num mut">' + (r.frais ? '− ' + eur(r.frais) : '–') + '</td><td class="num mut">' + (r.remb ? '− ' + eur(r.remb) : '–') + '</td>'
-                + '<td class="num"><b>' + eur(r.pv) + '</b></td><td><span class="mk-pill ' + (PILL[r.st] || '') + '" style="white-space:nowrap">' + esc(r.stl) + '</span></td></tr>';
-        }).join('') : '<tr><td colspan="11"><div class="fd-empty"><b>' + (D.tx.length ? 'Aucune transaction ne correspond' : 'Aucune transaction sur cette période') + '</b>' + (D.tx.length ? 'Modifiez la recherche ou les filtres.' : 'Elles apparaîtront ici dès le premier paiement.') + '</div></td></tr>';
-        var s = { brut: 0, com: 0, frais: 0, remb: 0, pv: 0 }; VIEW.forEach(function (r) { for (var k in s) s[k] += r[k]; });
-        $('tFoot').innerHTML = VIEW.length ? '<tr style="font-weight:800;background:#f8fafb"><td></td><td colspan="4">Total · ' + VIEW.length + ' transaction' + (VIEW.length > 1 ? 's' : '') + '</td><td class="num">' + eur(s.brut) + '</td><td class="num">− ' + eur(s.com) + '</td><td class="num">− ' + eur(s.frais) + '</td><td class="num">− ' + eur(s.remb) + '</td><td class="num">' + eur(s.pv) + '</td><td></td></tr>' : '';
+                + '<td class="num"><b>' + eur(r.brut) + '</b></td><td class="num mut">' + (r.com ? '− ' + eur(r.com) : '–') + '</td><td class="num mut">' + (r.frais ? '− ' + eur(r.frais) : '–') + '</td><td class="num mut">' + (r.comp ? '− ' + eur(r.comp) : '–') + '</td><td class="num mut">' + (r.remb ? '− ' + eur(r.remb) : '–') + '</td>'
+                + '<td class="num"><b>' + eur(r.net) + '</b></td><td><span class="mk-pill ' + (PILL[r.st] || '') + '" style="white-space:nowrap">' + esc(r.stl) + '</span></td></tr>';
+        }).join('') : '<tr><td colspan="12"><div class="fd-empty"><b>' + (D.tx.length ? 'Aucune transaction ne correspond' : 'Aucune transaction sur cette période') + '</b>' + (D.tx.length ? 'Modifiez la recherche ou les filtres.' : 'Elles apparaîtront ici dès le premier paiement.') + '</div></td></tr>';
+        var s = { brut: 0, com: 0, frais: 0, comp: 0, remb: 0, net: 0 }; VIEW.forEach(function (r) { for (var k in s) s[k] += r[k]; });
+        $('tFoot').innerHTML = VIEW.length ? '<tr style="font-weight:800;background:#f8fafb"><td></td><td colspan="4">Total · ' + VIEW.length + ' transaction' + (VIEW.length > 1 ? 's' : '') + '</td><td class="num">' + eur(s.brut) + '</td><td class="num">− ' + eur(s.com) + '</td><td class="num">− ' + eur(s.frais) + '</td><td class="num">− ' + eur(s.comp) + '</td><td class="num">− ' + eur(s.remb) + '</td><td class="num">' + eur(s.net) + '</td><td></td></tr>' : '';
         $('tCount').textContent = VIEW.length ? (T.page * T.per + 1) + '–' + Math.min(VIEW.length, (T.page + 1) * T.per) + ' sur ' + VIEW.length + (T.pre ? ' (' + PRE[T.pre][1] + ')' : '') + (D.tx_limite ? ' · limité aux 5 000 plus récentes, réduisez la période' : '') : '';
         $('tPage').textContent = (T.page + 1) + ' / ' + pages; $('tPrev').disabled = T.page === 0; $('tNext').disabled = T.page + 1 >= pages;
         $('tAll').checked = rows.length > 0 && rows.every(function (r) { return T.sel[r.k]; });
@@ -549,15 +570,16 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             + '<p style="margin:0 0 14px"><span class="mk-pill ' + (PILL[r.st] || '') + '">' + esc(r.stl) + '</span></p>'
             + '<div class="fd-sub" style="margin-top:0">Famille</div><dl class="fd-dl">' + row('Famille', esc(r.fam)) + (r.enf ? row('Enfant', esc(r.enf)) : '') + (r.parent ? row('Parent', esc(r.parent)) : '') + '</dl>'
             + '<div class="fd-sub">Séjour</div><dl class="fd-dl">' + row('Séjour', esc(r.camp)) + row('Session', esc(r.sesl)) + row('Moyen', esc(r.moyl)) + '</dl>'
-            + '<div class="fd-sub">Montants</div><dl class="fd-dl">' + row('Payé par la famille', eur(r.brut)) + row('Commission moncamp.fr', '− ' + eur(r.com)) + (card ? row('Frais de paiement Stripe', r.frais ? '− ' + eur(r.frais) + (r.fest ? ' (estimés, ajustés aux frais réels)' : '') : (r.fo ? 'relevés auprès de Stripe sous peu' : 'payés par moncamp.fr (ancien paiement)')) : '')
-            + (r.remb ? row('Remboursé', '− ' + eur(r.remb)) : '') + '<span class="sep"></span>' + row('<b>Net pour vous</b>', '<b>' + eur(r.pv) + '</b>')
-            + (r.comp ? row('Dette compensée sur ce paiement', eur(r.comp)) : '') + (r.tva ? row('dont TVA incluse', eur(r.tva)) : '') + '</dl>';
+            + '<div class="fd-sub">Montants</div><dl class="fd-dl">' + row('Montant payé', eur(r.brut)) + row('Commission moncamp.fr', '− ' + eur(r.com))
+            + row('Frais de paiement', '− ' + eur(r.frais) + (r.fest ? ' (estimés)' : (card && !r.frais && r.fo ? ' (bientôt connus)' : '')))
+            + row('Compensation de dette', '− ' + eur(r.comp)) + row('Remboursé' + HREMB, '− ' + eur(r.remb))
+            + '<span class="sep"></span>' + row('<b>Net</b>', '<b>' + eur(r.net) + '</b>') + (r.tva ? row('dont TVA incluse', eur(r.tva)) : '') + '</dl>';
         if (card) h += '<div class="fd-sub">Versement</div><dl class="fd-dl">' + row('Déjà versé', eur(r.verse)) + (r.st === 'stripe' ? row('Versement', 'automatique, dès que disponible') : '') + (r.vtok ? row('Justificatif', '<a class="underline" href="virement.php?t=' + encodeURIComponent(r.vtok) + '">Voir le versement</a>') : '') + '</dl>';
         h += '<div class="fd-sub">Documents</div><div style="display:flex;gap:8px;flex-wrap:wrap">'
             + (r.tok ? '<a class="fd-btn" href="generate_pdf_certificat.php?r=' + encodeURIComponent(r.tok) + '" target="_blank" rel="noopener">Reçu PDF</a>' : '')
-            + (card && EXPRESS ? '<a class="fd-btn" href="api/connect_dashboard.php?o=' + encodeURIComponent(ORGA) + '" target="_blank" rel="noopener">Ouvrir dans Stripe ↗</a>' : '')
+            + (card && EXPRESS ? '<a class="fd-btn" href="api/connect_dashboard.php?o=' + encodeURIComponent(ORGA) + '" target="_blank" rel="noopener">Espace Stripe ↗</a>' : '')
             + (r.st === 'A_REGLER' ? '<button type="button" class="fd-btn pri" data-recu="' + esc(r.tok) + '">Marquer reçu</button>' : '') + '</div>'
-            + (r.pi ? '<p style="font-size:12.5px;color:var(--ds-muted);margin-top:12px">Référence Stripe : <span class="fd-code">' + esc(r.pi) + '</span></p>' : '');
+            + (r.pi ? '<p style="font-size:12.5px;color:var(--ds-muted);margin-top:12px">Référence du paiement : <span class="fd-code">' + esc(r.pi) + '</span></p>' : '');
         $('drTitle').textContent = r.fam + ' · ' + eur(r.brut); $('drBody').innerHTML = h;
         $('drawer').hidden = false; requestAnimationFrame(function () { $('drawer').classList.add('open'); $('dScrim').classList.add('open'); $('drClose').focus(); });
     }
@@ -569,7 +591,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     });
 
     // ---------- versements, litiges, dette, hors carte, rapports
-    var VST = { prepa: ['En préparation', 'info'], route: ['En route vers la banque', 'info'], arrive: ['Arrivé', 'ok'], echec: ['Échec', 'bad'], stripe: ['Envoyé sur Stripe', 'ok'] };
+    var VST = { prepa: ['En préparation', 'info'], route: ['En route vers la banque', 'info'], arrive: ['Arrivé', 'ok'], echec: ['Échec', 'bad'], stripe: ['Envoyé sur votre compte', 'ok'] };
     var empty = function (cols, t, s) { return '<tr><td colspan="' + cols + '"><div class="fd-empty"><b>' + t + '</b>' + (s || '') + '</div></td></tr>'; };
     function renderOthers() {
         $('vNext').innerHTML = D.prochains.length ? '<dl class="fd-dl">' + D.prochains.map(function (p) { return '<dt>Arrivée prévue le ' + dfr(p.d) + '</dt><dd>' + eur(p.m) + '</dd>'; }).join('') + '</dl>' : '<div class="fd-empty"><b>Aucun versement en route</b>' + (D.kpi.en_attente ? eur(D.kpi.en_attente) + ' seront versés automatiquement par Stripe dès que disponibles.' : 'Les prochains paiements seront versés automatiquement.') + '</div>';
@@ -607,7 +629,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     $('lBody').addEventListener('keydown', function (e) { var tr = e.target.closest('.fd-tr'); if (tr && e.key === 'Enter') detail(tr.dataset.k, tr); });
     document.addEventListener('click', function (e) {
         var b = e.target.closest('[data-recu]'); if (!b) return;
-        if (!confirm('Confirmer la réception de ce règlement ? La commission hors carte sera retenue sur vos prochains versements par carte.')) return;
+        if (!confirm('Confirmer la réception de ce règlement ?')) return;
         b.disabled = true; var fd = new FormData(); fd.append('csrf', CSRF); fd.append('t', b.dataset.recu);
         fetch('api/marquer_recu.php', { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); })
             .then(function (d) { if (d.error) { alert(d.error); b.disabled = false; return; } if (!$('drawer').hidden) closeDr(); load(); })

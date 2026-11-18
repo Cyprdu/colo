@@ -55,7 +55,8 @@ $GLOBALS['stripe_calls'] = [];
 $pdo->exec("UPDATE stripe_comptes SET payout_auto = 0");
 fin_account_setup($pdo, 1, 'acct_A');
 $c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'accounts.update'));
-ok($c && $c[0][1][1]['settings']['payouts']['schedule'] === ['interval' => 'daily', 'delay_days' => 'minimum'] && (int)$pdo->query("SELECT payout_auto FROM stripe_comptes")->fetchColumn() === 1, 'compte en versements automatiques quotidiens, délai minimal');
+ok($c && $c[0][1][1]['settings']['payouts']['schedule'] === ['interval' => 'manual'] && $c[0][1][1]['settings']['payouts']['debit_negative_balances'] === true
+   && (int)$pdo->query("SELECT payout_manuel FROM stripe_comptes")->fetchColumn() === 1, 'compte en virements pilotés par moncamp.fr (quotidiens + bouton), solde négatif prélevé par Stripe');
 // ---- C. paiements reçus par moncamp.fr avant l'activation (legacy) : transférés tout de suite quand le compte est prêt
 $pdo->exec("INSERT INTO enfants (id, parent_id, nom, prenom) VALUES (1, 9, 'Durand', 'Tom')");
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (201, 1, 1, 'Confirmé', 300, 'PAYE', 'tokL')");
@@ -192,4 +193,67 @@ fin_ajustement_manuel($pdo, 1, 'credit', 500, 'Geste commercial', 'admin:1');
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() - ($pf - 5)) < 0.001, 'ajustement : crédit de 5 EUR');
 try { fin_ajustement_manuel($pdo, 1, 'dette', 100, '  ', 'admin:1'); $e = ''; } catch (InvalidArgumentException $x) { $e = 'refus'; }
 ok($e === 'refus', 'ajustement : motif obligatoire');
+// ---- date de disponibilité (virement prévu) relevée avec les frais
+$GLOBALS['stripe_resp']['paymentIntents.retrieve'] = fn($id) => (object)['id' => $id, 'latest_charge' => (object)['id' => 'ch_' . $id, 'balance_transaction' => (object)['currency' => 'eur', 'fee' => 100, 'available_on' => strtotime('2026-11-25 12:00')]]];
+fin_sync_fees($pdo, 'pi_P');
+ok($pdo->query("SELECT dispo_le FROM fin_paiements WHERE inscription_id = 204")->fetchColumn() === '2026-11-25', 'date de disponibilité (available_on) enregistrée pour la date de virement prévue');
+// ---- « Virer mon argent maintenant » et virement quotidien du disponible
+$pdo->exec("UPDATE stripe_comptes SET payouts_enabled = 1, details_submitted = 1, charges_enabled = 1, transfers_actif = 1, payout_manuel = 1 WHERE organisateur_id = 1");
+$GLOBALS['stripe_calls'] = [];
+$GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 4200, 'currency' => 'eur']], 'pending' => []];
+$GLOBALS['stripe_resp']['payouts.create'] = fn($p, $o) => (object)['id' => 'po_btn_' . $p['amount'], 'amount' => $p['amount'], 'currency' => 'eur', 'status' => 'pending', 'arrival_date' => strtotime('+2 days'), 'created' => time()];
+$v = fin_virer_maintenant($pdo, 1, 'user:7');
+$pc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'payouts.create'))[0][1];
+ok($v['m'] === 4200 && $pc[1]['stripe_account'] === 'acct_A' && str_starts_with($pc[1]['idempotency_key'], 'moncamp-po-1-4200-')
+   && $pdo->query("SELECT statut FROM fin_transferts WHERE stripe_transfer_id = 'po_btn_4200'")->fetchColumn() === 'envoye', 'bouton : tout le disponible viré (42 EUR), relevé et journalisé');
+ok(fin_virer_maintenant($pdo, 1, 'cron', true) === null, 'quotidien : déjà un virement aujourd\'hui, rien de plus');
+$GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 50, 'currency' => 'eur']], 'pending' => []];
+ok(fin_virer_maintenant($pdo, 1, 'user:7') === null, 'moins de 1 EUR disponible : aucun virement');
+// ---- D. mandat SEPA, prélèvement automatique d'une dette impayée 15 jours, points par prélèvement
+$ev2 = fn(string $id, string $type, array $o, string $acct = '') => json_decode(json_encode(['id' => $id, 'type' => $type, 'account' => $acct, 'data' => ['object' => $o]]));
+$pdo->exec("CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY, prenom VARCHAR(50), nom VARCHAR(50), email VARCHAR(80))");
+$tok1 = fin_orga_tok(1, $pdo);
+$r = stripe_webhook_process($pdo, $ev2('evt_m1', 'checkout.session.completed', ['id' => 'cs_m1', 'mode' => 'setup', 'payment_status' => 'no_payment_required', 'setup_intent' => 'seti_1', 'metadata' => ['type' => 'mandat_sepa', 'organisateur' => $tok1]]));
+$GLOBALS['stripe_resp']['setupIntents.retrieve'] = (object)['id' => 'seti_1', 'status' => 'succeeded', 'payment_method' => (object)['id' => 'pm_sepa1', 'sepa_debit' => (object)['last4' => '4321']]];
+$GLOBALS['stripe_resp']['customers.create'] = (object)['id' => 'cus_o1'];
+stripe_webhook_after($pdo, $r[2]);
+$si = fin_sepa_info($pdo, 1);
+ok($r[2]['mandat'] === [1, 'seti_1'] && $si['sepa_pm'] === 'pm_sepa1' && $si['sepa_last4'] === '4321' && $si['stripe_customer_id'] === 'cus_o1', 'mandat SEPA enregistré (moyen de paiement du client plateforme de l\'organisme)');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -20.00, dette_depuis = NOW() - INTERVAL 16 DAY, sepa_dette_pi = NULL WHERE id = 1");
+$GLOBALS['stripe_calls'] = []; $GLOBALS['stripe_resp']['paymentIntents.create'] = (object)['id' => 'pi_sepa_d1', 'status' => 'processing'];
+$rep = fin_sepa_dettes_run($pdo);
+$pc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'paymentIntents.create'))[0][1] ?? [];
+ok($rep['prelevements'] === 1 && $pc[0]['amount'] === 2000 && $pc[0]['off_session'] === true && $pc[0]['payment_method'] === 'pm_sepa1' && $pc[0]['customer'] === 'cus_o1' && !isset($pc[1]['stripe_account'])
+   && fin_sepa_info($pdo, 1)['sepa_dette_pi'] === 'pi_sepa_d1', 'dette impayée depuis 15 jours : prélèvement SEPA de 20 EUR sur la plateforme (hors session)');
+ok(fin_sepa_dettes_run($pdo)['prelevements'] === 0, 'un seul prélèvement en cours à la fois');
+$r = stripe_webhook_process($pdo, $ev2('evt_s1', 'payment_intent.succeeded', ['id' => 'pi_sepa_d1', 'amount' => 2000, 'amount_received' => 2000, 'metadata' => ['type' => 'dette_sepa', 'sepa' => '1', 'organisateur' => $tok1]]));
+ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn()) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE reference = 'dettesepa:pi_sepa_d1'")->fetchColumn() === -2000
+   && fin_sepa_info($pdo, 1)['sepa_dette_pi'] === null && !empty($r[2]['notif']), 'prélèvement reçu : dette soldée, journalisée, notification');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -5.00, sepa_dette_pi = 'pi_sepa_d2' WHERE id = 1");
+$r = stripe_webhook_process($pdo, $ev2('evt_s2', 'payment_intent.payment_failed', ['id' => 'pi_sepa_d2', 'amount' => 500, 'metadata' => ['type' => 'dette_sepa', 'sepa' => '1', 'organisateur' => $tok1]]));
+ok(fin_sepa_info($pdo, 1)['sepa_dette_pi'] === null && abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn() + 5.00) < 0.001 && $r[2]['notif'][1] === 'Prélèvement de votre dette refusé', 'prélèvement refusé : la dette reste, notification');
+$pk = array_key_first(mk_packs()); $pp = mk_packs()[$pk];
+$sp0 = (int)$pdo->query("SELECT solde_points FROM organisateurs WHERE id = 1")->fetchColumn();
+stripe_webhook_process($pdo, $ev2('evt_s3', 'payment_intent.succeeded', ['id' => 'pi_pts1', 'amount' => $pp['cents'], 'amount_received' => $pp['cents'], 'metadata' => ['type' => 'buy_points', 'sepa' => '1', 'points_amount' => (string)$pp['points'], 'organisateur' => $tok1]]));
+stripe_webhook_process($pdo, $ev2('evt_s3b', 'payment_intent.succeeded', ['id' => 'pi_pts1', 'amount' => $pp['cents'], 'amount_received' => $pp['cents'], 'metadata' => ['type' => 'buy_points', 'sepa' => '1', 'points_amount' => (string)$pp['points'], 'organisateur' => $tok1]]));
+ok((int)$pdo->query("SELECT solde_points FROM organisateurs WHERE id = 1")->fetchColumn() === $sp0 + $pp['points'], 'points payés par prélèvement : crédités une seule fois à réception');
+// ---- G. logo de l'organisme envoyé sur sa page de paiement (une fois par logo, fichier local seulement)
+$png = function (int $w, int $h): string {
+    $ch = fn($t, $d) => pack('N', strlen($d)) . $t . $d . pack('N', crc32($t . $d));
+    $raw = str_repeat("\0" . str_repeat("\x80", $w), $h);
+    return "\x89PNG\r\n\x1a\n" . $ch('IHDR', pack('NNCCCCC', $w, $h, 8, 0, 0, 0, 0)) . $ch('IDAT', gzcompress($raw)) . $ch('IEND', '');
+};
+$pdo->exec("ALTER TABLE organisateurs ADD COLUMN IF NOT EXISTS logo_url VARCHAR(200) NULL");
+file_put_contents(__DIR__ . '/tmp_logo_test.png', $png(128, 128));
+$pdo->exec("UPDATE organisateurs SET logo_url = 'tests/tmp_logo_test.png', stripe_account_id = 'acct_A', logo_stripe_hash = NULL WHERE id = 1");
+$GLOBALS['stripe_calls'] = []; $GLOBALS['stripe_resp']['files.create'] = (object)['id' => 'file_logo1'];
+$ok1 = fin_branding_sync($pdo, 1);
+$fc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'files.create'));
+$au = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'accounts.update'));
+ok($ok1 && $fc && $fc[0][1][0]['purpose'] === 'business_logo' && $fc[0][1][1] === ['stripe_account' => 'acct_A'] && $au[0][1][1]['settings']['branding']['logo'] === 'file_logo1', 'logo envoyé sur le compte de l\'organisme (business_logo, branding)');
+$GLOBALS['stripe_calls'] = [];
+ok(fin_branding_sync($pdo, 1) && !$GLOBALS['stripe_calls'], 'logo inchangé : rien de renvoyé');
+$pdo->exec("UPDATE organisateurs SET logo_url = 'https://exemple.test/logo.png', logo_stripe_hash = NULL WHERE id = 1");
+ok(!fin_branding_sync($pdo, 1) && !$GLOBALS['stripe_calls'], 'logo hébergé ailleurs : jamais téléchargé');
+@unlink(__DIR__ . '/tmp_logo_test.png');
 echo "Tout est bon.\n";

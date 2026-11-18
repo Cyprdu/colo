@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/orga_lib.php';
+require_once __DIR__ . '/sepa_lib.php';
 // api/finance_lib.php : flux d'argent entre les familles, moncamp.fr et les organismes (Stripe Connect).
 //
 // ARCHITECTURE (depuis 2026-11) : « direct charges » sur les comptes Connect EXPRESS (fin_paiements.mode = 'direct')
@@ -235,6 +236,8 @@ function fin_ensure(PDO $pdo): void {
         // prélevés avec la commission puis ajustés aux frais réels (fin_sync_fees). Historique (frais_orga = 0) inchangé.
         fin_add_col($pdo, 'fin_paiements', 'frais_orga', "TINYINT(1) NOT NULL DEFAULT 0");
         fin_add_col($pdo, 'fin_paiements', 'frais_estimes_cents', "INT NOT NULL DEFAULT 0");
+        fin_add_col($pdo, 'fin_paiements', 'dispo_le', "DATE NULL");
+        fin_add_col($pdo, 'organisateurs', 'logo_stripe_hash', "CHAR(40) NULL");
         fin_add_col($pdo, 'fin_transferts', 'par_paiement', "TINYINT(1) NOT NULL DEFAULT 0");
         $mig = $pdo->prepare("SELECT COUNT(*) FROM fin_reglages WHERE cle = 'migr_payout_auto_v1'");
         $mig->execute();
@@ -243,6 +246,7 @@ function fin_ensure(PDO $pdo): void {
             $pdo->exec("INSERT IGNORE INTO fin_reglages (cle, valeur, par) VALUES ('migr_payout_auto_v1', '1', 'migration')");
         }
         fin_ledger_ensure($pdo);
+        fin_sepa_ensure($pdo);
         fin_ledger_backfill($pdo);
     } catch (Throwable $e) {
         error_log('fin_ensure: ' . $e->getMessage());
@@ -349,6 +353,60 @@ function fin_payout_date(?string $dateDebut): string {
  * application_fee_amount = commission de chaque inscription (fin_commission_split) + dette à compenser (solde négatif), jamais plus que le payé moins la commission.
  * Un code promo réduit le montant payé : la commission prélevée en trop est rendue par le webhook (fin_fee_excess_refund).
  */
+/** Détail de l'application fee (commission, frais estimés, compensation de dette) dans la description et les métadonnées du paiement */
+function fin_detail_frais(array $extra): array {
+    $m = $extra['metadata'] ?? [];
+    if (!isset($m['commission'])) return $extra;
+    $e = fn($c) => number_format($c / 100, 2, ',', ' ') . ' €';
+    $com = (int)$m['commission']; $comp = (int)($m['compensation'] ?? 0); $fe = (int)($m['frais_estimes'] ?? 0);
+    $parts = ['Commission moncamp.fr ' . $e($com)];
+    if ($fe) $parts[] = 'frais de paiement estimés ' . $e($fe);
+    if ($comp) $parts[] = 'compensation de dette ' . $e($comp) . ' (réf. ' . ($m['compensation_ref'] ?? '') . ')';
+    $txt = implode(' + ', $parts) . ' = ' . $e($com + $comp + $fe);
+    $extra['payment_intent_data']['metadata']['Frais moncamp.fr'] = $txt;
+    $extra['payment_intent_data']['metadata']['application_fee'] = (string)($com + $comp + $fe);
+    if ($comp) {
+        $extra['payment_intent_data']['metadata']['Compensation de dette'] = $e($comp) . ' (réf. ' . ($m['compensation_ref'] ?? '') . ')';
+        $extra['payment_intent_data']['description'] = mb_substr(trim(($extra['payment_intent_data']['description'] ?? '') . ' · ' . $txt, ' ·'), 0, 500);
+    }
+    return $extra;
+}
+
+/**
+ * Logo de l'organisme sur sa page de paiement : fichier local (jamais téléchargé depuis une URL externe) envoyé sur son compte connecté
+ * (Files API, purpose business_logo) puis settings.branding (logo, couleur). Seulement si le logo a changé (empreinte). Un échec est journalisé.
+ */
+function fin_branding_sync(PDO $pdo, int $orgaId, bool $force = false): bool {
+    try {
+        $st = $pdo->prepare("SELECT logo_url, stripe_account_id, logo_stripe_hash FROM organisateurs WHERE id = ?");
+        $st->execute([$orgaId]);
+        $o = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$o || empty($o['logo_url']) || empty($o['stripe_account_id'])) return false;
+        $path = (string)(parse_url((string)$o['logo_url'], PHP_URL_PATH) ?? '');
+        if (preg_match('#^https?://#i', (string)$o['logo_url'])) {
+            $host = strtolower((string)parse_url((string)$o['logo_url'], PHP_URL_HOST));
+            $site = strtolower((string)parse_url(defined('BASE_URL') ? BASE_URL : 'https://moncamp.fr', PHP_URL_HOST));
+            if ($host !== $site && $host !== 'www.' . $site) return false;
+        }
+        $root = realpath(__DIR__ . '/..');
+        $file = realpath($root . '/' . ltrim(rawurldecode($path), '/'));
+        if (!$file || strpos($file, $root) !== 0 || !is_file($file) || filesize($file) > 512000) return false;
+        $img = @getimagesize($file);
+        if (!$img || !in_array($img[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG], true) || $img[0] < 128 || $img[1] < 128) return false;
+        $hash = sha1_file($file);
+        if (!$force && $hash === $o['logo_stripe_hash']) return true;
+        $opt = ['stripe_account' => $o['stripe_account_id']];
+        $f = fin_stripe()->files->create(['purpose' => 'business_logo', 'file' => fopen($file, 'r')], $opt);
+        fin_stripe()->accounts->update($o['stripe_account_id'], ['settings' => ['branding' => ['logo' => $f->id, 'primary_color' => '#2f3d45']]]);
+        $pdo->prepare("UPDATE organisateurs SET logo_stripe_hash = ? WHERE id = ?")->execute([$hash, $orgaId]);
+        fin_audit($pdo, 'logo_paiement_envoye', 'organisateur', $orgaId, ['fichier' => $f->id], 'systeme');
+        return true;
+    } catch (Throwable $e) {
+        fin_audit($pdo, 'logo_paiement_echec', 'organisateur', $orgaId, ['erreur' => mb_substr($e->getMessage(), 0, 200)], 'systeme');
+        return false;
+    }
+}
+
 /** Frais Stripe estimés d'une charge par carte européenne : 1,5 % + 0,25 € (ajustés ensuite aux frais réels) */
 function fin_frais_estimes(int $cents): int { return $cents > 0 ? (int)round($cents * 0.015) + 25 : 0; }
 
@@ -363,13 +421,14 @@ function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     foreach ($itemCents as $c) { $com += fin_commission_split((int)$c)[0]; $total += (int)$c; }
     $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ?");
     $st->execute([$orgaId]);
-    $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com));
+    $comp = max(0, min(-(int)round((float)$st->fetchColumn() * 100), $total - $com - fin_frais_estimes($total) - 100)); // au moins 1 € net pour l'organisme
     $mode = $direct ? 'direct' : 'destination';
     // destination : moncamp.fr paie les frais Stripe de la charge, l'organisme les rembourse avec la commission (estimés, ajustés aux frais réels ensuite)
     $fe = $direct ? 0 : min(fin_frais_estimes($total), max(0, $total - $com - $comp));
     $pid = ['application_fee_amount' => $com + $comp + $fe, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId]];
     if (!$direct) $pid['transfer_data'] = ['destination' => $acc['account_id']];
     $extra = ['payment_intent_data' => $pid, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp, 'frais_estimes' => (string)$fe]];
+    if ($comp > 0) $extra['metadata']['compensation_ref'] = 'D' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
     if ($direct) $extra['payment_method_types'] = ['card']; // carte (+ Apple Pay / Google Pay) : ne dépend pas de la configuration de moyens de paiement (pmc_) du compte connecté
     return [$extra, $direct ? ['stripe_account' => $acc['account_id']] : []];
 }
@@ -494,6 +553,7 @@ function fin_fetch_stripe_fee(string $paymentIntent, ?string $account = null): ?
     $ch = $pi->latest_charge ?? null;
     $bt = (is_object($ch) && isset($ch->balance_transaction) && is_object($ch->balance_transaction)) ? $ch->balance_transaction : null;
     if (!$bt || strtolower((string)$bt->currency) !== 'eur') return null;
+    $GLOBALS['fin_dispo_le'] = !empty($bt->available_on) ? date('Y-m-d', (int)$bt->available_on) : null;
     if (empty($bt->fee_details)) return max(0, (int)$bt->fee);
     $fee = 0; // direct charges : la commission moncamp.fr (application_fee) figure aussi dans fee, on ne garde que les frais Stripe
     foreach ($bt->fee_details as $d) if (($d->type ?? '') !== 'application_fee') $fee += (int)$d->amount;
@@ -504,8 +564,10 @@ function fin_sync_fees(PDO $pdo, string $paymentIntent): bool {
     fin_ensure($pdo);
     $st = $pdo->prepare("SELECT o.stripe_account_id FROM fin_paiements p JOIN organisateurs o ON o.id = p.organisateur_id WHERE p.payment_intent = ? AND p.mode = 'direct' LIMIT 1");
     $st->execute([$paymentIntent]);
+    $GLOBALS['fin_dispo_le'] = null;
     $fee = fin_fetch_stripe_fee($paymentIntent, $st->fetchColumn() ?: null); // direct : la charge est sur le compte de l'organisme
     if ($fee === null) return false;
+    if ($GLOBALS['fin_dispo_le']) $pdo->prepare("UPDATE fin_paiements SET dispo_le = ? WHERE payment_intent = ?")->execute([$GLOBALS['fin_dispo_le'], $paymentIntent]);
     $st = $pdo->prepare("SELECT id, brut_cents FROM fin_paiements WHERE payment_intent = ? ORDER BY id");
     $st->execute([$paymentIntent]);
     $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -631,7 +693,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
         'business_type' => $statuts[$statut][2],
         'capabilities' => ['transfers' => ['requested' => true], 'card_payments' => ['requested' => true]], // card_payments : on_behalf_of
         'business_profile' => $profile,
-        'settings' => ['payouts' => ['schedule' => ['interval' => 'daily', 'delay_days' => 'minimum']]], // versements automatiques Stripe
+        'settings' => ['payouts' => ['schedule' => ['interval' => 'manual'], 'debit_negative_balances' => true]],
         'metadata' => ['organisateur_id' => (string)$orgaId, 'statut' => $statut],
     ];
     if ($statuts[$statut][2] !== 'individual') $params['company'] = ['name' => mb_substr((string)$orga['nom'], 0, 100)];
@@ -640,6 +702,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
     if (($a->type ?? '') !== 'express') throw new Exception('Type de compte inattendu (' . ($a->type ?? '?') . ') : Express requis.');
     $pdo->prepare("UPDATE organisateurs SET stripe_account_id = ? WHERE id = ? AND (stripe_account_id IS NULL OR stripe_account_id = '')")->execute([$a->id, $orgaId]);
     fin_store_account($pdo, $orgaId, $a);
+    fin_branding_sync($pdo, $orgaId);
     $pdo->prepare("UPDATE stripe_comptes SET statut = ? WHERE organisateur_id = ?")->execute([$statut, $orgaId]);
     fin_audit($pdo, 'compte_connect_cree', 'organisateur', $orgaId, ['account' => $a->id, 'statut' => $statut], 'user:' . $userId);
     return $a->id;
@@ -653,7 +716,8 @@ function fin_sync_account(PDO $pdo, int $orgaId): ?array {
     $acct = $st->fetchColumn();
     if (!$acct) return null;
     $row = fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
-    if (!$row['payout_auto'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct); // passage en versements automatiques quotidiens
+    if (!$row['payout_manuel'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct);
+    fin_branding_sync($pdo, $orgaId);
     $acc = fin_account($pdo, $orgaId);
     if (fin_account_ready($acc)) fin_release_pending_now($pdo, $orgaId); // paiements reçus avant l'activation : transférés tout de suite
     return $acc;
@@ -779,7 +843,7 @@ function fin_receipt(PDO $pdo, string $token, int $userId, bool $isAdmin = false
     if ($v) {
         if (!$isAdmin && (int)$v['owner'] !== $userId) return null;
         $st = $pdo->prepare("SELECT p.inscription_id, p.brut_cents, p.commission_cents, p.net_cents, p.rembourse_cents, p.net_rembourse_cents, p.commission_pct, c.nom AS camp_nom, c.date_debut, l.montant_cents AS montant_ligne,
-                                    IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) AS frais_cents
+                                    IF(p.mode = 'direct' OR p.frais_orga = 1, COALESCE(p.frais_stripe_cents, p.frais_estimes_cents) + p.frais_litige_cents, 0) AS frais_cents, p.compensation_cents
                              FROM fin_transfert_lignes l JOIN fin_paiements p ON p.id = l.paiement_id JOIN camps c ON c.id = p.camp_id WHERE l.transfert_id = ? ORDER BY c.date_debut, p.inscription_id");
         $st->execute([$v['id']]);
         $lignes = $st->fetchAll(PDO::FETCH_ASSOC);

@@ -119,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $organisateur && $organisateurId) {
             ]);
 
             $message['success'] = "Les informations de l'organisme ont été mises à jour avec succès.";
+            if ($logo_url !== ($organisateur['logo_url'] ?? null)) { try { require_once 'api/finance_lib.php'; fin_branding_sync($pdo, (int)$organisateurId); } catch (Throwable $e) { error_log('logo paiement: ' . $e->getMessage()); } }
             // Alias (« PAJE ») : contrôlés à part ; un alias refusé n'empêche pas l'enregistrement du reste
             if (isset($_POST['motscles'])) {
                 $alias = mc_sauver_orga($pdo, (int)$organisateurId, $nom, (string)$_POST['motscles']);

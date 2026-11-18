@@ -13,7 +13,7 @@ $organisateurs = [];
 $error = false;
 
 try {
-    $st = $pdo->prepare("SELECT id, nom, email, tel, web, portefeuille, logo_url FROM organisateurs WHERE user_id = ? ORDER BY nom ASC");
+    $st = $pdo->prepare("SELECT id, nom, email, tel, web, solde_points, logo_url FROM organisateurs WHERE user_id = ? ORDER BY nom ASC");
     $st->execute([$userId]);
     $organisateurs = $st->fetchAll(PDO::FETCH_ASSOC);
     // nombre de séjours par organisme
@@ -76,8 +76,8 @@ require_once 'partials/header.php';
 
                 <dl class="mt-5 grid grid-cols-2 gap-3 text-[13px]">
                     <div class="rounded-xl bg-[#f8f5ea] px-4 py-3">
-                        <dt class="text-[#6b7780]">À recevoir</dt>
-                        <dd class="mt-0.5 text-[18px] font-extrabold text-[#26343b]"><?= number_format((float)$o['portefeuille'], 2, ',', ' ') ?> €</dd>
+                        <dt class="text-[#6b7780]">Points marketing</dt>
+                        <dd class="mt-0.5 text-[18px] font-extrabold text-[#26343b]"><?= number_format((int)$o['solde_points'], 0, ',', ' ') ?></dd>
                     </div>
                     <div class="rounded-xl bg-[#f1f3f5] px-4 py-3">
                         <dt class="text-[#6b7780]">Séjours</dt>

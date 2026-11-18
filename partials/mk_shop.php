@@ -3,7 +3,7 @@ require_once __DIR__ . '/../api/orga_lib.php';
 // partials/mk_shop.php : fenêtre d'achat de points (carte ou chiffre d'affaires) + petites fonctions JS communes.
 // Variables attendues : $mkOrgaId (int, jamais affiché : seul son jeton public part au navigateur), $mkWalletCents (int, solde utilisable), $mkCampToken (string, facultatif : retour sur boost.php)
 $mkCampToken = $mkCampToken ?? '';
-$mkWalletCents = max(0, (int)($mkWalletCents ?? 0));
+$mkSepa = !empty(fin_sepa_info($pdo, (int)$mkOrgaId)['sepa_pm']);
 require_once __DIR__ . '/../api/marketing_lib.php';
 ?>
 <div id="mkShop" class="mk-modal" role="dialog" aria-modal="true" aria-labelledby="mkShopTitle">
@@ -18,14 +18,8 @@ require_once __DIR__ . '/../api/marketing_lib.php';
             </button>
         </div>
 
-        <div class="mk-stat" style="margin-top:16px;padding:14px 16px">
-            <div class="k">Gains disponibles sur moncamp.fr</div>
-            <div class="v" style="font-size:22px"><?= number_format($mkWalletCents / 100, 2, ',', ' ') ?> €</div>
-            <div class="s">Votre chiffre d'affaires net de commission, pas encore versé. Payer vos points avec ce solde évite tout paiement par carte.</div>
-        </div>
-
         <div style="margin-top:16px;display:grid;gap:10px">
-        <?php $i = 0; foreach (mk_packs() as $key => $p): $i++; $eur = $p['cents'] / 100; $canWallet = $mkWalletCents >= $p['cents']; ?>
+        <?php $i = 0; foreach (mk_packs() as $key => $p): $i++; $eur = $p['cents'] / 100; ?>
             <div class="mk-pack<?= $key === 'standard' ? ' best' : '' ?>">
                 <div class="row">
                     <div>
@@ -36,8 +30,8 @@ require_once __DIR__ . '/../api/marketing_lib.php';
                     <div class="mk-price"><?= number_format($eur, 2, ',', ' ') ?> €</div>
                 </div>
                 <div class="acts">
-                    <button type="button" class="ds-btn mk-btn-sm" <?= $canWallet ? '' : 'disabled title="Solde insuffisant"' ?> onclick="mkBuyWallet('<?= $key ?>', this)">Payer avec mes gains</button>
-                    <button type="button" class="ds-btn ds-btn-light mk-btn-sm" onclick="mkBuyCard('<?= $key ?>', this)">Payer par carte</button>
+                    <button type="button" class="ds-btn mk-btn-sm" onclick="mkBuyCard('<?= $key ?>', this)">Payer par carte</button>
+                    <?php if ($mkSepa): ?><button type="button" class="ds-btn ds-btn-light mk-btn-sm" onclick="mkBuySepa('<?= $key ?>', this)">Payer par prélèvement</button><?php endif; ?>
                 </div>
             </div>
         <?php endforeach; ?>
@@ -59,29 +53,23 @@ require_once __DIR__ . '/../api/marketing_lib.php';
     window.mkClose = function () { document.getElementById('mkShop').classList.remove('open'); };
     document.getElementById('mkShop').addEventListener('click', function (e) { if (e.target === this) mkClose(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') mkClose(); });
+    window.mkBuySepa = async function (pack, btn) {
+        if (!(await ColoUI.confirm('Le montant sera prélevé sur le compte bancaire de votre mandat SEPA. Les points sont crédités à réception du prélèvement.', { title: 'Payer par prélèvement ?', confirmLabel: 'Prélever' }))) return;
+        btn.disabled = true;
+        fetch('api/payer_points_sepa.php', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }, credentials: 'same-origin', body: JSON.stringify({ pack: pack, o: ORGA, idem: newIdem() }) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { toast(d.message || d.error || 'Prélèvement indisponible.', !d.ok); if (!d.ok) btn.disabled = false; })
+            .catch(function () { toast('Erreur réseau.', true); btn.disabled = false; });
+    };
     window.mkBuyCard = function (pack, btn) {
         btn.disabled = true;
         post('api/create_stripe_boost_session.php', TOKEN ? { pack: pack, token: TOKEN } : { pack: pack, o: ORGA })
             .then(function (d) { if (d.url) { location.href = d.url; } else { toast(d.error || 'Paiement indisponible.', true); btn.disabled = false; } })
             .catch(function () { toast('Erreur réseau.', true); btn.disabled = false; });
     };
-    var busy = false, PACKS = <?= json_encode(array_map(function ($p) { return ['name' => $p['name'], 'points' => $p['points'], 'cents' => $p['cents']]; }, mk_packs())) ?>, WALLET = <?= (int)$mkWalletCents ?>;
+    var busy = false, PACKS = <?= json_encode(array_map(function ($p) { return ['name' => $p['name'], 'points' => $p['points'], 'cents' => $p['cents']]; }, mk_packs())) ?>;
     function eur(c) { return (c / 100).toFixed(2).replace('.', ',') + ' €'; }
     function csrf() { var m = document.querySelector('meta[name=csrf]'); return m ? m.content : ''; }
     function newIdem() { var a = new Uint8Array(16); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
-    window.mkBuyWallet = async function (pack, btn) {
-        if (busy) return;
-        var p = PACKS[pack]; if (!p) return;
-        busy = true;
-        var msg = p.name + ' (' + p.points + ' points)\nMontant débité : ' + eur(p.cents) + '\nSolde avant : ' + eur(WALLET) + '\nSolde après : ' + eur(WALLET - p.cents);
-        var ok = await ColoUI.confirm(msg, { title: 'Payer avec mes gains ?', confirmLabel: 'Payer ' + eur(p.cents) });
-        if (!ok) { busy = false; return; }
-        btn.disabled = true;
-        // un jeton d'idempotence par confirmation : un double envoi ne peut jamais débiter deux fois
-        fetch('api/buy_points_wallet.php', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }, credentials: 'same-origin', body: JSON.stringify({ pack: pack, o: ORGA, idem: newIdem() }) })
-            .then(function (r) { return r.json(); })
-            .then(function (d) { if (d.success) { toast('Paiement confirmé (' + d.ref + '). Un reçu vous est envoyé par e-mail.'); setTimeout(function () { location.reload(); }, 1200); } else { toast(d.message || 'Achat impossible.', true); btn.disabled = false; busy = false; } })
-            .catch(function () { toast('Erreur réseau : vérifiez votre historique avant de réessayer.', true); btn.disabled = false; busy = false; });
-    };
 })();
 </script>

@@ -125,7 +125,7 @@ $rep = fin_payouts_run($pdo);
 $c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'payouts.create'));
 ok($rep['payouts'] === 1 && $rep['montant_cents'] === 4845, 'versement de 48,45 EUR (séjour commencé), le séjour à venir reste sur le compte Stripe');
 ok($c[0][1][1] === ['stripe_account' => 'acct_D', 'idempotency_key' => 'moncamp-payout-' . $pdo->query("SELECT MAX(id) FROM fin_transferts")->fetchColumn()], 'payout sur le compte connecté, clé d\'idempotence');
-ok((int)$pdo->query("SELECT payout_auto FROM stripe_comptes WHERE organisateur_id = 2")->fetchColumn() === 1 && in_array('accounts.update', array_column($GLOBALS['stripe_calls'], 0), true), 'compte passé en versements automatiques quotidiens (ancien pilotage manuel encore testable)');
+ok((int)$pdo->query("SELECT payout_manuel FROM stripe_comptes WHERE organisateur_id = 2")->fetchColumn() === 1 && in_array('accounts.update', array_column($GLOBALS['stripe_calls'], 0), true), 'compte en virements pilotés par moncamp.fr (manuel côté Stripe)');
 ok($pdo->query("SELECT statut FROM fin_paiements WHERE payment_intent = 'pi_G'")->fetchColumn() === 'verse' && fin_ledger_totaux($pdo, 2)['verse'] === 4845, 'ligne versée, journal : 48,45 EUR versés');
 $bal(0, 11627);
 ok(fin_payouts_run($pdo)['payouts'] === 0, 'second passage (double clic) : rien de plus');
@@ -192,19 +192,22 @@ fin_refund($pdo, $h, 3000, ['annulation' => '1'], 'k-ok');
 $c = array_column($GLOBALS['stripe_calls'], 1, 0);
 ok(!isset($c['transfers.create']) && $c['refunds.create'][1]['stripe_account'] === 'acct_D' && $c['refunds.create'][0]['refund_application_fee'] === false, 'solde suffisant : remboursé sur le compte de l\'organisme, commission non rendue');
 $nTr = count($GLOBALS['fake_transfers']->calls); $bal(1000, 0);
-$pf0 = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn(); // déjà négatif des frais de litige de E (dette)
+$pf0 = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn();
 fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
-$tr = array_slice($GLOBALS['fake_transfers']->calls, $nTr);
-ok($tr && $tr[0][1]['amount'] === 2000 && $tr[0][1]['destination'] === 'acct_D' && $tr[0][2]['idempotency_key'] === 'k-manque-avance', 'solde insuffisant : moncamp.fr avance les 20 EUR manquants');
-ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() - ($pf0 - 20.00)) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'avance:k-manque'")->fetchColumn() === 2000, 'dette de 20 EUR : solde négatif et journal');
-fin_refund($pdo, $h, 3000, ['annulation' => '2'], 'k-manque');
-ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() + 20.00) < 0.001, 'remboursement rejoué : dette comptée une fois');
+ok(count($GLOBALS['fake_transfers']->calls) === $nTr && abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn() - $pf0) < 0.001
+   && !(int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE reference = 'avance:k-manque'")->fetchColumn(), 'direct, solde insuffisant : aucune avance de moncamp.fr, Stripe gère le solde négatif de l’organisme');
+$pdo->exec("UPDATE organisateurs SET portefeuille = -20.00 WHERE id = 2"); // dette (legacy, repli destination ou hors carte) pour la suite
 $r = stripe_webhook_process($pdo, $ev('evt_21', 'charge.refunded', ['id' => 'ch_pi_H', 'payment_intent' => 'pi_H', 'amount_refunded' => 6000, 'amount' => 8000], 'acct_D'));
 $h2 = $pdo->query("SELECT rembourse_cents, net_rembourse_cents FROM fin_paiements WHERE payment_intent = 'pi_H'")->fetch(PDO::FETCH_NUM);
 ok(array_map('intval', $h2) === [6000, 6000] && (int)$pdo->query("SELECT COUNT(*) FROM fin_ledger WHERE type = 'commission' AND reference LIKE 'rem:pi_H:%'")->fetchColumn() === 0, 'remboursement direct : l\'organisme rend tout, aucune commission rendue');
 
 [$d, $o] = fin_checkout_params($pdo, 2, [6000]);
 ok($d['metadata']['compensation'] === '2000' && $d['payment_intent_data']['application_fee_amount'] === fin_commission_split(6000)[0] + 2000, 'paiement suivant : la dette s\'ajoute à la commission prélevée');
+$pfS = (float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn();
+$pdo->exec("UPDATE organisateurs SET portefeuille = -1000.00 WHERE id = 2");
+[$d] = fin_checkout_params($pdo, 2, [15000]);
+ok((int)$d['metadata']['compensation'] === 15000 - fin_commission_split(15000)[0] - fin_frais_estimes(15000) - 100, 'dette énorme : compensation plafonnée, au moins 1 € net pour l’organisme (frais estimés compris), le reste reste dû');
+$pdo->prepare("UPDATE organisateurs SET portefeuille = ? WHERE id = 2")->execute([$pfS]);
 $r = stripe_webhook_process($pdo, $ev('evt_22', 'checkout.session.completed', ['id' => 'cs_I', 'payment_status' => 'paid', 'payment_intent' => 'pi_I', 'amount_total' => 6000, 'amount_subtotal' => 6000,
     'metadata' => ['reservation_token' => 'tokI', 'mode' => 'direct', 'organisateur_id' => '2', 'commission' => (string)fin_commission_split(6000)[0], 'compensation' => '2000']], 'acct_D'));
 ok(abs((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 2")->fetchColumn()) < 0.001 && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'comp:pi_I'")->fetchColumn() === -2000, 'dette compensée et journalisée (« compensée le … »)');

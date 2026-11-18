@@ -17,6 +17,9 @@ ok(fin_commission_split(2500, 1.0, 0)[0] === 25, 'taux explicite 1 % : 0,25 EUR 
 ok(array_sum(fin_allocate(63, [1 => 1000, 2 => 1000, 3 => 1000])) === 63, 'répartition de 63 c sur 3 lignes : somme exacte');
 ok(array_sum(fin_allocate(5, [1 => 0, 2 => 0])) === 5, 'répartition avec poids nuls : le reste va à la dernière ligne');
 ok(preg_match('/^[A-Za-z0-9]{22}$/', fin_orga_tok_new()) === 1 && fin_orga_tok_new() !== fin_orga_tok_new(), 'jeton organisme : 22 caractères base62 aléatoires');
+$x = fin_detail_frais(['payment_intent_data' => ['description' => 'Été · 2–8 juil.', 'metadata' => []], 'metadata' => ['commission' => '93', 'compensation' => '213', 'frais_estimes' => '0', 'compensation_ref' => 'D261118-ABC123']]);
+ok($x['payment_intent_data']['metadata']['Frais moncamp.fr'] === 'Commission moncamp.fr 0,93 € + compensation de dette 2,13 € (réf. D261118-ABC123) = 3,06 €'
+   && $x['payment_intent_data']['metadata']['application_fee'] === '306' && str_ends_with($x['payment_intent_data']['description'], '= 3,06 €'), 'Stripe : détail commission + compensation de dette = application fee');
 // TVA incluse dans un prix TTC : 100 EUR a 20 % -> 16,67 EUR (pas 20), non applicable -> 0
 ok(fin_tva_incluse(10000, 20) === 1667, 'TVA incluse 20 % sur 100 EUR TTC = 16,67 EUR');
 ok(fin_tva_incluse(10000, 5.5) === 521, 'TVA incluse 5,5 % sur 100 EUR TTC = 5,21 EUR');

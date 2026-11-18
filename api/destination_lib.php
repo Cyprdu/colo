@@ -15,17 +15,7 @@ function fin_refund(PDO $pdo, array $p, int $amount, array $meta, string $idem):
     if ($mode === 'direct') {
         $st = $pdo->prepare("SELECT stripe_account_id FROM organisateurs WHERE id = ?"); $st->execute([$p['organisateur_id']]);
         $acct = (string)$st->fetchColumn();
-        $params['refund_application_fee'] = false; $opts['stripe_account'] = $acct;
-        $b = fin_stripe()->balance->retrieve([], ['stripe_account' => $acct]); $solde = 0;
-        foreach (array_merge($b->available ?? [], $b->pending ?? []) as $x) if (strtolower((string)$x->currency) === 'eur') $solde += (int)$x->amount;
-        $manque = $amount - max(0, $solde);
-        if ($manque > 0) { // avance de moncamp.fr : l'organisme nous doit $manque
-            $tr = fin_stripe()->transfers->create(['amount' => $manque, 'currency' => 'eur', 'destination' => $acct, 'description' => 'moncamp.fr : avance pour un remboursement (dette)',
-                'metadata' => ['organisateur_id' => (string)$p['organisateur_id'], 'raison' => 'avance_remboursement']], ['idempotency_key' => $idem . '-avance']);
-            if (fin_ledger_add($pdo, 'dette', (int)$p['organisateur_id'], $manque, 'avance:' . $idem, 'paiement', $p['id'], 'Remboursement avancé par moncamp.fr', 'systeme', 'direct'))
-                $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) - ? WHERE id = ?")->execute([$manque / 100, $p['organisateur_id']]);
-            fin_audit($pdo, 'dette_avance', 'organisateur', $p['organisateur_id'], ['cents' => $manque, 'solde_stripe' => $solde, 'transfert' => $tr->id ?? null], 'systeme');
-        }
+        $params['refund_application_fee'] = false; $opts['stripe_account'] = $acct; // pris sur le solde de l'organisme ; un solde négatif est géré par Stripe (compensation, puis prélèvement de son IBAN)
     }
     return (string)fin_stripe()->refunds->create($params, $opts)->id;
 }
@@ -179,11 +169,67 @@ function fin_payout_event(PDO $pdo, $po, bool $paid, string $account): void {
 /** Passe le compte en versements automatiques quotidiens (délai minimal Stripe) et demande les paiements par carte. Idempotent. */
 function fin_account_setup(PDO $pdo, int $orgaId, string $accountId): bool {
     try {
-        fin_stripe()->accounts->update($accountId, ['settings' => ['payouts' => ['schedule' => ['interval' => 'daily', 'delay_days' => 'minimum']]], 'capabilities' => ['card_payments' => ['requested' => true]]]);
-        $pdo->prepare("UPDATE stripe_comptes SET payout_manuel = 0, payout_auto = 1 WHERE organisateur_id = ?")->execute([$orgaId]);
-        fin_audit($pdo, 'compte_versements_auto', 'organisateur', $orgaId, ['account' => $accountId], 'systeme');
+        fin_stripe()->accounts->update($accountId, ['settings' => ['payouts' => ['schedule' => ['interval' => 'manual'], 'debit_negative_balances' => true]], 'capabilities' => ['card_payments' => ['requested' => true]]]);
+        $pdo->prepare("UPDATE stripe_comptes SET payout_manuel = 1, payout_auto = 0 WHERE organisateur_id = ?")->execute([$orgaId]);
+        fin_audit($pdo, 'compte_virements_moncamp', 'organisateur', $orgaId, ['account' => $accountId], 'systeme');
         return true;
     } catch (Throwable $e) { error_log('fin_account_setup: ' . $e->getMessage()); return false; }
+}
+
+/** Solde du compte connecté : disponible maintenant, à venir par date (available_on), négatif éventuel. Cache 60 s par session. */
+function fin_solde_compte(PDO $pdo, int $orgaId): ?array {
+    $acc = fin_account($pdo, $orgaId);
+    if (!$acc || empty($acc['account_id'])) return null;
+    $k = 'solde_compte_' . $orgaId;
+    if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION[$k]) && $_SESSION[$k]['t'] > time() - 60) return $_SESSION[$k]['v'];
+    try {
+        $opt = ['stripe_account' => $acc['account_id']];
+        $eur = function ($l) { $t = 0; foreach ($l ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $t += (int)$x->amount; return $t; };
+        $b = fin_stripe()->balance->retrieve([], $opt);
+        $v = ['dispo' => $eur($b->available ?? []), 'attente' => $eur($b->pending ?? []), 'avenir' => []];
+        if ($v['attente'] > 0) {
+            foreach (fin_stripe()->balanceTransactions->all(['limit' => 100], $opt)->data as $t)
+                if (($t->status ?? '') === 'pending' && strtolower((string)$t->currency) === 'eur' && !empty($t->available_on)) { $d = date('Y-m-d', (int)$t->available_on); $v['avenir'][$d] = ($v['avenir'][$d] ?? 0) + (int)$t->net; }
+            ksort($v['avenir']);
+        }
+        $v['negatif'] = min(0, $v['dispo'] + $v['attente']);
+    } catch (Throwable $e) { error_log('fin_solde_compte: ' . $e->getMessage()); return null; }
+    if (session_status() === PHP_SESSION_ACTIVE) $_SESSION[$k] = ['t' => time(), 'v' => $v];
+    return $v;
+}
+
+/**
+ * Vire sur la banque de l'organisme tout le disponible de son compte (minimum 1 €). $auto : passage quotidien du cron (une fois par jour).
+ * Idempotent (clé par organisme et par jour en automatique, par montant et par minute au clic), relevé et journalisé par fin_payout_record.
+ */
+function fin_virer_maintenant(PDO $pdo, int $orgaId, string $acteur, bool $auto = false): ?array {
+    $acc = fin_account($pdo, $orgaId);
+    if (!fin_account_ready($acc)) throw new Exception('Votre compte de paiement n\'est pas encore prêt.');
+    if ($auto) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM fin_transferts WHERE organisateur_id = ? AND type = 'payout' AND statut <> 'echec' AND DATE(created_at) = CURDATE()");
+        $st->execute([$orgaId]);
+        if ((int)$st->fetchColumn()) return null;
+    }
+    $b = fin_stripe()->balance->retrieve([], ['stripe_account' => $acc['account_id']]);
+    $dispo = 0; foreach ($b->available ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $dispo += (int)$x->amount;
+    if ($dispo < 100) return null;
+    $po = fin_stripe()->payouts->create(['amount' => $dispo, 'currency' => 'eur', 'statement_descriptor' => 'MONCAMP.FR', 'description' => 'moncamp.fr : virement de vos inscriptions',
+        'metadata' => ['organisateur_id' => (string)$orgaId, 'origine' => $auto ? 'quotidien' : 'bouton']],
+        ['stripe_account' => $acc['account_id'], 'idempotency_key' => $auto ? 'moncamp-po-auto-' . $orgaId . '-' . date('Ymd') : 'moncamp-po-' . $orgaId . '-' . $dispo . '-' . date('YmdHi')]);
+    fin_payout_record($pdo, $po, $acc['account_id']);
+    fin_audit($pdo, $auto ? 'virement_quotidien' : 'virement_bouton', 'organisateur', $orgaId, ['cents' => $dispo, 'payout' => $po->id], $acteur);
+    if (session_status() === PHP_SESSION_ACTIVE) unset($_SESSION['solde_compte_' . $orgaId], $_SESSION['prochain_vir_' . $orgaId]);
+    return ['m' => $dispo, 'arrivee' => fin_payout_arrivee($po)];
+}
+
+/** Cron : virement quotidien du disponible de chaque organisme dont le compte est prêt */
+function fin_virements_quotidiens(PDO $pdo): array {
+    $rep = ['virements' => 0, 'cents' => 0, 'erreurs' => 0];
+    foreach ($pdo->query("SELECT organisateur_id FROM stripe_comptes WHERE payout_manuel = 1 AND payouts_enabled = 1")->fetchAll(PDO::FETCH_COLUMN) as $oid) {
+        try { $r = fin_virer_maintenant($pdo, (int)$oid, 'cron', true); if ($r) { $rep['virements']++; $rep['cents'] += $r['m']; } }
+        catch (Throwable $e) { $rep['erreurs']++; error_log("fin_virements_quotidiens orga $oid: " . $e->getMessage()); }
+    }
+    return $rep;
 }
 
 /** Date d'arrivée sur la banque annoncée par Stripe (payout.arrival_date) */
@@ -297,20 +343,27 @@ function fin_dette_reglee(PDO $pdo, $session): ?array {
     $orgaId = fin_orga_from_tok($pdo, (string)($session->metadata->organisateur ?? ''));
     $paid = (int)($session->amount_total ?? 0);
     if (!$orgaId || $paid <= 0) { fin_audit($pdo, 'dette_paiement_inconnu', 'checkout', (string)$session->id, ['cents' => $paid], 'webhook'); return null; }
-    $ref = 'dettecb:' . $session->id;
+    $r = fin_dette_reglement($pdo, $orgaId, $paid, 'dettecb:' . $session->id, 'Dette réglée par carte');
+    if (!$r) return null;
+    $r += ['session' => (string)$session->id, 'attendu' => (int)($session->metadata->montant ?? 0)];
+    fin_audit($pdo, 'dette_reglee_carte', 'organisateur', $orgaId, $r, 'webhook');
+    return $r;
+}
+
+/** Règlement de dette reçu (carte ou prélèvement) : solde la dette du moment, excédent crédité au solde. Idempotent par référence. */
+function fin_dette_reglement(PDO $pdo, int $orgaId, int $paid, string $ref, string $libelle): ?array {
     $st = $pdo->prepare("SELECT COUNT(*) FROM fin_ledger WHERE reference IN (?, ?)");
     $st->execute([$ref, $ref . ':surplus']);
-    if ((int)$st->fetchColumn()) return null; // déjà traité
+    if ((int)$st->fetchColumn()) return null;
     $st = $pdo->prepare("SELECT portefeuille FROM organisateurs WHERE id = ? FOR UPDATE");
     $st->execute([$orgaId]);
     $due = max(0, -(int)round((float)$st->fetchColumn() * 100));
     $solde = min($paid, $due); $surplus = $paid - $solde;
+    $obj = substr($ref, strpos($ref, ':') + 1);
     $pdo->prepare("UPDATE organisateurs SET portefeuille = COALESCE(portefeuille, 0) + ? WHERE id = ?")->execute([$paid / 100, $orgaId]);
-    if ($solde > 0) fin_ledger_add($pdo, 'dette', $orgaId, -$solde, $ref, 'checkout', $session->id, 'Dette réglée par carte', 'webhook', 'plateforme');
-    if ($surplus > 0) fin_ledger_add($pdo, 'ajustement', $orgaId, $surplus, $ref . ':surplus', 'checkout', $session->id, 'Excédent du règlement de dette crédité au solde', 'webhook', 'plateforme');
-    $r = ['organisateur_id' => $orgaId, 'session' => (string)$session->id, 'paye' => $paid, 'solde' => $solde, 'surplus' => $surplus, 'attendu' => (int)($session->metadata->montant ?? 0)];
-    fin_audit($pdo, 'dette_reglee_carte', 'organisateur', $orgaId, $r, 'webhook');
-    return $r;
+    if ($solde > 0) fin_ledger_add($pdo, 'dette', $orgaId, -$solde, $ref, 'paiement', $obj, $libelle, 'webhook', 'plateforme');
+    if ($surplus > 0) fin_ledger_add($pdo, 'ajustement', $orgaId, $surplus, $ref . ':surplus', 'paiement', $obj, 'Excédent du règlement de dette crédité au solde', 'webhook', 'plateforme');
+    return ['organisateur_id' => $orgaId, 'paye' => $paid, 'solde' => $solde, 'surplus' => $surplus];
 }
 
 /** Reçu par e-mail (après la transaction du webhook ; un échec n'annule rien) */

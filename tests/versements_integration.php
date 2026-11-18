@@ -15,6 +15,7 @@ foreach (['fin_paiements', 'fin_transferts', 'fin_transfert_lignes', 'fin_revers
 $pdo->exec("CREATE TABLE organisateurs (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), user_id INT, portefeuille DECIMAL(12,2) NOT NULL DEFAULT 0, solde_points INT DEFAULT 0, stripe_account_id VARCHAR(64) NULL, adresse_complete VARCHAR(80) NULL, code_postal_orga VARCHAR(10) NULL, ville_orga VARCHAR(50) NULL, email VARCHAR(80) NULL)");
 $pdo->exec("CREATE TABLE camps (id INT AUTO_INCREMENT PRIMARY KEY, nom VARCHAR(50), date_debut DATE, organisateur_id INT)");
 $pdo->exec("CREATE TABLE inscriptions (id INT AUTO_INCREMENT PRIMARY KEY, camp_id INT, enfant_id INT, tarif_id INT NULL, statut VARCHAR(20), prix_final DECIMAL(10,2), statut_paiement VARCHAR(20), reservation_token VARCHAR(64), mode_paiement VARCHAR(20), montant_paye DECIMAL(10,2) DEFAULT 0)");
+$pdo->exec("CREATE TABLE IF NOT EXISTS enfants (id INT AUTO_INCREMENT PRIMARY KEY, parent_id INT, nom VARCHAR(50), prenom VARCHAR(50))");
 $pdo->exec("INSERT INTO organisateurs (nom) VALUES ('A'), ('B'), ('C'), ('D'), ('E'), ('F'), ('G')");
 fin_ensure($pdo);
 
@@ -131,6 +132,16 @@ ok($pdo->query("SELECT statut_paiement FROM inscriptions WHERE id = 301")->fetch
 ok((int)$pdo->query("SELECT commission_cents FROM fin_commissions_hors WHERE inscription_id = 301")->fetchColumn() === 100, 'commission hors Stripe : 1 % de 100 EUR = 1 EUR');
 ok(abs(round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn(), 2) - ($w1 - 1.00)) < 0.001, 'commission déduite de la cagnotte carte (solde)');
 ok(fin_marquer_recu($pdo, $tok, 7)[0] === false && (int)$pdo->query("SELECT COUNT(*) FROM fin_commissions_hors")->fetchColumn() === 1, 'idempotent : pas de seconde commission');
+// commission hors carte due dès la réservation (dette), même si l'inscription est annulée ensuite ; rattrapage des réservations existantes
+$pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token, mode_paiement, moyen_paiement) VALUES (302, 1, 9, 'Confirmé', 50.00, 'A_REGLER', '" . str_repeat('c', 32) . "', 'ESPECES', 'especes'), (303, 1, 9, 'Confirmé', 80.00, 'A_REGLER', '" . str_repeat('d', 32) . "', 'CHEQUE', 'cheque')");
+$w2 = round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn(), 2);
+ok(fin_hors_commission_due($pdo, 302, 'reservation') === 50 && fin_hors_commission_due($pdo, 302, 'reservation') === 0
+   && (int)$pdo->query("SELECT montant_cents FROM fin_ledger WHERE type = 'dette' AND reference = 'horsdette:302'")->fetchColumn() === 50
+   && abs(round((float)$pdo->query("SELECT portefeuille FROM organisateurs WHERE id = 1")->fetchColumn(), 2) - ($w2 - 0.50)) < 0.001, 'réservation hors carte : commission due tout de suite (dette de 0,50 EUR), une seule fois');
+$pdo->exec("UPDATE inscriptions SET statut = 'Annulé' WHERE id = 302");
+ok((int)$pdo->query("SELECT commission_cents FROM fin_commissions_hors WHERE inscription_id = 302")->fetchColumn() === 50, 'inscription annulée : commission toujours due');
+ok(fin_hors_commissions_rattrapage($pdo) === 1 && (int)$pdo->query("SELECT commission_cents FROM fin_commissions_hors WHERE inscription_id = 303")->fetchColumn() === 80, 'rattrapage : réservations hors carte existantes');
+$pdo->exec("DELETE FROM fin_commissions_hors WHERE inscription_id IN (302, 303)");
 $ms = fin_moyens_stats($pdo, 1);
 ok(isset($ms['cheque']) && $ms['cheque']['nb'] === 1 && $ms['cheque']['commission_cents'] === 100, 'statistiques par moyen de paiement');
 require __DIR__ . '/../api/compta_lib.php';
