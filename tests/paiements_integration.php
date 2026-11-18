@@ -54,7 +54,13 @@ ok($d['payment_intent_data']['application_fee_amount'] === 93 + 280 && $d['payme
 $pdo->exec("UPDATE stripe_comptes SET charges_enabled = 1 WHERE organisateur_id = 2");
 $pdo->exec("UPDATE organisateurs SET portefeuille = -5.00 WHERE id = 2"); // commission hors carte due
 [$d, $o] = fin_checkout_params($pdo, 2, [2500, 10000]);
-ok($o === ['stripe_account' => 'acct_D'] && !isset($d['payment_intent_data']['transfer_data']) && $d['metadata']['mode'] === 'direct', 'compte prêt : direct charges, session créée sur le compte de l\'organisme');
+ok($o === ['stripe_account' => 'acct_D'] && !isset($d['payment_intent_data']['transfer_data']) && $d['metadata']['mode'] === 'direct' && $d['payment_method_types'] === ['card'], 'compte complet : direct charges sur le compte de l\'organisme, moyens de paiement fixés');
+$pdo->exec("UPDATE stripe_comptes SET exigences = '[\"individual.verification.document\"]' WHERE organisateur_id = 2");
+ok(fin_checkout_params($pdo, 2, [2500])[1] === [], 'pièce d\'identité demandée par Stripe : repli destination (pas de page Checkout sur le compte connecté)');
+$pdo->exec("UPDATE stripe_comptes SET exigences = '[]' WHERE organisateur_id = 2");
+fin_put_reglage($pdo, 'direct_charges', '0', 'test'); fin_reglages(true);
+ok(fin_checkout_params($pdo, 2, [2500])[1] === [], 'interrupteur admin : repli destination pour tous');
+fin_put_reglage($pdo, 'direct_charges', '1', 'test'); fin_reglages(true);
 ok($d['metadata']['compensation'] === '500' && $d['payment_intent_data']['application_fee_amount'] === 873, 'dette de 5 EUR ajoutée à la commission prélevée');
 
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (2, 2, 2, 'En attente', 25.00, 'EN_ATTENTE', 'tokB'), (3, 2, 3, 'En attente', 100.00, 'EN_ATTENTE', 'tokC')");

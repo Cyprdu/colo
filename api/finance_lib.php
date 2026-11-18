@@ -41,7 +41,7 @@ function fin_reglages(bool $refresh = false): array {
         'commission_pct' => defined('PLATFORM_COMMISSION_PERCENT') ? (float)PLATFORM_COMMISSION_PERCENT : FIN_DEFAULT_PCT,
         'commission_fixe_cents' => defined('PLATFORM_COMMISSION_FIXED_CENTS') ? (int)PLATFORM_COMMISSION_FIXED_CENTS : FIN_DEFAULT_FIXE_CENTS,
         'delai_securite_jours' => FIN_DEFAULT_DELAI, 'reserve_pct' => FIN_DEFAULT_RESERVE, 'commission_hors_pct' => FIN_DEFAULT_HORS_PCT,
-        'payout_jours' => FIN_DEFAULT_PAYOUT_JOURS,
+        'payout_jours' => FIN_DEFAULT_PAYOUT_JOURS, 'direct_charges' => 1,
     ];
     global $pdo;
     if (isset($pdo) && $pdo instanceof PDO) {
@@ -49,7 +49,7 @@ function fin_reglages(bool $refresh = false): array {
             fin_ensure($pdo);
             foreach ($pdo->query("SELECT cle, valeur FROM fin_reglages")->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
                 if ($k === 'commission_pct') $c[$k] = (float)$v;
-                elseif ($k === 'commission_fixe_cents' || $k === 'delai_securite_jours' || $k === 'payout_jours') $c[$k] = (int)$v;
+                elseif ($k === 'commission_fixe_cents' || $k === 'delai_securite_jours' || $k === 'payout_jours' || $k === 'direct_charges') $c[$k] = (int)$v;
                 elseif ($k === 'reserve_pct' || $k === 'commission_hors_pct') $c[$k] = (float)$v;
             }
         } catch (Throwable $e) { error_log('fin_reglages: ' . $e->getMessage()); }
@@ -326,7 +326,7 @@ function fin_payout_date(?string $dateDebut): string {
  */
 function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     $acc = fin_account($pdo, $orgaId);
-    $direct = $acc && !empty($acc['charges_enabled']);
+    $direct = fin_direct_ok($acc);
     if (!$direct && (!$acc || empty($acc['transfers_actif']))) return [[], []];
     $com = 0; $total = 0;
     foreach ($itemCents as $c) { $com += fin_commission_split((int)$c)[0]; $total += (int)$c; }
@@ -336,8 +336,19 @@ function fin_checkout_params(PDO $pdo, int $orgaId, array $itemCents): array {
     $mode = $direct ? 'direct' : 'destination';
     $pid = ['application_fee_amount' => $com + $comp, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId]];
     if (!$direct) $pid['transfer_data'] = ['destination' => $acc['account_id']];
-    return [['payment_intent_data' => $pid, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp]],
-            $direct ? ['stripe_account' => $acc['account_id']] : []];
+    $extra = ['payment_intent_data' => $pid, 'metadata' => ['mode' => $mode, 'organisateur_id' => (string)$orgaId, 'commission' => (string)$com, 'compensation' => (string)$comp]];
+    if ($direct) $extra['payment_method_types'] = ['card']; // carte (+ Apple Pay / Google Pay) : ne dépend pas de la configuration de moyens de paiement (pmc_) du compte connecté
+    return [$extra, $direct ? ['stripe_account' => $acc['account_id']] : []];
+}
+
+/**
+ * Direct charges seulement pour un compte COMPLET : cartes actives, dossier envoyé, aucune information demandée par Stripe (exigences vides),
+ * et interrupteur admin actif (Comptabilité > Versements). Sinon la page Checkout hébergée sur le compte connecté peut échouer
+ * (« Something went wrong », constaté en novembre 2026 avec on_behalf_of sur un compte à pièce d'identité manquante) : repli destination charges.
+ */
+function fin_direct_ok(?array $acc): bool {
+    return $acc && !empty($acc['charges_enabled']) && !empty($acc['details_submitted']) && in_array((string)($acc['exigences'] ?? ''), ['', '[]', 'null'], true)
+        && fin_reglages()['direct_charges'] === 1;
 }
 
 /** Remboursement (total ou partiel) d'un paiement : réduit le net dû à l'organisme au prorata (la commission est rendue au prorata aussi). */

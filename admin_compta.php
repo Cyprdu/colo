@@ -51,6 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             adm_audit('payout_jours', 'fin_reglages', "$d j");
             flash_go('ok', "Enregistré : versement sur la banque de l'organisme $d jour(s) après le début du séjour. S'applique aussi aux paiements pas encore versés.", 'admin_compta.php?v=versements');
         }
+        if ($act === 'direct_charges') {
+            [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
+            if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
+            $on = ($_POST['direct'] ?? '') === '1' ? 1 : 0;
+            fin_put_reglage($pdo, 'direct_charges', (string)$on, 'admin:' . $uid);
+            fin_audit($pdo, 'direct_charges', 'reglage', 'paiements', ['actif' => $on], 'admin:' . $uid);
+            adm_audit('direct_charges', 'fin_reglages', $on ? 'actif' : 'repli destination');
+            flash_go('ok', $on ? 'Paiements créés sur le compte de l\'organisme (direct charges) pour les comptes complets.' : 'Repli activé : paiements encaissés par moncamp.fr et transférés aussitôt (destination charges).', 'admin_compta.php?v=versements');
+        }
         if ($act === 'versement_now') {   // lance le versement d'UN organisme tout de suite (même logique que api/cron_virements.php)
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));
             if (!$ok) flash_go('err', $msg, 'admin_compta.php?v=versements');
@@ -221,6 +230,11 @@ $tabs = ['synthese' => 'Synthèse', 'commission' => 'Commission', 'organismes' =
       <label class="fld"><span class="fl">Jours après le début du séjour <small>(0 à 30)</small></span><input class="in" name="jours" type="number" min="0" max="30" value="<?= (int)$rg['payout_jours'] ?>" required></label>
       <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
       <div class="row-l"><button class="btn" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
+    <form method="post" action="admin_compta.php?v=versements" style="margin-top:14px"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="direct_charges">
+      <label class="fld"><span class="fl">Paiements par carte</span><select class="in" name="direct"><option value="1"<?= $rg['direct_charges'] ? ' selected' : '' ?>>Sur le compte de l'organisme (direct charges : frais Stripe à sa charge)</option><option value="0"<?= $rg['direct_charges'] ? '' : ' selected' ?>>Repli : encaissés par moncamp.fr puis transférés (frais Stripe à notre charge)</option></select></label>
+      <p class="muted small">Direct charges seulement pour les comptes complets (aucune information demandée par Stripe). Repli à utiliser si la page de paiement Stripe affiche une erreur.</p>
+      <label class="fld"><span class="fl">Votre mot de passe administrateur</span><input class="in" type="password" name="password" autocomplete="current-password" required></label>
+      <div class="row-l"><button class="btn ghost" type="submit"><?= ic('check') ?> Enregistrer</button></div></form>
     <?php if ($vs['legacy']): ?><p class="muted small">Anciens paiements encore gardés par moncamp.fr : <?= $e($vs['legacy']) ?> (règles d'origine : <?= (int)$rg['delai_securite_jours'] ?> j après le paiement, réserve <?= h(number_format($rg['reserve_pct'], 0, ',', ' ')) ?> %), transférés automatiquement puis versés avec le reste.</p><?php endif; ?>
   </section>
   <section class="card"><h2 class="sec"><?= ic('clock') ?> Lancer le versement maintenant</h2>
