@@ -23,7 +23,6 @@ try {
             'tel' => $o['tel'],
             'mail' => $o['email'],
             'web' => $o['web'],
-            'portefeuille' => $o['portefeuille'],
             'camps' => $o['camps_noms'] ? explode(', ', $o['camps_noms']) : []
         ];
     }, $orgs);
