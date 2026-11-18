@@ -4,7 +4,7 @@
 // Paramètres : t = paiements | transferts | organismes | payouts | journal | gains ; p/du/au = période ; o = jeton d'organisme (jamais d'identifiant numérique).
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
-adm_guard();
+adm_guard(false, 'compta.export');
 
 if (!adm_reauth_ok()) {
     $_SESSION['adm_flash'] = ['err', 'Confirmez votre mot de passe pour exporter les données financières.'];

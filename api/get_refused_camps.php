@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
-if (!isset($_SESSION['user']['is_admin']) || !$_SESSION['user']['is_admin']) { sendJson(['error' => 'Interdit'], 403); }
+require_once __DIR__ . '/adm_core.php';
+if (!adm_can('camps.read')) { sendJson(['error' => 'Interdit'], 403); }
 
 try {
     $sql = "SELECT c.id, c.nom, c.ville, o.nom as organisateur_nom 

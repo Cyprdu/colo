@@ -2,10 +2,11 @@
 // gestion_camp.php?t=<jeton d'une session> : page de gestion d'un séjour (aperçu des sessions, inscrits enfants et animateurs, liens, équipe, actions).
 // Réservée au propriétaire de l'organisme et à l'administrateur : les données viennent de api/gestion_donnees.php, qui vérifie l'accès.
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/finance_lib.php';
 require_once 'api/options.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { header('Location: index.php'); exit; }
+if (empty($_SESSION['user']['id']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.read'))) { header('Location: index.php'); exit; }
 $token = (string)($_GET['t'] ?? '');
 if ($token === '') { header('Location: mes_camps.php'); exit; }
 

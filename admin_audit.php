@@ -1,7 +1,7 @@
 <?php
 // admin_audit.php : journal d'audit (lecture seule). Les écritures du journal ne passent que par adm_audit().
 require_once __DIR__ . '/admin_lib.php';
-adm_guard();
+adm_guard(false, 'audit.read');
 
 $per = 40;
 $page = max(1, (int)($_GET['page'] ?? 1));

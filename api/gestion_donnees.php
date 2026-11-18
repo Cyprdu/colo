@@ -2,6 +2,7 @@
 // api/gestion_donnees.php : données de la page de gestion d'un séjour (gestion_camp.php). GET ?a=apercu|inscrits&t=<jeton d'une session>
 // Accès : propriétaire de l'organisme du séjour, ou administrateur. Lecture seule ; les écritures passent par les API existantes.
 require_once 'config.php';
+require_once __DIR__ . '/adm_core.php';
 require_once 'camp_groupe.php';
 require_once 'attente.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -10,7 +11,7 @@ header('Content-Type: application/json; charset=utf-8');
 function fin(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d); exit; }
 if (empty($_SESSION['user']['id'])) fin(['error' => 'Connectez-vous pour continuer.'], 401);
 $uid = (int)$_SESSION['user']['id'];
-$admin = !empty($_SESSION['user']['is_admin']);
+$admin = adm_can('orgas.write');
 if (!$admin && empty($_SESSION['user']['is_directeur'])) fin(['error' => 'Accès réservé aux organisateurs.'], 403);
 
 try {

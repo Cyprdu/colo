@@ -2,6 +2,7 @@
 // generate_pdf_equipe.php?t=<jeton d'inscription> : reçu d'inscription d'un animateur (équipe d'animation, option B).
 // Accès : l'animateur concerné, le directeur du séjour, un admin. Montants issus de la base, jamais du navigateur.
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/animateurs.php';
 require_once 'api/equipe.php';
 require 'libs/fpdf/fpdf.php';
@@ -11,7 +12,7 @@ $uid = (int)($_SESSION['user']['id'] ?? 0);
 if (!$uid) { header('Location: login.php?redirect=' . urlencode('reservations')); exit; }
 if (sec_blocked($pdo, 'equipe_pdf', (string)$uid, 30, 10)) { http_response_code(429); exit('Trop de demandes. Réessayez dans quelques minutes.'); }
 sec_hit($pdo, 'equipe_pdf', (string)$uid);
-$acc = equipe_acces($pdo, (string)($_GET['t'] ?? ''), $uid, !empty($_SESSION['user']['is_admin']));
+$acc = equipe_acces($pdo, (string)($_GET['t'] ?? ''), $uid, adm_can('camps.read'));
 if (!$acc) { http_response_code(404); exit('Inscription introuvable.'); }
 [$e, $camp] = $acc;
 if ($e['statut'] === 'Annulé' || !in_array($e['statut_paiement'], ['PAYE', 'GRATUIT'], true)) { http_response_code(409); exit('Aucun reçu : inscription non confirmée.'); }

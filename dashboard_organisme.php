@@ -4,10 +4,11 @@
 // sur « Appliquer », pagination, sélection, exports, panneau détail), Versements, Remboursements & litiges, Dette, Hors carte, Rapports (+ TVA).
 // Données : api/dashboard_stats.php (fin_ledger / fin_paiements, centimes). Aucune règle financière n'est calculée ici.
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/finance_lib.php';
 require_once 'api/marketing_lib.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) { header('Location: index.php'); exit; }
+if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.read'))) { header('Location: index.php'); exit; }
 
 $orgaId = fin_orga_request($pdo); // propriétaire ou admin, sinon 404 ; ancienne URL numérique : redirection admin
 $orgaTok = fin_orga_tok($orgaId);

@@ -6,7 +6,7 @@
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/compta_lib.php';
 require_once __DIR__ . '/api/gains_lib.php';
-adm_guard();
+adm_guard(false, 'compta.read');
 fin_ensure($pdo);
 try { fin_frais_rattrapage($pdo); } catch (Throwable $e) { error_log('admin rattrapage frais: ' . $e->getMessage()); } // une fois, puis ne refait rien
 
@@ -35,6 +35,9 @@ function flash_go(string $kind, string $msg, string $to): void { $_SESSION['adm_
 /* ------------------------------------------------------------------ actions (POST : CSRF vérifié par adm_guard) */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = (string)($_POST['act'] ?? '');
+    $need = ['ajustement' => 'paiements.write', 'commission' => 'compta.settings', 'direct_charges' => 'compta.settings', 'versement_now' => 'versements.write',
+             'retenter' => 'versements.write', 'unlock' => 'compta.export', 'frais' => 'paiements.write', 'payouts' => 'compta.read'];
+    if (isset($need[$act])) adm_need($need[$act], false);
     try {
         if ($act === 'ajustement') {   // ajustement / dette manuelle d'un organisme (mot de passe, motif obligatoire, journalisé)
             [$ok, $msg] = adm_reauth((string)($_POST['password'] ?? ''));

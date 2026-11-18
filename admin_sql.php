@@ -1,7 +1,7 @@
 <?php
 // admin_sql.php : console SQL (réauthentification requise ; confirmation avant toute écriture ; tout est journalisé).
 require_once __DIR__ . '/admin_lib.php';
-adm_guard();
+adm_guard(false, 'tech.sql');
 adm_head('Console SQL', 'admin_sql.php');
 ?>
 <div id="sql-app">

@@ -5,6 +5,7 @@
 //   Animateur  GET ?a=doc&i=<id>&t=<jeton inscription> (aussi directeur/admin) | POST ?a=annuler {t}
 // Accès : l'animateur inscrit, le directeur du séjour, un admin. Aucun identifiant numérique de séjour n'est accepté.
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/adm_core.php';
 require_once __DIR__ . '/animateurs.php';
 require_once __DIR__ . '/equipe.php';
 
@@ -20,7 +21,7 @@ if (!$uid) anim_json(['error' => 'Connectez-vous.'], 401);
 anim_ensure($pdo); equipe_ensure($pdo);
 $a = $_GET['a'] ?? '';
 $post = $_SERVER['REQUEST_METHOD'] === 'POST';
-$isAdmin = !empty($_SESSION['user']['is_admin']);
+$isAdmin = adm_can('camps.read');
 if (sec_blocked($pdo, 'equipe_infos', (string)$uid, 120, 1)) anim_json(['error' => 'Trop de requêtes. Patientez une minute.'], 429);
 sec_hit($pdo, 'equipe_infos', (string)$uid);
 

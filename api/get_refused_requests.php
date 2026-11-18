@@ -1,8 +1,9 @@
 <?php
 // Fichier: /api/get_refused_requests.php
 require_once 'config.php';
+require_once __DIR__ . '/adm_core.php';
 
-if (!isset($_SESSION['user']['is_admin']) || !$_SESSION['user']['is_admin']) { 
+if (!adm_can('demandes.read')) { 
     sendJson(['error' => 'Accès non autorisé.'], 403); 
 }
 

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/adm_core.php';
 // api/orga_lib.php : identifiant public opaque des organismes (organisateurs.public_id, 22 caractères base62 aléatoires).
 // Aucun id numérique d'organisme ne sort vers le navigateur (URL, formulaire, JSON, attribut) : on y met fin_orga_tok($id),
 // et on revient à l'id côté serveur par fin_orga_from_tok() (seule fonction de résolution, avec contrôle propriétaire/admin).
@@ -59,7 +60,7 @@ function fin_orga_from_tok(PDO $pdo, string $tok, ?int $userId = null): int {
  */
 function fin_orga_request(PDO $pdo, string $legacy = 'organisateur_id'): int {
     $userId = (int)($_SESSION['user']['id'] ?? 0);
-    $admin = !empty($_SESSION['user']['is_admin']);
+    $admin = adm_can('orgas.read');
     $num = $_GET[$legacy] ?? null;
     $tok = (string)($_GET['o'] ?? $_POST['o'] ?? '');
     if ($num !== null && ctype_digit((string)$num) && $tok === '') {

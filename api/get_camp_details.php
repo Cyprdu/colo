@@ -7,6 +7,7 @@ error_reporting(E_ALL);
 
 header('Content-Type: application/json');
 require_once 'config.php';
+require_once __DIR__ . '/adm_core.php';
 require_once 'sessions.php';
 require_once 'organismes.php';
 orga_ensure($pdo);
@@ -37,7 +38,7 @@ try {
         $stmt->execute([$idParam]);
         $r = $stmt->fetch(PDO::FETCH_ASSOC);
         $uid = $_SESSION['user']['id'] ?? null;
-        $isAdmin = !empty($_SESSION['user']['is_admin']);
+        $isAdmin = adm_can('camps.read');
         $isOwner = $r && $uid && (int)$r['owner_id'] === (int)$uid;
         $public = $r && !empty($r['valide']) && empty($r['refuse']) && empty($r['supprime']) && empty($r['prive']);
         $id = ($r && ($public || $isOwner || $isAdmin)) ? (int)$r['id'] : 0;

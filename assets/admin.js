@@ -312,6 +312,45 @@
     lock(!unlocked());
   }
 
+  function formData(f) {
+    var o = {};
+    new FormData(f).forEach(function (v, k) {
+      if (k.slice(-2) === '[]') { k = k.slice(0, -2); (o[k] = o[k] || []).push(v); } else o[k] = v;
+    });
+    f.querySelectorAll('input[type=checkbox][name$="[]"]').forEach(function (c) { var k = c.name.slice(0, -2); if (!o[k]) o[k] = []; });
+    return o;
+  }
+  function done(j, src) {
+    toast(j.msg || src.dataset.ok || 'Fait.');
+    if (j.go) { location.href = j.go; return; }
+    if (src.dataset.stay === undefined) setTimeout(function () { location.reload(); }, 450);
+  }
+  function confirmed(src) {
+    return src.dataset.confirm ? confirmBox(src.dataset.title || 'Confirmer', src.dataset.confirm, src.dataset.word || '') : Promise.resolve(true);
+  }
+  document.addEventListener('submit', function (e) {
+    var f = e.target.closest && e.target.closest('form[data-api]'); if (!f) return;
+    e.preventDefault();
+    confirmed(f).then(function (ok) {
+      if (!ok) return;
+      var b = f.querySelector('[type=submit]'); if (b) b.disabled = true;
+      api(Object.assign(formData(f), { a: f.dataset.api })).then(function (j) { if (b) b.disabled = false; done(j, f); }, function (err) { if (b) b.disabled = false; toast(err.message, true); });
+    });
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button[data-api]'); if (!b) return;
+    e.preventDefault();
+    confirmed(b).then(function (ok) {
+      if (!ok) return;
+      var body = { a: b.dataset.api };
+      Object.keys(b.dataset).forEach(function (k) { if (['api', 'confirm', 'ok', 'title', 'word', 'stay'].indexOf(k) < 0) body[k] = b.dataset[k]; });
+      if (b.dataset.sel) body.ids = [].map.call(document.querySelectorAll('input[name="sel[]"]:checked'), function (c) { return c.value; });
+      b.disabled = true;
+      api(body).then(function (j) { b.disabled = false; done(j, b); }, function (err) { b.disabled = false; toast(err.message, true); });
+    });
+  });
+  window.ADM = { api: api, toast: toast, confirmBox: confirmBox, dialog: dialog, el: el, icon: icon };
+
   if (DATA.page === 'list') listActions();
   if (DATA.page === 'db') dbApp();
   if (DATA.page === 'sql') sqlApp();

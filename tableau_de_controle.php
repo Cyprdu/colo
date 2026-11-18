@@ -7,7 +7,7 @@ require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/controle_lib.php';
 $run = (string)($_GET['run'] ?? '');
 if ($run !== '' || isset($_GET['list'])) {
-    adm_guard(true);
+    adm_guard(true, 'tech.security');
     $T = ctl_tests();
     if (isset($_GET['list'])) adm_json(['tests' => array_map(fn($id, $t) => ['id' => $id, 'g' => $t[0], 'l' => $t[1]], array_keys($T), array_values($T))]);
     if (!isset($T[$run])) adm_json(['error' => 'Test inconnu.'], 404);
@@ -15,7 +15,7 @@ if ($run !== '' || isset($_GET['list'])) {
     try { $r = ($T[$run][2])(); } catch (Throwable $e) { error_log('controle ' . $run . ': ' . $e->getMessage()); $r = ctl_r('warn', 'Le test a échoué : ' . mb_substr($e->getMessage(), 0, 160)); }
     adm_json($r + ['ms' => (int)round((microtime(true) - $t0) * 1000)]);
 }
-adm_guard();
+adm_guard(false, 'tech.security');
 adm_audit('controle_ouvert', 'tableau_de_controle');
 $site = ctl_site();
 adm_head('Tableau de contrôle', 'tableau_de_controle');

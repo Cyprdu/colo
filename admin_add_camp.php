@@ -1,8 +1,10 @@
 <?php
 require_once 'partials/header.php';
+require_once __DIR__ . '/api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 
 // SÉCURITÉ : On vérifie que l'utilisateur est connecté ET qu'il est admin.
-if (!isset($_SESSION['user']) || !($_SESSION['user']['is_admin'] ?? false)) {
+if (!isset($_SESSION['user']) || !adm_can('camps.write')) {
     header('Location: index.php');
     exit;
 }

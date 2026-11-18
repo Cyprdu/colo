@@ -3,6 +3,7 @@
 // Autorisé : le parent propriétaire de l'enfant, le directeur d'un séjour auquel l'enfant est inscrit, un administrateur.
 // Chaque ouverture est enregistrée (table acces_sante). Les dossiers uploads/sante|sanitaire|signatures sont fermés au web (.htaccess).
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/adm_core.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/sante.php';
 
@@ -24,7 +25,7 @@ try {
     $enfant = $st->fetch(PDO::FETCH_ASSOC);
     if (!$enfant) sf_stop(404);
 
-    $ok = ((int)$enfant['parent_id'] === $uid) || !empty($_SESSION['user']['is_admin']);
+    $ok = ((int)$enfant['parent_id'] === $uid) || adm_can('inscriptions.read');
     if (!$ok && !empty($_SESSION['user']['is_directeur'])) {
         // directeur d'un séjour où l'enfant est inscrit (inscription non annulée)
         $st = $pdo->prepare("SELECT 1 FROM inscriptions i JOIN camps c ON c.id = i.camp_id JOIN organisateurs o ON o.id = c.organisateur_id

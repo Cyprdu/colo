@@ -1,7 +1,7 @@
 <?php
 // admin_erreurs.php : dernières erreurs du site (fatales / exceptions), pour comprendre un « HTTP 500 ».
 require_once __DIR__ . '/admin_lib.php';
-adm_guard();
+adm_guard(false, 'tech.logs');
 adm_head('Erreurs du site', '');
 $rows = []; $fail = false;
 try { $rows = adm_rows("SELECT id, created_at, type, message, fichier, ligne, url, methode FROM app_erreurs ORDER BY id DESC LIMIT 150"); }

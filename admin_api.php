@@ -98,23 +98,34 @@ try {
     if ($a === 'act') {
         $act = (string)($in['act'] ?? '');
         $ents = adm_entities();
+        $need = ['user.accept' => 'demandes.write', 'user.deny' => 'demandes.write', 'user.revoke' => 'demandes.write', 'user.verify' => 'users.write',
+                 'user.block' => 'users.write', 'virement.done' => 'versements.write', 'virement.iban' => 'versements.write', 'contact.reply' => 'contacts.write'];
+        $perm = $need[$act] ?? (preg_match('/^(camp|boost)\./', $act) ? 'camps.write' : '');
+        if ($act === 'row.delete') $perm = ['users' => 'users.rgpd', 'organismes' => 'orgas.write', 'inscriptions' => 'inscriptions.write', 'contacts' => 'contacts.write'][(string)($in['e'] ?? '')] ?? '';
+        if ($perm === '') adm_json(['error' => 'Action inconnue.'], 400);
+        adm_need($perm);
         // Actions sensibles : réauthentification obligatoire
-        if (in_array($act, ['user.admin', 'row.delete', 'camp.delete', 'virement.done', 'virement.iban'], true)) adm_need_reauth_api();
+        if (in_array($act, ['user.block', 'row.delete', 'camp.delete', 'virement.done', 'virement.iban'], true)) adm_need_reauth_api();
         if (adm_limited('write', 'u' . $uid, 90, 1)) adm_json(['error' => 'Trop d\'actions en peu de temps. Patientez une minute.'], 429);
         adm_hit('write', 'u' . $uid);
         $id = need_id($in);
+        $snapT = ['user' => ['users', ['is_directeur', 'demande_en_cours', 'is_refused', 'is_verified']], 'camp' => ['camps', ['valide', 'en_attente', 'refuse', 'prive', 'supprime']],
+                  'boost' => ['camps', ['boost_vedette_fin', 'boost_urgence_fin', 'date_bump']], 'virement' => ['virements', ['effectue', 'date_virement_effectue']]][explode('.', $act)[0]] ?? null;
+        $snapBefore = $snapT ? adm_snap($snapT[0], 'id', $id, $snapT[1]) : null;
 
         switch ($act) {
         case 'user.accept': $pdo->prepare("UPDATE users SET is_directeur = 1, demande_en_cours = 0, is_refused = 0 WHERE id = ?")->execute([$id]); break;
         case 'user.deny':   $pdo->prepare("UPDATE users SET is_directeur = 0, demande_en_cours = 0, is_refused = 1 WHERE id = ?")->execute([$id]); break;
         case 'user.revoke': $pdo->prepare("UPDATE users SET is_directeur = 0, demande_en_cours = 0 WHERE id = ?")->execute([$id]); break;
         case 'user.verify': $pdo->prepare("UPDATE users SET is_verified = 1 WHERE id = ?")->execute([$id]); break;
-        case 'user.admin':
-            if ($id === $uid) throw new AdmUserError('Vous ne pouvez pas modifier vos propres droits.');
-            $cur = (int)adm_one("SELECT is_admin FROM users WHERE id = ?", [$id]);
-            if ($cur === 1 && (int)adm_one("SELECT COUNT(*) FROM users WHERE is_admin = 1") <= 1) throw new AdmUserError('Il doit rester au moins un administrateur.');
-            $pdo->prepare("UPDATE users SET is_admin = ? WHERE id = ?")->execute([$cur === 1 ? 0 : 1, $id]);
-            break;
+        case 'user.block':
+            if ($id === $uid) throw new AdmUserError('Vous ne pouvez pas vous bloquer vous-même.');
+            if (adm_is_supreme($id)) throw new AdmUserError('Un administrateur suprême ne peut pas être bloqué.');
+            $b = adm_snap('users', 'id', $id, ['bloque']);
+            if (!$b) throw new AdmUserError('Utilisateur introuvable.');
+            $pdo->prepare("UPDATE users SET bloque = 1 - bloque, remember_token = NULL WHERE id = ?")->execute([$id]);
+            adm_audit('user.block', "users#$id", null, $b, adm_snap('users', 'id', $id, ['bloque']));
+            ok();
         case 'camp.approve': $pdo->prepare("UPDATE camps SET valide = 1, en_attente = 0, refuse = 0 WHERE id = ?")->execute([$id]); break;
         case 'camp.deny':    $pdo->prepare("UPDATE camps SET valide = 0, en_attente = 0, refuse = 1 WHERE id = ?")->execute([$id]); break;
         case 'camp.requeue': $pdo->prepare("UPDATE camps SET valide = 0, refuse = 0, en_attente = 1 WHERE id = ?")->execute([$id]); break;
@@ -166,12 +177,13 @@ try {
             ok();
         default: throw new AdmUserError('Action inconnue.');
         }
-        adm_audit($act, "#$id");
+        adm_audit($act, ($snapT[0] ?? '') . "#$id", null, $snapBefore, $snapT ? adm_snap($snapT[0], 'id', $id, $snapT[1]) : null);
         ok();
     }
 
     /* ---------------------------------------- éditeur de base de données (réauth) */
     if (strpos($a, 'db.') === 0 || strpos($a, 'sql.') === 0) {
+        adm_need(strpos($a, 'db.') === 0 ? 'tech.db' : 'tech.sql');
         adm_need_reauth_api();
 
         if ($a === 'db.tables') {
@@ -296,6 +308,16 @@ try {
             adm_audit($kind === 'ddl' ? 'sql_structure' : 'sql_ecriture', null, mb_substr($sql, 0, 1500) . ' | lignes : ' . $n);
             ok(['kind' => $kind, 'affected' => $n, 'ms' => (int)((microtime(true) - $t0) * 1000)]);
         }
+    }
+
+    $H = require __DIR__ . '/admin_actions.php';
+    if (isset($H[$a])) {
+        [$perm, $sens, $fn] = $H[$a];
+        if ($perm === 'supreme' ? !adm_is_supreme() : ($perm !== '' && !adm_can($perm))) adm_forbidden(true, $perm);
+        if ($sens) adm_need_reauth_api();
+        if (adm_limited('write', 'u' . $uid, 120, 1)) adm_json(['error' => 'Trop d’actions en peu de temps. Patientez une minute.'], 429);
+        adm_hit('write', 'u' . $uid);
+        ok($fn($in) ?: []);
     }
 
     adm_json(['error' => 'Action inconnue.'], 400);

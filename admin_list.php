@@ -6,6 +6,7 @@ adm_guard();
 $ents = adm_entities();
 $key = (string)($_GET['e'] ?? 'users');
 if (!isset($ents[$key])) { http_response_code(404); $key = 'users'; }
+adm_need($ents[$key]['perm'], false);
 $E = $ents[$key];
 $fk = (string)($_GET['f'] ?? '');
 if (!isset($E['filters'][$fk])) $fk = array_key_first($E['filters']);

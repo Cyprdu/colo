@@ -3,6 +3,7 @@
 
 // 1. CONFIGURATION
 require_once 'api/config.php';
+require_once __DIR__ . '/api/adm_core.php';
 require_once 'api/orga_lib.php';
 
 use Stripe\Stripe;
@@ -10,7 +11,7 @@ use Stripe\Account;
 use Stripe\Exception\ApiErrorException;
 
 // 2. SÉCURITÉ : Restreindre aux Admins/Directeurs
-if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && empty($_SESSION['user']['is_admin']))) {
+if (!isset($_SESSION['user']) || (empty($_SESSION['user']['is_directeur']) && !adm_can('orgas.write'))) {
     header('Location: index.php');
     exit;
 }
