@@ -61,10 +61,10 @@ if ($is_director) {
         <?php endforeach; ?>
 
         <?php if (!$is_director && !$is_admin): ?>
-            <button type="button" onclick="requestDirectorAccess(this)" class="ds-tile text-left w-full border-dashed" style="background:#f8f5ea">
+            <a href="devenir-organisateur" class="ds-tile text-left w-full border-dashed" style="background:#f8f5ea">
                 <span class="ds-tile-ico" style="background:#fff"><i class="fa-solid fa-building-user"></i></span>
-                <span class="min-w-0"><span class="block text-[17px] font-bold text-[#26343b]">Devenir organisateur</span><span class="block text-[13.5px] text-[#6b7780]">Demander un accès directeur</span></span>
-            </button>
+                <span class="min-w-0"><span class="block text-[17px] font-bold text-[#26343b]">Devenir organisateur</span><span class="block text-[13.5px] text-[#6b7780]">Publier vos séjours sur moncamp.fr</span></span>
+            </a>
         <?php endif; ?>
 
         <?php if ($is_admin): ?>
@@ -89,31 +89,6 @@ if ($is_director) {
 </main>
 
 <script>
-// Demande d'accès organisateur (directeur)
-async function requestDirectorAccess(element) {
-    if (!(await ColoUI.confirm("Vous êtes sur le point de demander un accès Organisateur (Directeur). Confirmer ?", { confirmLabel: "Envoyer la demande" }))) return;
-    const originalContent = element.innerHTML;
-    element.innerHTML = '<span class="flex items-center justify-center h-12 w-full text-[#2f3d45]"><i class="fa-solid fa-circle-notch fa-spin text-2xl"></i></span>';
-    element.style.pointerEvents = 'none';
-    try {
-        const response = await fetch('api/request_director_access.php', { method: 'POST' });
-        const data = await response.json();
-        if (data.success) {
-            await ColoUI.alert("Votre demande a bien été envoyée. Elle sera examinée par un administrateur.", { tone: "ok" });
-            element.remove();
-        } else {
-            ColoUI.error(data.message);
-            element.innerHTML = originalContent;
-            element.style.pointerEvents = 'auto';
-        }
-    } catch (error) {
-        console.error(error);
-        ColoUI.error('Failed to fetch');
-        element.innerHTML = originalContent;
-        element.style.pointerEvents = 'auto';
-    }
-}
-
 document.addEventListener('DOMContentLoaded', function () {
     <?php if ($is_admin): ?>
     async function getAdminNotifCount() {

@@ -475,8 +475,6 @@ function adm_entities(): array {
         'filters' => ['all' => ['Tous', '1=1'], 'demandes' => ['Demandes directeur', 'u.demande_en_cours = 1 AND u.is_directeur = 0'], 'directeurs' => ['Directeurs', 'u.is_directeur = 1'], 'animateurs' => ['Animateurs', 'u.is_animateur = 1'], 'admins' => ['Administrateurs', 'u.is_admin = 1'], 'nonverifies' => ['Non vérifiés', 'u.is_verified = 0']],
         'order' => 'u.id DESC',
         'actions' => [
-            ['user.accept', 'Accepter comme directeur', 'user-check', 'ok', fn($r) => ($r['demande_en_cours'] ?? 0) == 1, false, ''],
-            ['user.deny', 'Refuser la demande', 'x', 'warn', fn($r) => ($r['demande_en_cours'] ?? 0) == 1, false, 'Refuser la demande directeur de cet utilisateur ?'],
             ['user.revoke', 'Retirer le rôle directeur', 'x', 'warn', fn($r) => ($r['is_directeur'] ?? 0) == 1 && ($r['demande_en_cours'] ?? 0) != 1, false, 'Retirer le rôle directeur ?'],
             ['user.verify', 'Marquer comme vérifié', 'check', 'ok', fn($r) => ($r['is_verified'] ?? 1) == 0, false, ''],
             ['user.admin', 'Basculer administrateur', 'key', 'warn', fn($r) => true, true, 'Accorder ou retirer les droits administrateur ? Action sensible.'],

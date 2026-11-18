@@ -103,6 +103,11 @@ function adm_core_ensure(PDO $pdo): void {
             KEY idx_user (user_id), KEY idx_statut (statut)) DEFAULT CHARSET=utf8mb4");
         $pdo->exec("CREATE TABLE IF NOT EXISTS demandes_organisateur_evts (id INT AUTO_INCREMENT PRIMARY KEY, demande_id INT NOT NULL, par INT NULL, qui VARCHAR(190) NOT NULL,
             action VARCHAR(30) NOT NULL, texte TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_d (demande_id)) DEFAULT CHARSET=utf8mb4");
+        if ($v < 5) {
+            $pdo->exec("INSERT INTO demandes_organisateur (token, user_id, structure, type_structure, statut, message)
+                SELECT MD5(CONCAT(u.id, RAND(), NOW())), u.id, '(ancienne demande, non renseignée)', 'autre', 'attente', NULL FROM users u
+                WHERE u.demande_en_cours = 1 AND u.is_directeur = 0 AND NOT EXISTS (SELECT 1 FROM demandes_organisateur d WHERE d.user_id = u.id)");
+        }
     } catch (Throwable $e) { error_log('adm_core demandes: ' . $e->getMessage()); }
     $ins = $pdo->prepare("INSERT INTO adm_roles (code, nom, description, systeme) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE nom = nom");
     $insP = $pdo->prepare("INSERT IGNORE INTO adm_role_perms (role_id, perm) VALUES (?, ?)");
@@ -189,7 +194,7 @@ function adm_todo_counts(?int $uid = null): array {
     $uid = $uid ?? (int)($_SESSION['user']['id'] ?? 0);
     if (isset($memo[$uid])) return $memo[$uid];
     $sql = [
-        'demande' => "SELECT COUNT(*) FROM users WHERE demande_en_cours = 1 AND is_directeur = 0",
+        'demande' => "SELECT COUNT(*) FROM demandes_organisateur WHERE statut = 'attente'",
         'contact' => "SELECT COUNT(*) FROM contact_messages WHERE COALESCE(dossier, 'inbox') = 'inbox' AND COALESCE(lu, 0) = 0",
         'sejour' => "SELECT COUNT(*) FROM camps WHERE en_attente = 1 AND valide = 0 AND refuse = 0 AND supprime = 0",
         'litige' => "SELECT COUNT(*) FROM fin_paiements WHERE statut = 'litige'",

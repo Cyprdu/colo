@@ -52,7 +52,83 @@ function act_contact(array $in): array {
 }
 function act_me(): string { $u = $_SESSION['user']; return trim(($u['prenom'] ?? '') . ' ' . ($u['nom'] ?? '')) ?: (string)$u['email']; }
 
+function act_demande(array $in): array {
+    require_once __DIR__ . '/api/demande_lib.php';
+    $t = (string)($in['d'] ?? '');
+    $d = preg_match('/^[a-f0-9]{32}$/', $t) ? adm_rows("SELECT * FROM demandes_organisateur WHERE token = ?", [$t])[0] ?? null : null;
+    if (!$d) throw new AdmUserError('Demande introuvable.');
+    return $d;
+}
+function act_demande_decide(array $d, string $statut, ?string $motif): void {
+    global $pdo;
+    if (!in_array($d['statut'], ['attente', 'complements'], true)) throw new AdmUserError('Cette demande est déjà traitée.');
+    $uid = (int)$_SESSION['user']['id'];
+    $before = adm_snap('users', 'id', (int)$d['user_id'], ['is_directeur', 'demande_en_cours', 'is_refused']);
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("UPDATE demandes_organisateur SET statut = ?, motif = ?, decide_par = ?, decide_at = NOW() WHERE id = ?")->execute([$statut, $motif, $uid, $d['id']]);
+        if ($statut === 'validee') $pdo->prepare("UPDATE users SET is_directeur = 1, demande_en_cours = 0, is_refused = 0 WHERE id = ?")->execute([$d['user_id']]);
+        if ($statut === 'refusee') $pdo->prepare("UPDATE users SET demande_en_cours = 0, is_refused = 1 WHERE id = ?")->execute([$d['user_id']]);
+        demande_event($pdo, (int)$d['id'], $statut, $motif, $uid, act_me());
+        $pdo->commit();
+    } catch (Throwable $e) { $pdo->rollBack(); throw $e; }
+    adm_audit('demande_' . $statut, 'demandes_organisateur#' . $d['id'], $d['structure'], $before + ['statut' => $d['statut']], adm_snap('users', 'id', (int)$d['user_id'], ['is_directeur', 'demande_en_cours', 'is_refused']) + ['statut' => $statut]);
+    $site = demande_site_url();
+    $h = fn($v) => htmlspecialchars((string)$v);
+    $mail = [
+        'validee' => ['Votre accès organisateur est activé', '<p>Bonne nouvelle : votre demande pour <b>' . $h($d['structure']) . '</b> est acceptée. Vous pouvez créer votre organisme et publier vos séjours.</p><p><a href="' . $h($site . '/organisateurs') . '">Ouvrir l’espace organisateur</a></p>'],
+        'refusee' => ['Votre demande organisateur', '<p>Votre demande pour <b>' . $h($d['structure']) . '</b> n’a pas été acceptée.</p><p>' . nl2br($h($motif)) . '</p><p>Vous pouvez répondre à cet e-mail ou envoyer une nouvelle demande depuis votre profil.</p>'],
+        'complements' => ['Votre demande organisateur : compléments nécessaires', '<p>Pour étudier votre demande pour <b>' . $h($d['structure']) . '</b>, nous avons besoin de quelques précisions :</p><p>' . nl2br($h($motif)) . '</p><p><a href="' . $h($site . '/devenir-organisateur') . '">Compléter ma demande</a></p>'],
+    ][$statut];
+    demande_mail_user($pdo, $d, $mail[0], $mail[1]);
+}
+
 return [
+    'demande.valider' => ['demandes.write', false, function (array $in) {
+        act_demande_decide(act_demande($in), 'validee', null);
+        return ['msg' => 'Accès organisateur accordé. Le demandeur est prévenu.'];
+    }],
+    'demande.refuser' => ['demandes.write', false, function (array $in) {
+        $m = trim((string)($in['motif'] ?? ''));
+        if (mb_strlen($m) < 10) throw new AdmUserError('Expliquez le motif (10 caractères minimum).');
+        act_demande_decide(act_demande($in), 'refusee', mb_substr($m, 0, 2000));
+        return ['msg' => 'Demande refusée. Le demandeur est prévenu.'];
+    }],
+    'demande.complements' => ['demandes.write', false, function (array $in) {
+        $m = trim((string)($in['motif'] ?? ''));
+        if (mb_strlen($m) < 10) throw new AdmUserError('Précisez ce qu’il manque (10 caractères minimum).');
+        act_demande_decide(act_demande($in), 'complements', mb_substr($m, 0, 2000));
+        return ['msg' => 'Demande de compléments envoyée.'];
+    }],
+    'demande.contact' => ['', false, function (array $in) {
+        global $pdo;
+        if (!adm_can('demandes.write') && !adm_can('contacts.write')) adm_forbidden(true, 'demandes.write');
+        $d = act_demande($in);
+        $objet = mb_substr(trim((string)($in['objet'] ?? '')), 0, 150);
+        $texte = trim((string)($in['texte'] ?? ''));
+        if ($objet === '' || $texte === '' || mb_strlen($texte) > 5000) throw new AdmUserError('Objet et message obligatoires.');
+        $ok = demande_mail_user($pdo, $d, $objet, '<p>' . nl2br(htmlspecialchars($texte)) . '</p>');
+        demande_event($pdo, (int)$d['id'], 'contact', $objet . "\n" . $texte, (int)$_SESSION['user']['id'], act_me());
+        adm_audit('demande_contact', 'demandes_organisateur#' . $d['id'], $objet);
+        return ['msg' => $ok ? 'E-mail envoyé.' : 'E-mail non parti (serveur mail).'];
+    }],
+    'demande.check' => ['demandes.read', false, function (array $in) {
+        global $pdo;
+        $d = act_demande($in);
+        $u = demande_site_norm((string)$d['site']);
+        $host = (string)parse_url($u, PHP_URL_HOST);
+        $ip = $host !== '' ? gethostbyname($host) : '';
+        if ($u === '' || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return ['msg' => 'Site injoignable : le nom de domaine ne répond pas.'];
+        $ch = curl_init($u);
+        curl_setopt_array($ch, [CURLOPT_NOBODY => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 6, CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS, CURLOPT_USERAGENT => 'moncamp.fr verification', CURLOPT_RESOLVE => [$host . ':443:' . $ip, $host . ':80:' . $ip]]);
+        curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        $msg = $code >= 200 && $code < 400 ? "Site en ligne (HTTP $code)." : ($code ? "Le site répond avec une erreur (HTTP $code)." : 'Site injoignable.');
+        demande_event($pdo, (int)$d['id'], 'site', $msg, (int)$_SESSION['user']['id'], act_me());
+        return ['msg' => $msg];
+    }],
     'note.add' => ['notes.write', false, function (array $in) {
         global $pdo;
         $objet = (string)($in['objet'] ?? '');

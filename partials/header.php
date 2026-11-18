@@ -29,9 +29,12 @@ if ($is_logged_in) {
         global $pdo;
         if (isset($pdo) && time() - (int)($_SESSION['bloque_chk'] ?? 0) > 300) {
             $_SESSION['bloque_chk'] = time();
-            $q = $pdo->prepare("SELECT COALESCE(bloque, 0) FROM users WHERE id = ?");
+            $q = $pdo->prepare("SELECT COALESCE(bloque, 0) b, is_directeur, is_admin FROM users WHERE id = ?");
             $q->execute([(int)$_SESSION['user']['id']]);
-            if ((int)$q->fetchColumn() === 1) { $_SESSION = []; session_destroy(); header('Location: /login.php?suspendu=1'); exit; }
+            $fr = $q->fetch(PDO::FETCH_ASSOC) ?: ['b' => 1];
+            if ((int)$fr['b'] === 1) { $_SESSION = []; session_destroy(); header('Location: /login.php?suspendu=1'); exit; }
+            $_SESSION['user']['is_directeur'] = (int)$fr['is_directeur']; $_SESSION['user']['is_admin'] = (int)$fr['is_admin'];
+            $is_director = (bool)$fr['is_directeur']; $is_admin = (bool)$fr['is_admin'];
         }
         if ($is_admin && isset($pdo)) {
             $is_admin = adm_is_staff();

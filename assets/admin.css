@@ -250,3 +250,4 @@ details.pop[open] > .pop-body { position:fixed; left:50%; top:50%; transform:tra
 .grow { flex:1; min-width:0; } .wrap-row { flex-wrap:wrap; margin-top:0; } .mt { margin-top:16px; } .danger-t { color:var(--bad) !important; }
 .inl-bar { margin:0; flex:1; } .panel .dl { margin:12px 0 14px; } .panel form.row-l { margin:0 0 14px; }
 .it input[type=checkbox] { margin-top:4px; width:16px; height:16px; flex:none; }
+.sub { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:20px 0 8px; display:flex; align-items:center; gap:4px; }
