@@ -179,11 +179,67 @@ function fin_payout_event(PDO $pdo, $po, bool $paid, string $account): void {
 /** Passe le compte en versements automatiques quotidiens (délai minimal Stripe) et demande les paiements par carte. Idempotent. */
 function fin_account_setup(PDO $pdo, int $orgaId, string $accountId): bool {
     try {
-        fin_stripe()->accounts->update($accountId, ['settings' => ['payouts' => ['schedule' => ['interval' => 'daily', 'delay_days' => 'minimum']]], 'capabilities' => ['card_payments' => ['requested' => true]]]);
-        $pdo->prepare("UPDATE stripe_comptes SET payout_manuel = 0, payout_auto = 1 WHERE organisateur_id = ?")->execute([$orgaId]);
-        fin_audit($pdo, 'compte_versements_auto', 'organisateur', $orgaId, ['account' => $accountId], 'systeme');
+        fin_stripe()->accounts->update($accountId, ['settings' => ['payouts' => ['schedule' => ['interval' => 'manual'], 'debit_negative_balances' => true]], 'capabilities' => ['card_payments' => ['requested' => true]]]);
+        $pdo->prepare("UPDATE stripe_comptes SET payout_manuel = 1, payout_auto = 0 WHERE organisateur_id = ?")->execute([$orgaId]);
+        fin_audit($pdo, 'compte_virements_moncamp', 'organisateur', $orgaId, ['account' => $accountId], 'systeme');
         return true;
     } catch (Throwable $e) { error_log('fin_account_setup: ' . $e->getMessage()); return false; }
+}
+
+/** Solde du compte connecté : disponible maintenant, à venir par date (available_on), négatif éventuel. Cache 60 s par session. */
+function fin_solde_compte(PDO $pdo, int $orgaId): ?array {
+    $acc = fin_account($pdo, $orgaId);
+    if (!$acc || empty($acc['account_id'])) return null;
+    $k = 'solde_compte_' . $orgaId;
+    if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION[$k]) && $_SESSION[$k]['t'] > time() - 60) return $_SESSION[$k]['v'];
+    try {
+        $opt = ['stripe_account' => $acc['account_id']];
+        $eur = function ($l) { $t = 0; foreach ($l ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $t += (int)$x->amount; return $t; };
+        $b = fin_stripe()->balance->retrieve([], $opt);
+        $v = ['dispo' => $eur($b->available ?? []), 'attente' => $eur($b->pending ?? []), 'avenir' => []];
+        if ($v['attente'] > 0) {
+            foreach (fin_stripe()->balanceTransactions->all(['limit' => 100], $opt)->data as $t)
+                if (($t->status ?? '') === 'pending' && strtolower((string)$t->currency) === 'eur' && !empty($t->available_on)) { $d = date('Y-m-d', (int)$t->available_on); $v['avenir'][$d] = ($v['avenir'][$d] ?? 0) + (int)$t->net; }
+            ksort($v['avenir']);
+        }
+        $v['negatif'] = min(0, $v['dispo'] + $v['attente']);
+    } catch (Throwable $e) { error_log('fin_solde_compte: ' . $e->getMessage()); return null; }
+    if (session_status() === PHP_SESSION_ACTIVE) $_SESSION[$k] = ['t' => time(), 'v' => $v];
+    return $v;
+}
+
+/**
+ * Vire sur la banque de l'organisme tout le disponible de son compte (minimum 1 €). $auto : passage quotidien du cron (une fois par jour).
+ * Idempotent (clé par organisme et par jour en automatique, par montant et par minute au clic), relevé et journalisé par fin_payout_record.
+ */
+function fin_virer_maintenant(PDO $pdo, int $orgaId, string $acteur, bool $auto = false): ?array {
+    $acc = fin_account($pdo, $orgaId);
+    if (!fin_account_ready($acc)) throw new Exception('Votre compte de paiement n\'est pas encore prêt.');
+    if ($auto) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM fin_transferts WHERE organisateur_id = ? AND type = 'payout' AND statut <> 'echec' AND DATE(created_at) = CURDATE()");
+        $st->execute([$orgaId]);
+        if ((int)$st->fetchColumn()) return null;
+    }
+    $b = fin_stripe()->balance->retrieve([], ['stripe_account' => $acc['account_id']]);
+    $dispo = 0; foreach ($b->available ?? [] as $x) if (strtolower((string)$x->currency) === 'eur') $dispo += (int)$x->amount;
+    if ($dispo < 100) return null;
+    $po = fin_stripe()->payouts->create(['amount' => $dispo, 'currency' => 'eur', 'statement_descriptor' => 'MONCAMP.FR', 'description' => 'moncamp.fr : virement de vos inscriptions',
+        'metadata' => ['organisateur_id' => (string)$orgaId, 'origine' => $auto ? 'quotidien' : 'bouton']],
+        ['stripe_account' => $acc['account_id'], 'idempotency_key' => $auto ? 'moncamp-po-auto-' . $orgaId . '-' . date('Ymd') : 'moncamp-po-' . $orgaId . '-' . $dispo . '-' . date('YmdHi')]);
+    fin_payout_record($pdo, $po, $acc['account_id']);
+    fin_audit($pdo, $auto ? 'virement_quotidien' : 'virement_bouton', 'organisateur', $orgaId, ['cents' => $dispo, 'payout' => $po->id], $acteur);
+    if (session_status() === PHP_SESSION_ACTIVE) unset($_SESSION['solde_compte_' . $orgaId], $_SESSION['prochain_vir_' . $orgaId]);
+    return ['m' => $dispo, 'arrivee' => fin_payout_arrivee($po)];
+}
+
+/** Cron : virement quotidien du disponible de chaque organisme dont le compte est prêt */
+function fin_virements_quotidiens(PDO $pdo): array {
+    $rep = ['virements' => 0, 'cents' => 0, 'erreurs' => 0];
+    foreach ($pdo->query("SELECT organisateur_id FROM stripe_comptes WHERE payout_manuel = 1 AND payouts_enabled = 1")->fetchAll(PDO::FETCH_COLUMN) as $oid) {
+        try { $r = fin_virer_maintenant($pdo, (int)$oid, 'cron', true); if ($r) { $rep['virements']++; $rep['cents'] += $r['m']; } }
+        catch (Throwable $e) { $rep['erreurs']++; error_log("fin_virements_quotidiens orga $oid: " . $e->getMessage()); }
+    }
+    return $rep;
 }
 
 /** Date d'arrivée sur la banque annoncée par Stripe (payout.arrival_date) */

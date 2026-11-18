@@ -655,7 +655,7 @@ function fin_create_connect_account(PDO $pdo, array $orga, string $statut, int $
         'business_type' => $statuts[$statut][2],
         'capabilities' => ['transfers' => ['requested' => true], 'card_payments' => ['requested' => true]], // card_payments : on_behalf_of
         'business_profile' => $profile,
-        'settings' => ['payouts' => ['schedule' => ['interval' => 'daily', 'delay_days' => 'minimum']]], // versements automatiques Stripe
+        'settings' => ['payouts' => ['schedule' => ['interval' => 'manual'], 'debit_negative_balances' => true]],
         'metadata' => ['organisateur_id' => (string)$orgaId, 'statut' => $statut],
     ];
     if ($statuts[$statut][2] !== 'individual') $params['company'] = ['name' => mb_substr((string)$orga['nom'], 0, 100)];
@@ -677,7 +677,7 @@ function fin_sync_account(PDO $pdo, int $orgaId): ?array {
     $acct = $st->fetchColumn();
     if (!$acct) return null;
     $row = fin_store_account($pdo, $orgaId, fin_stripe()->accounts->retrieve($acct));
-    if (!$row['payout_auto'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct); // passage en versements automatiques quotidiens
+    if (!$row['payout_manuel'] && $row['transfers_actif']) fin_account_setup($pdo, $orgaId, $acct);
     $acc = fin_account($pdo, $orgaId);
     if (fin_account_ready($acc)) fin_release_pending_now($pdo, $orgaId); // paiements reçus avant l'activation : transférés tout de suite
     return $acc;

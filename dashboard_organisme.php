@@ -53,7 +53,8 @@ if (!$orga) fin_orga_404();
 $ready = fin_account_ready($acc);
 $hasAccount = !empty($orga['stripe_account_id']);
 $due = $acc && !empty($acc['exigences']) ? (json_decode($acc['exigences'], true) ?: []) : [];
-$autoTxt = 'viré automatiquement sur votre banque dès que l\'argent est disponible, en général 2 à 7 jours ouvrés après le paiement';
+$autoTxt = 'viré chaque jour sur votre banque dès que l\'argent est disponible (en général 2 à 7 jours ouvrés après le paiement), ou tout de suite avec « Virer mon argent maintenant »';
+$solde = $ready ? fin_solde_compte($pdo, $orgaId) : null;
 $comTxt = number_format(fin_commission_pct(), 1, ',', ' ') . ' %' . (fin_commission_fixe_cents() > 0 ? ' + ' . fin_eur(fin_commission_fixe_cents()) : '');
 $detteDue = fin_dette_due($pdo, $orgaId); // « Payer ma dette » : affiché seulement si > 0
 if (($_GET['dette'] ?? '') === 'ok' && !$success) $success = 'Paiement reçu : votre dette est soldée dans quelques instants (reçu envoyé par e-mail).';
@@ -189,6 +190,18 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             </div>
         </div>
     </header>
+
+    <?php if ($solde): $av = $solde['avenir'] ? [array_key_first($solde['avenir']), reset($solde['avenir'])] : null; ?>
+    <section class="fd-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap" aria-label="Argent disponible">
+        <div style="display:flex;gap:28px;flex-wrap:wrap">
+            <div><div style="font-size:12.5px;font-weight:700;color:var(--ds-muted)">Disponible maintenant<?= $help("Argent prêt à partir sur votre banque. Il est viré automatiquement chaque jour, ou tout de suite avec le bouton.") ?></div><div style="font-size:24px;font-weight:800;color:var(--ds-ink)"><?= fin_eur(max(0, $solde['dispo'])) ?></div></div>
+            <div><div style="font-size:12.5px;font-weight:700;color:var(--ds-muted)">Disponible plus tard</div><div style="font-size:24px;font-weight:800;color:var(--ds-ink)"><?= fin_eur(max(0, $solde['attente'])) ?></div>
+                <?php if ($av): ?><div style="font-size:12.5px;color:var(--ds-muted)"><?= fin_eur($av[1]) ?> le <?= date('d/m', strtotime($av[0])) ?><?= count($solde['avenir']) > 1 ? ', puis la suite' : '' ?></div><?php endif; ?></div>
+        </div>
+        <form method="post" action="api/virer_maintenant.php"><input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="o" value="<?= $orgaTok ?>">
+            <button type="submit" class="ds-btn"<?= $solde['dispo'] < 100 || $orga['user_id'] != $userId ? ' disabled' : '' ?>>Virer mon argent maintenant</button></form>
+    </section>
+    <?php endif; ?>
 
     <div class="fd-bar" role="group" aria-label="Période et exports">
         <label class="sr" for="pPreset">Période</label>
@@ -419,7 +432,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             var act = r[3] ? ' role="button" tabindex="0" data-wf="' + r[3] + '" style="cursor:pointer"' : '';
             return '<div class="l' + (tot ? ' tot' : '') + '"' + act + '><span class="bar ' + (r[2] === 'tot' ? '' : r[2]) + '" style="width:' + w + 'px"></span><span' + (neg ? ' class="neg"' : '') + '>' + (tot ? '<b>' + r[0] + '</b>' : esc(r[0])) + '</span></div><div class="a' + (tot ? ' tot' : '') + (neg ? ' neg' : '') + '">' + (neg ? '− ' + eur(-r[1]) : eur(r[1])) + '</div>';
         }).join('');
-        $('wfNote').textContent = (D.kpi.prochain ? 'Prochain virement : ' + eur(D.kpi.prochain.m) + ' le ' + dfr(D.kpi.prochain.d).slice(0, 5) + '. ' : '') + 'Viré automatiquement sur votre banque dès que l’argent est disponible.';
+        $('wfNote').textContent = (D.kpi.prochain ? 'Prochain virement : ' + eur(D.kpi.prochain.m) + ' le ' + dfr(D.kpi.prochain.d).slice(0, 5) + '. ' : '') + 'Viré chaque jour sur votre banque dès que l’argent est disponible, ou tout de suite avec « Virer mon argent maintenant ».';
     }
     $('wf').addEventListener('click', function (e) { var b = e.target.closest('[data-wf]'); if (!b) return; wfGo(b.dataset.wf); });
     $('wf').addEventListener('keydown', function (e) { var b = e.target.closest('[data-wf]'); if (b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); wfGo(b.dataset.wf); } });

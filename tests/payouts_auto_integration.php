@@ -55,7 +55,8 @@ $GLOBALS['stripe_calls'] = [];
 $pdo->exec("UPDATE stripe_comptes SET payout_auto = 0");
 fin_account_setup($pdo, 1, 'acct_A');
 $c = array_values(array_filter($GLOBALS['stripe_calls'], fn($x) => $x[0] === 'accounts.update'));
-ok($c && $c[0][1][1]['settings']['payouts']['schedule'] === ['interval' => 'daily', 'delay_days' => 'minimum'] && (int)$pdo->query("SELECT payout_auto FROM stripe_comptes")->fetchColumn() === 1, 'compte en versements automatiques quotidiens, délai minimal');
+ok($c && $c[0][1][1]['settings']['payouts']['schedule'] === ['interval' => 'manual'] && $c[0][1][1]['settings']['payouts']['debit_negative_balances'] === true
+   && (int)$pdo->query("SELECT payout_manuel FROM stripe_comptes")->fetchColumn() === 1, 'compte en virements pilotés par moncamp.fr (quotidiens + bouton), solde négatif prélevé par Stripe');
 // ---- C. paiements reçus par moncamp.fr avant l'activation (legacy) : transférés tout de suite quand le compte est prêt
 $pdo->exec("INSERT INTO enfants (id, parent_id, nom, prenom) VALUES (1, 9, 'Durand', 'Tom')");
 $pdo->exec("INSERT INTO inscriptions (id, camp_id, enfant_id, statut, prix_final, statut_paiement, reservation_token) VALUES (201, 1, 1, 'Confirmé', 300, 'PAYE', 'tokL')");
@@ -196,4 +197,16 @@ ok($e === 'refus', 'ajustement : motif obligatoire');
 $GLOBALS['stripe_resp']['paymentIntents.retrieve'] = fn($id) => (object)['id' => $id, 'latest_charge' => (object)['id' => 'ch_' . $id, 'balance_transaction' => (object)['currency' => 'eur', 'fee' => 100, 'available_on' => strtotime('2026-11-25 12:00')]]];
 fin_sync_fees($pdo, 'pi_P');
 ok($pdo->query("SELECT dispo_le FROM fin_paiements WHERE inscription_id = 204")->fetchColumn() === '2026-11-25', 'date de disponibilité (available_on) enregistrée pour la date de virement prévue');
+// ---- « Virer mon argent maintenant » et virement quotidien du disponible
+$pdo->exec("UPDATE stripe_comptes SET payouts_enabled = 1, details_submitted = 1, charges_enabled = 1, transfers_actif = 1, payout_manuel = 1 WHERE organisateur_id = 1");
+$GLOBALS['stripe_calls'] = [];
+$GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 4200, 'currency' => 'eur']], 'pending' => []];
+$GLOBALS['stripe_resp']['payouts.create'] = fn($p, $o) => (object)['id' => 'po_btn_' . $p['amount'], 'amount' => $p['amount'], 'currency' => 'eur', 'status' => 'pending', 'arrival_date' => strtotime('+2 days'), 'created' => time()];
+$v = fin_virer_maintenant($pdo, 1, 'user:7');
+$pc = array_values(array_filter($GLOBALS['stripe_calls'], fn($c) => $c[0] === 'payouts.create'))[0][1];
+ok($v['m'] === 4200 && $pc[1]['stripe_account'] === 'acct_A' && str_starts_with($pc[1]['idempotency_key'], 'moncamp-po-1-4200-')
+   && $pdo->query("SELECT statut FROM fin_transferts WHERE stripe_transfer_id = 'po_btn_4200'")->fetchColumn() === 'envoye', 'bouton : tout le disponible viré (42 EUR), relevé et journalisé');
+ok(fin_virer_maintenant($pdo, 1, 'cron', true) === null, 'quotidien : déjà un virement aujourd\'hui, rien de plus');
+$GLOBALS['stripe_resp']['balance.retrieve'] = (object)['available' => [(object)['amount' => 50, 'currency' => 'eur']], 'pending' => []];
+ok(fin_virer_maintenant($pdo, 1, 'user:7') === null, 'moins de 1 EUR disponible : aucun virement');
 echo "Tout est bon.\n";

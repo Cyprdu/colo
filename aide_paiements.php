@@ -8,7 +8,7 @@ $com = number_format(fin_commission_pct(), 1, ',', ' ') . ' %' . (fin_commission
 $ex = 10000; [$c] = fin_commission_split($ex); $frais = 150 + 25; // ordre de grandeur : carte européenne standard (1,5 % + 0,25 €)
 $faq = [
     'Quand l\'argent arrive-t-il sur mon compte Stripe ?' => 'Dès que la famille paie. Vous le voyez dans « Où va l\'argent » et dans votre espace Stripe, commission et frais déjà déduits.',
-    'Quand est-il viré sur ma banque ?' => 'Versé automatiquement par Stripe dès que les fonds sont disponibles, en général sous 2 à 7 jours ouvrés après le paiement, sans attendre le séjour. La date d\'arrivée de chaque versement est affichée dans votre tableau de bord.',
+    'Quand est-il viré sur ma banque ?' => 'Chaque jour, dès que l\'argent est disponible (en général 2 à 7 jours ouvrés après le paiement), sans attendre le séjour. Vous pouvez aussi le virer tout de suite depuis votre tableau de bord (« Virer mon argent maintenant »).',
     'Commission et frais : quelle différence ?' => 'Deux lignes distinctes. Commission moncamp.fr : ' . $com . ' par inscription. Frais de paiement : ceux de Stripe, au centime près selon la carte (environ 1,5 % + 0,25 € pour une carte européenne), débités par Stripe. Rien d\'autre.',
     'Et si une famille annule ?' => 'Elle est remboursée selon les conditions de votre séjour, sur votre solde Stripe. Ni la commission ni les frais Stripe ne sont rendus.',
     'Que veut dire « Dette en cours » ?' => 'Votre solde Stripe ne suffisait pas pour rembourser une famille (séjour déjà versé) : moncamp.fr a avancé la différence. Elle est retenue automatiquement sur vos paiements suivants, en plus de la commission, et chaque compensation est datée dans votre tableau de bord.',

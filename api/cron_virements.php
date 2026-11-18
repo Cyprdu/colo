@@ -16,6 +16,7 @@ try {
     fin_ensure($pdo);
     $rep = fin_release_due($pdo, 'cron', null, false, true); // paiements reçus avant l'activation : tout le net dès que le compte est prêt
     $rep['reprises'] = fin_reprises_run($pdo);
+    $rep['virements'] = fin_virements_quotidiens($pdo);
     $rep['frais_rattrapes'] = fin_frais_rattrapage($pdo); // une fois : frais Stripe déjà payés par moncamp.fr → dette de l'organisme
     [$rep['frais_releves'], $rep['frais_restants']] = fin_backfill_fees($pdo); // frais Stripe réels non encore relevés
     fin_audit($pdo, 'cron_deblocage', 'job', date('c'), $rep, 'cron');
