@@ -165,7 +165,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 
                 <!-- Catégorie : menu à deux colonnes -->
                 <div class="hero-field flex-[1.05]">
-                    <button type="button" id="cat-btn" aria-haspopup="true" aria-expanded="false" class="block w-full text-left">
+                    <button type="button" id="cat-btn" aria-haspopup="true" aria-expanded="false" aria-controls="cat-panel" class="block w-full text-left">
                         <span class="hero-label">Catégorie</span>
                         <span class="hero-value"><span id="cat-label" class="truncate">Toutes catégories</span>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="flex-none text-[#26343b]"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -321,77 +321,126 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('click', () => closeAll(null));
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(null); });
 
-    // ---- Catégories : groupes (colonne gauche) -> sous-catégories (colonne droite)
+    // ---- Catégories : groupes (colonne gauche) -> catégories (colonne droite). Survol, clic, toucher et clavier ; un choix lance la recherche.
     const GROUPS = [
-        { id: 'sport',   label: 'Sport et aventure',        icon: 'fa-person-hiking',  items: ['Aventure', 'Sport', 'Montagne', 'Mer / Littoral', 'Survie / Bushcraft', 'Voyage / Itinérant'] },
-        { id: 'nature',  label: 'Nature et environnement',  icon: 'fa-tree',           items: ['Nature', 'Campagne', 'Écologie'] },
-        { id: 'arts',    label: 'Arts et culture',          icon: 'fa-palette',        items: ['Arts plastiques', 'Cinéma', 'Danse', 'Musique', 'Théâtre', 'Découverte culturelle'] },
-        { id: 'sciences',label: 'Sciences et numérique',    icon: 'fa-flask',          items: ['Sciences', 'Robotique', 'Numérique / Gaming', 'Langues étrangères'] },
-        { id: 'spirit',  label: 'Spiritualité et solidarité', icon: 'fa-hands-praying', items: ['Spiritualité / Prière', 'Pèlerinage', 'Humanitaire / Solidaire'] },
-        { id: 'loisirs', label: 'Bien-être et loisirs',     icon: 'fa-spa',            items: ['Bien-être / Relaxation', 'Jeux', 'Gastronomie / Cuisine', 'Autre'] },
+        { id: 'plein-air', label: 'Sport et plein air',         icon: 'fa-person-hiking',  slugs: ['montagne', 'ski', 'sport', 'cheval', 'mer', 'velo', 'multi-activites'] },
+        { id: 'nature',    label: 'Nature et aventure',         icon: 'fa-tree',           slugs: ['nature', 'environnement-animaux', 'scoutisme', 'voyage-langues'] },
+        { id: 'arts',      label: 'Arts et culture',            icon: 'fa-palette',        slugs: ['arts-creatifs', 'musique', 'spectacle', 'medias', 'histoire-patrimoine'] },
+        { id: 'sciences',  label: 'Sciences et loisirs',        icon: 'fa-flask',          slugs: ['sciences-numerique', 'cuisine', 'jeux-imaginaire', 'bien-etre'] },
+        { id: 'spirit',    label: 'Spiritualité et solidarité', icon: 'fa-hands-praying',  slugs: ['spirituel', 'solidarite'] },
     ];
+    const heroForm = document.getElementById('hero-search-form');
     const catBtn = document.getElementById('cat-btn'), catPanel = document.getElementById('cat-panel');
     const catGroups = document.getElementById('cat-groups'), catItems = document.getElementById('cat-items');
     const catLabel = document.getElementById('cat-label'), catInputs = document.getElementById('cat-inputs');
-    let allThemes = [], activeGroup = null, mobileItemsGroup = null;
+    let CATS = {}, groups = [], activeGroup = null, drill = null, hoverOpen = false;
     const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
+    const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const row = (data, text, icon, go) => `<button type="button" class="dd-row" ${data}>${icon ? `<span class="ico"><i class="fa-solid ${icon}"></i></span>` : ''}${esc(text)}${go ? `<span class="go">${ICON_ARROW}</span>` : ''}</button>`;
 
-    function setCategory(label, names) {
-        catLabel.textContent = label;
-        catInputs.innerHTML = names.map(n => `<input type="hidden" name="themes[]" value="${esc(n)}">`).join('');
-        closeAll(null);
-    }
-    function groupItems(g) { return g.items.filter(n => allThemes.includes(n)); }
-    function renderCat() {
-        const known = new Set(GROUPS.flatMap(g => g.items));
-        const groups = GROUPS.map(g => ({ ...g, list: groupItems(g) })).filter(g => g.list.length);
-        const extra = allThemes.filter(n => !known.has(n));
+    function buildGroups() {
+        const used = new Set();
+        groups = GROUPS.map(g => ({ ...g, list: g.slugs.filter(s => CATS[s]) })).filter(g => g.list.length);
+        groups.forEach(g => g.list.forEach(s => used.add(s)));
+        const extra = Object.keys(CATS).filter(s => !used.has(s));
         if (extra.length) groups.push({ id: 'autres', label: 'Autres', icon: 'fa-ellipsis', list: extra });
-        catPanel._groups = groups;
-
-        // mobile : une seule colonne qui bascule groupes <-> sous-catégories
-        if (isMobile() && mobileItemsGroup) {
-            const g = groups.find(x => x.id === mobileItemsGroup) || groups[0];
-            catGroups.innerHTML =
-                `<button type="button" class="dd-row" data-back="1"><span class="ico"><i class="fa-solid fa-arrow-left"></i></span>Retour</button>` +
-                `<button type="button" class="dd-row is-selected" data-all="${g.id}">Tout : ${esc(g.label)}</button>` +
-                g.list.map(n => `<button type="button" class="dd-row" data-item="${esc(n)}">${esc(n)}</button>`).join('');
+    }
+    function renderItems() {
+        const g = groups.find(x => x.id === activeGroup);
+        catItems.innerHTML = g ? row(`data-all="${g.id}"`, 'Tout : ' + g.label, g.icon) + g.list.map(s => row(`data-item="${esc(s)}"`, CATS[s].nom)).join('') : '';
+    }
+    function setActive(id) {
+        activeGroup = id;
+        catGroups.querySelectorAll('[data-group]').forEach(b => b.classList.toggle('is-active', b.dataset.group === id));
+        if (!isMobile()) renderItems();
+    }
+    function renderCat() {
+        if (isMobile() && drill) {
+            const g = groups.find(x => x.id === drill);
+            catGroups.innerHTML = row('data-back="1"', 'Retour', 'fa-arrow-left') + row(`data-all="${g.id}"`, 'Tout : ' + g.label) + g.list.map(s => row(`data-item="${esc(s)}"`, CATS[s].nom)).join('');
             catItems.innerHTML = '';
             return;
         }
-        if (!activeGroup && groups.length && !isMobile()) activeGroup = groups[0].id;
-        catGroups.innerHTML =
-            `<button type="button" class="dd-row" data-none="1"><span class="ico"><i class="fa-solid fa-border-all"></i></span>Toutes catégories</button>` +
-            groups.map(g => `<button type="button" class="dd-row${g.id === activeGroup ? ' is-active' : ''}" data-group="${g.id}"><span class="ico"><i class="fa-solid ${g.icon}"></i></span>${esc(g.label)}<span class="go">${ICON_ARROW}</span></button>`).join('');
-        const cur = groups.find(g => g.id === activeGroup);
-        catItems.innerHTML = cur
-            ? `<button type="button" class="dd-row is-selected" data-all="${cur.id}"><span class="ico"><i class="fa-solid ${cur.icon}"></i></span>Tout : ${esc(cur.label)}</button>` +
-              cur.list.map(n => `<button type="button" class="dd-row" data-item="${esc(n)}">${esc(n)}</button>`).join('')
-            : '';
+        if (!activeGroup && groups.length) activeGroup = groups[0].id;
+        catGroups.innerHTML = row('data-none="1"', 'Toutes catégories', 'fa-border-all') + groups.map(g => row(`data-group="${g.id}"`, g.label, g.icon, true)).join('');
+        setActive(activeGroup);
     }
+    function openCat(byHover) {
+        closeAll(catPanel);
+        drill = null; renderCat();
+        catPanel.hidden = false; catBtn.setAttribute('aria-expanded', 'true');
+        hoverOpen = byHover;
+    }
+    function pick(label, slugs) {
+        catLabel.textContent = label;
+        catInputs.innerHTML = slugs.map(s => `<input type="hidden" name="cat[]" value="${esc(s)}">`).join('');
+        closeAll(null);
+        heroForm.requestSubmit ? heroForm.requestSubmit() : heroForm.submit();
+    }
+    const rows = col => [...col.querySelectorAll('.dd-row')];
+    function focusRow(col, i) { const r = rows(col); if (r.length) r[(i + r.length) % r.length].focus(); }
+
+    openers.push({ btn: catBtn, panel: catPanel });
+    catBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!catPanel.hidden && hoverOpen) { hoverOpen = false; return; }
+        if (catPanel.hidden) openCat(false); else closeAll(null);
+    });
+    catBtn.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        if (catPanel.hidden) openCat(false);
+        focusRow(catGroups, 0);
+    });
     catPanel.addEventListener('click', e => {
+        e.stopPropagation();
         const b = e.target.closest('button'); if (!b) return;
-        const groups = catPanel._groups || [];
-        if (b.dataset.none)  return setCategory('Toutes catégories', []);
-        if (b.dataset.back)  { mobileItemsGroup = null; return renderCat(); }
-        if (b.dataset.item)  return setCategory(b.dataset.item, [b.dataset.item]);
-        if (b.dataset.all)   { const g = groups.find(x => x.id === b.dataset.all); return g && setCategory(g.label, g.list); }
-        if (b.dataset.group) { if (isMobile()) { mobileItemsGroup = b.dataset.group; } else { activeGroup = b.dataset.group; } renderCat(); }
+        const g = groups.find(x => x.id === (b.dataset.all || b.dataset.group));
+        if (b.dataset.none) return pick('Toutes catégories', []);
+        if (b.dataset.item) return pick(CATS[b.dataset.item].nom, [b.dataset.item]);
+        if (b.dataset.all && g) return pick(g.label, g.list);
+        if (b.dataset.back) { drill = null; renderCat(); return focusRow(catGroups, 0); }
+        if (b.dataset.group && g) {
+            if (!isMobile()) return pick(g.label, g.list);
+            drill = g.id; renderCat(); focusRow(catGroups, 1);
+        }
     });
+    let hoverT = 0;
     catPanel.addEventListener('mouseover', e => {
+        clearTimeout(hoverT);
         const b = e.target.closest('[data-group]');
-        if (b && !isMobile() && b.dataset.group !== activeGroup) { activeGroup = b.dataset.group; renderCat(); }
+        if (b && !isMobile() && b.dataset.group !== activeGroup) hoverT = setTimeout(() => setActive(b.dataset.group), 140);
     });
-    bindDropdown(catBtn, catPanel, () => { mobileItemsGroup = null; renderCat(); });
+    catPanel.addEventListener('focusin', e => {
+        const b = e.target.closest('[data-group]');
+        if (b && !isMobile() && b.dataset.group !== activeGroup) setActive(b.dataset.group);
+    });
+    catPanel.addEventListener('focusout', e => {
+        const to = e.relatedTarget;
+        if (to && !catPanel.contains(to) && to !== catBtn) closeAll(null);
+    });
+    catPanel.addEventListener('keydown', e => {
+        const col = e.target.closest('.dd-col'); if (!col) return;
+        const i = rows(col).indexOf(e.target);
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); focusRow(col, i + (e.key === 'ArrowDown' ? 1 : -1)); }
+        else if (e.key === 'ArrowRight' && col === catGroups && e.target.dataset.group && !isMobile()) { e.preventDefault(); focusRow(catItems, 0); }
+        else if (e.key === 'ArrowLeft' && col === catItems) { e.preventDefault(); const a = catGroups.querySelector('.is-active'); if (a) a.focus(); }
+        else if (e.key === 'Escape') { e.stopPropagation(); closeAll(null); catBtn.focus(); }
+    });
+    if (canHover) {
+        let t = 0;
+        const enter = () => { clearTimeout(t); if (catPanel.hidden && !isMobile()) openCat(true); };
+        const leave = () => { clearTimeout(t); t = setTimeout(() => { if (hoverOpen && !catPanel.contains(document.activeElement)) closeAll(null); }, 250); };
+        [catBtn.closest('.hero-field'), catPanel].forEach(el => { el.addEventListener('mouseenter', enter); el.addEventListener('mouseleave', leave); });
+    }
 
     // Catégories : chargement + rangée de raccourcis
-    const CHIP_ORDER = ['Aventure', 'Montagne', 'Mer / Littoral', 'Nature', 'Sport', 'Arts plastiques', 'Musique', 'Sciences', 'Spiritualité / Prière'];
-    fetch('api/get_themes.php').then(r => r.json()).then(themes => {
-        if (!Array.isArray(themes)) return;
-        allThemes = themes.map(t => t.name);
-        const chips = CHIP_ORDER.filter(n => allThemes.includes(n));
-        document.getElementById('chips').innerHTML = chips
-            .map(n => `<a href="recherche?themes[]=${encodeURIComponent(n)}">${esc(n)}</a>`)
+    const CHIP_ORDER = ['montagne', 'mer', 'nature', 'sport', 'ski', 'arts-creatifs', 'musique', 'sciences-numerique', 'spirituel'];
+    fetch('api/get_categories.php').then(r => r.json()).then(d => {
+        (d.categories || []).forEach(c => { CATS[c.slug] = c; });
+        buildGroups();
+        document.getElementById('chips').innerHTML = CHIP_ORDER.filter(s => CATS[s])
+            .map(s => `<a href="recherche?cat%5B%5D=${encodeURIComponent(s)}">${esc(CATS[s].nom)}</a>`)
             .join('<i class="dot"></i>');
     }).catch(() => {});
 
