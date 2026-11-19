@@ -95,6 +95,10 @@ require_once 'partials/header3.php';
     .is-switching { opacity:.55; pointer-events:none; transition:opacity .15s ease; }
     .skeleton { background:linear-gradient(90deg,#eceef1 25%,#f6f7f9 37%,#eceef1 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
     @keyframes sk { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
+    .cd-map { height:200px; border-radius:20px; overflow:hidden; border:1px solid var(--line); background:#eef1f3; z-index:0; }
+    @media (max-width:640px) { .cd-map { height:170px; } }
+    .cd-map .leaflet-control-attribution { font-size:10px; line-height:1.4; padding:1px 6px; background:rgba(255,255,255,.75); border-radius:8px 0 0 0; }
+    .cd-map .leaflet-control-attribution a { color:#4b5a63; text-decoration:none; }
     .fade-in-anim { animation:fadeIn .4s ease-out; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 </style>
@@ -198,9 +202,7 @@ require_once 'partials/header3.php';
                     <div id="route" class="mt-4 rounded-2xl bg-[#f8f5ea] p-5 hidden"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Parcours itinérant</p><ol id="route-list"></ol></div>
                     <div id="info-extra" class="mt-4 space-y-4 hidden"></div>
                     <div id="map-box" class="mt-4 hidden">
-                        <div class="rounded-3xl overflow-hidden border border-[#e5e7eb]">
-                            <iframe id="map-frame" title="Carte du lieu du séjour" class="w-full block" style="height:260px;border:0" loading="lazy" referrerpolicy="no-referrer"></iframe>
-                        </div>
+                        <div id="map" class="cd-map" role="region" aria-label="Carte du lieu du séjour"></div>
                         <p class="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px] text-[#6b7780]"><span id="map-note"></span><a id="map-link" href="#" target="_blank" rel="noopener noreferrer" class="font-semibold text-[#3d6a8e] hover:underline">Agrandir la carte</a></p>
                     </div>
                 </section>
@@ -343,6 +345,29 @@ document.addEventListener('DOMContentLoaded', async function () {
     let current = null;               // session affichée
     let descReady = false;
 
+    let leafletP = null, map = null, pin = null;
+    function loadLeaflet() {
+        if (!leafletP) leafletP = new Promise((ok, ko) => {
+            const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', integrity: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=', crossOrigin: '' });
+            const js = Object.assign(document.createElement('script'), { src: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', integrity: 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=', crossOrigin: '', onload: () => ok(window.L), onerror: ko });
+            document.head.append(css, js);
+        });
+        return leafletP;
+    }
+    function showMap(la, lo, z) {
+        loadLeaflet().then(L => {
+            if (!map) {
+                map = L.map('map', { scrollWheelZoom: false, zoomControl: true });
+                map.attributionControl.setPrefix(false);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>' }).addTo(map);
+                pin = L.circleMarker([la, lo], { radius: 9, color: '#fff', weight: 3, fillColor: '#3d6a8e', fillOpacity: 1 }).addTo(map);
+            }
+            map.invalidateSize();
+            map.setView([la, lo], z);
+            pin.setLatLng([la, lo]);
+        }).catch(() => $('map-box').classList.add('hidden'));
+    }
+
     // ------------------------------------------------------------
     // Rendu de la session affichée (appelé au chargement ET à chaque changement de session)
     // ------------------------------------------------------------
@@ -417,13 +442,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         // Carte OpenStreetMap centrée sur le lieu exact de la session choisie (repli : la ville ; sinon pas de carte)
         const mapBox = $('map-box');
         if (camp.lat != null && camp.lng != null) {
-            const la = Number(camp.lat), lo = Number(camp.lng), d = Number(camp.geo_precis) ? 0.004 : 0.04;
-            const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${(lo - d * 1.6).toFixed(6)},${(la - d).toFixed(6)},${(lo + d * 1.6).toFixed(6)},${(la + d).toFixed(6)}&layer=mapnik&marker=${la.toFixed(6)},${lo.toFixed(6)}`;
-            if ($('map-frame').getAttribute('src') !== mapSrc) $('map-frame').src = mapSrc;
-            $('map-link').href = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${Number(camp.geo_precis) ? 16 : 13}/${la}/${lo}`;
+            const la = Number(camp.lat), lo = Number(camp.lng), z = Number(camp.geo_precis) ? 15 : 12;
+            $('map-link').href = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${z + 1}/${la}/${lo}`;
             $('map-note').textContent = Number(camp.geo_precis) ? '' : 'Position approximative (centre de la ville).';
             mapBox.classList.remove('hidden');
-        } else { mapBox.classList.add('hidden'); $('map-frame').removeAttribute('src'); }
+            showMap(la, lo, z);
+        } else { mapBox.classList.add('hidden'); }
 
         // Carte de réservation
         $('card-price').textContent = `${fmtPrice(camp.prix)} €`;
