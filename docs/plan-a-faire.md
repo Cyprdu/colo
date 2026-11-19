@@ -22,11 +22,11 @@ Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentair
 - [x] Clic sur un séjour depuis l'accueil ou une liste : ouvrir la session la plus proche à venir.
 
 ## Lot 3 — Page séjour (`camp_details.php`)
-- [ ] Carte plus petite, retirer le bandeau d'attribution OpenStreetMap si la licence le permet (sinon attribution discrète).
-- [ ] « Organisé par » : logo de l'organisme à la place du rond avec la lettre.
-- [ ] Boutons Partager / Favori / Calendrier et infos (lieu, dates, âges, vues, favoris) mieux intégrés et alignés.
-- [ ] Moyens de paiement acceptés : vrais logos officiels (CB, chèque, virement, espèces, ANCV chèques-vacances, etc.) téléchargés et stockés dans le projet.
-- [ ] Référencement externe : « Réserver ma place » vers le site de l'organisme avec paramètre de suivi (`utm_source=moncamp.fr` + identifiant de clic) ; compteur de clics par séjour et par organisme, tableau dans l'admin et le dashboard organisme.
+- [x] Carte plus petite, retirer le bandeau d'attribution OpenStreetMap si la licence le permet (sinon attribution discrète).
+- [x] « Organisé par » : logo de l'organisme à la place du rond avec la lettre.
+- [x] Boutons Partager / Favori / Calendrier et infos (lieu, dates, âges, vues, favoris) mieux intégrés et alignés.
+- [x] Moyens de paiement acceptés : vrais logos officiels (CB, chèque, virement, espèces, ANCV chèques-vacances, etc.) téléchargés et stockés dans le projet.
+- [x] Référencement externe : « Réserver ma place » vers le site de l'organisme avec paramètre de suivi (`utm_source=moncamp.fr` + identifiant de clic) ; compteur de clics par séjour et par organisme, tableau dans l'admin et le dashboard organisme.
 
 ## Lot 4 — Parents et enfants
 - [ ] `modif_child.php` : changer la photo de l'enfant (vérifier l'existant) ; `children` : photo à la place du rond gris.
