@@ -19,9 +19,11 @@ function sec_ensure(PDO $pdo): void {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $pdo->exec("CREATE TABLE IF NOT EXISTS consentements (
             id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NULL, type VARCHAR(30) NOT NULL, version VARCHAR(20) NOT NULL,
-            accepte TINYINT(1) NOT NULL DEFAULT 1, ip_hash CHAR(64) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY idx_user (user_id, type)
+            accepte TINYINT(1) NOT NULL DEFAULT 1, ip_hash CHAR(64) NULL, ref CHAR(16) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_user (user_id, type), KEY idx_ref (ref)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        // ref : référence aléatoire du choix cookies, aussi gardée dans le cookie mc_consent du navigateur (preuve rattachable)
+        if (!$pdo->query("SHOW COLUMNS FROM consentements LIKE 'ref'")->fetch()) $pdo->exec("ALTER TABLE consentements ADD COLUMN ref CHAR(16) NULL, ADD KEY idx_ref (ref)");
         $pdo->exec("CREATE TABLE IF NOT EXISTS acces_sante (
             id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, enfant_id INT NULL, type VARCHAR(12) NOT NULL,
             ip_hash CHAR(64) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_enfant (enfant_id), KEY idx_user (user_id)
@@ -77,11 +79,11 @@ function csrf_check(): bool {
 }
 
 // ---------------- Consentements et accès santé ----------------
-function consent_log(PDO $pdo, ?int $userId, string $type, ?string $version = null, bool $accepte = true): void {
+function consent_log(PDO $pdo, ?int $userId, string $type, ?string $version = null, bool $accepte = true, ?string $ref = null): void {
     try {
         sec_ensure($pdo);
-        $pdo->prepare("INSERT INTO consentements (user_id, type, version, accepte, ip_hash) VALUES (?, ?, ?, ?, ?)")
-            ->execute([$userId, substr($type, 0, 30), $version ?? CGU_VERSION, $accepte ? 1 : 0, sec_hash(sec_ip())]);
+        $pdo->prepare("INSERT INTO consentements (user_id, type, version, accepte, ip_hash, ref) VALUES (?, ?, ?, ?, ?, ?)")
+            ->execute([$userId, substr($type, 0, 30), $version ?? CGU_VERSION, $accepte ? 1 : 0, sec_hash(sec_ip()), $ref]);
     } catch (Throwable $e) {}
 }
 function sante_log(PDO $pdo, int $userId, ?int $enfantId, string $type): void {

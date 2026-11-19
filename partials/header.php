@@ -78,7 +78,7 @@ $placeholder_url_desktop = "https://placehold.co/36x36/e2e8f0/2563eb?text=" . ur
 $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . urlencode($initial);
 ?>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr"<?= $ads_enabled && ads_consent_choisi() ? ' class="ads-on"' : '' ?>>
 <head>
     <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -88,19 +88,19 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <title><?= htmlspecialchars($page_title ?? 'moncamp.fr - Trouvez le camp parfait') ?></title>
     
     <?php if ($ads_enabled): ?>
-    <?php /* Publicité : uniquement sur les pages de contenu. Consentement refusé par défaut (Consent Mode v2) AVANT le script, le message de consentement certifié est géré par AdSense. */ ?>
+    <?php /* Publicité : uniquement sur les pages de contenu. Consentement refusé par défaut (Consent Mode v2) ; assets/ads.js ne charge AdSense qu'après le choix cookies (assets/consent.js). */ ?>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag(){ dataLayer.push(arguments); }
-        gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'denied', wait_for_update: 500 });
+        gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'denied' });
     </script>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous" onerror="document.documentElement.classList.add('no-ads')"></script>
-    <script defer src="/assets/ads.js" onerror="document.documentElement.classList.add('no-ads')"></script>
+    <script defer src="/assets/consent.js?v=1"></script>
+    <script defer src="/assets/ads.js?v=2" onerror="document.documentElement.classList.add('no-ads')"></script>
     <style>
         .ad-wrap { margin: 28px auto; max-width: 100%; text-align: center; }
         .ad-wrap .ad-label { display:block; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#9aa3ab; margin-bottom:6px; }
         .ad-wrap .ad-box { display:block; width:100%; overflow:hidden; }
-        .ad-wrap.ad-empty, .no-ads .ad-wrap, .no-ads .ad-card { display:none !important; }
+        .ad-wrap.ad-empty, .no-ads .ad-wrap, .no-ads .ad-card, html:not(.ads-on) .ad-wrap, html:not(.ads-on) .ad-card { display:none !important; }
     </style>
     <?php endif; ?>
 
@@ -153,6 +153,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+    <?php if (!$ads_enabled): ?><script defer src="/assets/consent.js?v=1"></script><?php endif; ?>
     <link rel="stylesheet" href="/assets/ds.css?v=8">
     <script src="/assets/ui.js?v=2"></script>
 </head>

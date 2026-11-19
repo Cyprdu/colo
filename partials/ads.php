@@ -24,6 +24,11 @@ const ADS_SLOTS = [
     'carre'          => '',             // ADSENSE_SLOT_CARRE
 ];
 
+/** Le visiteur a-t-il fait son choix cookies (cookie mc_consent posé par assets/consent.js, valable 6 mois) ? */
+function ads_consent_choisi(): bool {
+    return (bool)preg_match('/^1\.[a-f0-9]{16}\.[01]{2}\.(\d{9,11})$/D', (string)($_COOKIE['mc_consent'] ?? ''), $m) && (int)$m[1] > time() - 182 * 86400;
+}
+
 function ad_slot(string $id, string $slot, array $o = []): void {
     if ($slot === '') return;                          // pas encore créé dans AdSense
     $minh   = (int)($o['minh'] ?? 250);
