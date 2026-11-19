@@ -80,7 +80,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 .fd-id img { width: 48px; height: 48px; border-radius: 14px; object-fit: cover; border: 1px solid var(--ds-line); }
 .fd-id h1 { font-size: 24px; font-weight: 800; color: var(--ds-ink); margin: 0; overflow-wrap: anywhere; line-height: 1.2; }
 .fd-acct { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 13px; color: var(--ds-muted); }
-.fd-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; padding: 10px; border: 1px solid var(--ds-line); border-radius: 14px; background: #fff; position: sticky; top: 0; z-index: 30; }
+.fd-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; padding: 10px; border: 1px solid var(--ds-line); border-radius: 14px; background: #fff; position: sticky; top: calc(var(--mc-head, 68px) + 8px); z-index: 30; }
 .fd-bar .ds-select, .fd-bar .ds-input { padding: 8px 12px; font-size: 14px; width: auto; }
 .fd-bar .grow { flex: 1; }
 .fd-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; border: 1.5px solid var(--ds-line); background: #fff; color: var(--ds-ink); cursor: pointer; white-space: nowrap; }

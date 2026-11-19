@@ -94,6 +94,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     #filters { background:#fff; }
     @media (max-width:1023px) {
         #filters { position:fixed; inset:0; z-index:70; transform:translateY(100%); transition:transform .3s ease; display:flex; flex-direction:column; border-radius:24px 24px 0 0; top:8vh; box-shadow:0 -20px 60px rgba(0,0,0,.3); }
+        #filters:not(.is-open) { visibility:hidden; transition:transform .3s ease, visibility 0s linear .3s; }
         #filters.is-open { transform:none; }
         #filters .fbody { flex:1; overflow-y:auto; padding:0 20px; }
     }

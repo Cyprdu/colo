@@ -34,7 +34,7 @@ require_once 'partials/header.php';
     .chip:hover { background:#f1f5f9; }
 </style>
 
-<div class="flex bg-white overflow-hidden" style="height:calc(100dvh - 68px)">
+<div class="flex bg-white overflow-hidden" style="height:calc(100vh - var(--mc-head));height:calc(100dvh - var(--mc-head))">
 
     <!-- Liste des conversations -->
     <aside id="sidebar" class="w-full md:w-[360px] flex-none border-r border-[#e5e7eb] flex flex-col bg-white <?= $activeConvId ? 'hidden md:flex' : 'flex' ?>" aria-label="Conversations">
@@ -80,7 +80,7 @@ require_once 'partials/header.php';
 
             <div id="suggest" class="hidden px-4 md:px-8 pb-2 flex flex-wrap gap-2"></div>
 
-            <form id="msg-form" class="bg-white border-t border-[#e5e7eb] px-3 md:px-6 py-3 flex items-end gap-2">
+            <form id="msg-form" class="bg-white border-t border-[#e5e7eb] px-3 md:px-6 py-3 flex items-end gap-2" style="padding-bottom:max(12px, env(safe-area-inset-bottom))">
                 <textarea id="msg-input" rows="1" maxlength="4000" placeholder="Écrivez votre message…" aria-label="Votre message"
                           class="flex-1 resize-none rounded-2xl bg-[#f1f3f5] px-4 py-3 text-[15px] leading-snug max-h-40 focus:outline-none focus:ring-2 focus:ring-[#2f3d45] focus:bg-white"></textarea>
                 <button type="submit" id="btn-send" class="w-12 h-12 flex-none rounded-full bg-[#2f3d45] text-white flex items-center justify-center hover:bg-[#1f2a30] active:scale-95 transition disabled:opacity-40" aria-label="Envoyer">

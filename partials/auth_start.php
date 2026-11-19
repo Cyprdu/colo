@@ -83,8 +83,8 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/assets/ds.css?v=8">
-    <script src="/assets/ui.js?v=2"></script>
+    <link rel="stylesheet" href="/assets/ds.css?v=9">
+    <script src="/assets/ui.js?v=3"></script>
     <style>
         body.auth-body { margin: 0; font-family: 'Montserrat', system-ui, sans-serif; background: #faf8f1; color: #26343b; -webkit-font-smoothing: antialiased; }
         .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: 1fr; }
@@ -94,7 +94,7 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
         .auth-scene { position: relative; overflow: hidden; background: #141d22; min-height: 250px; }
         @media (min-width: 1024px) { .auth-scene { position: sticky; top: 0; height: 100vh; min-height: 640px; } }
         .auth-scene svg.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
-        .scene-copy { position: absolute; z-index: 5; left: 0; right: 0; top: 0; padding: 28px 28px 0; color: #fff; pointer-events: none; }
+        .scene-copy { position: absolute; z-index: 5; left: 0; right: 0; top: env(safe-area-inset-top, 0px); padding: 28px 28px 0; color: #fff; pointer-events: none; }
         @media (min-width: 1024px) { .scene-copy { padding: 44px 48px 0; } }
         .scene-copy a { pointer-events: auto; }
         .scene-logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 22px; color: #fff; text-decoration: none; }
