@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const PAY = <?= json_encode(['carte' => ['label' => 'Carte bancaire', 'logo' => implode('', array_map(fn($i) => '<span class="w-11 block">' . $i . '</span>', options_logos_carte()))]] + array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     const HEB = <?= json_encode(HEBERGEMENTS, JSON_UNESCAPED_UNICODE) ?>;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+    const MONTHS = window.MC_MONTHS_SHORT;
     const fmtDay = d => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
     const fmtPrice = p => { const n = Number(p); return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ','); };
 
@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
     const fmtRange = r => !r ? '' : (r.a.getFullYear() === r.b.getFullYear() ? `${fmtDay(r.a)} – ${fmtDay(r.b)} ${r.b.getFullYear()}` : `${fmtDay(r.a)} ${r.a.getFullYear()} – ${fmtDay(r.b)} ${r.b.getFullYear()}`);
     const ymd = d => d.toISOString().split('T')[0];
-    const nightsLabel = n => n > 0 ? `${n} nuit${n > 1 ? 's' : ''}` : '1 journée';
+    const nightsLabel = n => mct(n > 0 ? `${n} nuit${n > 1 ? 's' : ''}` : '1 journée');
 
     // Bouton retour : historique si on vient du site, sinon la recherche
     $('back-link')?.addEventListener('click', e => {
@@ -333,8 +333,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     const inflight = new Map();       // jeton -> promesse
     // Tranche d'âge et public propres à chaque session (« · 14–16 ans · filles »)
     function sessionMeta(s) {
-        const a = s.age_min != null && s.age_max != null ? ` · ${s.age_min}–${s.age_max} ans` : '';
-        return a + (s.reserve_sexe ? (s.reserve_sexe === 'Femme' ? ' · filles' : ' · garçons') : '');
+        const a = s.age_min != null && s.age_max != null ? ' · ' + mct(`${s.age_min}–${s.age_max} ans`) : '';
+        return a + (s.reserve_sexe ? ' · ' + mct(s.reserve_sexe === 'Femme' ? 'filles' : 'garçons') : '');
     }
     function fetchCamp(tok) {
         if (cache.has(tok)) return Promise.resolve(cache.get(tok));
@@ -417,7 +417,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Détails pratiques
         $('info-organizer').textContent = camp.orga_nom || 'Non spécifié';
-        $('info-duration').textContent = r ? `${r.nights + 1} jour${r.nights + 1 > 1 ? 's' : ''} / ${nightsLabel(r.nights)}` : 'À confirmer';
+        $('info-duration').textContent = r ? mct(`${r.nights + 1} jour${r.nights + 1 > 1 ? 's' : ''}`) + ' / ' + nightsLabel(r.nights) : mct('À confirmer');
         $('info-age').textContent = `${camp.age_min} à ${camp.age_max} ans`;
         $('info-place').textContent = [camp.adresse, [camp.code_postal, camp.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ') || (camp.ville || '');
         // Parcours d'un séjour itinérant
@@ -554,7 +554,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         $('sessions-dates').innerHTML = groups.map(g => {
             const sel = g === curGroup;
             const allFull = g.items.every(s => s.places_restantes === 0);
-            const sub = (g.items.length > 1 ? `${g.items.length} formules` : nightsLabel(g.items[0].r.nights)) + sessionMeta(g.items[0]);
+            const sub = (g.items.length > 1 ? mct(`${g.items.length} formules`) : nightsLabel(g.items[0].r.nights)) + sessionMeta(g.items[0]);
             const min = Math.min(...g.items.map(s => Number(s.prix)));
             return `<button type="button" role="radio" aria-checked="${sel}" data-token="${g.items[0].token}" data-key="${g.key}" data-nights="${curItem.r.nights}"
                         class="opt${sel ? ' is-selected' : ''}${allFull ? ' is-full' : ''}">

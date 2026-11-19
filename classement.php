@@ -2,6 +2,7 @@
 // classement.php : « Comment fonctionne le classement » : la transparence sur l'ordre des séjours, des critères aux séjours sponsorisés.
 // Les chiffres affichés sont lus dans le code du moteur (api/search_lib.php, api/marketing_lib.php) : la page ne peut pas dire autre chose que ce que le site fait.
 require_once 'api/search_lib.php';
+require_once 'api/search_stats.php';
 
 $ads_enabled = false;
 $body_class = 'bg-white';

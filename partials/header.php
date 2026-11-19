@@ -4,7 +4,8 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-ob_start();   // les pages peuvent encore rediriger (connexion requise) après l'inclusion de l'en-tête
+require_once __DIR__ . '/../api/i18n.php';
+ob_start('mc_i18n_out');   // les pages peuvent encore rediriger (connexion requise) après l'inclusion de l'en-tête ; traduction de l'interface (api/i18n.php)
 
 // Journal des erreurs (aussi chargé par api/config.php quand la ligne y a été ajoutée)
 if (is_file(__DIR__ . '/../api/errors.php')) require_once __DIR__ . '/../api/errors.php';
@@ -78,10 +79,10 @@ $placeholder_url_desktop = "https://placehold.co/36x36/e2e8f0/2563eb?text=" . ur
 $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . urlencode($initial);
 ?>
 <!DOCTYPE html>
-<html lang="fr"<?= $ads_enabled && ads_consent_choisi() ? ' class="ads-on"' : '' ?>>
+<html lang="<?= mc_lang() ?>"<?= $ads_enabled && ads_consent_choisi() ? ' class="ads-on"' : '' ?>>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
     <?php if (!empty($base_href)) echo '<base href="' . htmlspecialchars($base_href) . '">'; /* pages dans un sous-dossier d'adresse (/organisme/xxx) */ ?>
     <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
 
@@ -104,7 +105,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     </style>
     <?php endif; ?>
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -123,11 +124,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
         .body-no-scroll { overflow: hidden; }
         /* Safe areas : encoche, caméra frontale / Dynamic Island et barre inférieure sur mobile */
-        .safe-header {
-            padding-top: env(safe-area-inset-top, 0px);
-            padding-left: env(safe-area-inset-left, 0px);
-            padding-right: env(safe-area-inset-right, 0px);
-        }
+        .safe-header { padding-top: env(safe-area-inset-top, 0px); }
         .safe-drawer {
             padding-top: env(safe-area-inset-top, 0px);
             padding-right: env(safe-area-inset-right, 0px);
@@ -144,35 +141,16 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         #history-list::-webkit-scrollbar-track { background: #f1f1f1; }
         #history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
-<link rel="manifest" href="/manifest.json">
-
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="moncamp.fr">
-<link rel="apple-touch-icon" href="/icon-192.png">
-
-<meta name="theme-color" content="#ffffff">
-
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/service-worker.js').then(function(registration) {
-      console.log('ServiceWorker registration successful');
-    }, function(err) {
-      console.log('ServiceWorker registration failed: ', err);
-    });
-  });
-}
-</script>
+    <?php include __DIR__ . '/pwa.php'; include __DIR__ . '/i18n_head.php'; ?>
     <?php if (!$ads_enabled): ?><script defer src="/assets/consent.js?v=1"></script><?php endif; ?>
-    <link rel="stylesheet" href="/assets/ds.css?v=8">
-    <script src="/assets/ui.js?v=2"></script>
+    <link rel="stylesheet" href="/assets/ds.css?v=9">
+    <script src="/assets/ui.js?v=4"></script>
 </head>
 <body class="<?php echo htmlspecialchars($body_class); ?><?php echo $body_class === 'bg-gray-100' ? ' ds-legacy' : ''; ?> text-gray-800 flex flex-col min-h-screen">
 
     <header class="bg-white border-b border-gray-200 sticky top-0 z-40 safe-header">
         <nav class="w-full px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between md:justify-start h-[68px] gap-4 lg:gap-6">
+            <div class="flex items-center justify-between lg:justify-start h-[68px] gap-4 lg:gap-6">
 
                 <!-- Logo -->
                 <a href="<?php echo $home_url; ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="moncamp.fr, accueil">
@@ -180,7 +158,7 @@ if ('serviceWorker' in navigator) {
                 </a>
 
                 <!-- Recherche rapide -->
-                <div id="search-wrapper" class="hidden md:block flex-1 max-w-[560px] transition-all duration-500 ease-in-out relative">
+                <div id="search-wrapper" class="hidden lg:block flex-1 max-w-[560px] transition-all duration-500 ease-in-out relative">
                     <form id="desktop-search-form" action="recherche" method="GET" class="relative group h-full flex items-center">
                         <input type="text" id="desktop-search-input" name="name" placeholder="Rechercher une colo..." autocomplete="off"
                                class="w-full h-10 bg-[#f3f1ea] border border-transparent focus:border-[#2f3d45] rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all duration-300 text-[13px] text-gray-700 placeholder-gray-400 relative z-20 outline-none">
@@ -201,11 +179,11 @@ if ('serviceWorker' in navigator) {
                     </div>
                 </div>
 
-                <div class="hidden md:block flex-1"></div>
+                <div class="hidden lg:block flex-1"></div>
 
 
                 <!-- Navigation -->
-                <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
+                <div id="nav-links" class="hidden lg:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
                     <a href="<?php echo $home_url; ?>" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
 
                     <?php if ($anim_ui): ?>
@@ -247,7 +225,7 @@ if ('serviceWorker' in navigator) {
                     <?php endif; ?>
                 </div>
 
-                <div class="hidden md:flex items-center gap-3 flex-shrink-0 transition-all duration-300" id="user-actions">
+                <div class="hidden lg:flex items-center gap-3 flex-shrink-0 transition-all duration-300" id="user-actions">
                     <?php if ($is_admin): ?>
                         <a href="/admin_notifs.php" class="relative text-gray-700 hover:text-gray-900 w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors" title="Notifications d'administration" aria-label="Notifications d'administration<?php echo $adm_unread ? ' (' . $adm_unread . ' non lues)' : ''; ?>">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4l2-2z"/><path d="M10 20a2 2 0 004 0"/></svg>
@@ -359,11 +337,11 @@ if ('serviceWorker' in navigator) {
                 </div>
 
                 <!-- Actions mobiles alignées à droite, même DA que desktop -->
-                <div class="md:hidden flex items-center gap-1 ml-auto flex-shrink-0">
+                <div class="lg:hidden flex items-center gap-1 ml-auto flex-shrink-0">
                     <button id="mobile-search-trigger" type="button" aria-label="Rechercher" class="w-10 h-10 flex items-center justify-center rounded-full text-[#3b4a54] hover:text-[#26343b] hover:bg-gray-100 transition-colors">
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.1"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
                     </button>
-                    <button id="open-menu-button" type="button" aria-label="Ouvrir le menu" class="w-10 h-10 inline-flex items-center justify-center rounded-full text-[#3b4a54] hover:text-[#26343b] hover:bg-gray-100 focus:outline-none transition-colors">
+                    <button id="open-menu-button" type="button" aria-label="Ouvrir le menu" aria-controls="mobile-menu" aria-expanded="false" class="w-10 h-10 inline-flex items-center justify-center rounded-full text-[#3b4a54] hover:text-[#26343b] hover:bg-gray-100 focus:outline-none transition-colors">
                         <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
                     </button>
                 </div>
@@ -372,7 +350,8 @@ if ('serviceWorker' in navigator) {
     </header>
 
     <div id="mobile-menu-overlay" class="fixed inset-0 bg-[#26343b]/40 backdrop-blur-[2px] z-40 hidden transition-opacity"></div>
-    <aside id="mobile-menu" aria-label="Menu mobile" class="fixed inset-y-0 right-0 w-[85vw] max-w-sm bg-white z-50 transform translate-x-full transition-transform duration-300 ease-in-out shadow-2xl border-l border-gray-200 safe-drawer flex flex-col">
+    <div class="fixed inset-0 z-50 overflow-hidden pointer-events-none">
+    <aside id="mobile-menu" aria-label="Menu mobile" class="pointer-events-auto absolute inset-y-0 right-0 w-[85vw] max-w-sm bg-white z-50 transform translate-x-full transition-transform duration-300 ease-in-out shadow-2xl border-l border-gray-200 safe-drawer flex flex-col">
         <!-- En-tête du tiroir : même hauteur (68px) et bordure que la barre principale -->
         <div class="h-[68px] px-4 sm:px-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
             <a href="<?php echo $home_url; ?>" class="flex items-center gap-1.5 whitespace-nowrap" aria-label="moncamp.fr, accueil">
@@ -542,6 +521,7 @@ if ('serviceWorker' in navigator) {
             <?php endif; ?>
         </div>
     </aside>
+    </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -715,9 +695,13 @@ if ('serviceWorker' in navigator) {
             mobileMenu.classList.remove('translate-x-full');
             overlay.classList.remove('hidden');
             body.classList.add('body-no-scroll');
-            if(focusSearch && mobileSearchInput) { setTimeout(() => mobileSearchInput.focus(), 300); }
+            openMenuButton.setAttribute('aria-expanded', 'true');
+            if (focusSearch && mobileSearchInput) setTimeout(() => mobileSearchInput.focus(), 300); else closeMenuButton.focus();
         }
         function closeMenu() {
+            if (mobileMenu.classList.contains('translate-x-full')) return;
+            openMenuButton.setAttribute('aria-expanded', 'false');
+            if (mobileMenu.contains(document.activeElement)) openMenuButton.focus();
             mobileMenu.classList.add('translate-x-full');
             overlay.classList.add('hidden');
             body.classList.remove('body-no-scroll');

@@ -125,7 +125,7 @@ require_once 'partials/mk_icons.php';
             <p class="mk-note" style="margin-top:14px">Aucun séjour pour le moment. <a class="underline" href="create_camp.php">Publier un séjour</a></p>
         <?php else: ?>
         <div class="mk-table-wrap" style="margin-top:16px">
-            <table class="mk-table">
+            <table class="mk-table ds-cards">
                 <thead><tr><th>Séjour</th><th>Départ</th><th class="num">Impr.</th><th class="num">Visites</th><th class="num">Inscr.</th><th>Boosts actifs</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($camps as $c): $past = $c['date_debut'] && strtotime($c['date_debut']) < strtotime('today'); ?>
@@ -154,7 +154,7 @@ require_once 'partials/mk_icons.php';
     <?php $gh = $orga ? gains_history($pdo, $orgaId, 8) : []; if ($gh): ?>
     <section class="mk-section">
         <h2>Anciens paiements avec mes gains</h2>
-        <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table" style="min-width:520px">
+        <div class="mk-table-wrap" style="margin-top:14px"><table class="mk-table ds-cards" style="min-width:520px">
             <thead><tr><th>Date</th><th>Achat</th><th class="num">Montant</th><th class="num">Solde après</th><th>Réf.</th></tr></thead><tbody>
             <?php foreach ($gh as $g): ?><tr><td><?= date('d/m/Y H:i', strtotime($g['created_at'])) ?></td><td><?= htmlspecialchars($g['libelle']) ?><?= $g['statut'] === 'ok' ? '' : ' <span class="mk-pill bad">Refusé : solde</span>' ?></td><td class="num"><?= $g['statut'] === 'ok' ? '- ' . mk_money($g['montant_cents'] / 100) : '-' ?></td><td class="num"><?= mk_money($g['solde_apres_cents'] / 100) ?></td><td>G-<?= (int)$g['id'] ?></td></tr><?php endforeach; ?>
             </tbody></table></div>

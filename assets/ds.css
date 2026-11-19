@@ -218,7 +218,7 @@ table { max-width: 100%; }
   .ds-switch input:checked + span::after { transform: translateX(22px); }
   footer li a { display: inline-block; padding: 6px 0; }
   .fav-btn { width: 40px; height: 40px; }
-  body > header button, #mobile-menu a, #mobile-menu button { min-height: 44px; min-width: 44px; }
+  body > header a, body > header button, #mobile-menu a, #mobile-menu button { min-height: 44px; min-width: 44px; }
 }
 
 @media (max-width: 767px) {
@@ -249,3 +249,51 @@ table { max-width: 100%; }
   footer > div { padding-bottom: calc(32px + env(safe-area-inset-bottom)) !important; padding-top: 40px !important; }
 }
 @media (max-width: 380px) { .ds-modal-box { padding-left: 14px; padding-right: 14px; } .ds-chip, .sess-tab { padding: 8px 12px; } }
+
+/* =====================================================================
+   TÉLÉPHONE : zones sûres (encoche, caméra, barre gestuelle), débordements, tiroirs fermés, cibles tactiles
+   ===================================================================== */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --mc-head: calc(68px + var(--sat));
+}
+html { scroll-padding-top: calc(var(--mc-head) + 12px); }
+body { padding-left: var(--sal); padding-right: var(--sar); }
+.ds-sec { scroll-margin-top: calc(150px + var(--sat)); }
+.sticky[class~="top-[76px]"] { top: calc(76px + var(--sat)); }
+.ds-modal, .cu-back { padding-top: max(16px, var(--sat)); padding-left: max(16px, var(--sal)); padding-right: max(16px, var(--sar)); }
+.ds-modal-box, .cu-box { max-height: calc(100dvh - 32px - var(--sat) - var(--sab)); }
+#mobile-menu { transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear 0s; }
+#mobile-menu.translate-x-full { visibility: hidden; transition: transform .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .28s; }
+.ds-drawer { transform: none; clip-path: inset(0 0 0 -60px); transition: clip-path .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear 0s; }
+.ds-drawer:not(.open) { clip-path: inset(0 0 0 100%); visibility: hidden; transition: clip-path .28s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .28s; }
+@media (max-width: 767px) {
+  .ds-modal { padding: max(24px, var(--sat)) 0 0; }
+  .ds-modal-box, .ds-modal-box.wide { max-height: calc(100dvh - max(24px, var(--sat))); padding-left: max(18px, var(--sal)); padding-right: max(18px, var(--sar)); }
+  .ds-btn { white-space: normal !important; max-width: 100%; }
+  .ds-sec { scroll-margin-top: calc(80px + var(--sat)); }
+}
+@media (pointer: coarse) {
+  a, button, summary, label, [role=button] { touch-action: manipulation; }
+  .mc-hit, :is(main, .ds-page) > a.inline-flex:first-child, main > header > a.inline-flex:first-child, .mk-back, .sec-more, .ds-help > summary, .dbh, .gm-help { position: relative; }
+  .fd-seg button { min-height: 40px; }
+  .mc-hit::after, :is(main, .ds-page) > a.inline-flex:first-child::after, main > header > a.inline-flex:first-child::after, .mk-back::after, .sec-more::after, .ds-help > summary::after, .fav-btn::after, .dbh::after, .gm-help::after { content: ""; position: absolute; inset: -10px; }
+}
+@media (prefers-reduced-motion: reduce) { #mobile-menu, #mobile-menu.translate-x-full, .ds-drawer, .ds-drawer:not(.open) { transition: none; } }
+
+/* ---------- tableaux en cartes sur téléphone (<table class="ds-cards">, libellés posés par assets/ui.js) ---------- */
+@media (max-width: 767px) {
+  table.ds-cards { min-width: 0 !important; width: 100%; border: 0; }
+  .ds-cards > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .ds-cards > tbody, .ds-cards > tbody > tr { display: block; }
+  .ds-cards > tbody > tr { margin: 0 0 12px; padding: 4px 14px; border: 1px solid var(--ds-line); border-radius: 16px; background: #fff; }
+  .ds-cards > tbody > tr > td:not(.hidden) { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0 !important; border: 0 !important; text-align: right !important; max-width: none !important; white-space: normal !important; }
+  .ds-cards > tbody > tr > td + td { border-top: 1px solid var(--ds-soft) !important; }
+  .ds-cards > tbody > tr > td::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 12px; font-weight: 700; color: var(--ds-muted); }
+  .ds-cards > tbody > tr > td[data-label=""]::before { display: none; }
+  .ds-cards > tbody > tr > td[colspan] { display: block; text-align: center !important; }
+  .ds-cards > tbody > tr > td > * { min-width: 0; }
+}

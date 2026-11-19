@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/i18n.php';
 // api/equipe_inscrire.php : inscription d'un membre de l'équipe d'animation (option B) via un lien du directeur. Compte connecté requis.
 //   GET  ?a=info&l=<jeton du lien>      séjour, tarifs, questions, places, pré-remplissage
 //   POST ?a=inscrire {lien, ...}        crée l'inscription ; renvoie {url} (paiement Stripe) ou {gratuit: true}
@@ -22,7 +23,7 @@ function eq_stripe(PDO $pdo, array $camp, array $row, int $uid): string {
     $cents = (int)round((float)$row['prix_final'] * 100);
     require_once __DIR__ . '/finance_lib.php';
     $params = [
-        'payment_method_types' => ['card'], 'mode' => 'payment', 'locale' => 'fr', 'allow_promotion_codes' => true,
+        'payment_method_types' => ['card'], 'mode' => 'payment', 'locale' => mc_lang(), 'allow_promotion_codes' => true,
         'expires_at' => time() + EQUIPE_ATTENTE_MIN * 60 + 60,
         'client_reference_id' => (string)$uid,
         'customer_email' => $row['email'],

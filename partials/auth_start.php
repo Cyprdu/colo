@@ -70,21 +70,22 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
     $pts[] = [$x + 6, $py + 340]; $pts[] = [$px + 420, $py + 340]; $pts[] = [$px + 420, $py];
     return implode(' ', array_map(function ($q) { return round($q[0], 1) . ',' . round($q[1], 1); }, $pts));
 } }
+require_once __DIR__ . '/../api/i18n.php';
+ob_start('mc_i18n_out');
 ?><!DOCTYPE html>
-<html lang="fr">
+<html lang="<?= mc_lang() ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title><?= htmlspecialchars($auth_title ?? 'moncamp.fr') ?></title>
     <meta name="robots" content="noindex, follow">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#26343b">
+    <?php $pwa_theme = '#141d22'; include __DIR__ . '/pwa.php'; include __DIR__ . '/i18n_head.php'; ?>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/assets/ds.css?v=8">
-    <script src="/assets/ui.js?v=2"></script>
+    <link rel="stylesheet" href="/assets/ds.css?v=9">
+    <script src="/assets/ui.js?v=4"></script>
     <style>
         body.auth-body { margin: 0; font-family: 'Montserrat', system-ui, sans-serif; background: #faf8f1; color: #26343b; -webkit-font-smoothing: antialiased; }
         .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: 1fr; }
@@ -94,7 +95,7 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
         .auth-scene { position: relative; overflow: hidden; background: #141d22; min-height: 250px; }
         @media (min-width: 1024px) { .auth-scene { position: sticky; top: 0; height: 100vh; min-height: 640px; } }
         .auth-scene svg.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
-        .scene-copy { position: absolute; z-index: 5; left: 0; right: 0; top: 0; padding: 28px 28px 0; color: #fff; pointer-events: none; }
+        .scene-copy { position: absolute; z-index: 5; left: 0; right: 0; top: env(safe-area-inset-top, 0px); padding: 28px 28px 0; color: #fff; pointer-events: none; }
         @media (min-width: 1024px) { .scene-copy { padding: 44px 48px 0; } }
         .scene-copy a { pointer-events: auto; }
         .scene-logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 22px; color: #fff; text-decoration: none; }

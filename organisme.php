@@ -36,7 +36,7 @@ function og_media($u, $dir = '') {
 }
 function og_dates($a, $b): string {
     [$d1, $d2] = normalizeSessionDates($a, $b);
-    $m = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    $m = explode(',', t('months.short'));
     $f = function (DateTime $d) use ($m) { return $d->format('j') . ' ' . $m[(int)$d->format('n') - 1]; };
     return $f($d1) . ' – ' . $f($d2) . ' ' . $d2->format('Y');
 }

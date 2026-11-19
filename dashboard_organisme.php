@@ -80,7 +80,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 .fd-id img { width: 48px; height: 48px; border-radius: 14px; object-fit: cover; border: 1px solid var(--ds-line); }
 .fd-id h1 { font-size: 24px; font-weight: 800; color: var(--ds-ink); margin: 0; overflow-wrap: anywhere; line-height: 1.2; }
 .fd-acct { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 13px; color: var(--ds-muted); }
-.fd-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; padding: 10px; border: 1px solid var(--ds-line); border-radius: 14px; background: #fff; position: sticky; top: 0; z-index: 30; }
+.fd-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; padding: 10px; border: 1px solid var(--ds-line); border-radius: 14px; background: #fff; position: sticky; top: calc(var(--mc-head, 68px) + 8px); z-index: 30; }
 .fd-bar .ds-select, .fd-bar .ds-input { padding: 8px 12px; font-size: 14px; width: auto; }
 .fd-bar .grow { flex: 1; }
 .fd-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; border: 1.5px solid var(--ds-line); background: #fff; color: var(--ds-ink); cursor: pointer; white-space: nowrap; }
@@ -278,7 +278,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             <label><span>Au</span><input id="fAu" type="date" class="ds-input"></label>
             <div style="display:flex;gap:6px"><button type="button" class="fd-btn pri" id="fApply">Appliquer</button><button type="button" class="fd-btn" id="fReset">Effacer</button></div>
         </div>
-        <div class="fd-tw"><table class="fd-t" aria-describedby="tCount">
+        <div class="fd-tw"><table class="fd-t ds-cards" aria-describedby="tCount">
             <thead><tr><th style="width:36px;padding-left:12px"><input type="checkbox" id="tAll" aria-label="Tout sélectionner (page)"></th>
                 <?php foreach ([['d', 'Date', ''], ['fam', 'Famille', ''], ['camp', 'Séjour', ''], ['moyl', 'Moyen', ''], ['brut', 'Payé', 'num'], ['com', 'Commission', 'num'], ['frais', 'Frais de paiement', 'num'], ['comp', 'Compensation', 'num'], ['remb', 'Remboursé', 'num'], ['net', 'Net', 'num'], ['stl', 'Statut', '']] as $c): ?>
                 <th class="<?= $c[2] ?>" aria-sort="none" data-col="<?= $c[0] ?>"><button type="button" class="fd-th"><?= $c[1] ?></button></th><?php endforeach; ?></tr></thead>
@@ -297,16 +297,16 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             <div class="fd-card"><h2 class="fd-h">Versé sur votre banque</h2><dl class="fd-dl" id="vTot"><dt><span class="sk"></span></dt><dd></dd></dl></div>
         </div>
         <h2 class="fd-sub">Historique</h2>
-        <div class="fd-tw"><table class="fd-t" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th><th><span class="fd-th" style="cursor:default">Statut</span></th><th><span class="fd-th" style="cursor:default">Arrivée</span></th><th class="num"><span class="fd-th" style="cursor:default">Transactions</span></th><th></th></tr></thead><tbody id="vBody"></tbody></table></div>
+        <div class="fd-tw"><table class="fd-t ds-cards" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th><th><span class="fd-th" style="cursor:default">Statut</span></th><th><span class="fd-th" style="cursor:default">Arrivée</span></th><th class="num"><span class="fd-th" style="cursor:default">Transactions</span></th><th></th></tr></thead><tbody id="vBody"></tbody></table></div>
     </section>
 
     <!-- Remboursements & litiges -->
     <section class="fd-panel" role="tabpanel" id="pan-litiges" aria-labelledby="tab-litiges" hidden>
         <div class="fd-kpis" id="lKpi"></div>
         <h2 class="fd-sub">Transactions remboursées ou en litige (période)</h2>
-        <div class="fd-tw"><table class="fd-t" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Séjour</span></th><th class="num"><span class="fd-th" style="cursor:default">Payé</span></th><th class="num"><span class="fd-th" style="cursor:default">Remboursé</span></th><th><span class="fd-th" style="cursor:default">Statut</span></th></tr></thead><tbody id="lBody"></tbody></table></div>
+        <div class="fd-tw"><table class="fd-t ds-cards" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Séjour</span></th><th class="num"><span class="fd-th" style="cursor:default">Payé</span></th><th class="num"><span class="fd-th" style="cursor:default">Remboursé</span></th><th><span class="fd-th" style="cursor:default">Statut</span></th></tr></thead><tbody id="lBody"></tbody></table></div>
         <h2 class="fd-sub">Annulations des familles<?= $help("Les conditions d'annulation se règlent séjour par séjour. La commission moncamp.fr n'est pas rendue.") ?></h2>
-        <div class="fd-tw"><table class="fd-t" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Séjour</span></th><th class="num"><span class="fd-th" style="cursor:default">Part remboursée</span></th><th class="num"><span class="fd-th" style="cursor:default">Remboursé</span></th><th class="num"><span class="fd-th" style="cursor:default">Commission conservée</span></th></tr></thead><tbody id="aBody"></tbody></table></div>
+        <div class="fd-tw"><table class="fd-t ds-cards" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Séjour</span></th><th class="num"><span class="fd-th" style="cursor:default">Part remboursée</span></th><th class="num"><span class="fd-th" style="cursor:default">Remboursé</span></th><th class="num"><span class="fd-th" style="cursor:default">Commission conservée</span></th></tr></thead><tbody id="aBody"></tbody></table></div>
         <p style="margin-top:10px"><a class="underline" href="annulations_organisme.php?o=<?= $orgaTok ?>">Conditions d'annulation par séjour →</a></p>
     </section>
 
@@ -327,20 +327,20 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
                 <button type="submit" class="fd-btn pri">Payer ma dette · <?= fin_eur($detteDue) ?></button>
                 <span style="font-size:12.5px;color:var(--ds-muted)">Paiement par carte du montant total, sans commission. Sinon, elle est compensée automatiquement sur vos prochains paiements.</span>
             </form><?php endif; ?>
-            <div class="fd-tw" style="margin-top:14px"><table class="fd-t" style="min-width:480px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Opération</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th></tr></thead><tbody id="dBody"></tbody></table></div></div>
+            <div class="fd-tw" style="margin-top:14px"><table class="fd-t ds-cards" style="min-width:480px"><thead><tr><th><span class="fd-th" style="cursor:default">Date</span></th><th><span class="fd-th" style="cursor:default">Opération</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th></tr></thead><tbody id="dBody"></tbody></table></div></div>
     </section>
 
     <!-- Hors carte -->
     <section class="fd-panel" role="tabpanel" id="pan-hors" aria-labelledby="tab-hors" hidden>
         <p style="font-size:14px;color:var(--ds-muted);margin:0 0 10px">Règlements choisis par les familles hors carte (chèque, virement, espèces, ANCV…), pas encore reçus. Marquez-les reçus à l'encaissement<?= $help("Commission moncamp.fr sur les règlements hors carte (espèces, chèque…) : " . number_format(fin_hors_stripe_pct(), 1, ',', ' ') . " %. Elle est due dès la réservation, même si l'inscription est annulée ensuite, et devient une dette retenue sur vos prochains paiements par carte.") ?></p>
-        <div class="fd-tw"><table class="fd-t" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Séjour</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Moyen</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th><th><span class="fd-th" style="cursor:default">Inscrit le</span></th><th></th></tr></thead><tbody id="hBody"></tbody></table></div>
+        <div class="fd-tw"><table class="fd-t ds-cards" style="min-width:720px"><thead><tr><th><span class="fd-th" style="cursor:default">Séjour</span></th><th><span class="fd-th" style="cursor:default">Famille</span></th><th><span class="fd-th" style="cursor:default">Moyen</span></th><th class="num"><span class="fd-th" style="cursor:default">Montant</span></th><th><span class="fd-th" style="cursor:default">Inscrit le</span></th><th></th></tr></thead><tbody id="hBody"></tbody></table></div>
     </section>
 
     <!-- Rapports -->
     <section class="fd-panel" role="tabpanel" id="pan-rapports" aria-labelledby="tab-rapports" hidden>
         <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><h2 class="fd-h" style="margin:0">Rapport mensuel (période)<?= $help("Pour votre comptable : une ligne par mois, issue du journal comptable. TVA incluse calculée si un taux est renseigné.") ?></h2>
             <span style="display:flex;gap:6px"><button type="button" class="fd-btn" data-exp="mois" data-fmt="xlsx">Excel</button><button type="button" class="fd-btn" data-exp="mois" data-fmt="csv">CSV</button></span></div>
-        <div class="fd-tw"><table class="fd-t" style="min-width:980px"><thead><tr><?php foreach (['Mois', 'Encaissé', 'Commission', 'Frais de paiement', 'Remboursé', 'Net', 'Versé', 'Dette compensée', 'Hors carte reçu', 'TVA incluse'] as $i => $h): ?><th class="<?= $i ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="rBody"></tbody><tfoot id="rFoot"></tfoot></table></div>
+        <div class="fd-tw"><table class="fd-t ds-cards" style="min-width:980px"><thead><tr><?php foreach (['Mois', 'Encaissé', 'Commission', 'Frais de paiement', 'Remboursé', 'Net', 'Versé', 'Dette compensée', 'Hors carte reçu', 'TVA incluse'] as $i => $h): ?><th class="<?= $i ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="rBody"></tbody><tfoot id="rFoot"></tfoot></table></div>
         <form method="post" class="fd-card" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
             <b style="color:var(--ds-ink)">TVA de vos séjours<?= $help("Prix TTC : les familles ne paient rien de plus. Si vous êtes assujetti, indiquez votre taux : la TVA incluse figurera sur leurs reçus et dans ce rapport. Ne remplace pas l'avis d'un comptable.") ?></b>
             <span style="display:flex;gap:8px;align-items:center">
@@ -360,7 +360,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         </div>
         <div class="fd-card" style="margin-top:12px"><h2 class="fd-h"><span>Clics par période</span><button type="button" class="fd-btn" data-exp="clics" data-fmt="csv"><?= mk_icon('doc', 16) ?> CSV</button></h2>
             <svg id="chClics" class="fd-chart" role="img" aria-label="Clics vers votre site par période"></svg></div>
-        <div class="fd-tw"><table class="fd-t" style="min-width:640px"><thead><tr><?php foreach (['Séjour', 'Session', 'Clics', 'Visiteurs', 'Mobile', 'Dernier clic'] as $i => $h): ?><th class="<?= in_array($i, [2, 3, 4], true) ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="cBody"></tbody></table></div>
+        <div class="fd-tw"><table class="fd-t ds-cards" style="min-width:640px"><thead><tr><?php foreach (['Séjour', 'Session', 'Clics', 'Visiteurs', 'Mobile', 'Dernier clic'] as $i => $h): ?><th class="<?= in_array($i, [2, 3, 4], true) ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="cBody"></tbody></table></div>
     </section>
     <?php endif; ?>
     <p id="loadErr" class="ds-alert-err" role="alert" hidden style="margin-top:14px">Données indisponibles pour le moment. <button type="button" class="underline" id="retry">Réessayer</button></p>
@@ -380,8 +380,8 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     var ORGA = <?= json_encode($orgaTok) ?>, CSRF = <?= json_encode(fin_csrf()) ?>, EXPRESS = <?= json_encode(($acc['type'] ?? '') === 'express') ?>;
     var $ = function (id) { return document.getElementById(id); };
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
-    var eur = function (c) { return ((c || 0) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }); };
-    var eur0 = function (c) { return ((c || 0) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); };
+    var eur = function (c) { return ((c || 0) / 100).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR' }); };
+    var eur0 = function (c) { return ((c || 0) / 100).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); };
     var z = function (n) { return ('0' + n).slice(-2); };
     var iso = function (d) { return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
     var dfr = function (s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : ''; };
@@ -670,9 +670,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         if (!$('pan-clics')) return;
         var c = D.clics, u = 0, m = 0, v = c.prev ? Math.round((c.total - c.prev) / c.prev * 100) : null;
         c.sejours.forEach(function (s) { u += s.uniques; m += s.mobile; });
-        kpi('clics', c.total.toLocaleString('fr-FR'), v === null ? (c.total ? '<span class="fd-d flat">nouveau</span> vs période préc.' : 'aucun clic sur la période')
-            : '<span class="fd-d ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'flat') + '">' + (v > 0 ? '▲ +' : v < 0 ? '▼ ' : '') + v + ' %</span> vs ' + c.prev.toLocaleString('fr-FR'));
-        kpi('clicsu', u.toLocaleString('fr-FR'), 'une fois par jour et par session');
+        kpi('clics', c.total.toLocaleString(window.MC_LOCALE || 'fr-FR'), v === null ? (c.total ? '<span class="fd-d flat">nouveau</span> vs période préc.' : 'aucun clic sur la période')
+            : '<span class="fd-d ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'flat') + '">' + (v > 0 ? '▲ +' : v < 0 ? '▼ ' : '') + v + ' %</span> vs ' + c.prev.toLocaleString(window.MC_LOCALE || 'fr-FR'));
+        kpi('clicsu', u.toLocaleString(window.MC_LOCALE || 'fr-FR'), 'une fois par jour et par session');
         kpi('clicsm', c.total ? Math.round(m / c.total * 100) + ' %' : '–', m + ' clic' + (m > 1 ? 's' : ''));
         $('cBody').innerHTML = c.sejours.length ? c.sejours.map(function (s) {
             return '<tr><td>' + esc(s.nom) + '</td><td class="mut">' + dfr(s.debut) + ' → ' + dfr(s.fin) + '</td><td class="num"><b>' + s.n + '</b></td><td class="num">' + s.uniques + '</td><td class="num">' + s.mobile + '</td><td class="mut">' + dfr(s.dernier.slice(0, 10)) + ' ' + s.dernier.slice(11, 16) + '</td></tr>';

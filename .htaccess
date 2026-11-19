@@ -1,3 +1,11 @@
+AddType application/manifest+json .webmanifest
+<Files "service-worker.js">
+    <IfModule mod_headers.c>
+        Header set Cache-Control "no-cache"
+        Header set Service-Worker-Allowed "/"
+    </IfModule>
+</Files>
+
 # Activer le moteur de réécriture
 RewriteEngine On
 

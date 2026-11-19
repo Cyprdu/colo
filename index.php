@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', function () {
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef1f5"/><stop offset="1" stop-color="#d3dbe6"/></linearGradient></defs>' +
         '<rect width="200" height="200" fill="url(#g)"/><g fill="#9aa8b8"><path d="M84 52L66 80h10L60 104h12L54 130h60L96 104h12L92 80h10L84 52z"/><rect x="82" y="130" width="5" height="12"/><path d="M116 140l22-50 22 50z"/></g></svg>');
 
-    const MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    const MONTHS = window.MC_MONTHS;
     const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const safeImg = url => url ? String(url).replace(/\\/g, '/') : '';
@@ -276,14 +276,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!e) return `Dès le ${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
         if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
             return `Du ${s.getDate()} au ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
-        const sh = m => MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m];
+        const sh = m => window.MC_MONTHS_SHORT[m];
         return `Du ${s.getDate()} ${sh(s.getMonth())} au ${e.getDate()} ${sh(e.getMonth())} ${e.getFullYear()}`;
     }
     function shortDate(start, end) {
         const r = normDates(start, end);
         if (!r) return '';
-        const m = MONTHS[r.a.getMonth()];
-        return `${r.a.getDate()} ${m.length > 5 ? m.slice(0, 4) + '.' : m}`;
+        return `${r.a.getDate()} ${window.MC_MONTHS_SHORT[r.a.getMonth()]}`;
     }
     function formatPrice(p) {
         const n = Number(p);
