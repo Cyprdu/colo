@@ -474,7 +474,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const places = camp.places_restantes || 0;
         let cta = '';
         if (camp.lien_externe) {
-            cta = `<a href="${esc(camp.lien_externe)}" target="_blank" rel="noopener" class="cd-btn">Réserver ma place
+            cta = `<a href="go/${encodeURIComponent(camp.token)}" target="_blank" rel="nofollow noopener" class="cd-btn">Réserver ma place
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>`;
         } else if (camp.inscription_en_ligne == 1 && places > 0) {
             cta = isLoggedIn

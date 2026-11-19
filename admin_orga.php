@@ -64,6 +64,23 @@ adm_head((string)$o['nom'], 'admin_list.php?e=organismes', [['Catalogue', ''], [
   </section>
 </div>
 
+<?php if (adm_can('partenaires.read')): require_once __DIR__ . '/api/clics.php'; clics_ensure($pdo);
+  $ck = clics_stats($pdo, date('Y-m-d', strtotime('-29 days')), date('Y-m-d'), $oid);
+  $pc = adm_rows("SELECT partenaire_clic_cents, partenaire_pct FROM organisateurs WHERE id = ?", [$oid])[0];
+  $cpc = $pc['partenaire_clic_cents'] === null ? '' : rtrim(rtrim(number_format($pc['partenaire_clic_cents'] / 100, 2, ',', ''), '0'), ',');
+  $pct = $pc['partenaire_pct'] === null ? '' : rtrim(rtrim(number_format((float)$pc['partenaire_pct'], 2, ',', ''), '0'), ','); ?>
+<section class="card mt">
+  <h2 class="sec"><?= ic('external') ?> Partenariat <?= adm_help('Commission négociée avec l’organisme pour les clics vers son site (« Réserver ma place » externe) : montant par clic et/ou pourcentage du prix des inscriptions qu’ils génèrent. Sert à estimer les revenus, rien n’est facturé automatiquement.') ?></h2>
+  <p class="row-l wrap-row">30 derniers jours : <b><?= (int)$ck['total'] ?> clic<?= $ck['total'] > 1 ? 's' : '' ?></b> vers son site · revenu estimé <b><?= h(adm_money($ck['est'] / 100)) ?></b> <a class="lnk-q" href="admin_clics.php?o=<?= h(rawurlencode($tok)) ?>">Détail</a></p>
+  <?php if (adm_can('partenaires.write')): ?>
+  <form class="row-l wrap-row" data-api="orga.partenaire" data-ok="Commission partenaire enregistrée."><input type="hidden" name="o" value="<?= h($tok) ?>">
+    <label class="fld-inline">€ par clic <input class="in dt" name="cpc" inputmode="decimal" value="<?= h($cpc) ?>" placeholder="0,20"></label>
+    <label class="fld-inline">% du prix <input class="in dt" name="pct" inputmode="decimal" value="<?= h($pct) ?>" placeholder="5"></label>
+    <button class="btn sm" type="submit">Enregistrer</button></form>
+  <?php else: ?><p class="muted">Commission : <?= $cpc === '' ? '—' : h($cpc) . ' € par clic' ?> · <?= $pct === '' ? '—' : h($pct) . ' % du prix' ?></p><?php endif; ?>
+</section>
+<?php endif; ?>
+
 <h2 class="sec"><?= ic('tent') ?> Séjours <span class="count-pill"><?= count($camps) ?></span></h2>
 <?php if (!$camps): ?><p class="muted">Aucun séjour.</p><?php else: ?>
 <div class="tbl-wrap flat"><table class="tbl"><thead><tr><th>Séjour</th><th>Ville</th><th>Début</th><th class="num">Inscriptions</th><th>État</th></tr></thead><tbody>

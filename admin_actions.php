@@ -135,6 +135,34 @@ return [
         adm_audit('orga_stripe_sync', "organisateurs#$oid");
         return ['msg' => $acc ? 'Statut Stripe mis à jour.' : 'Pas de compte Stripe ou Stripe injoignable.'];
     }],
+    'orga.partenaire' => ['partenaires.write', false, function (array $in) {
+        global $pdo;
+        require_once __DIR__ . '/api/orga_lib.php';
+        require_once __DIR__ . '/api/clics.php';
+        clics_ensure($pdo);
+        $oid = fin_orga_from_tok($pdo, (string)($in['o'] ?? ''));
+        if (!$oid) throw new AdmUserError('Organisme introuvable.');
+        $num = function ($v, string $lib): ?float {
+            $v = str_replace([',', ' ', '€', '%'], ['.', '', '', ''], trim((string)$v));
+            if ($v === '') return null;
+            if (!is_numeric($v) || (float)$v < 0 || (float)$v > 100) throw new AdmUserError($lib . ' : nombre entre 0 et 100 attendu.');
+            return round((float)$v, 2);
+        };
+        $cpc = $num($in['cpc'] ?? '', 'Montant par clic');
+        $apres = ['partenaire_clic_cents' => $cpc === null ? null : (int)round($cpc * 100), 'partenaire_pct' => $num($in['pct'] ?? '', 'Pourcentage')];
+        $avant = adm_snap('organisateurs', 'id', $oid, array_keys($apres));
+        $pdo->prepare("UPDATE organisateurs SET partenaire_clic_cents = ?, partenaire_pct = ? WHERE id = ?")->execute([$apres['partenaire_clic_cents'], $apres['partenaire_pct'], $oid]);
+        adm_audit('orga_partenaire', "organisateurs#$oid", null, $avant, $apres);
+        return ['msg' => 'Commission partenaire enregistrée.'];
+    }],
+    'clics.conv' => ['partenaires.write', false, function (array $in) {
+        global $pdo;
+        $v = str_replace([',', '%', ' '], ['.', '', ''], trim((string)($in['conv'] ?? '')));
+        if (!is_numeric($v) || (float)$v < 0 || (float)$v > 100) throw new AdmUserError('Taux : nombre entre 0 et 100 attendu.');
+        $pdo->prepare("INSERT INTO adm_kv (k, v) VALUES ('clics_conv_pct', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([(string)round((float)$v, 2)]);
+        adm_audit('clics_conv', null, (string)round((float)$v, 2));
+        return ['msg' => 'Taux de transformation enregistré.'];
+    }],
     'compta.close' => ['compta.close', true, function (array $in) {
         global $pdo;
         require_once __DIR__ . '/api/compta_lib.php';

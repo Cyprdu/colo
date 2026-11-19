@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'tva') {
         header('Location: dashboard_organisme.php?o=' . $orgaTok . '&success=' . urlencode('Taux de TVA enregistré.') . '#rapports'); exit;
     } catch (Throwable $e) { $error = $e->getMessage(); }
 }
-$orga = null; $acc = null; $historique = 0; $nbAnnul = 0;
+$orga = null; $acc = null; $historique = 0; $nbAnnul = 0; $aClics = false;
 try {
     fin_ensure($pdo); mk_ensure($pdo);
     $st = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ?");
@@ -45,6 +45,9 @@ try {
     $st = $pdo->prepare("SELECT COUNT(*) FROM fin_annulations WHERE organisateur_id = ? AND lu = 0");
     $st->execute([$orgaId]);
     $nbAnnul = (int)$st->fetchColumn();
+    $st = $pdo->prepare("SELECT 1 FROM camps WHERE organisateur_id = ? AND COALESCE(lien_externe, '') <> '' LIMIT 1");
+    $st->execute([$orgaId]);
+    $aClics = (bool)$st->fetchColumn();
 } catch (Throwable $e) {
     error_log('dashboard_organisme: ' . $e->getMessage());
     $error = 'Une erreur est survenue. Réessayez dans un instant.';
@@ -66,7 +69,7 @@ $body_class = 'bg-white';
 require_once 'partials/header.php';
 require_once 'partials/mk_icons.php';
 $help = fn(string $t) => '<button type="button" class="dbh" data-help="' . htmlspecialchars($t, ENT_QUOTES) . '" aria-label="Aide : ' . htmlspecialchars(mb_substr($t, 0, 60), ENT_QUOTES) . '…" aria-expanded="false">?</button>';
-$tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versements' => 'Versements', 'litiges' => 'Remboursements & litiges', 'dette' => 'Dette', 'hors' => 'Hors carte', 'rapports' => 'Rapports'];
+$tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versements' => 'Versements', 'litiges' => 'Remboursements & litiges', 'dette' => 'Dette', 'hors' => 'Hors carte', 'rapports' => 'Rapports'] + ($aClics ? ['clics' => 'Clics vers votre site'] : []);
 ?>
 <title>Finances - <?= htmlspecialchars($orga['nom']) ?></title>
 <link rel="stylesheet" href="assets/mk.css?v=1">
@@ -121,6 +124,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 .fd-wf .bar { flex: none; height: 8px; border-radius: 4px; background: var(--ds-btn); }
 .fd-wf .bar.n { background: #c9d3db; } .fd-wf .bar.r { background: #e7b0aa; }
 .fd-chart { width: 100%; height: 200px; display: block; }
+.fd-kpis.k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .fd-ax { fill: var(--ds-muted); font-size: 10px; font-family: Montserrat, sans-serif; }
 .fd-leg { display: flex; gap: 14px; font-size: 12px; color: var(--ds-muted); margin-top: 6px; flex-wrap: wrap; }
 .fd-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
@@ -164,7 +168,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
 .fd-stripe .ds-btn { font-size: 16px; padding: 14px 24px; white-space: nowrap; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 1024px) { .fd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fd-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .fd-grid2 { grid-template-columns: minmax(0, 1fr); } .fd-bar { position: static; } .fd-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fd-kpi .v { font-size: 19px; } }
+@media (max-width: 760px) { .fd-kpis.k3, .fd-grid2 { grid-template-columns: minmax(0, 1fr); } .fd-bar { position: static; } .fd-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fd-kpi .v { font-size: 19px; } }
 @media (max-width: 420px) { .fd-kpis { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
 </style>
@@ -222,6 +226,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
                 <button type="button" class="it" role="menuitem" data-exp="mois" data-fmt="xlsx">Rapport mensuel · Excel</button>
                 <button type="button" class="it" role="menuitem" data-exp="mois" data-fmt="csv">Rapport mensuel · CSV</button>
                 <a role="menuitem" href="pdf_export_virements_history.php?o=<?= $orgaTok ?>" target="_blank" rel="noopener">Historique des versements · PDF</a>
+                <?php if ($aClics): ?><button type="button" class="it" role="menuitem" data-exp="clics" data-fmt="csv">Clics vers votre site · CSV</button><?php endif; ?>
             </div></div>
     </div>
 
@@ -344,6 +349,20 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
                 <button class="fd-btn" type="submit">Enregistrer</button></span>
         </form>
     </section>
+    <?php if ($aClics): ?>
+    <!-- Clics vers le site de l'organisme -->
+    <section class="fd-panel" role="tabpanel" id="pan-clics" aria-labelledby="tab-clics" hidden>
+        <p style="font-size:14px;color:var(--ds-muted);margin:0 0 12px">Clics sur « Réserver ma place » qui mènent à votre site depuis vos séjours à réservation externe. Robots exclus.<?= $help("Chaque lien porte utm_source=moncamp.fr, utm_medium=referral, utm_campaign=<identifiant du séjour> et mc_click=<identifiant unique du clic, repris dans l'export> : retrouvez ces visites dans vos statistiques et rapprochez-les de vos réservations.") ?></p>
+        <div class="fd-kpis k3" aria-live="polite">
+            <?php foreach ([['clics', 'Clics vers votre site', 'dark'], ['clicsu', 'Visiteurs différents', ''], ['clicsm', 'Depuis un téléphone', '']] as $k): ?>
+                <div class="fd-kpi <?= $k[2] ?>" id="kp-<?= $k[0] ?>"><div class="k"><?= $k[1] ?></div><div class="v"><span class="sk" style="width:60%"></span></div><div class="s"></div></div>
+            <?php endforeach; ?>
+        </div>
+        <div class="fd-card" style="margin-top:12px"><h2 class="fd-h"><span>Clics par période</span><button type="button" class="fd-btn" data-exp="clics" data-fmt="csv"><?= mk_icon('doc', 16) ?> CSV</button></h2>
+            <svg id="chClics" class="fd-chart" role="img" aria-label="Clics vers votre site par période"></svg></div>
+        <div class="fd-tw"><table class="fd-t" style="min-width:640px"><thead><tr><?php foreach (['Séjour', 'Session', 'Clics', 'Visiteurs', 'Mobile', 'Dernier clic'] as $i => $h): ?><th class="<?= in_array($i, [2, 3, 4], true) ? 'num' : '' ?>"><span class="fd-th" style="cursor:default"><?= $h ?></span></th><?php endforeach; ?></tr></thead><tbody id="cBody"></tbody></table></div>
+    </section>
+    <?php endif; ?>
     <p id="loadErr" class="ds-alert-err" role="alert" hidden style="margin-top:14px">Données indisponibles pour le moment. <button type="button" class="underline" id="retry">Réessayer</button></p>
 </main>
 
@@ -458,8 +477,8 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
             if (g === 'j') { key = j.d; lab = d.getDate() + ' ' + MOIS[d.getMonth()]; }
             else if (g === 's') { var m = new Date(d); m.setDate(d.getDate() - (d.getDay() + 6) % 7); key = iso(m); lab = 'sem. ' + m.getDate() + ' ' + MOIS[m.getMonth()]; }
             else { key = j.d.slice(0, 7); lab = MOIS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2); }
-            if (!(key in idx)) { idx[key] = out.length; out.push({ l: lab, brut: 0, net: 0, ins: 0 }); }
-            var b = out[idx[key]]; b.brut += j.brut; b.net += j.net; b.ins += j.ins;
+            if (!(key in idx)) { idx[key] = out.length; out.push({ l: lab, brut: 0, net: 0, ins: 0, clics: 0 }); }
+            var b = out[idx[key]]; b.brut += j.brut; b.net += j.net; b.ins += j.ins; b.clics += j.clics;
         });
         return out;
     }
@@ -486,6 +505,7 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         var b = buckets(GRAN);
         bars('chCa', b, ['brut', 'net'], ['#2f3d45', '#8aa4b8'], function (v) { return eur0(v); });
         bars('chIns', b, ['ins'], ['#3d6a8e'], function (v) { return Math.round(v) + ' inscr.'; });
+        if ($('chClics')) bars('chClics', b, ['clics'], ['#3d6a8e'], function (v) { return Math.round(v) + ' clic' + (v >= 2 ? 's' : ''); });
         var tot = D.moyens.reduce(function (a, m) { return a + m.n; }, 0), C = ['#2f3d45', '#3d6a8e', '#8aa4b8', '#c9d3db', '#6b7780', '#b9a96b', '#d9c99a'];
         if (!tot) { $('moy').innerHTML = '<div class="fd-empty" style="width:100%"><b>Aucune inscription</b>sur cette période.</div>'; }
         else {
@@ -646,8 +666,21 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     document.addEventListener('click', function (e) { if (!e.target.closest('#expMenu')) { $('expMenu').classList.remove('open'); mb.setAttribute('aria-expanded', 'false'); } });
     $('expMenu').addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('expMenu').classList.remove('open'); mb.focus(); } });
 
+    function renderClics() {
+        if (!$('pan-clics')) return;
+        var c = D.clics, u = 0, m = 0, v = c.prev ? Math.round((c.total - c.prev) / c.prev * 100) : null;
+        c.sejours.forEach(function (s) { u += s.uniques; m += s.mobile; });
+        kpi('clics', c.total.toLocaleString('fr-FR'), v === null ? (c.total ? '<span class="fd-d flat">nouveau</span> vs période préc.' : 'aucun clic sur la période')
+            : '<span class="fd-d ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'flat') + '">' + (v > 0 ? '▲ +' : v < 0 ? '▼ ' : '') + v + ' %</span> vs ' + c.prev.toLocaleString('fr-FR'));
+        kpi('clicsu', u.toLocaleString('fr-FR'), 'une fois par jour et par session');
+        kpi('clicsm', c.total ? Math.round(m / c.total * 100) + ' %' : '–', m + ' clic' + (m > 1 ? 's' : ''));
+        $('cBody').innerHTML = c.sejours.length ? c.sejours.map(function (s) {
+            return '<tr><td>' + esc(s.nom) + '</td><td class="mut">' + dfr(s.debut) + ' → ' + dfr(s.fin) + '</td><td class="num"><b>' + s.n + '</b></td><td class="num">' + s.uniques + '</td><td class="num">' + s.mobile + '</td><td class="mut">' + dfr(s.dernier.slice(0, 10)) + ' ' + s.dernier.slice(11, 16) + '</td></tr>';
+        }).join('') : '<tr><td colspan="6"><div class="fd-empty"><b>Aucun clic sur cette période</b>Ils apparaissent ici dès qu’un visiteur ouvre votre site depuis moncamp.fr.</div></td></tr>';
+    }
+
     function renderAll() {
-        renderKpis(); renderWf(); renderCharts(); renderOthers();
+        renderKpis(); renderWf(); renderCharts(); renderOthers(); renderClics();
         var sj = $('fSej').value, mo = $('fMoy').value;
         fill('fSej', D.filtres.sejours.map(function (s) { return [s.t, s.nom]; }), sj); sesOpts(); fill('fMoy', D.filtres.moyens.map(function (m) { return [m.k, m.l]; }), mo);
         T.sel = {}; table();

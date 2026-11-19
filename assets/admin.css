@@ -262,3 +262,4 @@ a.sort { color:inherit; } a.sort.on { color:var(--ink); }
 @media (max-width: 1024px) { .tsearch { width:100%; } .exp { margin-left:0; } }
 .diff pre { background:var(--soft); border-radius:8px; padding:8px; margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; }
 .spr { position:absolute; width:0; height:0; overflow:hidden; } .sitebar .logo { font-weight:800; font-size:19px; letter-spacing:-.02em; color:var(--ink); white-space:nowrap; } .sitebar .logo span { color:var(--accent); }
+.chart-svg { width:100%; height:auto; display:block; }
