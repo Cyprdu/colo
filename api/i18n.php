@@ -86,12 +86,12 @@ function mc_i18n_fmt(string $s): string {
     $s = preg_replace_callback('/(?<![\d,.])(\d{1,3}(?:[ \x{00A0}\x{202F}]\d{3})*)(?:,(\d{2}))?[ \x{00A0}\x{202F}]?€/u', fn($m) => '€' . preg_replace('/[ \x{00A0}\x{202F}]/u', ',', $m[1]) . (isset($m[2]) && $m[2] !== '' ? '.' . $m[2] : ''), $s);
     static $mois = null;
     $mois ??= array_combine(explode(',', mc_dict('fr')['months.re']), explode(',', mc_dict()['months.re']));
-    return preg_replace_callback('/\b(\d{1,2}(?:er)?) (' . implode('|', array_map('preg_quote', array_keys($mois))) . ')(?=[\s,.)–-]|$)/u', fn($m) => str_replace('er', '', $m[1]) . ' ' . $mois[$m[2]], $s);
+    return preg_replace_callback('/(?<![\p{L}\d])(?:(\d{1,2})(?:er)? )?(' . implode('|', array_map(fn($x) => preg_quote($x, '/'), array_keys($mois))) . ')(?=[\s,.)–-]|$)/u', fn($m) => ($m[1] !== '' ? $m[1] . ' ' : '') . $mois[$m[2]], $s);
 }
 
 function mc_i18n_pur(string $s): bool {
     $mois = implode('|', array_map(fn($m) => preg_quote($m, '/'), explode(',', mc_dict('fr')['months.re'])));
-    return preg_replace(['/' . $mois . '/u', '/[\d\s.,€–\/:()·h-]/u'], '', $s) === '';
+    return preg_replace(['/' . $mois . '/u', '/[\d\s.,€–→\/:()·h-]/u'], '', $s) === '';
 }
 
 function mc_i18n_pattern(string $k): ?string {

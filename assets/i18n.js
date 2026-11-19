@@ -2,7 +2,7 @@
     var T = window.MC_T || {}, P = [];
     var FR = 'janvier,février,mars,avril,mai,juin,juillet,août,septembre,octobre,novembre,décembre,janv.,févr.,avr.,juil.,sept.,oct.,nov.,déc.'.split(',');
     var EN = String(T['months.re'] || '').split(',');
-    var MOIS = new RegExp('(^|[^\\d])(\\d{1,2})(?:er)? (' + FR.map(function (m) { return m.replace('.', '\\.'); }).join('|') + ')(?=[\\s,.)–-]|$)', 'g');
+    var MOIS = new RegExp('(^|[^\\d])(?:(\\d{1,2})(?:er)? )?(' + FR.map(function (m) { return m.replace('.', '\\.'); }).join('|') + ')(?=[\\s,.)–-]|$)', 'g');
     var MOISX = new RegExp(FR.map(function (m) { return m.replace('.', '\\.'); }).join('|'), 'g');
     var EUR = /(^|[^\d,.])(\d{1,3}(?:\s\d{3})*)(?:,(\d{2}))?\s?€/g;
     Object.keys(T).forEach(function (k) {
@@ -16,7 +16,7 @@
     function norm(s) { return s.replace(/’/g, "'").replace(/\s+/g, ' ').trim(); }
     function fmt(s) {
         return s.replace(EUR, function (m, a, n, c) { return a + '€' + n.replace(/\s/g, ',') + (c ? '.' + c : ''); })
-                .replace(MOIS, function (m, a, d, mo) { return a + d + ' ' + (EN[FR.indexOf(mo)] || mo); });
+                .replace(MOIS, function (m, a, d, mo) { return a + (d ? d + ' ' : '') + (EN[FR.indexOf(mo)] || mo); });
     }
     function tr(s) {
         var k = norm(s);
@@ -26,7 +26,7 @@
             var m = k.match(P[i][0]);
             if (m) { var r = P[i][1]; P[i][2].forEach(function (n, j) { r = r.split(n).join(tr(m[j + 1]) || fmt(m[j + 1])); }); return r; }
         }
-        if (k.replace(MOISX, '').replace(/[\d\s.,€–\/:()·h-]/g, '') === '') { var f = fmt(k); if (f !== k) return f; }
+        if (k.replace(MOISX, '').replace(/[\d\s.,€–→\/:()·h-]/g, '') === '') { var f = fmt(k); if (f !== k) return f; }
         return null;
     }
     window.mct = function (s, v) { var r = typeof s === 'string' ? (tr(s) || s) : s; if (v) for (var x in v) r = String(r).split('{' + x + '}').join(v[x]); return r; };
