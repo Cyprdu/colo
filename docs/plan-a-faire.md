@@ -13,13 +13,13 @@ Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentair
 - [x] Anticiper les cas particuliers : options avancées repliées, formulaire long mais clair, aide « ? ».
 
 ## Lot 2 — Recherche et accueil (`index.php`, `partials/header.php`, `recherche.php`, `api/search_lib.php`)
-- [ ] Bandeau de recherche de l'accueil : plus fin, sapins proportionnés (modèle : site « Ma colo de confiance »).
-- [ ] Catégories de l'en-tête : déroulé au survol, clic sur une catégorie = recherche immédiate.
-- [ ] Localisation : bouton « Autour de moi » (géolocalisation) dans l'en-tête et la recherche.
-- [ ] Âge : liste des enfants + « Autre âge » saisissable, recherche possible sans enfant enregistré.
-- [ ] Recommandations : plus de diversité (rotation, catégories variées, éviter les répétitions entre carrousels).
-- [ ] Publicités dans les carrousels, discrètes (vérifier l'intégration AdSense existante).
-- [ ] Clic sur un séjour depuis l'accueil ou une liste : ouvrir la session la plus proche à venir.
+- [x] Bandeau de recherche de l'accueil : plus fin, sapins proportionnés (modèle : site « Ma colo de confiance »).
+- [x] Catégories de l'en-tête : déroulé au survol, clic sur une catégorie = recherche immédiate.
+- [x] Localisation : bouton « Autour de moi » (géolocalisation) dans l'en-tête et la recherche.
+- [x] Âge : liste des enfants + « Autre âge » saisissable, recherche possible sans enfant enregistré.
+- [x] Recommandations : plus de diversité (rotation, catégories variées, éviter les répétitions entre carrousels).
+- [x] Publicités dans les carrousels, discrètes (vérifier l'intégration AdSense existante).
+- [x] Clic sur un séjour depuis l'accueil ou une liste : ouvrir la session la plus proche à venir.
 
 ## Lot 3 — Page séjour (`camp_details.php`)
 - [ ] Carte plus petite, retirer le bandeau d'attribution OpenStreetMap si la licence le permet (sinon attribution discrète).
