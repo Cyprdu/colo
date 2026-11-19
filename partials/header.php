@@ -104,7 +104,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     </style>
     <?php endif; ?>
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -140,26 +140,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         #history-list::-webkit-scrollbar-track { background: #f1f1f1; }
         #history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
-<link rel="manifest" href="/manifest.json">
-
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="moncamp.fr">
-<link rel="apple-touch-icon" href="/icon-192.png">
-
-<meta name="theme-color" content="#ffffff">
-
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/service-worker.js').then(function(registration) {
-      console.log('ServiceWorker registration successful');
-    }, function(err) {
-      console.log('ServiceWorker registration failed: ', err);
-    });
-  });
-}
-</script>
+    <?php include __DIR__ . '/pwa.php'; ?>
     <?php if (!$ads_enabled): ?><script defer src="/assets/consent.js?v=1"></script><?php endif; ?>
     <link rel="stylesheet" href="/assets/ds.css?v=9">
     <script src="/assets/ui.js?v=3"></script>

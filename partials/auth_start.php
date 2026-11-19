@@ -78,8 +78,7 @@ if (!function_exists('auth_facet')) { function auth_facet(float $px, float $py, 
     <title><?= htmlspecialchars($auth_title ?? 'moncamp.fr') ?></title>
     <meta name="robots" content="noindex, follow">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#26343b">
+    <?php $pwa_theme = '#141d22'; include __DIR__ . '/pwa.php'; ?>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

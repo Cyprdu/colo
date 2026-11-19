@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "moncamp.fr : colonies et séjours pour enfants",
+  "short_name": "moncamp",
+  "description": "Trouvez, réservez et suivez les colonies et séjours de vos enfants.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "categories": ["education", "lifestyle", "travel"],
+  "icons": [
+    { "src": "/assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Rechercher un séjour", "short_name": "Rechercher", "url": "/recherche?source=pwa", "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mes réservations", "short_name": "Réservations", "url": "/reservations?source=pwa", "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Messagerie", "url": "/messagerie?source=pwa", "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mes enfants", "short_name": "Enfants", "url": "/children?source=pwa", "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

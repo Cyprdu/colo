@@ -82,6 +82,17 @@
         <button type="button" id="mc-c-accepte" class="ds-btn justify-center">Tout accepter</button>
     </div>
 </div>
+<div id="mc-install" hidden role="dialog" aria-labelledby="mc-install-t" class="fixed z-[90] left-3 right-3 sm:left-auto sm:right-4 sm:w-[400px] rounded-2xl bg-white text-[#26343b] border border-[#e5e7eb] shadow-2xl p-3 pl-4 flex items-center gap-3" style="bottom:calc(12px + env(safe-area-inset-bottom))">
+    <style>#mc-install[hidden], #mc-install [hidden] { display: none !important; }</style>
+    <img src="/assets/icons/icon-192.png" alt="" width="44" height="44" class="w-11 h-11 rounded-xl flex-none">
+    <div class="min-w-0 flex-1">
+        <p id="mc-install-t" class="text-[14px] font-bold leading-tight">Installer l’application</p>
+        <p data-android class="text-[12.5px] text-[#6b7780] leading-snug mt-0.5">Accès direct depuis l’écran d’accueil.</p>
+        <p data-ios class="text-[12.5px] text-[#6b7780] leading-snug mt-0.5">Touchez <i class="fa-solid fa-arrow-up-from-bracket" aria-label="Partager"></i> puis « Sur l’écran d’accueil ».</p>
+    </div>
+    <button type="button" data-install class="ds-btn ds-btn-sm flex-none">Installer</button>
+    <button type="button" data-close class="ds-iconbtn flex-none" aria-label="Plus tard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div>
 <div id="soon-toast" role="status" aria-live="polite" class="fixed left-1/2 bottom-8 z-[100] -translate-x-1/2 translate-y-4 opacity-0 pointer-events-none transition-all duration-300 rounded-full bg-[#26343b] px-6 py-3 text-[14px] font-semibold text-white shadow-2xl">Bientôt disponible ;)</div>
 <script>
 (function () {
