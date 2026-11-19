@@ -188,9 +188,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                     </label>
                     <div class="flex items-center gap-2">
                         <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value min-w-0">
-                        <button type="button" id="hero-near" class="flex-none inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#eef2f4] hover:bg-[#e2e8ec] text-[12.5px] font-bold text-[#3d6a8e] whitespace-nowrap transition-colors">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg>Autour de moi
-                        </button>
+                        <button type="button" id="hero-near" title="Autour de moi" aria-label="Autour de moi" class="flex-none inline-flex items-center justify-center w-8 h-8 rounded-full text-[#8a959d] hover:text-[#3d6a8e] hover:bg-[#eef2f4] transition-colors"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg></button>
                     </div>
                     <input type="hidden" name="autour" value="1" id="hero-autour" disabled>
                 </div>

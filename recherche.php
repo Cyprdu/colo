@@ -56,9 +56,9 @@ $q = trim((string)($_GET['name'] ?? ''));
     .chk:hover { background:#f6f8fa; }
     .chk input { width:17px; height:17px; accent-color:var(--ink); flex:none; }
     .tlist { max-height:220px; overflow-y:auto; scrollbar-width:thin; }
-    .near-btn { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:var(--accent); font-size:13.5px; font-weight:700; transition:all .15s ease; }
-    .near-btn:hover { border-color:#a9b8c6; }
-    .near-btn[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:#fff; }
+    .near-btn { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 2px; background:none; border:0; color:#6b7780; font-size:13px; font-weight:600; transition:color .15s ease; }
+    .near-btn:hover { color:var(--accent); }
+    .near-btn[aria-pressed="true"] { color:var(--accent); }
     /* résultats */
     .rgrid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:22px 16px; }
     @media (min-width:768px) { .rgrid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:28px 20px; } }
@@ -123,7 +123,7 @@ $q = trim((string)($_GET['name'] ?? ''));
                 <div class="fsec">
                     <p class="ftitle">Localisation</p>
                     <input id="f-city" type="text" class="finput" name="city" placeholder="Ville ou code postal" autocomplete="off" aria-label="Ville ou code postal">
-                    <button type="button" id="f-near" class="near-btn mt-2" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>Autour de moi</span></button>
+                    <button type="button" id="f-near" class="near-btn mt-1" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg><span>Utiliser ma position</span></button>
                     <label id="near-box" class="hidden mt-2 block text-[12px] font-semibold text-[#6b7780]">Dans un rayon de
                         <select id="f-rayon" class="finput mt-1"><option value="10">10 km</option><option value="25">25 km</option><option value="50" selected>50 km</option><option value="100">100 km</option><option value="200">200 km</option></select>
                     </label>
@@ -514,7 +514,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     function setNear(pos) {
         near = pos;
         var on = !!pos, b = $('f-near'), so = $('f-sort'), d = so.querySelector('[value="distance"]');
-        b.setAttribute('aria-pressed', on); b.querySelector('span').textContent = on ? 'Autour de moi (activé)' : 'Autour de moi';
+        b.setAttribute('aria-pressed', on); b.querySelector('span').textContent = on ? 'Position utilisée' : 'Utiliser ma position';
         $('near-box').classList.toggle('hidden', !on);
         d.hidden = d.disabled = !on;
         if (on && so.value === 'relevance') so.value = 'distance';
