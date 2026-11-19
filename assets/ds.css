@@ -283,3 +283,17 @@ body { padding-left: var(--sal); padding-right: var(--sar); }
   .mc-hit::after, :is(main, .ds-page) > a.inline-flex:first-child::after, main > header > a.inline-flex:first-child::after, .mk-back::after, .sec-more::after, .ds-help > summary::after, .fav-btn::after, .dbh::after, .gm-help::after { content: ""; position: absolute; inset: -10px; }
 }
 @media (prefers-reduced-motion: reduce) { #mobile-menu, #mobile-menu.translate-x-full, .ds-drawer, .ds-drawer:not(.open) { transition: none; } }
+
+/* ---------- tableaux en cartes sur téléphone (<table class="ds-cards">, libellés posés par assets/ui.js) ---------- */
+@media (max-width: 767px) {
+  table.ds-cards { min-width: 0 !important; width: 100%; border: 0; }
+  .ds-cards > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .ds-cards > tbody, .ds-cards > tbody > tr { display: block; }
+  .ds-cards > tbody > tr { margin: 0 0 12px; padding: 4px 14px; border: 1px solid var(--ds-line); border-radius: 16px; background: #fff; }
+  .ds-cards > tbody > tr > td:not(.hidden) { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0 !important; border: 0 !important; text-align: right !important; max-width: none !important; white-space: normal !important; }
+  .ds-cards > tbody > tr > td + td { border-top: 1px solid var(--ds-soft) !important; }
+  .ds-cards > tbody > tr > td::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 12px; font-weight: 700; color: var(--ds-muted); }
+  .ds-cards > tbody > tr > td[data-label=""]::before { display: none; }
+  .ds-cards > tbody > tr > td[colspan] { display: block; text-align: center !important; }
+  .ds-cards > tbody > tr > td > * { min-width: 0; }
+}

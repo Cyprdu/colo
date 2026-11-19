@@ -202,7 +202,7 @@ function drawList() {
     const td = (h, c = '') => `<td class="px-4 py-3 align-middle ${c}">${h}</td>`;
     const open = (k, v, l) => `data-open="${esc(k)}:${esc(v)}" tabindex="0" role="button" aria-label="Ouvrir le dossier de ${esc(l)}"`;
     if (filt.type === 'enfants') {
-        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Enfant')}${th('Âge')}${th('Parent', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}${th('')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(i => {
+        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm ds-cards"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Enfant')}${th('Âge')}${th('Parent', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}${th('')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(i => {
             const st = stEnfant(i), a = age(i.date_naissance), sante = [i.infos_sante, i.allergies].some(x => !aucun(x)), m = moyen(i);
             return `<tr class="gm-tr ${i.expire ? 'opacity-60' : ''}" ${open('r', i.reservation_token, i.prenom + ' ' + i.nom)}>
               ${td(`<span class="font-bold text-[#26343b]">${esc(i.prenom)} ${esc(i.nom)}</span>${sante ? ` <span class="inline-block align-middle text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#f8f5ea] text-[#5b4a1c] border border-[#ebe3c8]" title="À consulter dans le dossier : ${!aucun(i.allergies) ? 'allergies' : 'informations de santé'} renseignées par les parents">${!aucun(i.allergies) ? 'Allergie' : 'Santé'}</span>` : ''}`)}
@@ -215,7 +215,7 @@ function drawList() {
               ${td(dosLien(i), 'text-right')}</tr>`;
         }).join('')}</tbody></table></div>`;
     } else {
-        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Animateur')}${th('Âge')}${th('Contact', 'hidden md:table-cell')}${th('BAFA', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}${th('')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(a => {
+        $('list').innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm ds-cards"><thead class="bg-[#f6f8f9] border-y border-[#e5e7eb]"><tr>${th('Animateur')}${th('Âge')}${th('Contact', 'hidden md:table-cell')}${th('BAFA', 'hidden md:table-cell')}${th('Session', 'hidden lg:table-cell')}${th('Tarif', 'hidden lg:table-cell')}${th('Paiement')}${th('Statut')}${th('')}</tr></thead><tbody class="divide-y divide-[#f1f3f5]">${L.map(a => {
             const [s, p] = stAnim(a);
             return `<tr class="gm-tr" ${open('a', a.token, a.prenom + ' ' + a.nom)}>
               ${td(`<span class="font-bold text-[#26343b]">${esc(a.prenom)} ${esc(a.nom)}</span>`)}
@@ -251,7 +251,7 @@ const dosLien = i => `<a class="ds-btn ds-btn-light ds-btn-sm whitespace-nowrap"
 const telL = t => t ? `<a class="underline" href="tel:${esc(String(t).replace(/[^0-9+]/g, ''))}">${esc(t)}</a>` : '—';
 function entete(titre, k, outils = '') { return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><h2 class="text-lg font-extrabold text-[#26343b]">${titre}${help(k)}</h2><div class="flex flex-wrap items-center gap-2">${sessSel()}${outils}</div></div>`; }
 function tbl(heads, rows) {
-    return `<div class="ds-card overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f6f8f9] border-b border-[#e5e7eb]"><tr>${heads.map(h => `<th scope="col" class="px-4 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wider text-[#6b7780] whitespace-nowrap">${h}</th>`).join('')}</tr></thead>
+    return `<div class="ds-card overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm ds-cards"><thead class="bg-[#f6f8f9] border-b border-[#e5e7eb]"><tr>${heads.map(h => `<th scope="col" class="px-4 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wider text-[#6b7780] whitespace-nowrap">${h}</th>`).join('')}</tr></thead>
       <tbody class="divide-y divide-[#f1f3f5]">${rows.length ? rows.map(r => '<tr>' + r.map(c => `<td class="px-4 py-3 align-top">${c ?? ''}</td>`).join('') + '</tr>').join('') : `<tr><td colspan="${heads.length}" class="p-8 text-center text-[#6b7780]">Rien à afficher pour cette sélection.</td></tr>`}</tbody></table></div></div>`;
 }
 const barre = (v, max) => `<div class="h-2 bg-[#f1f3f5] rounded-full overflow-hidden"><div class="h-2 bg-[#2f3d45] rounded-full" style="width:${max ? Math.round(v / max * 100) : 0}%"></div></div>`;

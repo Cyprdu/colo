@@ -151,3 +151,20 @@
     function go() { wrap(document); if (window.MutationObserver) new MutationObserver(function (m) { m.forEach(function (r) { r.addedNodes.forEach(function (n) { if (n.nodeType === 1) wrap(n.tagName === 'TABLE' ? { querySelectorAll: function () { return [n]; } } : n); }); }); }).observe(document.body, { childList: true, subtree: true }); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
 })();
+
+(function () {
+    function label(t) {
+        var h = [].map.call(t.querySelectorAll(':scope > thead th'), function (th) { return th.textContent.replace(/\s+/g, ' ').trim(); });
+        [].forEach.call(t.querySelectorAll(':scope > tbody > tr'), function (tr) {
+            var i = 0;
+            [].forEach.call(tr.children, function (td) { if (!td.hasAttribute('data-label')) td.setAttribute('data-label', h[i] || ''); i += td.colSpan || 1; });
+        });
+    }
+    var queued = false;
+    function scan() { queued = false; [].forEach.call(document.querySelectorAll('table.ds-cards'), label); }
+    function go() {
+        scan();
+        if (window.MutationObserver) new MutationObserver(function () { if (!queued) { queued = true; requestAnimationFrame(scan); } }).observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();

@@ -107,7 +107,7 @@ function pct($v) { return $v === null ? '-' : number_format($v * 100, 1, ',', ' 
     <section class="mk-section" style="margin-top:28px">
         <h2 class="text-[18px] font-extrabold text-[#26343b]">Ce que les familles ont tapé pour vous trouver</h2>
         <div class="mk-table-wrap" style="margin-top:12px">
-            <table class="mk-table" style="min-width:420px">
+            <table class="mk-table ds-cards" style="min-width:420px">
                 <thead><tr><th>Terme recherché</th><th class="num">Affichages de vos séjours</th><th class="num">Visites</th><th class="num">Taux</th></tr></thead>
                 <tbody>
                 <?php foreach ($termes as $t): ?>
@@ -124,7 +124,7 @@ function pct($v) { return $v === null ? '-' : number_format($v * 100, 1, ',', ' 
     <section class="mk-section" style="margin-top:28px">
         <h2 class="text-[18px] font-extrabold text-[#26343b]">Par séjour</h2>
         <div class="mk-table-wrap" style="margin-top:12px">
-            <table class="mk-table" style="min-width:900px">
+            <table class="mk-table ds-cards" style="min-width:900px">
                 <thead><tr><th>Séjour</th><th class="num">Impressions</th><th class="num">Visites</th><th class="num">Taux</th><th class="num">Inscriptions</th><th class="num">Inscr. en boost</th><th class="num">Points</th><th class="num">Coût / inscr.</th><th>Boosts</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($camps as $c): ?>
