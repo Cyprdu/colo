@@ -33,6 +33,7 @@ $traitements = [
 <main class="flex-1 w-full max-w-3xl mx-auto px-5 sm:px-6 py-14">
     <h1 class="text-3xl font-extrabold text-[#26343b] mb-2">Informations légales</h1>
     <p class="text-[#6b7780] mb-6"><?= $s('nom_commercial') ?>, plateforme de mise en relation entre familles, animateurs et organisateurs de séjours. Dernière mise à jour : <?= $s('maj') ?>.</p>
+    <?php if (mc_lang() !== 'fr'): ?><p class="mb-6 rounded-xl bg-[#f8f5ea] border border-[#ebe3c8] px-4 py-3 text-[14px] text-[#5b4a1c]">Version anglaise fournie pour information : seule la version française fait foi.</p><?php endif; ?>
 
     <nav class="mb-12 flex flex-wrap gap-2 text-sm font-semibold" aria-label="Sommaire">
         <?php foreach (['mentions' => 'Mentions légales', 'cgu' => 'CGU', 'cgv' => 'Conditions de vente', 'mediation' => 'Médiation', 'confidentialite' => 'Confidentialité', 'mineurs' => 'Mineurs et santé', 'cookies' => 'Cookies', 'accessibilite' => 'Accessibilité'] as $id => $t): ?>
