@@ -65,7 +65,7 @@ try {
     $sql = "
         SELECT 
             c.*, 
-            o.nom as orga_nom, o.slug as orga_slug, 
+            o.nom as orga_nom, o.slug as orga_slug, o.logo_url as orga_logo,
             o.email as orga_email,
             o.web as orga_website,  /* <-- C'est ici que c'était bloqué */
             o.user_id as organisateur_user_id,
@@ -127,6 +127,8 @@ try {
         require_once 'etapes.php';
         $camp['etapes'] = !empty($camp['itinerant']) ? etapes_du_camp($pdo, (int)$camp['id']) : [];
         unset($camp['organisateur_id']); // jamais d'id numérique d'organisme vers le navigateur
+        $logo = str_replace('\\', '/', trim((string)$camp['orga_logo']));
+        $camp['orga_logo'] = preg_match('#^(https?://[^\s"<>]+|/?[\w][\w./-]*\.(png|jpe?g|webp|gif|svg))$#i', $logo) && !str_contains($logo, '..') ? $logo : null;
         echo json_encode($camp);
     } else {
         http_response_code(404);

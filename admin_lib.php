@@ -322,6 +322,7 @@ function adm_nav(): array {
             ['admin_list.php?e=camps', 'tent', 'Séjours', 'sejour', 'camps.read'],
             ['admin_list.php?e=organismes', 'building', 'Organismes', '', 'orgas.read'],
             ['admin_list.php?e=boosts', 'bolt', 'Boosts', '', 'camps.read'],
+            ['admin_clics.php', 'external', 'Clics vers les organismes', '', 'partenaires.read'],
         ],
         'Clients' => [
             ['admin_list.php?e=users', 'users', 'Utilisateurs', '', 'users.read'],
@@ -388,7 +389,7 @@ function adm_head(string $title, string $active = '', array $crumbs = []): void 
        . '<title>' . h($title) . ' · Administration moncamp.fr</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" href="/favico.png">'
        . '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
        . '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
-       . '<link rel="stylesheet" href="assets/admin.css?v=10"></head><body>' . adm_sprite() . adm_site_bar($todo, $unread)
+       . '<link rel="stylesheet" href="assets/admin.css?v=11"></head><body>' . adm_sprite() . adm_site_bar($todo, $unread)
        . '<aside class="side" id="side" aria-label="Administration"><nav>';
     $best = ''; $bestLen = 0;
     foreach (adm_nav() as $items) foreach ($items as $it) if (strpos($active, $it[0]) === 0 && strlen($it[0]) > $bestLen) { $best = $it[0]; $bestLen = strlen($it[0]); }

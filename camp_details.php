@@ -69,12 +69,20 @@ require_once 'partials/header3.php';
 <style>
     :root { --ink:#26343b; --accent:#3d6a8e; --accent-dark:#2d5170; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
     .cd-h2 { font-size:20px; font-weight:700; color:var(--ink); margin-bottom:14px; }
-    .cd-chip { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:9999px; background:#f1f3f5; color:#3b4a54; font-size:13.5px; font-weight:600; }
-    .cd-chip svg { flex:none; color:#64748b; }
-    .cd-icon-btn { display:inline-flex; align-items:center; gap:8px; height:44px; padding:0 16px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:14px; font-weight:600; transition:background .15s ease, border-color .15s ease, color .15s ease; }
-    .cd-icon-btn:hover { background:#f1f3f5; border-color:#cfd5db; }
-    .cd-icon-btn.is-fav { color:#e5484d; border-color:#f3c5c7; background:#fff5f5; }
-    .cd-icon-btn.is-fav svg { fill:#e5484d; }
+    .cd-meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; color:#3b4a54; font-size:15px; font-weight:600; }
+    .cd-meta li { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+    .cd-meta li[hidden] { display:none; }
+    .cd-meta svg { flex:none; color:#64748b; }
+    .cd-meta .cd-stat { color:var(--muted); font-weight:500; font-size:14px; }
+    .cd-meta .cd-stat svg { color:#94a3b8; }
+    .cd-actions { display:flex; gap:8px; flex:none; }
+    .cd-act { display:inline-flex; align-items:center; justify-content:center; gap:7px; height:42px; padding:0 15px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:14px; font-weight:600; white-space:nowrap; transition:background .15s ease, border-color .15s ease, color .15s ease; }
+    .cd-act:hover { background:#f1f3f5; border-color:#cfd5db; }
+    .cd-act:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .cd-act svg { flex:none; }
+    .cd-act.is-fav { color:#e5484d; border-color:#f3c5c7; background:#fff5f5; }
+    .cd-act.is-fav svg { fill:#e5484d; }
+    @media (max-width:640px) { .cd-meta { gap:8px 16px; font-size:14px; } .cd-actions { width:100%; } .cd-act { flex:1 1 0; padding:0 10px; min-width:0; } }
     .cd-card { background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 8px 30px rgba(38,52,59,.07); }
     .cd-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:15px 20px; border-radius:14px; background:#2f3d45; color:#fff; font-weight:700; font-size:16px; transition:background .2s ease, transform .15s ease; text-align:center; }
     .cd-btn:hover { background:#1f2a30; transform:translateY(-1px); }
@@ -95,6 +103,10 @@ require_once 'partials/header3.php';
     .is-switching { opacity:.55; pointer-events:none; transition:opacity .15s ease; }
     .skeleton { background:linear-gradient(90deg,#eceef1 25%,#f6f7f9 37%,#eceef1 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; }
     @keyframes sk { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
+    .cd-map { height:200px; border-radius:20px; overflow:hidden; border:1px solid var(--line); background:#eef1f3; z-index:0; }
+    @media (max-width:640px) { .cd-map { height:170px; } }
+    .cd-map .leaflet-control-attribution { font-size:10px; line-height:1.4; padding:1px 6px; background:rgba(255,255,255,.75); border-radius:8px 0 0 0; }
+    .cd-map .leaflet-control-attribution a { color:#4b5a63; text-decoration:none; }
     .fade-in-anim { animation:fadeIn .4s ease-out; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 </style>
@@ -110,42 +122,39 @@ require_once 'partials/header3.php';
 
     <div id="camp-content" class="hidden fade-in-anim">
 
-        <!-- Barre du haut -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <a href="recherche" id="back-link" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+        <header class="mb-6">
+            <a href="recherche" id="back-link" class="inline-flex items-center gap-2 mb-4 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Retour
             </a>
-            <div class="flex flex-wrap items-center gap-2">
-                <button id="btn-share" type="button" class="cd-icon-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0-12L8 7m4-4l4 4M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <span id="share-label">Partager</span>
-                </button>
-                <?php if ($is_logged_in): ?>
-                <button id="btn-favorite" type="button" class="cd-icon-btn" aria-pressed="false">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-                    Favori
-                </button>
-                <?php endif; ?>
-                <button id="btn-calendar" type="button" class="cd-icon-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    Ajouter au calendrier
-                </button>
-            </div>
-        </div>
-
-        <!-- Titre -->
-        <div class="mb-6">
-            <div id="hero-badges" class="flex flex-wrap gap-2 mb-3"></div>
+            <div id="hero-badges" class="flex flex-wrap gap-2 mb-3 empty:hidden"></div>
             <h1 id="hero-title" class="text-[28px] md:text-[38px] leading-tight font-extrabold text-[#26343b]"></h1>
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2"/></svg><span id="hero-location"></span></span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="hero-dates"></span></span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="hero-age-tag"></span></span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/></svg><span id="stats-views">0</span> vues</span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span id="stats-likes">0</span> favoris</span>
+            <div class="mt-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <ul class="cd-meta" aria-label="En bref">
+                    <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2"/></svg><span class="sr-only">Lieu : </span><span id="hero-location"></span></li>
+                    <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">Dates : </span><span id="hero-dates"></span></li>
+                    <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="sr-only">Âges : </span><span id="hero-age-tag"></span></li>
+                    <li class="cd-stat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/></svg><span><span id="stats-views">0</span> vues</span></li>
+                    <li class="cd-stat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span><span id="stats-likes">0</span> favoris</span></li>
+                </ul>
+                <div class="cd-actions">
+                    <button id="btn-share" type="button" class="cd-act">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0-12L8 7m4-4l4 4M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span id="share-label">Partager</span>
+                    </button>
+                    <?php if ($is_logged_in): ?>
+                    <button id="btn-favorite" type="button" class="cd-act" aria-pressed="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+                        <span>Favori</span>
+                    </button>
+                    <?php endif; ?>
+                    <button id="btn-calendar" type="button" class="cd-act">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2zM12 12v5m-2.5-2.5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span class="sm:hidden">Calendrier</span><span class="hidden sm:inline">Ajouter au calendrier</span>
+                    </button>
+                </div>
             </div>
-        </div>
+        </header>
 
         <!-- Image -->
         <div class="relative rounded-3xl overflow-hidden bg-[#e5e7eb]" style="width:100%; height:clamp(220px, 34vw, 460px)">
@@ -198,9 +207,7 @@ require_once 'partials/header3.php';
                     <div id="route" class="mt-4 rounded-2xl bg-[#f8f5ea] p-5 hidden"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Parcours itinérant</p><ol id="route-list"></ol></div>
                     <div id="info-extra" class="mt-4 space-y-4 hidden"></div>
                     <div id="map-box" class="mt-4 hidden">
-                        <div class="rounded-3xl overflow-hidden border border-[#e5e7eb]">
-                            <iframe id="map-frame" title="Carte du lieu du séjour" class="w-full block" style="height:260px;border:0" loading="lazy" referrerpolicy="no-referrer"></iframe>
-                        </div>
+                        <div id="map" class="cd-map" role="region" aria-label="Carte du lieu du séjour"></div>
                         <p class="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px] text-[#6b7780]"><span id="map-note"></span><a id="map-link" href="#" target="_blank" rel="noopener noreferrer" class="font-semibold text-[#3d6a8e] hover:underline">Agrandir la carte</a></p>
                     </div>
                 </section>
@@ -245,7 +252,7 @@ require_once 'partials/header3.php';
                     <div id="orga-card" class="cd-card p-6">
                         <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Organisé par</p>
                         <div class="flex items-center gap-4 mb-5">
-                            <div class="w-14 h-14 rounded-full bg-[#3a4852] text-white flex items-center justify-center text-[22px] font-bold flex-none"><span id="orga-initial">?</span></div>
+                            <div id="orga-avatar" class="w-14 h-14 rounded-2xl bg-[#3a4852] text-white flex items-center justify-center text-[22px] font-bold flex-none overflow-hidden"><img id="orga-logo" alt="" class="w-full h-full object-contain p-1" hidden><span id="orga-initial">?</span></div>
                             <p id="orga-name" class="font-bold text-[#26343b] text-[17px] leading-snug"></p>
                         </div>
                         <div id="contact-container" class="space-y-3"></div>
@@ -290,7 +297,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const loader = document.getElementById('loader');
     const content = document.getElementById('camp-content');
     const $ = id => document.getElementById(id);
-    const PAY = <?= json_encode(array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
+    const PAY = <?= json_encode(['carte' => ['label' => 'Carte bancaire', 'logo' => implode('', array_map(fn($i) => '<span class="w-11 block">' . $i . '</span>', options_logos_carte()))]] + array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     const HEB = <?= json_encode(HEBERGEMENTS, JSON_UNESCAPED_UNICODE) ?>;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
@@ -343,6 +350,29 @@ document.addEventListener('DOMContentLoaded', async function () {
     let current = null;               // session affichée
     let descReady = false;
 
+    let leafletP = null, map = null, pin = null;
+    function loadLeaflet() {
+        if (!leafletP) leafletP = new Promise((ok, ko) => {
+            const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', integrity: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=', crossOrigin: '' });
+            const js = Object.assign(document.createElement('script'), { src: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', integrity: 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=', crossOrigin: '', onload: () => ok(window.L), onerror: ko });
+            document.head.append(css, js);
+        });
+        return leafletP;
+    }
+    function showMap(la, lo, z) {
+        loadLeaflet().then(L => {
+            if (!map) {
+                map = L.map('map', { scrollWheelZoom: false, zoomControl: true });
+                map.attributionControl.setPrefix(false);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>' }).addTo(map);
+                pin = L.circleMarker([la, lo], { radius: 9, color: '#fff', weight: 3, fillColor: '#3d6a8e', fillOpacity: 1 }).addTo(map);
+            }
+            map.invalidateSize();
+            map.setView([la, lo], z);
+            pin.setLatLng([la, lo]);
+        }).catch(() => $('map-box').classList.add('hidden'));
+    }
+
     // ------------------------------------------------------------
     // Rendu de la session affichée (appelé au chargement ET à chaque changement de session)
     // ------------------------------------------------------------
@@ -354,6 +384,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         $('hero-title').textContent = camp.nom;
         $('hero-location').textContent = camp.ville || '';
+        $('hero-location').parentNode.hidden = !camp.ville;
         $('hero-dates').textContent = dateStr;
         $('hero-age-tag').textContent = `${camp.age_min} – ${camp.age_max} ans`;
         $('stats-views').textContent = camp.vues || 0;
@@ -404,7 +435,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (grid) box.push(`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${grid}</div>`);
             const pay = c => c === 'autre' && camp.paiement_autre ? { label: camp.paiement_autre, logo: camp.paiement_autre_logo ? `<img src="${esc(camp.paiement_autre_logo)}" alt="" style="width:100%;height:30px;object-fit:contain">` : PAY.autre.logo } : PAY[c];
             const pays = String(camp.moyens_paiement || '').split(',').filter(c => PAY[c]);
-            if (pays.length) box.push(`<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-3">Moyens de paiement acceptés</p><div class="flex flex-wrap gap-3">${pays.map(c => `<span class="inline-flex items-center gap-2 bg-white rounded-xl border border-[#e5e7eb] pr-3"><span class="w-12 block">${pay(c).logo}</span><span class="text-[13px] font-semibold text-[#26343b]">${esc(pay(c).label)}</span></span>`).join('')}</div>${camp.instructions_paiement ? `<p class="mt-3 text-[14px] text-[#3b4a54] whitespace-pre-line">${esc(camp.instructions_paiement)}</p>` : ''}</div>`);
+            if (pays.length) box.push(`<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-3">Moyens de paiement acceptés</p><ul class="flex flex-wrap gap-2.5">${pays.map(c => `<li class="inline-flex flex-wrap items-center gap-2.5 bg-white rounded-xl border border-[#e5e7eb] p-1.5 pr-3"><span class="flex gap-1">${c === 'carte' ? pay(c).logo : `<span class="w-12 block">${pay(c).logo}</span>`}</span><span class="text-[13px] font-semibold text-[#26343b]">${esc(pay(c).label)}</span></li>`).join('')}</ul>${camp.instructions_paiement ? `<p class="mt-3 text-[14px] text-[#3b4a54] whitespace-pre-line">${esc(camp.instructions_paiement)}</p>` : ''}</div>`);
             $('info-extra').innerHTML = box.join(''); $('info-extra').classList.toggle('hidden', !box.length);
         })();
         if (camp.video_url) {
@@ -417,13 +448,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         // Carte OpenStreetMap centrée sur le lieu exact de la session choisie (repli : la ville ; sinon pas de carte)
         const mapBox = $('map-box');
         if (camp.lat != null && camp.lng != null) {
-            const la = Number(camp.lat), lo = Number(camp.lng), d = Number(camp.geo_precis) ? 0.004 : 0.04;
-            const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${(lo - d * 1.6).toFixed(6)},${(la - d).toFixed(6)},${(lo + d * 1.6).toFixed(6)},${(la + d).toFixed(6)}&layer=mapnik&marker=${la.toFixed(6)},${lo.toFixed(6)}`;
-            if ($('map-frame').getAttribute('src') !== mapSrc) $('map-frame').src = mapSrc;
-            $('map-link').href = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${Number(camp.geo_precis) ? 16 : 13}/${la}/${lo}`;
+            const la = Number(camp.lat), lo = Number(camp.lng), z = Number(camp.geo_precis) ? 15 : 12;
+            $('map-link').href = `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${z + 1}/${la}/${lo}`;
             $('map-note').textContent = Number(camp.geo_precis) ? '' : 'Position approximative (centre de la ville).';
             mapBox.classList.remove('hidden');
-        } else { mapBox.classList.add('hidden'); $('map-frame').removeAttribute('src'); }
+            showMap(la, lo, z);
+        } else { mapBox.classList.add('hidden'); }
 
         // Carte de réservation
         $('card-price').textContent = `${fmtPrice(camp.prix)} €`;
@@ -444,7 +474,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const places = camp.places_restantes || 0;
         let cta = '';
         if (camp.lien_externe) {
-            cta = `<a href="${esc(camp.lien_externe)}" target="_blank" rel="noopener" class="cd-btn">Réserver ma place
+            cta = `<a href="go/${encodeURIComponent(camp.token)}" target="_blank" rel="nofollow noopener" class="cd-btn">Réserver ma place
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>`;
         } else if (camp.inscription_en_ligne == 1 && places > 0) {
             cta = isLoggedIn
@@ -472,6 +502,13 @@ document.addEventListener('DOMContentLoaded', async function () {
             a.textContent = camp.orga_nom || ''; $('orga-name').textContent = ''; $('orga-name').appendChild(a);
         }
         $('orga-initial').textContent = camp.orga_nom ? camp.orga_nom.charAt(0).toUpperCase() : '?';
+        const logo = $('orga-logo'), av = $('orga-avatar'), avatar = on => {
+            logo.hidden = !on; $('orga-initial').hidden = on;
+            av.classList.toggle('bg-[#3a4852]', !on); av.classList.toggle('bg-white', on); av.classList.toggle('border', on); av.classList.toggle('border-[#e5e7eb]', on);
+        };
+        logo.onerror = () => avatar(false);
+        if (camp.orga_logo) { logo.alt = 'Logo de ' + (camp.orga_nom || "l'organisme"); if (logo.getAttribute('src') !== camp.orga_logo) logo.src = camp.orga_logo; avatar(true); }
+        else { logo.removeAttribute('src'); avatar(false); }
         const contact = $('contact-container');
         contact.innerHTML = '';
         if (camp.organisateur_user_id) {

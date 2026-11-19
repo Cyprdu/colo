@@ -56,21 +56,32 @@ function options_ensure(PDO $pdo): void {
     $done = true;
 }
 
-/** Moyens de paiement : code => [libellé, précision, logo SVG]. La carte est gérée par le site, les autres par l'organisme. */
+/** Logo d'un moyen de paiement (assets/img/paiement, origines et licences dans SOURCES.md), cadre blanc 48 × 30 */
+function options_logo(string $f, string $alt = ''): string {
+    return '<img src="/assets/img/paiement/' . $f . '.svg" alt="' . htmlspecialchars($alt, ENT_QUOTES) . '" width="48" height="30" loading="lazy" decoding="async"'
+         . ' style="display:block;box-sizing:border-box;width:100%;max-width:48px;height:auto;aspect-ratio:8/5;padding:4px 5px;object-fit:contain;background:#fff;border:1px solid #d3dbe0;border-radius:5px">';
+}
+
+/** Logos de la carte bancaire (paiement en ligne par Stripe) */
+function options_logos_carte(): array {
+    return array_map(fn($f, $a) => options_logo($f, $a), ['cb', 'visa', 'mastercard', 'apple-pay', 'google-pay'], ['CB', 'Visa', 'Mastercard', 'Apple Pay', 'Google Pay']);
+}
+
+/** Moyens de paiement : code => [libellé, précision, logo HTML]. La carte est gérée par le site, les autres par l'organisme. */
 function options_paiements(): array {
-    $f = 'font-family="Montserrat,Arial,sans-serif"';
-    $box = '<rect width="48" height="30" rx="5" fill="#fff" stroke="#d3dbe0"/>';
+    $l = 'options_logo';
     return [
-        'carte' => ['Carte bancaire', 'Paiement en ligne sécurisé', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<rect x="6" y="7" width="36" height="16" rx="3" fill="#2f3d45"/><rect x="6" y="11" width="36" height="3" fill="#8fa2b0"/><rect x="9" y="18" width="10" height="2.5" rx="1" fill="#fff"/></svg>'],
-        'cheque' => ['Chèque', "À l'ordre de l'organisme", '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<rect x="6" y="6" width="36" height="18" rx="2" fill="#f8f5ea" stroke="#c9bf94"/><path d="M10 13h18M10 17h12" stroke="#9a8f5c" stroke-width="1.4" stroke-linecap="round"/><path d="M30 20c2-5 4-5 6 0" fill="none" stroke="#3d6a8e" stroke-width="1.4" stroke-linecap="round"/></svg>'],
-        'virement' => ['Virement', 'Sur le compte de l\'organisme', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<path d="M11 13h26M11 13l5-4M11 13l5 4M37 19H11M37 19l-5-4M37 19l-5 4" fill="none" stroke="#3d6a8e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
-        'especes' => ['Espèces', 'Remises sur place ou à l\'accueil', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<rect x="7" y="8" width="34" height="14" rx="2" fill="#e4ece8" stroke="#8fae9f"/><circle cx="24" cy="15" r="4.2" fill="none" stroke="#5f8a74" stroke-width="1.6"/><circle cx="11.5" cy="15" r="1.2" fill="#5f8a74"/><circle cx="36.5" cy="15" r="1.2" fill="#5f8a74"/></svg>'],
-        'ancv' => ['Chèques-Vacances ANCV', 'Papier ou e-Chèques-Vacances', '<svg viewBox="0 0 48 30" aria-hidden="true"><rect width="48" height="30" rx="5" fill="#fff" stroke="#d3dbe0"/><path d="M8 9h10v3H12v2h5v3h-5v2h6v3H8z" fill="#e2001a" transform="translate(0 -3)"/><text x="22" y="14" ' . $f . ' font-size="7.5" font-weight="800" fill="#0a3a82">ANCV</text><text x="22" y="22" ' . $f . ' font-size="4.6" font-weight="700" fill="#e2001a">CHÈQUE-VACANCES</text></svg>'],
-        'caf' => ['Aides CAF', 'Aide aux vacances, bons CAF', '<svg viewBox="0 0 48 30" aria-hidden="true"><rect width="48" height="30" rx="5" fill="#fff" stroke="#d3dbe0"/><circle cx="14" cy="15" r="7" fill="#00a0df"/><circle cx="14" cy="15" r="3" fill="#fff"/><text x="25" y="19" ' . $f . ' font-size="9.5" font-weight="800" fill="#0a5ea8">CAF</text></svg>'],
-        'msa' => ['Aides MSA', 'Mutualité sociale agricole', '<svg viewBox="0 0 48 30" aria-hidden="true"><rect width="48" height="30" rx="5" fill="#fff" stroke="#d3dbe0"/><path d="M8 20c4-9 8-9 12 0M14 20c4-9 8-9 12 0" fill="none" stroke="#5a9a2f" stroke-width="2.2" stroke-linecap="round"/><text x="28" y="19" ' . $f . ' font-size="9" font-weight="800" fill="#3c7a1c">MSA</text></svg>'],
-        'ce' => ["Comité d'entreprise / CSE", 'Participation employeur', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<rect x="12" y="9" width="24" height="14" rx="2" fill="#eef2f4" stroke="#a9b8c6"/><path d="M17 9V7h14v2" fill="none" stroke="#a9b8c6" stroke-width="1.6"/><path d="M12 15h24" stroke="#a9b8c6" stroke-width="1.4"/></svg>'],
-        'autre' => ['Autre', 'Un moyen propre à votre organisme', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<circle cx="16" cy="15" r="2.2" fill="#8fa2b0"/><circle cx="24" cy="15" r="2.2" fill="#8fa2b0"/><circle cx="32" cy="15" r="2.2" fill="#8fa2b0"/></svg>'],
-        'pass' => ['Pass / coupons sport & loisirs', 'Dispositifs locaux et municipaux', '<svg viewBox="0 0 48 30" aria-hidden="true">' . $box . '<path d="M8 11h32v3a2.5 2.5 0 000 5v3H8v-3a2.5 2.5 0 000-5z" fill="#f3e9d2" stroke="#c9b27a"/><path d="M30 11v11" stroke="#c9b27a" stroke-dasharray="1.6 1.6"/></svg>'],
+        'carte' => ['Carte bancaire', 'Paiement en ligne sécurisé', $l('cb', 'CB')],
+        'cheque' => ['Chèque', "À l'ordre de l'organisme", $l('cheque')],
+        'virement' => ['Virement', 'Sur le compte de l\'organisme', $l('virement')],
+        'especes' => ['Espèces', 'Remises sur place ou à l\'accueil', $l('especes')],
+        'ancv' => ['Chèques-Vacances ANCV', 'Papier ou e-Chèques-Vacances', $l('cheque-vacances')],
+        'coupon_sport' => ['Coupons Sport ANCV', 'Papier ou e-Coupon Sport', $l('coupon-sport')],
+        'caf' => ['Aides CAF', 'Aide aux vacances, bons CAF', $l('aides-caf')],
+        'msa' => ['Aides MSA', 'Mutualité sociale agricole', $l('aides-msa')],
+        'ce' => ["Comité d'entreprise / CSE", 'Participation employeur', $l('cse')],
+        'autre' => ['Autre', 'Un moyen propre à votre organisme', $l('autre')],
+        'pass' => ['Pass / coupons sport & loisirs', 'Dispositifs locaux et municipaux', $l('pass')],
     ];
 }
 

@@ -37,6 +37,10 @@ function adm_perm_catalog(): array {
             'inscriptions.read' => 'Voir les inscriptions',
             'inscriptions.write' => 'Modifier les inscriptions',
         ],
+        'Partenariats' => [
+            'partenaires.read' => 'Voir les clics vers les sites des organismes et les revenus estimés',
+            'partenaires.write' => 'Régler les commissions partenaires',
+        ],
         'Technique' => [
             'tech.db' => 'Éditeur de base de données',
             'tech.sql' => 'Console SQL',

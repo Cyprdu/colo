@@ -357,9 +357,7 @@ $vaccTxt = function (array $e): string {
                         <span id="btn-payer-txt">Payer en ligne</span>
                     </button>
                     
-<div class="mt-6 flex justify-center">
-    <img src="https://moncamp.fr/uploads/pay.png" alt="Moyens de paiement sécurisés acceptés" class="w-48 h-auto object-contain">
-</div>
+<div class="mt-6 flex justify-center gap-1.5" aria-label="Moyens de paiement acceptés"><?php foreach (options_logos_carte() as $lg): ?><span class="w-11 block"><?= $lg ?></span><?php endforeach; ?></div>
                 </div>
                 <div class="mt-4 text-center">
                     <button type="button" onclick="goToStep(3)" class="text-sm text-gray-500 hover:underline">Modifier les tarifs</button>

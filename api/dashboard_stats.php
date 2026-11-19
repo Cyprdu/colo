@@ -2,13 +2,14 @@
 // api/dashboard_stats.php?o=<jeton organisme>&du=Y-m-d&au=Y-m-d : données du tableau de bord financier (dashboard_organisme.php).
 // Réservé au propriétaire de l'organisme (ou admin). Montants en centimes. Sources : fin_ledger (journal en ajout seulement), fin_paiements,
 // fin_transferts / fin_transfert_lignes (versements), inscriptions (hors carte, inscriptions, moyens). Aucune donnée de santé.
-// Export (GET ou POST) : &export=tx|mois&fmt=csv|xlsx[&keys=p12,h34] (keys : lignes choisies dans le tableau ; vide = toute la période).
+// Export (GET ou POST) : &export=tx|mois&fmt=csv|xlsx[&keys=p12,h34] (keys : lignes choisies dans le tableau ; vide = toute la période) ; &export=clics : clics vers le site (CSV).
 require_once 'config.php';
 require_once __DIR__ . '/adm_core.php';
 require_once 'options.php';
 require_once 'compta_lib.php';
 require_once 'finance_lib.php';
 require_once 'orga_lib.php';
+require_once 'clics.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Cache-Control: no-store');
 
@@ -53,7 +54,7 @@ try {
 
     // ---- séries quotidiennes (journal + inscriptions)
     $days = [];
-    for ($t = strtotime($du); $t <= strtotime($au); $t += 86400) $days[date('Y-m-d', $t)] = ['brut' => 0, 'net' => 0, 'ins' => 0];
+    for ($t = strtotime($du); $t <= strtotime($au); $t = strtotime("+1 day", $t)) $days[date('Y-m-d', $t)] = ['brut' => 0, 'net' => 0, 'ins' => 0, 'clics' => 0];
     $st = $pdo->prepare("SELECT DATE(created_at) d, type, SUM(montant_cents) s FROM fin_ledger WHERE organisateur_id = ? AND created_at BETWEEN ? AND ?
                            AND type IN ('paiement', 'commission', 'frais_paiement', 'remboursement', 'ajustement') GROUP BY d, type");
     $st->execute([$orgaId, $dt[0], $dt[1]]);
@@ -65,6 +66,8 @@ try {
                          WHERE c.organisateur_id = ? AND $CANC AND $OK AND i.date_inscription BETWEEN ? AND ? GROUP BY d");
     $st->execute([$orgaId, $dt[0], $dt[1]]);
     foreach ($st->fetchAll(PDO::FETCH_KEY_PAIR) as $d => $n) if (isset($days[$d])) $days[$d]['ins'] = (int)$n;
+    $ck = clics_stats($pdo, $du, $au, $orgaId);
+    foreach ($ck['jours'] as $d => $n) if (isset($days[$d])) $days[$d]['clics'] = $n;
     $insPrev = $pdo->prepare("SELECT COUNT(*) FROM inscriptions i JOIN camps c ON c.id = i.camp_id WHERE c.organisateur_id = ? AND $CANC AND $OK AND i.date_inscription BETWEEN ? AND ?");
     $insPrev->execute([$orgaId, $pdu . ' 00:00:00', $pau . ' 23:59:59']);
 
@@ -178,6 +181,7 @@ try {
 
     // ---- exports
     $export = (string)($P['export'] ?? '');
+    if ($export === 'clics') clics_csv($pdo, $du, $au, $orgaId);
     if ($export !== '') {
         $fmt = ($P['fmt'] ?? '') === 'xlsx' ? 'xlsx' : 'csv';
         $e = fn(int $c) => $fmt === 'xlsx' ? round($c / 100, 2) : compta_eur($c);
@@ -250,6 +254,8 @@ try {
         'filtres' => ['sejours' => array_values($grp), 'sessions' => $sessions, 'moyens' => array_map(fn($k, $l) => ['k' => $k, 'l' => $l], array_keys($lib), array_values($lib))],
         'tx' => $tx, 'tx_limite' => count($tx) >= 5000, 'prochains' => $prochains, 'versements' => $versements, 'dettes' => $dettes, 'annulations' => $annul, 'hors' => $hors, 'mois' => $rap,
         'tva' => $tvaOrga !== null && (float)$tvaOrga > 0,
+        'clics' => ['total' => $ck['total'], 'prev' => clics_stats($pdo, $pdu, $pau, $orgaId)['total'],
+                    'sejours' => array_map(fn($s) => array_intersect_key($s, array_flip(['t', 'nom', 'debut', 'fin', 'n', 'uniques', 'mobile', 'dernier'])), $ck['sejours'])],
     ]);
 } catch (Throwable $e) {
     error_log('dashboard_stats: ' . $e->getMessage());
