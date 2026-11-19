@@ -247,7 +247,7 @@ require_once 'partials/header3.php';
                     <div id="orga-card" class="cd-card p-6">
                         <p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-4">Organisé par</p>
                         <div class="flex items-center gap-4 mb-5">
-                            <div class="w-14 h-14 rounded-full bg-[#3a4852] text-white flex items-center justify-center text-[22px] font-bold flex-none"><span id="orga-initial">?</span></div>
+                            <div id="orga-avatar" class="w-14 h-14 rounded-2xl bg-[#3a4852] text-white flex items-center justify-center text-[22px] font-bold flex-none overflow-hidden"><img id="orga-logo" alt="" class="w-full h-full object-contain p-1" hidden><span id="orga-initial">?</span></div>
                             <p id="orga-name" class="font-bold text-[#26343b] text-[17px] leading-snug"></p>
                         </div>
                         <div id="contact-container" class="space-y-3"></div>
@@ -496,6 +496,13 @@ document.addEventListener('DOMContentLoaded', async function () {
             a.textContent = camp.orga_nom || ''; $('orga-name').textContent = ''; $('orga-name').appendChild(a);
         }
         $('orga-initial').textContent = camp.orga_nom ? camp.orga_nom.charAt(0).toUpperCase() : '?';
+        const logo = $('orga-logo'), av = $('orga-avatar'), avatar = on => {
+            logo.hidden = !on; $('orga-initial').hidden = on;
+            av.classList.toggle('bg-[#3a4852]', !on); av.classList.toggle('bg-white', on); av.classList.toggle('border', on); av.classList.toggle('border-[#e5e7eb]', on);
+        };
+        logo.onerror = () => avatar(false);
+        if (camp.orga_logo) { logo.alt = 'Logo de ' + (camp.orga_nom || "l'organisme"); if (logo.getAttribute('src') !== camp.orga_logo) logo.src = camp.orga_logo; avatar(true); }
+        else { logo.removeAttribute('src'); avatar(false); }
         const contact = $('contact-container');
         contact.innerHTML = '';
         if (camp.organisateur_user_id) {
