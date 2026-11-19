@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const loader = document.getElementById('loader');
     const content = document.getElementById('camp-content');
     const $ = id => document.getElementById(id);
-    const PAY = <?= json_encode(array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
+    const PAY = <?= json_encode(['carte' => ['label' => 'Carte bancaire', 'logo' => implode('', array_map(fn($i) => '<span class="w-11 block">' . $i . '</span>', options_logos_carte()))]] + array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     const HEB = <?= json_encode(HEBERGEMENTS, JSON_UNESCAPED_UNICODE) ?>;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
@@ -435,7 +435,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (grid) box.push(`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${grid}</div>`);
             const pay = c => c === 'autre' && camp.paiement_autre ? { label: camp.paiement_autre, logo: camp.paiement_autre_logo ? `<img src="${esc(camp.paiement_autre_logo)}" alt="" style="width:100%;height:30px;object-fit:contain">` : PAY.autre.logo } : PAY[c];
             const pays = String(camp.moyens_paiement || '').split(',').filter(c => PAY[c]);
-            if (pays.length) box.push(`<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-3">Moyens de paiement acceptés</p><div class="flex flex-wrap gap-3">${pays.map(c => `<span class="inline-flex items-center gap-2 bg-white rounded-xl border border-[#e5e7eb] pr-3"><span class="w-12 block">${pay(c).logo}</span><span class="text-[13px] font-semibold text-[#26343b]">${esc(pay(c).label)}</span></span>`).join('')}</div>${camp.instructions_paiement ? `<p class="mt-3 text-[14px] text-[#3b4a54] whitespace-pre-line">${esc(camp.instructions_paiement)}</p>` : ''}</div>`);
+            if (pays.length) box.push(`<div class="rounded-2xl bg-[#f8f5ea] p-5"><p class="text-[12px] font-bold uppercase tracking-wider text-[#6b7780] mb-3">Moyens de paiement acceptés</p><ul class="flex flex-wrap gap-2.5">${pays.map(c => `<li class="inline-flex flex-wrap items-center gap-2.5 bg-white rounded-xl border border-[#e5e7eb] p-1.5 pr-3"><span class="flex gap-1">${c === 'carte' ? pay(c).logo : `<span class="w-12 block">${pay(c).logo}</span>`}</span><span class="text-[13px] font-semibold text-[#26343b]">${esc(pay(c).label)}</span></li>`).join('')}</ul>${camp.instructions_paiement ? `<p class="mt-3 text-[14px] text-[#3b4a54] whitespace-pre-line">${esc(camp.instructions_paiement)}</p>` : ''}</div>`);
             $('info-extra').innerHTML = box.join(''); $('info-extra').classList.toggle('hidden', !box.length);
         })();
         if (camp.video_url) {

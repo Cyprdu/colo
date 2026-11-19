@@ -26,6 +26,7 @@ function fin_instruction_moyen(string $code, ?string $consigneOrga): string {
         'virement' => 'Faites un virement sur le compte de l\'organisateur (coordonnées communiquées par l\'organisateur) en indiquant le nom de l\'enfant.',
         'especes' => 'Remettez la somme en espèces à l\'organisateur (sur place ou à l\'accueil) et demandez un reçu.',
         'ancv' => 'Remettez vos Chèques-Vacances ANCV (papier ou e-Chèques-Vacances) à l\'organisateur.',
+        'coupon_sport' => 'Remettez vos Coupons Sport ANCV (papier ou e-Coupon Sport) à l\'organisateur.',
         'caf' => 'Transmettez à l\'organisateur votre attestation ou bon d\'aide CAF.',
         'msa' => 'Transmettez à l\'organisateur votre attestation ou bon d\'aide MSA.',
         'ce' => 'Transmettez à l\'organisateur l\'attestation de participation de votre employeur / CSE.',
