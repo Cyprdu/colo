@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const PAY = <?= json_encode(['carte' => ['label' => 'Carte bancaire', 'logo' => implode('', array_map(fn($i) => '<span class="w-11 block">' . $i . '</span>', options_logos_carte()))]] + array_map(fn($p) => ['label' => $p[0], 'logo' => $p[2]], options_paiements()), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     const HEB = <?= json_encode(HEBERGEMENTS, JSON_UNESCAPED_UNICODE) ?>;
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const MONTHS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+    const MONTHS = window.MC_MONTHS_SHORT;
     const fmtDay = d => `${d.getDate()} ${MONTHS[d.getMonth()]}`;
     const fmtPrice = p => { const n = Number(p); return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ','); };
 

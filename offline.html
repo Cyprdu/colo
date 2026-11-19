@@ -25,7 +25,7 @@
   <button type="button" onclick="location.reload()" data-en="Try again">Réessayer</button>
 </main>
 <script>
-if (/(^|;\s*)mc_lang=en/.test(document.cookie) || (!/(^|;\s*)mc_lang=/.test(document.cookie) && !/^fr/i.test(navigator.language || ''))) {
+if (/(^|;\s*)mc_lang=en/.test(document.cookie)) {
   document.documentElement.lang = 'en';
   document.title = 'Offline - moncamp.fr';
   document.querySelectorAll('[data-en]').forEach(function (e) { e.textContent = e.getAttribute('data-en'); });

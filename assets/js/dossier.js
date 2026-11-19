@@ -2,8 +2,8 @@
 // Données : api/dossier_inscrit.php. Dossier.sections(d) -> [{id, label, html}] ; Dossier.stack(d) -> html empilé ; Dossier.tabs(d, el) -> onglets.
 (function () {
     const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-    const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
-    const dateFr = (d, t) => { if (!d) return ''; const x = new Date(String(d).replace(' ', 'T')); return isNaN(x) ? '' : x.toLocaleDateString('fr-FR', t ? { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' } : undefined); };
+    const eur = n => (Number(n) || 0).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
+    const dateFr = (d, t) => { if (!d) return ''; const x = new Date(String(d).replace(' ', 'T')); return isNaN(x) ? '' : x.toLocaleDateString(window.MC_LOCALE || 'fr-FR', t ? { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' } : undefined); };
     const age = d => { if (!d) return null; const b = new Date(d), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) a--; return a; };
     const MOYENS = window.DOSSIER_MOYENS || {};
     const dl = rows => { const r = rows.filter(x => x[1] !== null && x[1] !== undefined && x[1] !== ''); return r.length ? `<dl class="grid grid-cols-[130px_1fr] gap-x-4 gap-y-2 text-sm">${r.map(([k, v, raw]) => `<dt class="text-[#6b7780]">${k}</dt><dd class="font-semibold text-[#26343b] break-words">${raw ? v : esc(v)}</dd>`).join('')}</dl>` : '<p class="text-sm text-[#6b7780]">Non renseigné.</p>'; };

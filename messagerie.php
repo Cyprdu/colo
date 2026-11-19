@@ -105,13 +105,13 @@ require_once 'partials/header.php';
 
     function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
     function parseDate(s) { return new Date(String(s).replace(' ', 'T')); }
-    function hhmm(d) { return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+    function hhmm(d) { return d.toLocaleTimeString(window.MC_LOCALE || 'fr-FR', { hour: '2-digit', minute: '2-digit' }); }
     function dayKey(d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
     function dayLabel(d) {
         var t = new Date(), y = new Date(); y.setDate(t.getDate() - 1);
         if (dayKey(d) === dayKey(t)) return "Aujourd'hui";
         if (dayKey(d) === dayKey(y)) return 'Hier';
-        return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+        return d.toLocaleDateString(window.MC_LOCALE || 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     }
     function listTime(s) {
         if (!s) return '';
@@ -119,7 +119,7 @@ require_once 'partials/header.php';
         if (dayKey(d) === dayKey(t)) return hhmm(d);
         var y = new Date(); y.setDate(t.getDate() - 1);
         if (dayKey(d) === dayKey(y)) return 'Hier';
-        return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        return d.toLocaleDateString(window.MC_LOCALE || 'fr-FR', { day: 'numeric', month: 'short' });
     }
     function api(url, body) {
         return fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);

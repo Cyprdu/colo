@@ -18,6 +18,7 @@
         ask: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.8.6-1.5 1.1-1.5 2.2M12 17h.01"/>'
     };
     function svg(name) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[name] + '</svg>'; }
+    function tx(s) { return window.mct ? window.mct(s) : s; }
     function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 
     // Un message technique (SQL, exception PHP, pile d'appels, « Failed to fetch »…) n'est jamais montré tel quel à l'utilisateur.
@@ -51,8 +52,8 @@
         box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-modal', 'true');
         box.setAttribute('aria-labelledby', uid + 't'); box.setAttribute('aria-describedby', uid + 'm');
         var ico = el('div', 'cu-ico cu-' + (o.tone || 'info'), svg(o.icon || 'info'));
-        var title = el('h2', 'cu-title'); title.id = uid + 't'; title.textContent = o.title;
-        var msg = el('p', 'cu-msg'); msg.id = uid + 'm'; msg.textContent = o.message;
+        var title = el('h2', 'cu-title'); title.id = uid + 't'; title.textContent = tx(o.title);
+        var msg = el('p', 'cu-msg'); msg.id = uid + 'm'; msg.textContent = tx(o.message);
         var actions = el('div', 'cu-actions');
         var done = false;
         function close(value) {
@@ -61,8 +62,8 @@
             back.classList.remove('cu-in');
             setTimeout(function () { back.remove(); if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} } item.resolve(value); next(); }, 140);
         }
-        var cancel = null, ok = el('button', 'cu-btn cu-primary'); ok.type = 'button'; ok.textContent = o.confirmLabel || 'OK';
-        if (o.cancelLabel) { cancel = el('button', 'cu-btn cu-light'); cancel.type = 'button'; cancel.textContent = o.cancelLabel; cancel.onclick = function () { close(false); }; actions.appendChild(cancel); }
+        var cancel = null, ok = el('button', 'cu-btn cu-primary'); ok.type = 'button'; ok.textContent = tx(o.confirmLabel || 'OK');
+        if (o.cancelLabel) { cancel = el('button', 'cu-btn cu-light'); cancel.type = 'button'; cancel.textContent = tx(o.cancelLabel); cancel.onclick = function () { close(false); }; actions.appendChild(cancel); }
         ok.onclick = function () { close(true); }; actions.appendChild(ok);
         function onKey(e) {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(o.cancelLabel ? false : true); return; }
@@ -88,7 +89,7 @@
         if (!region) { region = el('div', 'cu-toasts'); region.setAttribute('role', 'status'); region.setAttribute('aria-live', 'polite'); document.body.appendChild(region); }
         var t = el('div', 'cu-toast cu-t-' + (opts.tone || 'info'));
         t.innerHTML = svg(opts.tone === 'err' ? 'err' : (opts.tone === 'ok' ? 'ok' : 'info'));
-        var s = el('span'); s.textContent = message; t.appendChild(s);
+        var s = el('span'); s.textContent = tx(message); t.appendChild(s);
         function bye() { t.classList.remove('cu-in'); setTimeout(function () { t.remove(); }, 200); }
         t.addEventListener('click', bye);
         region.appendChild(t);

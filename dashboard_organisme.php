@@ -380,8 +380,8 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
     var ORGA = <?= json_encode($orgaTok) ?>, CSRF = <?= json_encode(fin_csrf()) ?>, EXPRESS = <?= json_encode(($acc['type'] ?? '') === 'express') ?>;
     var $ = function (id) { return document.getElementById(id); };
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); };
-    var eur = function (c) { return ((c || 0) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }); };
-    var eur0 = function (c) { return ((c || 0) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); };
+    var eur = function (c) { return ((c || 0) / 100).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR' }); };
+    var eur0 = function (c) { return ((c || 0) / 100).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); };
     var z = function (n) { return ('0' + n).slice(-2); };
     var iso = function (d) { return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
     var dfr = function (s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : ''; };
@@ -670,9 +670,9 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
         if (!$('pan-clics')) return;
         var c = D.clics, u = 0, m = 0, v = c.prev ? Math.round((c.total - c.prev) / c.prev * 100) : null;
         c.sejours.forEach(function (s) { u += s.uniques; m += s.mobile; });
-        kpi('clics', c.total.toLocaleString('fr-FR'), v === null ? (c.total ? '<span class="fd-d flat">nouveau</span> vs période préc.' : 'aucun clic sur la période')
-            : '<span class="fd-d ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'flat') + '">' + (v > 0 ? '▲ +' : v < 0 ? '▼ ' : '') + v + ' %</span> vs ' + c.prev.toLocaleString('fr-FR'));
-        kpi('clicsu', u.toLocaleString('fr-FR'), 'une fois par jour et par session');
+        kpi('clics', c.total.toLocaleString(window.MC_LOCALE || 'fr-FR'), v === null ? (c.total ? '<span class="fd-d flat">nouveau</span> vs période préc.' : 'aucun clic sur la période')
+            : '<span class="fd-d ' + (v > 0 ? 'up' : v < 0 ? 'down' : 'flat') + '">' + (v > 0 ? '▲ +' : v < 0 ? '▼ ' : '') + v + ' %</span> vs ' + c.prev.toLocaleString(window.MC_LOCALE || 'fr-FR'));
+        kpi('clicsu', u.toLocaleString(window.MC_LOCALE || 'fr-FR'), 'une fois par jour et par session');
         kpi('clicsm', c.total ? Math.round(m / c.total * 100) + ' %' : '–', m + ' clic' + (m > 1 ? 's' : ''));
         $('cBody').innerHTML = c.sejours.length ? c.sejours.map(function (s) {
             return '<tr><td>' + esc(s.nom) + '</td><td class="mut">' + dfr(s.debut) + ' → ' + dfr(s.fin) + '</td><td class="num"><b>' + s.n + '</b></td><td class="num">' + s.uniques + '</td><td class="num">' + s.mobile + '</td><td class="mut">' + dfr(s.dernier.slice(0, 10)) + ' ' + s.dernier.slice(11, 16) + '</td></tr>';

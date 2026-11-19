@@ -63,7 +63,15 @@
             </nav>
         </div>
 
-        <p class="mt-12 pt-6 border-t border-white/15 text-[12px] text-white/60">&copy; <?= date('Y') ?> moncamp.fr. Tous droits réservés.</p>
+        <div class="mt-12 pt-6 border-t border-white/15 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-[12px] text-white/60">&copy; <?= date('Y') ?> moncamp.fr. <?= t('Tous droits réservés.') ?></p>
+            <nav aria-label="<?= t('Langue') ?>" class="flex items-center gap-1 text-[13px]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="text-white/60 mr-1" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>
+                <?php foreach (['fr' => 'Français', 'en' => 'English'] as $code => $nom): $on = mc_lang() === $code; ?>
+                <a href="<?= htmlspecialchars(mc_switch_url($code)) ?>" hreflang="<?= $code ?>" lang="<?= $code ?>" class="inline-flex items-center min-h-[40px] px-3 rounded-lg <?= $on ? 'bg-white/15 font-bold text-white' : 'text-white/75 hover:text-white hover:bg-white/10' ?>"<?= $on ? ' aria-current="true"' : '' ?>><?= $nom ?></a>
+                <?php endforeach; ?>
+            </nav>
+        </div>
     </div>
 </footer>
 <div id="mc-consent" role="dialog" aria-labelledby="mc-c-titre" aria-describedby="mc-c-texte" hidden class="fixed z-[120] inset-x-3 bottom-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[640px] max-h-[calc(100vh-24px)] overflow-y-auto rounded-2xl bg-white text-[#26343b] border border-[#e5e7eb] shadow-2xl p-5 sm:p-6" style="margin-bottom:env(safe-area-inset-bottom)">
@@ -71,7 +79,7 @@
     <h2 id="mc-c-titre" class="text-[17px] font-extrabold">Vos choix sur les cookies</h2>
     <p id="mc-c-texte" class="mt-2 text-[14px] leading-relaxed text-[#3b4a54]">Des cookies nécessaires font fonctionner le site. Avec votre accord, nous utilisons aussi des cookies de mesure d’audience et de publicité (Google AdSense), qui financent le service. Refuser est sans conséquence. Choix gardé 6 mois, modifiable via « Gérer les cookies » en bas de page. <a href="legal#cookies" class="underline font-semibold">En savoir plus</a></p>
     <div id="mc-c-reglages" hidden class="mt-4 divide-y divide-[#e5e7eb] border-y border-[#e5e7eb]">
-        <div class="py-3 flex items-start justify-between gap-4"><div><p class="font-bold text-[14px]">Nécessaires</p><p class="text-[13px] text-[#6b7780]">Connexion, sécurité, panier d’inscription, mémorisation de ce choix. Toujours actifs : le site ne fonctionne pas sans eux.</p></div><span class="text-[12px] font-bold text-[#6b7780] whitespace-nowrap pt-1">Toujours actifs</span></div>
+        <div class="py-3 flex items-start justify-between gap-4"><div><p class="font-bold text-[14px]">Nécessaires</p><p class="text-[13px] text-[#6b7780]">Connexion, sécurité, panier d’inscription, mémorisation de ce choix et de la langue. Toujours actifs : le site ne fonctionne pas sans eux.</p></div><span class="text-[12px] font-bold text-[#6b7780] whitespace-nowrap pt-1">Toujours actifs</span></div>
         <label class="py-3 flex items-start justify-between gap-4 cursor-pointer"><span><span class="block font-bold text-[14px]">Mesure d’audience</span><span class="block text-[13px] text-[#6b7780]">Outils tiers de statistiques de fréquentation. Les statistiques internes de moncamp.fr fonctionnent sans cookie.</span></span><span class="ds-switch mt-1"><input type="checkbox" id="mc-c-aud"><span></span></span></label>
         <label class="py-3 flex items-start justify-between gap-4 cursor-pointer"><span><span class="block font-bold text-[14px]">Publicité</span><span class="block text-[13px] text-[#6b7780]">Annonces Google personnalisées selon votre navigation. Sans votre accord, Google peut afficher des annonces non personnalisées, sans cookie publicitaire.</span></span><span class="ds-switch mt-1"><input type="checkbox" id="mc-c-pub"><span></span></span></label>
         <div class="py-3 flex justify-end"><button type="button" id="mc-c-ok" class="ds-btn ds-btn-light">Enregistrer mes choix</button></div>

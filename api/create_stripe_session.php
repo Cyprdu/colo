@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/i18n.php';
 // api/create_stripe_session.php : « Payer » une réservation déjà créée et encore à régler.
 // POST r=<jeton de réservation> : règle TOUTES les inscriptions en attente de la même commande.
 // Les montants sont ceux enregistrés en base (prix_final) : jamais un montant venu du navigateur.
@@ -79,7 +80,7 @@ try {
     $params = [
         // moyens de paiement dynamiques (voir create_stripe_session_multi.php)
         'mode' => 'payment',
-        'locale' => 'fr',
+        'locale' => mc_lang(),
         'allow_promotion_codes' => true,
         'expires_at' => time() + 1800 + 60,
         'client_reference_id' => (string)$userId,

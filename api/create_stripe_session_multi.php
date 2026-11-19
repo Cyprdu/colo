@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/i18n.php';
 // api/create_stripe_session_multi.php : crée la commande (inscriptions) et la session de paiement Stripe.
 //
 // RÈGLE D'OR : tout est recalculé ICI à partir de la base de données.
@@ -272,7 +273,7 @@ try {
     $params = [
         // moyens de paiement dynamiques : Stripe affiche carte (CB/Visa/Mastercard), Apple Pay, Google Pay, Link... selon le Dashboard, l'appareil et le pays
         'mode' => 'payment',
-        'locale' => 'fr',
+        'locale' => mc_lang(),
         'line_items' => $lineItems,
         'allow_promotion_codes' => true,
         'expires_at' => time() + 1800 + 60,

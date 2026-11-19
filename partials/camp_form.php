@@ -387,7 +387,7 @@ const SESS_META = <?= json_encode($sessionsMeta ?? [], JSON_UNESCAPED_UNICODE) ?
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
+const eur = n => (Number(n) || 0).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
 const CSRF = (document.querySelector('meta[name=csrf]') || {}).content || '';
 async function api(url, body) {

@@ -234,7 +234,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     var CATALOGUE = [], LEGACY = {}, FACETS = null;
     var reqId = 0;
 
-    var MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    var MONTHS = window.MC_MONTHS;
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); };
     var ICON_HEART = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z"/></svg>';
     var ICON_ORG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="#9aa3ab"/></svg>';
@@ -247,7 +247,7 @@ $q = trim((string)($_GET['name'] ?? ''));
         if (s > e) { var c = new Date(s); c.setFullYear(e.getFullYear()); if (c > e) c.setFullYear(e.getFullYear() - 1); s = c; }
         return { s: s, e: e };
     }
-    function sh(m) { return MONTHS[m].length > 5 ? MONTHS[m].slice(0, 4) + '.' : MONTHS[m]; }
+    function sh(m) { return window.MC_MONTHS_SHORT[m]; }
     function range(a, b) {
         var r = normDates(a, b); if (!r) return '';
         if (!r.e) return 'Dès le ' + r.s.getDate() + ' ' + MONTHS[r.s.getMonth()];

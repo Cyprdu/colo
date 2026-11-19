@@ -4,7 +4,8 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-ob_start();   // les pages peuvent encore rediriger (connexion requise) après l'inclusion de l'en-tête
+require_once __DIR__ . '/../api/i18n.php';
+ob_start('mc_i18n_out');   // les pages peuvent encore rediriger (connexion requise) après l'inclusion de l'en-tête ; traduction de l'interface (api/i18n.php)
 
 // Journal des erreurs (aussi chargé par api/config.php quand la ligne y a été ajoutée)
 if (is_file(__DIR__ . '/../api/errors.php')) require_once __DIR__ . '/../api/errors.php';
@@ -78,7 +79,7 @@ $placeholder_url_desktop = "https://placehold.co/36x36/e2e8f0/2563eb?text=" . ur
 $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . urlencode($initial);
 ?>
 <!DOCTYPE html>
-<html lang="fr"<?= $ads_enabled && ads_consent_choisi() ? ' class="ads-on"' : '' ?>>
+<html lang="<?= mc_lang() ?>"<?= $ads_enabled && ads_consent_choisi() ? ' class="ads-on"' : '' ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -140,10 +141,10 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         #history-list::-webkit-scrollbar-track { background: #f1f1f1; }
         #history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
-    <?php include __DIR__ . '/pwa.php'; ?>
+    <?php include __DIR__ . '/pwa.php'; include __DIR__ . '/i18n_head.php'; ?>
     <?php if (!$ads_enabled): ?><script defer src="/assets/consent.js?v=1"></script><?php endif; ?>
     <link rel="stylesheet" href="/assets/ds.css?v=9">
-    <script src="/assets/ui.js?v=3"></script>
+    <script src="/assets/ui.js?v=4"></script>
 </head>
 <body class="<?php echo htmlspecialchars($body_class); ?><?php echo $body_class === 'bg-gray-100' ? ' ds-legacy' : ''; ?> text-gray-800 flex flex-col min-h-screen">
 

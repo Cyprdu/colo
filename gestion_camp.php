@@ -84,7 +84,7 @@ window.DOSSIER_MOYENS = <?= json_encode(array_map(fn($m) => $m[0], options_paiem
 const MOYENS = <?= json_encode(array_map(fn($m) => $m[0], options_paiements()), JSON_UNESCAPED_UNICODE) ?>;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
+const eur = n => (Number(n) || 0).toLocaleString(window.MC_LOCALE || 'fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
 const age = d => { if (!d) return null; const b = new Date(d), n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) a--; return a; };
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const IC = {
@@ -184,7 +184,7 @@ function inscrits() {
 }
 function stEnfant(i) {
     if (i.expire) return ['Délai dépassé', 'bg-[#fbeceb] text-[#a4372f]', 'expired'];
-    if (i.statut_paiement === 'EN_ATTENTE') return ['En attente de paiement' + (i.limite_paiement ? ' · avant le ' + new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString('fr-FR') : ''), 'bg-[#f8f5ea] text-[#5b4a1c]', 'wait'];
+    if (i.statut_paiement === 'EN_ATTENTE') return ['En attente de paiement' + (i.limite_paiement ? ' · avant le ' + new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString(window.MC_LOCALE || 'fr-FR') : ''), 'bg-[#f8f5ea] text-[#5b4a1c]', 'wait'];
     if (i.statut_paiement === 'A_REGLER') return ['À encaisser', 'bg-[#f8f5ea] text-[#5b4a1c]', 'wait'];
     return [i.statut_paiement === 'GRATUIT' ? 'Gratuit' : 'Payé', 'bg-[#eef2f4] text-[#26343b]', 'paid'];
 }
@@ -327,7 +327,7 @@ function quotas() {
         const libres = s.quota > 0 ? Math.max(0, s.quota - s.inscrits) : null;
         return [esc(s.label), s.quota || '—', s.inscrits, s.attente, libres === null ? '—' : `<b>${libres}</b>`, `<div class="w-32">${barre(Math.min(s.inscrits, s.quota || 0), s.quota || 0)}</div>`];
     })) + '<h3 class="ds-eyebrow mt-6 mb-2">Réservations en attente de paiement</h3>' +
-      tbl(['Inscrit', 'Réservé le', 'Date limite', 'État'], W.map(i => [nomE(i), i.date_inscription ? new Date(i.date_inscription.replace(' ', 'T')).toLocaleDateString('fr-FR') : '', i.limite_paiement ? new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString('fr-FR') : '—', i.expire ? '<b class="text-[#a4372f]">Délai dépassé : place libérée</b>' : 'Place gardée']));
+      tbl(['Inscrit', 'Réservé le', 'Date limite', 'État'], W.map(i => [nomE(i), i.date_inscription ? new Date(i.date_inscription.replace(' ', 'T')).toLocaleDateString(window.MC_LOCALE || 'fr-FR') : '', i.limite_paiement ? new Date(i.limite_paiement.replace(' ', 'T')).toLocaleDateString(window.MC_LOCALE || 'fr-FR') : '—', i.expire ? '<b class="text-[#a4372f]">Délai dépassé : place libérée</b>' : 'Place gardée']));
 }
 
 async function actionPost(body) {
