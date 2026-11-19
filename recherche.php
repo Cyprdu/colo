@@ -56,6 +56,9 @@ $q = trim((string)($_GET['name'] ?? ''));
     .chk:hover { background:#f6f8fa; }
     .chk input { width:17px; height:17px; accent-color:var(--ink); flex:none; }
     .tlist { max-height:220px; overflow-y:auto; scrollbar-width:thin; }
+    .near-btn { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:var(--accent); font-size:13.5px; font-weight:700; transition:all .15s ease; }
+    .near-btn:hover { border-color:#a9b8c6; }
+    .near-btn[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:#fff; }
     /* résultats */
     .rgrid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:22px 16px; }
     @media (min-width:768px) { .rgrid { grid-template-columns:repeat(3, minmax(0,1fr)); gap:28px 20px; } }
@@ -119,15 +122,17 @@ $q = trim((string)($_GET['name'] ?? ''));
                 <div class="fsec">
                     <p class="ftitle">Localisation</p>
                     <input id="f-city" type="text" class="finput" name="city" placeholder="Ville ou code postal" autocomplete="off" aria-label="Ville ou code postal">
+                    <button type="button" id="f-near" class="near-btn mt-2" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>Autour de moi</span></button>
+                    <label id="near-box" class="hidden mt-2 block text-[12px] font-semibold text-[#6b7780]">Dans un rayon de
+                        <select id="f-rayon" class="finput mt-1"><option value="10">10 km</option><option value="25">25 km</option><option value="50" selected>50 km</option><option value="100">100 km</option><option value="200">200 km</option></select>
+                    </label>
+                    <p id="near-msg" class="hidden mt-2 text-[12.5px] text-[#8a5a12]" role="status"></p>
                 </div>
 
                 <div class="fsec">
                     <p class="ftitle">Âge de l'enfant</p>
-                    <?php if ($is_logged_in): ?>
-                        <select id="f-age" class="finput" name="age" aria-label="Âge de l'enfant"><option value="">Tous les âges</option></select>
-                    <?php else: ?>
-                        <input id="f-age" type="number" class="finput" name="age" min="3" max="25" placeholder="Ex : 12 ans" aria-label="Âge de l'enfant">
-                    <?php endif; ?>
+                    <select id="f-age-sel" class="finput hidden mb-2" aria-label="Pour quel enfant ?"><option value="">Tous les âges</option><option value="autre">Autre âge…</option></select>
+                    <input id="f-age" type="number" class="finput" name="age" min="3" max="25" inputmode="numeric" placeholder="Ex : 12 ans" aria-label="Âge de l'enfant">
                 </div>
 
                 <div class="fsec">
@@ -191,6 +196,7 @@ $q = trim((string)($_GET['name'] ?? ''));
                         <option value="date">Date de départ</option>
                         <option value="price_asc">Prix croissant</option>
                         <option value="price_desc">Prix décroissant</option>
+                        <option value="distance" hidden disabled>Distance</option>
                     </select>
                 </div>
             </div>
@@ -223,6 +229,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     var $ = function (id) { return document.getElementById(id); };
     var GRID = $('grid');
     var state = { page: 1, themes: [], cats: [], fv: [], noIntents: false };
+    var near = null, wantNear = false;   // position « Autour de moi » : en mémoire seulement, jamais dans l'adresse ni enregistrée
     var CATALOGUE = [], LEGACY = {}, FACETS = null;
     var reqId = 0;
 
@@ -253,11 +260,12 @@ $q = trim((string)($_GET['name'] ?? ''));
 
     // ---------------------------------------------------------------- état <-> formulaire <-> adresse
     function maxPriceActive() { return Number($('f-price').value) < Number($('f-price').max); }
-    function collect() {
+    function collect(forUrl) {
         var p = new URLSearchParams();
         var v;
         if ((v = $('f-name').value.trim())) p.set('name', v);
         if ((v = $('f-city').value.trim())) p.set('city', v);
+        if (near) { if (forUrl) p.set('autour', '1'); else { p.set('lat', near.lat); p.set('lng', near.lng); } p.set('rayon', $('f-rayon').value); }
         if ((v = $('f-age').value)) p.set('age', v);
         if (maxPriceActive()) p.set('max_price', $('f-price').value);
         if ((v = $('f-from').value)) p.set('date_from', v);
@@ -275,6 +283,8 @@ $q = trim((string)($_GET['name'] ?? ''));
         var u = new URLSearchParams(location.search);
         if (u.get('name')) $('f-name').value = u.get('name');
         if (u.get('city')) $('f-city').value = u.get('city');
+        if (u.get('rayon')) $('f-rayon').value = u.get('rayon');
+        wantNear = u.get('autour') === '1';
         if (u.get('age')) setAge(u.get('age'));
         if (u.get('max_price')) { $('f-price').value = u.get('max_price'); }
         if (u.get('date_from')) $('f-from').value = u.get('date_from');
@@ -289,12 +299,14 @@ $q = trim((string)($_GET['name'] ?? ''));
         state.page = 1;
     }
     function setAge(a) {
-        var el = $('f-age');
-        if (el.tagName === 'SELECT' && ![].some.call(el.options, function (o) { return o.value === String(a); })) el.add(new Option(a + ' ans', a));
-        el.value = a;
+        var sel = $('f-age-sel'), inp = $('f-age'), child = [].some.call(sel.options, function (o) { return o.value === String(a); });
+        inp.value = a;
+        if (sel.classList.contains('hidden')) return;
+        sel.value = child ? String(a) : 'autre';
+        inp.classList.toggle('hidden', child);
     }
     function syncUrl() {
-        var q = collect().toString();
+        var q = collect(true).toString();
         history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
     }
 
@@ -304,7 +316,8 @@ $q = trim((string)($_GET['name'] ?? ''));
         var add = function (label, clear) { tags.push({ label: label, clear: clear }); };
         if ($('f-name').value.trim()) add('« ' + $('f-name').value.trim() + ' »', function () { $('f-name').value = ''; });
         if ($('f-city').value.trim()) add($('f-city').value.trim(), function () { $('f-city').value = ''; });
-        if ($('f-age').value) add($('f-age').value + ' ans', function () { $('f-age').value = ''; });
+        if (near) add('Autour de moi · ' + $('f-rayon').value + ' km', function () { setNear(null); });
+        if ($('f-age').value) add($('f-age').value + ' ans', function () { setAge(''); });
         if ($('f-from').value || $('f-to').value) add(($('f-from').value ? 'du ' + fmtDay($('f-from').value) : '') + ($('f-to').value ? ' au ' + fmtDay($('f-to').value) : ''), function () { $('f-from').value = ''; $('f-to').value = ''; syncPeriods(); });
         if (maxPriceActive()) add('≤ ' + $('f-price').value + ' €', function () { $('f-price').value = $('f-price').max; priceLabel(); });
         if ($('f-online').checked) add('Inscription en ligne', function () { $('f-online').checked = false; });
@@ -436,7 +449,7 @@ $q = trim((string)($_GET['name'] ?? ''));
             (age ? '<span class="camp-age">' + age + '</span>' : '') +
             ((IS_LOGGED && !IS_ANIM) ? '<button type="button" class="fav-btn favorite-button' + (isFav ? ' is-fav' : '') + '" data-camp-id="' + esc(c.id) + '" aria-label="Ajouter aux favoris" aria-pressed="' + isFav + '">' + ICON_HEART + '</button>' : '') +
             '</div><a href="' + href + '" class="block"><h3 class="camp-title" title="' + esc(c.nom) + '">' + esc(c.nom) + '</h3>' +
-            '<p class="camp-price">' + p + '</p><p class="camp-meta">' + esc(niceCity(c.ville)) + '</p><p class="camp-meta">' + esc(date) + '</p>' + ((c.categories && c.categories.length) ? '<p class="camp-meta">' + esc(c.categories.join(' · ')) + '</p>' : '') + '</a></article>';
+            '<p class="camp-price">' + p + '</p><p class="camp-meta">' + esc(niceCity(c.ville)) + (c.distance_km != null ? ' · ' + c.distance_km + ' km' : '') + '</p><p class="camp-meta">' + esc(date) + '</p>' + ((c.categories && c.categories.length) ? '<p class="camp-meta">' + esc(c.categories.join(' · ')) + '</p>' : '') + '</a></article>';
     }
     function skeletons(n) {
         var h = ''; for (var i = 0; i < n; i++) h += '<div aria-hidden="true"><div class="skeleton" style="height:24px;width:60%;border-radius:8px"></div><div class="skeleton camp-mediawrap" style="margin-top:8px"></div><div class="skeleton" style="height:14px;width:85%;border-radius:6px;margin-top:14px"></div><div class="skeleton" style="height:14px;width:40%;border-radius:6px;margin-top:10px"></div></div>';
@@ -450,7 +463,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     // ---------------------------------------------------------------- recherche
     function title(total) {
         var nm = $('f-name').value.trim(), city = $('f-city').value.trim();
-        $('r-title').textContent = nm ? 'Résultats pour « ' + nm + ' »' : (state.cats.length === 1 ? catName(state.cats[0]) : (state.themes.length === 1 ? state.themes[0] : (city ? 'Séjours autour de ' + city : 'Tous les séjours')));
+        $('r-title').textContent = nm ? 'Résultats pour « ' + nm + ' »' : (state.cats.length === 1 ? catName(state.cats[0]) : (state.themes.length === 1 ? state.themes[0] : (near ? 'Séjours autour de vous' : (city ? 'Séjours autour de ' + city : 'Tous les séjours'))));
         document.title = (nm ? nm + ' – ' : '') + 'Rechercher une colonie de vacances - moncamp.fr';
     }
     async function search(reset) {
@@ -497,9 +510,32 @@ $q = trim((string)($_GET['name'] ?? ''));
         if (count > 0) { h.unshift({ term: t, count: count, date: Date.now() }); h = h.slice(0, 6); }
         try { localStorage.setItem(key, JSON.stringify(h)); } catch (e) {}
     }
+    function setNear(pos) {
+        near = pos;
+        var on = !!pos, b = $('f-near'), so = $('f-sort'), d = so.querySelector('[value="distance"]');
+        b.setAttribute('aria-pressed', on); b.querySelector('span').textContent = on ? 'Autour de moi (activé)' : 'Autour de moi';
+        $('near-box').classList.toggle('hidden', !on);
+        d.hidden = d.disabled = !on;
+        if (on && so.value === 'relevance') so.value = 'distance';
+        if (!on && so.value === 'distance') so.value = 'relevance';
+        if (on) { $('f-city').value = ''; $('near-msg').classList.add('hidden'); }
+    }
+    function locate() {
+        var msg = $('near-msg');
+        var fail = function (t) { setNear(null); msg.textContent = t; msg.classList.remove('hidden'); search(true); };
+        if (!navigator.geolocation) return fail('La localisation n’est pas disponible sur cet appareil : indiquez une ville ou un code postal.');
+        msg.textContent = 'Recherche de votre position…'; msg.classList.remove('hidden');
+        navigator.geolocation.getCurrentPosition(function (pos) {
+            setNear({ lat: pos.coords.latitude.toFixed(2), lng: pos.coords.longitude.toFixed(2) });
+            search(true);
+        }, function (e) {
+            fail(e.code === 1 ? 'Localisation refusée : indiquez une ville ou un code postal.' : 'Position introuvable : indiquez une ville ou un code postal.');
+        }, { timeout: 10000, maximumAge: 600000 });
+    }
     function resetAll() {
+        setNear(null);
         ['f-name', 'f-city', 'f-from', 'f-to'].forEach(function (i) { $(i).value = ''; });
-        $('f-age').value = ''; $('f-price').value = $('f-price').max; $('f-online').checked = false; $('f-sort').value = 'relevance';
+        setAge(''); $('f-price').value = $('f-price').max; $('f-online').checked = false; $('f-sort').value = 'relevance';
         state.themes = []; state.cats = []; state.fv = []; state.noIntents = false; $('f-catmode').checked = false; $('theme-q').value = '';
         priceLabel(); syncPeriods(); renderCats(); renderFacets(); search(true);
     }
@@ -508,7 +544,16 @@ $q = trim((string)($_GET['name'] ?? ''));
     var timer;
     var later = function () { clearTimeout(timer); timer = setTimeout(function () { search(true); }, 350); };
     ['f-name', 'f-city'].forEach(function (i) { $(i).addEventListener('input', later); });
+    $('f-city').addEventListener('input', function () { if (near && this.value.trim()) setNear(null); });
+    $('f-near').addEventListener('click', function () { if (near) { setNear(null); search(true); } else locate(); });
+    $('f-rayon').addEventListener('change', function () { search(true); });
     $('f-age').addEventListener('change', function () { search(true); });
+    $('f-age-sel').addEventListener('change', function () {
+        var other = this.value === 'autre';
+        $('f-age').classList.toggle('hidden', !other);
+        if (other) { $('f-age').value = ''; $('f-age').focus(); return; }
+        $('f-age').value = this.value; search(true);
+    });
     $('f-age').addEventListener('input', later);
     $('f-price').addEventListener('input', function () { priceLabel(); later(); });
     $('f-online').addEventListener('change', function () { search(true); });
@@ -558,11 +603,13 @@ $q = trim((string)($_GET['name'] ?? ''));
     }).catch(function () {});
     var childrenReady = Promise.resolve();
     if (IS_LOGGED) childrenReady = fetch('api/get_children.php').then(function (r) { return r.json(); }).then(function (cs) {
-        if (!Array.isArray(cs)) return; var s = $('f-age');
-        cs.forEach(function (c) { if (c.age != null) s.add(new Option(c.prenom + ' (' + c.age + ' ans)', c.age)); });
-        var u = new URLSearchParams(location.search).get('age'); if (u) setAge(u);
+        var s = $('f-age-sel'), n = 0;
+        (Array.isArray(cs) ? cs : []).forEach(function (c) { if (c.age != null) { s.add(new Option(c.prenom + ' (' + c.age + ' ans)', c.age), s.options[s.options.length - 1]); n++; } });
+        if (!n) return;
+        s.classList.remove('hidden'); $('f-age').classList.add('hidden');
+        setAge(new URLSearchParams(location.search).get('age') || '');
     }).catch(function () {});
-    Promise.all([themesReady, childrenReady]).then(function () { migrateLegacy(); renderCats(); renderFacets(); search(false); });
+    Promise.all([themesReady, childrenReady]).then(function () { migrateLegacy(); renderCats(); renderFacets(); if (wantNear) locate(); else search(false); });
 })();
 </script>
 

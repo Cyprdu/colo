@@ -425,6 +425,7 @@ function sq_search(array $rows, array $query, array $sel, array $opt): array {
     usort($items, function ($a, $b) { return $b['score'] <=> $a['score']; });
     if ($sort === 'date') usort($items, function ($a, $b) { return strcmp((string)$a['row']['date_debut'], (string)$b['row']['date_debut']) ?: ($b['score'] <=> $a['score']); });
     elseif ($sort === 'price_asc') usort($items, function ($a, $b) { return ((float)$a['row']['prix_affiche'] <=> (float)$b['row']['prix_affiche']) ?: ($b['score'] <=> $a['score']); });
+    elseif ($sort === 'distance') usort($items, function ($a, $b) { return ((float)($a['row']['distance_km'] ?? 1e9) <=> (float)($b['row']['distance_km'] ?? 1e9)) ?: ($b['score'] <=> $a['score']); });
     elseif ($sort === 'price_desc') usort($items, function ($a, $b) { return ((float)$b['row']['prix_affiche'] <=> (float)$a['row']['prix_affiche']) ?: ($b['score'] <=> $a['score']); });
     else $items = sq_diversifier($items, $exempt);
 
@@ -434,19 +435,24 @@ function sq_search(array $rows, array $query, array $sel, array $opt): array {
 // ---------------------------------------------------------------------------------------------
 // Base de données : candidats, données associées, statistiques, profil
 // ---------------------------------------------------------------------------------------------
-/** Séjours qui respectent les filtres durs. $f : city, max_price, age, age_range, date_from, date_to, online, sexe, themes[], base_where, today */
+/** Séjours qui respectent les filtres durs. $f : city, near [lat, lng, km], max_price, age, age_range, date_from, date_to, online, sexe, themes[], base_where, today */
 function sq_candidats(PDO $pdo, array $f): array {
     $params = [':today' => $f['today'] ?? date('Y-m-d')];
     $where = $f['base_where'] ?? " WHERE c.valide = 1 AND c.en_attente = 0 AND c.refuse = 0 AND COALESCE(c.supprime, 0) = 0 AND COALESCE(c.prive, 0) = 0 AND COALESCE(c.date_limite_inscription, c.date_debut) >= :today ";
     if (isset($f['base_params'])) $params = $f['base_params'];
     $price = "COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix)";
     $grp = (function_exists('campsHaveGroupColumn') && campsHaveGroupColumn($pdo)) ? 'c.groupe_id' : 'NULL';
+    $dist = '';
+    if (!empty($f['near'])) {
+        $dist = ", (6371 * ACOS(LEAST(1, COS(RADIANS(:nla)) * COS(RADIANS(c.lat)) * COS(RADIANS(c.lng) - RADIANS(:nlo)) + SIN(RADIANS(:nla2)) * SIN(RADIANS(c.lat))))) AS distance_km";
+        $params += [':nla' => $f['near'][0], ':nlo' => $f['near'][1], ':nla2' => $f['near'][0], ':nkm' => $f['near'][2]];
+    }
     $sql = "SELECT c.id, c.token, c.nom, c.ville, c.code_postal, c.image_url, c.date_debut, c.date_fin, c.age_min, c.age_max, c.type, c.theme, $grp AS groupe_id,
             c.inscription_en_ligne, c.date_bump, c.date_creation, c.quota_global, c.organisateur_id, c.boost_vedette_fin, c.boost_urgence_fin,
             SUBSTRING(c.description, 1, 600) AS description,
             (c.quota_global - (SELECT COUNT(*) FROM inscriptions i WHERE i.camp_id = c.id AND i.statut NOT IN ('Annulé', 'annule', 'Annule'))) AS nb_places_restantes,
             o.nom AS organisateur_nom, o.logo_url AS organisateur_logo, o.slug AS organisateur_slug,
-            $price AS prix_affiche, (c.boost_vedette_fin > NOW()) AS is_vedette, (c.boost_urgence_fin > NOW()) AS is_urgence
+            $price AS prix_affiche, (c.boost_vedette_fin > NOW()) AS is_vedette, (c.boost_urgence_fin > NOW()) AS is_urgence$dist
             FROM camps c JOIN organisateurs o ON c.organisateur_id = o.id $where";
     $city = trim((string)($f['city'] ?? ''));
     if ($city !== '') { $sql .= " AND (c.ville LIKE :city OR c.code_postal LIKE :city)"; $params[':city'] = '%' . $city . '%'; }
@@ -473,6 +479,7 @@ function sq_candidats(PDO $pdo, array $f): array {
         }
         if ($parts) $sql .= " AND (" . implode(' OR ', $parts) . ")";
     }
+    if ($dist) $sql .= " AND c.lat IS NOT NULL HAVING distance_km <= :nkm";
     $st = $pdo->prepare($sql);
     $st->execute($params);
     return $st->fetchAll(PDO::FETCH_ASSOC);
@@ -557,6 +564,13 @@ function sq_run(PDO $pdo, array $get, array $ctx = []): array {
     $f = ['today' => $today, 'city' => $get['city'] ?? '', 'max_price' => $get['max_price'] ?? null, 'age' => (isset($get['age']) && $get['age'] !== '' && is_numeric($get['age'])) ? (int)$get['age'] : null,
           'date_from' => $day($get['date_from'] ?? ''), 'date_to' => $day($get['date_to'] ?? ''), 'online' => !empty($get['online']),
           'sexe' => $ctx['sexe'] ?? null, 'themes' => (array)($get['themes'] ?? []), 'catalogue' => $catalogue];
+    $la = filter_var($get['lat'] ?? '', FILTER_VALIDATE_FLOAT); $lo = filter_var($get['lng'] ?? '', FILTER_VALIDATE_FLOAT);
+    if ($la !== false && $lo !== false && abs($la) <= 90 && abs($lo) <= 180) {
+        require_once __DIR__ . '/geocode.php';
+        geo_ensure($pdo);
+        $f['near'] = [round($la, 2), round($lo, 2), max(5, min(300, (int)($get['rayon'] ?? 50) ?: 50))];
+        $f['city'] = '';
+    }
     if (isset($ctx['base_where'])) { $f['base_where'] = $ctx['base_where']; $f['base_params'] = $ctx['base_params'] ?? [':today' => $today]; }
     $f0 = $f;
     // Intentions reconnues dans la phrase : appliquées seulement si le formulaire ne dit pas déjà autre chose

@@ -88,11 +88,9 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     .ad-card .ad-sq { position:relative; width:100%; aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#f1f3f5; }
     .ad-card .ad-box { position:absolute; inset:0; min-height:0 !important; }
     .ad-card .ad-box ins { width:100% !important; height:100% !important; }
-    .ad-sq-label { position:absolute; top:8px; left:10px; z-index:2; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#6b7780; }
-    .ad-sq-fb { position:absolute; inset:0; z-index:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#3b4a54; font-size:13px; text-align:center; padding:12px; }
-    .ad-sq-fb b { font-size:18px; color:#26343b; }
+    .ad-sq-label { position:absolute; top:8px; left:10px; z-index:2; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#9aa3ab; }
     .ad-card .ad-box { z-index:1; }
-    .ad-card .ad-box.ad-fallback { display:none; }
+    .ad-card:not(.is-filled) { position:absolute; top:0; left:0; opacity:0; pointer-events:none; }
     .camp-card:hover .camp-media img { transform:scale(1.04); }
     .camp-badge { position:absolute; top:10px; left:10px; z-index:2; background:#fff; color:var(--ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:9999px; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,.12); }
     .fav-btn { position:absolute; top:10px; right:10px; z-index:2; width:34px; height:34px; border-radius:9999px; background:#fff; color:var(--ink); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.15); transition:transform .15s ease; }
@@ -136,18 +134,18 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 
     <div class="w-full max-w-[1320px] mx-auto px-5 sm:px-8 pt-5 pb-12 min-h-[330px] md:min-h-[350px] flex flex-col">
 
-        <?php if ($is_logged_in && !$is_animateur): ?>
-        <!-- Sélecteur « Rechercher pour : {enfant} » -->
+        <?php if (!$is_animateur): ?>
+        <!-- Sélecteur « Rechercher pour : {enfant ou âge} » -->
         <div class="flex justify-end items-center gap-3">
             <span class="text-[14px] font-semibold text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">Rechercher pour&nbsp;:</span>
             <div class="relative">
-                <button type="button" id="child-btn" aria-haspopup="listbox" aria-expanded="false"
+                <button type="button" id="child-btn" aria-haspopup="true" aria-expanded="false" aria-controls="child-panel"
                         class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2 text-[14px] font-bold text-[#26343b]">
-                    <span id="child-label" class="max-w-[150px] truncate">Toute la famille</span>
+                    <span id="child-label" class="max-w-[150px] truncate"><?php echo $is_logged_in ? 'Toute la famille' : 'Tous les âges'; ?></span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#3d6a8e]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
                 </button>
-                <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" role="listbox" hidden></div>
+                <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" hidden></div>
             </div>
         </div>
         <?php endif; ?>
@@ -165,7 +163,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 
                 <!-- Catégorie : menu à deux colonnes -->
                 <div class="hero-field flex-[1.05]">
-                    <button type="button" id="cat-btn" aria-haspopup="true" aria-expanded="false" class="block w-full text-left">
+                    <button type="button" id="cat-btn" aria-haspopup="true" aria-expanded="false" aria-controls="cat-panel" class="block w-full text-left">
                         <span class="hero-label">Catégorie</span>
                         <span class="hero-value"><span id="cat-label" class="truncate">Toutes catégories</span>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="flex-none text-[#26343b]"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -188,7 +186,13 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2.2"/></svg>
                         Localisation
                     </label>
-                    <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value">
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value min-w-0">
+                        <button type="button" id="hero-near" class="flex-none inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#eef2f4] hover:bg-[#e2e8ec] text-[12.5px] font-bold text-[#3d6a8e] whitespace-nowrap transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg>Autour de moi
+                        </button>
+                    </div>
+                    <input type="hidden" name="autour" value="1" id="hero-autour" disabled>
                 </div>
 
                 <button type="submit" aria-label="Rechercher"
@@ -321,100 +325,171 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('click', () => closeAll(null));
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(null); });
 
-    // ---- Catégories : groupes (colonne gauche) -> sous-catégories (colonne droite)
+    // ---- Catégories : groupes (colonne gauche) -> catégories (colonne droite). Survol, clic, toucher et clavier ; un choix lance la recherche.
     const GROUPS = [
-        { id: 'sport',   label: 'Sport et aventure',        icon: 'fa-person-hiking',  items: ['Aventure', 'Sport', 'Montagne', 'Mer / Littoral', 'Survie / Bushcraft', 'Voyage / Itinérant'] },
-        { id: 'nature',  label: 'Nature et environnement',  icon: 'fa-tree',           items: ['Nature', 'Campagne', 'Écologie'] },
-        { id: 'arts',    label: 'Arts et culture',          icon: 'fa-palette',        items: ['Arts plastiques', 'Cinéma', 'Danse', 'Musique', 'Théâtre', 'Découverte culturelle'] },
-        { id: 'sciences',label: 'Sciences et numérique',    icon: 'fa-flask',          items: ['Sciences', 'Robotique', 'Numérique / Gaming', 'Langues étrangères'] },
-        { id: 'spirit',  label: 'Spiritualité et solidarité', icon: 'fa-hands-praying', items: ['Spiritualité / Prière', 'Pèlerinage', 'Humanitaire / Solidaire'] },
-        { id: 'loisirs', label: 'Bien-être et loisirs',     icon: 'fa-spa',            items: ['Bien-être / Relaxation', 'Jeux', 'Gastronomie / Cuisine', 'Autre'] },
+        { id: 'plein-air', label: 'Sport et plein air',         icon: 'fa-person-hiking',  slugs: ['montagne', 'ski', 'sport', 'cheval', 'mer', 'velo', 'multi-activites'] },
+        { id: 'nature',    label: 'Nature et aventure',         icon: 'fa-tree',           slugs: ['nature', 'environnement-animaux', 'scoutisme', 'voyage-langues'] },
+        { id: 'arts',      label: 'Arts et culture',            icon: 'fa-palette',        slugs: ['arts-creatifs', 'musique', 'spectacle', 'medias', 'histoire-patrimoine'] },
+        { id: 'sciences',  label: 'Sciences et loisirs',        icon: 'fa-flask',          slugs: ['sciences-numerique', 'cuisine', 'jeux-imaginaire', 'bien-etre'] },
+        { id: 'spirit',    label: 'Spiritualité et solidarité', icon: 'fa-hands-praying',  slugs: ['spirituel', 'solidarite'] },
     ];
+    const heroForm = document.getElementById('hero-search-form');
     const catBtn = document.getElementById('cat-btn'), catPanel = document.getElementById('cat-panel');
     const catGroups = document.getElementById('cat-groups'), catItems = document.getElementById('cat-items');
     const catLabel = document.getElementById('cat-label'), catInputs = document.getElementById('cat-inputs');
-    let allThemes = [], activeGroup = null, mobileItemsGroup = null;
+    let CATS = {}, groups = [], activeGroup = null, drill = null, hoverOpen = false;
     const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
+    const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const row = (data, text, icon, go) => `<button type="button" class="dd-row" ${data}>${icon ? `<span class="ico"><i class="fa-solid ${icon}"></i></span>` : ''}${esc(text)}${go ? `<span class="go">${ICON_ARROW}</span>` : ''}</button>`;
 
-    function setCategory(label, names) {
-        catLabel.textContent = label;
-        catInputs.innerHTML = names.map(n => `<input type="hidden" name="themes[]" value="${esc(n)}">`).join('');
-        closeAll(null);
-    }
-    function groupItems(g) { return g.items.filter(n => allThemes.includes(n)); }
-    function renderCat() {
-        const known = new Set(GROUPS.flatMap(g => g.items));
-        const groups = GROUPS.map(g => ({ ...g, list: groupItems(g) })).filter(g => g.list.length);
-        const extra = allThemes.filter(n => !known.has(n));
+    function buildGroups() {
+        const used = new Set();
+        groups = GROUPS.map(g => ({ ...g, list: g.slugs.filter(s => CATS[s]) })).filter(g => g.list.length);
+        groups.forEach(g => g.list.forEach(s => used.add(s)));
+        const extra = Object.keys(CATS).filter(s => !used.has(s));
         if (extra.length) groups.push({ id: 'autres', label: 'Autres', icon: 'fa-ellipsis', list: extra });
-        catPanel._groups = groups;
-
-        // mobile : une seule colonne qui bascule groupes <-> sous-catégories
-        if (isMobile() && mobileItemsGroup) {
-            const g = groups.find(x => x.id === mobileItemsGroup) || groups[0];
-            catGroups.innerHTML =
-                `<button type="button" class="dd-row" data-back="1"><span class="ico"><i class="fa-solid fa-arrow-left"></i></span>Retour</button>` +
-                `<button type="button" class="dd-row is-selected" data-all="${g.id}">Tout : ${esc(g.label)}</button>` +
-                g.list.map(n => `<button type="button" class="dd-row" data-item="${esc(n)}">${esc(n)}</button>`).join('');
+    }
+    function renderItems() {
+        const g = groups.find(x => x.id === activeGroup);
+        catItems.innerHTML = g ? row(`data-all="${g.id}"`, 'Tout : ' + g.label, g.icon) + g.list.map(s => row(`data-item="${esc(s)}"`, CATS[s].nom)).join('') : '';
+    }
+    function setActive(id) {
+        activeGroup = id;
+        catGroups.querySelectorAll('[data-group]').forEach(b => b.classList.toggle('is-active', b.dataset.group === id));
+        if (!isMobile()) renderItems();
+    }
+    function renderCat() {
+        if (isMobile() && drill) {
+            const g = groups.find(x => x.id === drill);
+            catGroups.innerHTML = row('data-back="1"', 'Retour', 'fa-arrow-left') + row(`data-all="${g.id}"`, 'Tout : ' + g.label) + g.list.map(s => row(`data-item="${esc(s)}"`, CATS[s].nom)).join('');
             catItems.innerHTML = '';
             return;
         }
-        if (!activeGroup && groups.length && !isMobile()) activeGroup = groups[0].id;
-        catGroups.innerHTML =
-            `<button type="button" class="dd-row" data-none="1"><span class="ico"><i class="fa-solid fa-border-all"></i></span>Toutes catégories</button>` +
-            groups.map(g => `<button type="button" class="dd-row${g.id === activeGroup ? ' is-active' : ''}" data-group="${g.id}"><span class="ico"><i class="fa-solid ${g.icon}"></i></span>${esc(g.label)}<span class="go">${ICON_ARROW}</span></button>`).join('');
-        const cur = groups.find(g => g.id === activeGroup);
-        catItems.innerHTML = cur
-            ? `<button type="button" class="dd-row is-selected" data-all="${cur.id}"><span class="ico"><i class="fa-solid ${cur.icon}"></i></span>Tout : ${esc(cur.label)}</button>` +
-              cur.list.map(n => `<button type="button" class="dd-row" data-item="${esc(n)}">${esc(n)}</button>`).join('')
-            : '';
+        if (!activeGroup && groups.length) activeGroup = groups[0].id;
+        catGroups.innerHTML = row('data-none="1"', 'Toutes catégories', 'fa-border-all') + groups.map(g => row(`data-group="${g.id}"`, g.label, g.icon, true)).join('');
+        setActive(activeGroup);
     }
+    function openCat(byHover) {
+        closeAll(catPanel);
+        drill = null; renderCat();
+        catPanel.hidden = false; catBtn.setAttribute('aria-expanded', 'true');
+        hoverOpen = byHover;
+    }
+    function pick(label, slugs) {
+        catLabel.textContent = label;
+        catInputs.innerHTML = slugs.map(s => `<input type="hidden" name="cat[]" value="${esc(s)}">`).join('');
+        closeAll(null);
+        heroForm.requestSubmit ? heroForm.requestSubmit() : heroForm.submit();
+    }
+    const rows = col => [...col.querySelectorAll('.dd-row')];
+    function focusRow(col, i) { const r = rows(col); if (r.length) r[(i + r.length) % r.length].focus(); }
+
+    openers.push({ btn: catBtn, panel: catPanel });
+    catBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!catPanel.hidden && hoverOpen) { hoverOpen = false; return; }
+        if (catPanel.hidden) openCat(false); else closeAll(null);
+    });
+    catBtn.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        if (catPanel.hidden) openCat(false);
+        focusRow(catGroups, 0);
+    });
     catPanel.addEventListener('click', e => {
+        e.stopPropagation();
         const b = e.target.closest('button'); if (!b) return;
-        const groups = catPanel._groups || [];
-        if (b.dataset.none)  return setCategory('Toutes catégories', []);
-        if (b.dataset.back)  { mobileItemsGroup = null; return renderCat(); }
-        if (b.dataset.item)  return setCategory(b.dataset.item, [b.dataset.item]);
-        if (b.dataset.all)   { const g = groups.find(x => x.id === b.dataset.all); return g && setCategory(g.label, g.list); }
-        if (b.dataset.group) { if (isMobile()) { mobileItemsGroup = b.dataset.group; } else { activeGroup = b.dataset.group; } renderCat(); }
+        const g = groups.find(x => x.id === (b.dataset.all || b.dataset.group));
+        if (b.dataset.none) return pick('Toutes catégories', []);
+        if (b.dataset.item) return pick(CATS[b.dataset.item].nom, [b.dataset.item]);
+        if (b.dataset.all && g) return pick(g.label, g.list);
+        if (b.dataset.back) { drill = null; renderCat(); return focusRow(catGroups, 0); }
+        if (b.dataset.group && g) {
+            if (!isMobile()) return pick(g.label, g.list);
+            drill = g.id; renderCat(); focusRow(catGroups, 1);
+        }
     });
+    let hoverT = 0;
     catPanel.addEventListener('mouseover', e => {
+        clearTimeout(hoverT);
         const b = e.target.closest('[data-group]');
-        if (b && !isMobile() && b.dataset.group !== activeGroup) { activeGroup = b.dataset.group; renderCat(); }
+        if (b && !isMobile() && b.dataset.group !== activeGroup) hoverT = setTimeout(() => setActive(b.dataset.group), 140);
     });
-    bindDropdown(catBtn, catPanel, () => { mobileItemsGroup = null; renderCat(); });
+    catPanel.addEventListener('focusin', e => {
+        const b = e.target.closest('[data-group]');
+        if (b && !isMobile() && b.dataset.group !== activeGroup) setActive(b.dataset.group);
+    });
+    catPanel.addEventListener('focusout', e => {
+        const to = e.relatedTarget;
+        if (to && !catPanel.contains(to) && to !== catBtn) closeAll(null);
+    });
+    catPanel.addEventListener('keydown', e => {
+        const col = e.target.closest('.dd-col'); if (!col) return;
+        const i = rows(col).indexOf(e.target);
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); focusRow(col, i + (e.key === 'ArrowDown' ? 1 : -1)); }
+        else if (e.key === 'ArrowRight' && col === catGroups && e.target.dataset.group && !isMobile()) { e.preventDefault(); focusRow(catItems, 0); }
+        else if (e.key === 'ArrowLeft' && col === catItems) { e.preventDefault(); const a = catGroups.querySelector('.is-active'); if (a) a.focus(); }
+        else if (e.key === 'Escape') { e.stopPropagation(); closeAll(null); catBtn.focus(); }
+    });
+    if (canHover) {
+        let t = 0;
+        const enter = () => { clearTimeout(t); if (catPanel.hidden && !isMobile()) openCat(true); };
+        const leave = () => { clearTimeout(t); t = setTimeout(() => { if (hoverOpen && !catPanel.contains(document.activeElement)) closeAll(null); }, 250); };
+        [catBtn.closest('.hero-field'), catPanel].forEach(el => { el.addEventListener('mouseenter', enter); el.addEventListener('mouseleave', leave); });
+    }
+
+    document.getElementById('hero-near').addEventListener('click', () => {
+        document.getElementById('hero-city').value = '';
+        document.getElementById('hero-autour').disabled = false;
+        heroForm.requestSubmit ? heroForm.requestSubmit() : heroForm.submit();
+    });
+    window.addEventListener('pageshow', () => { document.getElementById('hero-autour').disabled = true; });
 
     // Catégories : chargement + rangée de raccourcis
-    const CHIP_ORDER = ['Aventure', 'Montagne', 'Mer / Littoral', 'Nature', 'Sport', 'Arts plastiques', 'Musique', 'Sciences', 'Spiritualité / Prière'];
-    fetch('api/get_themes.php').then(r => r.json()).then(themes => {
-        if (!Array.isArray(themes)) return;
-        allThemes = themes.map(t => t.name);
-        const chips = CHIP_ORDER.filter(n => allThemes.includes(n));
-        document.getElementById('chips').innerHTML = chips
-            .map(n => `<a href="recherche?themes[]=${encodeURIComponent(n)}">${esc(n)}</a>`)
+    const CHIP_ORDER = ['montagne', 'mer', 'nature', 'sport', 'ski', 'arts-creatifs', 'musique', 'sciences-numerique', 'spirituel'];
+    fetch('api/get_categories.php').then(r => r.json()).then(d => {
+        (d.categories || []).forEach(c => { CATS[c.slug] = c; });
+        buildGroups();
+        document.getElementById('chips').innerHTML = CHIP_ORDER.filter(s => CATS[s])
+            .map(s => `<a href="recherche?cat%5B%5D=${encodeURIComponent(s)}">${esc(CATS[s].nom)}</a>`)
             .join('<i class="dot"></i>');
     }).catch(() => {});
 
-    // ---- Enfant : liste déroulante + rechargement du fil
+    // ---- Pour qui : enfants enregistrés ou âge saisi (aussi sans compte), recharge le fil et sert à la recherche
     let currentChildAge = '';
     const childBtn = document.getElementById('child-btn'), childPanel = document.getElementById('child-panel');
     if (childBtn && childPanel) {
-        const options = [{ label: 'Toute la famille', age: '' }];
-        const renderChild = () => {
-            childPanel.innerHTML = options.map((o, i) =>
-                `<button type="button" role="option" class="dd-row${String(o.age) === String(currentChildAge) ? ' is-selected' : ''}" data-i="${i}">${esc(o.label)}</button>`).join('');
-        };
-        childPanel.addEventListener('click', e => {
-            const b = e.target.closest('button'); if (!b) return;
-            const o = options[Number(b.dataset.i)];
-            currentChildAge = String(o.age);
-            document.getElementById('child-label').textContent = o.label;
+        const options = [{ label: isLoggedIn ? 'Toute la famille' : 'Tous les âges', age: '' }];
+        let other = false;
+        const chooseAge = (label, age) => {
+            currentChildAge = String(age);
+            document.getElementById('child-label').textContent = label;
             document.getElementById('hero-age-hidden').value = currentChildAge;
             closeAll(null);
             loadFeed();
+        };
+        const renderChild = () => {
+            const known = options.some(o => String(o.age) === currentChildAge);
+            childPanel.innerHTML = options.map((o, i) =>
+                `<button type="button" class="dd-row${String(o.age) === currentChildAge ? ' is-selected' : ''}" aria-pressed="${String(o.age) === currentChildAge}" data-i="${i}">${esc(o.label)}</button>`).join('') +
+                (other
+                    ? `<form id="age-other" class="flex items-center gap-2 p-2"><input type="number" min="3" max="25" inputmode="numeric" required value="${known ? '' : esc(currentChildAge)}" placeholder="Âge" aria-label="Âge de l'enfant" class="w-full h-11 px-3 rounded-lg border border-[#e5e7eb] text-[16px]"><button class="h-11 px-4 rounded-lg bg-[#2f3d45] text-white text-sm font-bold">OK</button></form>`
+                    : `<button type="button" class="dd-row${known ? '' : ' is-selected'}" data-other="1">Autre âge…</button>`);
+            if (other) childPanel.querySelector('input').focus();
+        };
+        childPanel.addEventListener('click', e => {
+            const b = e.target.closest('button[data-i], button[data-other]'); if (!b) return;
+            if (b.dataset.other) { other = true; return renderChild(); }
+            const o = options[Number(b.dataset.i)];
+            chooseAge(o.label, o.age);
         });
-        bindDropdown(childBtn, childPanel, renderChild);
-        fetch('api/get_children.php').then(r => r.json()).then(children => {
+        childPanel.addEventListener('submit', e => {
+            e.preventDefault();
+            const n = parseInt(e.target.querySelector('input').value, 10);
+            if (n >= 3 && n <= 25) chooseAge(n + ' ans', n);
+        });
+        bindDropdown(childBtn, childPanel, () => { other = false; renderChild(); });
+        if (isLoggedIn) fetch('api/get_children.php').then(r => r.json()).then(children => {
             if (!Array.isArray(children)) return;
             children.forEach(c => { if (c.age !== null && c.age !== undefined) options.push({ label: `${c.prenom} (${c.age} ans)`, age: c.age }); });
             renderChild();
@@ -422,14 +497,15 @@ document.addEventListener('DOMContentLoaded', function () {
         renderChild();
     }
 
-    // Pub carrée : une carte toutes les 7 cartes (jamais parmi les 6 premières), même taille et même arrondi que les cartes.
-    // Si le bloc AdSense carré n'est pas configuré (ADS_SLOTS['carre']), rien n'est inséré.
+    // Pub carrée : au plus une carte pour 8 séjours (après la 8e, jamais en dernier), même taille que les cartes. Rien n'est inséré si le bloc
+    // AdSense carré n'est pas configuré (ADS_SLOTS['carre']) ou si le script publicitaire n'a pas pu se charger ; une carte sans annonce est retirée (assets/ads.js).
     const AD_SQUARE_SLOT = <?= json_encode(ADS_SLOTS['carre'] ?? '') ?>;
     function cardsWithAds(camps) {
-        return camps.map((c, i) => campCard(c) + ((AD_SQUARE_SLOT && (i + 1) % 7 === 0 && i < camps.length - 1) ? adCard() : '')).join('');
+        const ads = AD_SQUARE_SLOT && window.colomapAds && !document.documentElement.classList.contains('no-ads');
+        return camps.map((c, i) => campCard(c) + ((ads && (i + 1) % 8 === 0 && i < camps.length - 1) ? adCard() : '')).join('');
     }
     function adCard() {
-        return `<div class="camp-card ad-card" aria-label="Publicité"><div class="ad-sq"><span class="ad-sq-label">Publicité</span><div class="ad-box" data-ad-slot="${AD_SQUARE_SLOT}" data-ad-format="rectangle" data-fallback="1"></div><div class="ad-sq-fb"><b>moncamp.fr</b><span>Trouvez la colonie idéale</span></div></div></div>`;
+        return `<aside class="camp-card ad-card" aria-label="Publicité"><div class="ad-sq"><span class="ad-sq-label">Publicité</span><div class="ad-box" data-ad-slot="${esc(AD_SQUARE_SLOT)}" data-ad-format="rectangle" data-remove=".ad-card"></div></div></aside>`;
     }
 
     // ------------------------------------------------------------
@@ -534,12 +610,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const BANNER = `
-        <section class="mt-12" aria-label="Rechercher une colonie">
-            <div class="relative bg-[#f8f5ea] rounded-3xl px-6 py-12 text-center overflow-hidden">
-                <svg class="pointer-events-none absolute bottom-0 left-0 h-[120px] w-auto opacity-90" viewBox="0 0 200 150" aria-hidden="true" focusable="false"><polygon points="30.0,86.0 40.9,110.3 35.7,110.3 47.0,128.2 38.7,128.2 51.8,150.0 8.2,150.0 21.3,128.2 13.0,128.2 24.3,110.3 19.1,110.3" fill="#dfe3cf"/><rect x="27.8" y="150.0" width="4.4" height="5.8" fill="#dfe3cf"/><polygon points="70.0,58.0 85.6,93.0 78.1,93.0 94.4,118.7 82.5,118.7 101.3,150.0 38.7,150.0 57.5,118.7 45.6,118.7 61.9,93.0 54.4,93.0" fill="#cfd6bd"/><rect x="67.8" y="150.0" width="4.4" height="8.3" fill="#cfd6bd"/><polygon points="112.0,94.0 121.5,115.3 117.0,115.3 126.9,131.0 119.6,131.0 131.0,150.0 93.0,150.0 104.4,131.0 97.1,131.0 107.0,115.3 102.5,115.3" fill="#e4e6d4"/><rect x="109.8" y="150.0" width="4.4" height="5.0" fill="#e4e6d4"/><polygon points="150.0,74.0 162.9,102.9 156.7,102.9 170.2,124.2 160.3,124.2 175.8,150.0 124.2,150.0 139.7,124.2 129.8,124.2 143.3,102.9 137.1,102.9" fill="#d6dcc5"/><rect x="147.8" y="150.0" width="4.4" height="6.8" fill="#d6dcc5"/></svg><svg class="pointer-events-none absolute bottom-0 right-0 h-[120px] w-auto opacity-90" viewBox="0 0 200 150" aria-hidden="true" focusable="false"><polygon points="170.0,86.0 180.9,110.3 175.7,110.3 187.0,128.2 178.7,128.2 191.8,150.0 148.2,150.0 161.3,128.2 153.0,128.2 164.3,110.3 159.1,110.3" fill="#dfe3cf"/><rect x="167.8" y="150.0" width="4.4" height="5.8" fill="#dfe3cf"/><polygon points="130.0,58.0 145.6,93.0 138.1,93.0 154.4,118.7 142.5,118.7 161.3,150.0 98.7,150.0 117.5,118.7 105.6,118.7 121.9,93.0 114.4,93.0" fill="#cfd6bd"/><rect x="127.8" y="150.0" width="4.4" height="8.3" fill="#cfd6bd"/><polygon points="88.0,94.0 97.5,115.3 93.0,115.3 102.9,131.0 95.6,131.0 107.0,150.0 69.0,150.0 80.4,131.0 73.1,131.0 83.0,115.3 78.5,115.3" fill="#e4e6d4"/><rect x="85.8" y="150.0" width="4.4" height="5.0" fill="#e4e6d4"/><polygon points="50.0,74.0 62.9,102.9 56.7,102.9 70.2,124.2 60.3,124.2 75.8,150.0 24.2,150.0 39.7,124.2 29.8,124.2 43.3,102.9 37.1,102.9" fill="#d6dcc5"/><rect x="47.8" y="150.0" width="4.4" height="6.8" fill="#d6dcc5"/></svg>
-                <p class="relative font-display text-[30px] text-[#26343b] leading-none">moncamp.fr</p>
-                <p class="relative mt-3 text-[16px] text-[#4b5964] max-w-md mx-auto">Recherchez une colonie de vacances adaptée pour votre enfant.</p>
-                <a href="recherche" class="relative mt-6 inline-block bg-[#2f3d45] hover:bg-[#1f2a30] text-white text-[16px] font-semibold px-12 py-3 rounded-lg transition-colors">Rechercher</a>
+        <section class="mt-10" aria-label="Rechercher une colonie">
+            <div class="relative bg-[#f8f5ea] rounded-2xl px-5 md:px-40 py-4 md:py-5 overflow-hidden flex items-center justify-between md:justify-center gap-4 md:gap-8 text-left">
+                <svg class="pointer-events-none absolute bottom-0 left-0 hidden md:block h-[78px] w-auto" viewBox="0 54 200 106" aria-hidden="true" focusable="false"><polygon points="30.0,86.0 40.9,110.3 35.7,110.3 47.0,128.2 38.7,128.2 51.8,150.0 8.2,150.0 21.3,128.2 13.0,128.2 24.3,110.3 19.1,110.3" fill="#dfe3cf"/><rect x="27.8" y="150.0" width="4.4" height="5.8" fill="#dfe3cf"/><polygon points="70.0,58.0 85.6,93.0 78.1,93.0 94.4,118.7 82.5,118.7 101.3,150.0 38.7,150.0 57.5,118.7 45.6,118.7 61.9,93.0 54.4,93.0" fill="#cfd6bd"/><rect x="67.8" y="150.0" width="4.4" height="8.3" fill="#cfd6bd"/><polygon points="112.0,94.0 121.5,115.3 117.0,115.3 126.9,131.0 119.6,131.0 131.0,150.0 93.0,150.0 104.4,131.0 97.1,131.0 107.0,115.3 102.5,115.3" fill="#e4e6d4"/><rect x="109.8" y="150.0" width="4.4" height="5.0" fill="#e4e6d4"/><polygon points="150.0,74.0 162.9,102.9 156.7,102.9 170.2,124.2 160.3,124.2 175.8,150.0 124.2,150.0 139.7,124.2 129.8,124.2 143.3,102.9 137.1,102.9" fill="#d6dcc5"/><rect x="147.8" y="150.0" width="4.4" height="6.8" fill="#d6dcc5"/></svg><svg class="pointer-events-none absolute bottom-0 right-0 hidden md:block h-[78px] w-auto" viewBox="0 54 200 106" aria-hidden="true" focusable="false"><polygon points="170.0,86.0 180.9,110.3 175.7,110.3 187.0,128.2 178.7,128.2 191.8,150.0 148.2,150.0 161.3,128.2 153.0,128.2 164.3,110.3 159.1,110.3" fill="#dfe3cf"/><rect x="167.8" y="150.0" width="4.4" height="5.8" fill="#dfe3cf"/><polygon points="130.0,58.0 145.6,93.0 138.1,93.0 154.4,118.7 142.5,118.7 161.3,150.0 98.7,150.0 117.5,118.7 105.6,118.7 121.9,93.0 114.4,93.0" fill="#cfd6bd"/><rect x="127.8" y="150.0" width="4.4" height="8.3" fill="#cfd6bd"/><polygon points="88.0,94.0 97.5,115.3 93.0,115.3 102.9,131.0 95.6,131.0 107.0,150.0 69.0,150.0 80.4,131.0 73.1,131.0 83.0,115.3 78.5,115.3" fill="#e4e6d4"/><rect x="85.8" y="150.0" width="4.4" height="5.0" fill="#e4e6d4"/><polygon points="50.0,74.0 62.9,102.9 56.7,102.9 70.2,124.2 60.3,124.2 75.8,150.0 24.2,150.0 39.7,124.2 29.8,124.2 43.3,102.9 37.1,102.9" fill="#d6dcc5"/><rect x="47.8" y="150.0" width="4.4" height="6.8" fill="#d6dcc5"/></svg>
+                <div class="relative">
+                    <p class="font-display text-[19px] text-[#26343b] leading-tight">moncamp.fr</p>
+                    <p class="hidden md:block mt-0.5 text-[14px] text-[#4b5964]">Recherchez une colonie de vacances adaptée à votre enfant.</p>
+                </div>
+                <a href="recherche" class="relative flex-none bg-[#2f3d45] hover:bg-[#1f2a30] text-white text-[15px] font-semibold px-8 py-2.5 rounded-lg transition-colors">Rechercher</a>
             </div>
         </section>`;
 
@@ -565,7 +643,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!sections.length) { feed.innerHTML = ''; feedEmpty.classList.remove('hidden'); return; }
                 feed.innerHTML = sections.map((s, i) => sectionHTML(s) + (i === 0 ? BANNER : '')).join('');
                 feed.querySelectorAll('.camp-track').forEach(bindCarousel);
-                feed.querySelectorAll('.ad-box[data-ad-slot]').forEach(b => { if (window.colomapAds) window.colomapAds.observe(b); });
+                feed.querySelectorAll('.ad-box[data-ad-slot]').forEach(b => { if (window.colomapAds) window.colomapAds.observe(b, b.closest('.camp-track')); });
             })
             .catch(() => { if (token === feedToken) { feed.innerHTML = ''; feedEmpty.classList.remove('hidden'); } });
     }

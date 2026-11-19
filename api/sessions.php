@@ -32,7 +32,8 @@ function normalizeCampName(?string $s): string {
 }
 
 /**
- * Réduit une liste de camps à UNE ligne par groupe (la première rencontrée dans $list).
+ * Réduit une liste de camps à UNE ligne par groupe, à la place de la première rencontrée dans $list. La carte (et son lien) porte
+ * la prochaine session à venir du groupe parmi celles de $list : id, token, dates, lieu et distance viennent de cette session.
  * Ajoute à chaque ligne retenue : sessions_count (nombre de sessions dans $universe),
  * date_debut_min et date_fin_max.
  *
@@ -52,11 +53,19 @@ function collapseSessions(array $list, ?array $universe = null): array {
         if ($d1 && (!isset($min[$k]) || $d1 < $min[$k])) $min[$k] = $d1;
         if ($d2 && (!isset($max[$k]) || $d2 > $max[$k])) $max[$k] = $d2;
     }
+    $today = date('Y-m-d'); $next = [];
+    foreach ($list as $r) {
+        $k = sessionGroupKey($r);
+        $d = (string)($r['date_debut'] ?? '');
+        $rang = [$d !== '' && $d < $today ? 1 : 0, $d];   // à venir d'abord, puis la plus proche
+        if (!isset($next[$k]) || $rang < $next[$k][0]) $next[$k] = [$rang, $r];
+    }
     $seen = []; $out = [];
     foreach ($list as $r) {
         $k = sessionGroupKey($r);
         if (isset($seen[$k])) continue;
         $seen[$k] = true;
+        foreach (['id', 'token', 'date_debut', 'date_fin', 'ville', 'code_postal', 'distance_km'] as $f) if (array_key_exists($f, $next[$k][1])) $r[$f] = $next[$k][1][$f];
         $r['sessions_count'] = $count[$k] ?? 1;
         $own = $r['prix_affiche'] ?? $r['prix'] ?? null;
         $r['prix_min'] = $prixMin[$k] ?? ($own !== null ? (float)$own : null);

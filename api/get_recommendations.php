@@ -126,6 +126,8 @@ try {
     // ------------------------------------------------------------------
     // 3. Score de pertinence + étiquette par camp
     // ------------------------------------------------------------------
+    // Rotation : un tirage propre à chaque visiteur, renouvelé toutes les heures (ordre des cartes et thèmes proposés)
+    mt_srand(crc32(date('Y-m-d H') . '|' . session_id()));
     $pool = [];
     foreach ($rows as $c) {
         $id = (int)$c['id'];
@@ -167,11 +169,10 @@ try {
         $score += 3 * (sq_qualite((float)($statsImp[$id]['i'] ?? 0), (float)($statsImp[$id]['c'] ?? 0), (float)($statsIns[$id] ?? 0)) - 50) / 50;
         // Effet mesurable des boosts : multiplicateur (mise à la une, dernière minute, remontée qui s'estompe), jamais un simple tri
         $mk = mk_score($c, $nowDt);
-        $score = ($score + 6) * $mk['boost_factor'];
+        $score = ($score + 6) * $mk['boost_factor'] * (0.8 + 0.4 * mt_rand() / mt_getrandmax());
 
         $c['_score'] = $score; $c['_fits'] = $fits; $c['_vedette'] = $isVedette; $c['_urgent'] = $isUrgent;
         $c['_new'] = $isNew; $c['_sameOrg'] = $sameOrg; $c['_sameTheme'] = $sameTheme; $c['_nearby'] = $nearby;
-        $c['_text'] = lc(($c['theme'] ?? '') . ' ' . ($c['type'] ?? '') . ' ' . ($c['nom'] ?? ''));
         $pool[] = $c;
     }
 
@@ -204,9 +205,12 @@ try {
     };
 
     $sections = [];
-    $add = function ($id, $title, $subtitle, $more, $list, $badge = null) use (&$sections, $format, $pool) {
+    $shownKeys = [];   // séjours déjà présents dans un carrousel précédent : jamais deux fois sur la page
+    $add = function ($id, $title, $subtitle, $more, $list, $badge = null) use (&$sections, &$shownKeys, $format, $pool, $limit) {
+        $list = array_values(array_filter($list, function ($c) use (&$shownKeys) { return !isset($shownKeys[sessionGroupKey($c)]); }));
         $list = collapseSessions($list, $pool); // une seule carte par camp (ses sessions sont comptées)
         if (count($list) < 3 && $id !== 'prochains') return; // une section presque vide fait pauvre : on la masque
+        foreach (array_slice($list, 0, $limit) as $c) $shownKeys[sessionGroupKey($c)] = true;
         $sections[] = ['id' => $id, 'title' => $title, 'subtitle' => $subtitle, 'more' => $more, 'camps' => $format($list, $badge)];
     };
     $filter = function ($fn) use ($pool, $byScore) {
@@ -250,6 +254,21 @@ try {
              $filter(function ($c) { return $c['_nearby']; }));
     }
 
+    // Thématiques : 4 catégories tirées parmi celles qui ont des séjours à venir (les goûts du parent d'abord), différentes à chaque rotation
+    $catalogue = cat_load($pdo);
+    $catSlugs = array_values(array_unique(array_merge(...array_map(function ($c) { return $c['_cats']; }, $pool ?: [['_cats' => []]]))));
+    $catSlugs = array_values(array_filter($catSlugs, function ($s) use ($catalogue) { return isset($catalogue[$s]); }));
+    shuffle($catSlugs);
+    usort($catSlugs, function ($a, $b) use ($prefCats) { return (int)isset($prefCats[$b]) <=> (int)isset($prefCats[$a]); });
+    $nThemes = 0;
+    foreach ($catSlugs as $slug) {
+        if ($nThemes >= 4) break;
+        $before = count($sections);
+        $add('theme-' . $slug, $catalogue[$slug]['nom'], 'Une sélection thématique', 'recherche?cat[]=' . urlencode($slug),
+             $filter(function ($c) use ($slug) { return in_array($slug, $c['_cats'], true); }));
+        if (count($sections) > $before) $nThemes++;
+    }
+
     // Dernière minute : départs dans les 60 prochains jours (les plus proches d'abord)
     $soon = date('Y-m-d', strtotime('+60 days'));
     $lm = array_values(array_filter($pool, function ($c) use ($soon) { return $c['date_debut'] <= $soon; }));
@@ -260,23 +279,6 @@ try {
     $cheap = array_values(array_filter($pool, function ($c) { return $c['prix'] !== null && (float)$c['prix'] > 0 && (float)$c['prix'] <= 300; }));
     usort($cheap, function ($a, $b) { return ((float)$a['prix'] <=> (float)$b['prix']) ?: strcmp($a['date_debut'], $b['date_debut']); });
     $add('petits-prix', 'Petits prix', 'Des séjours à moins de 300 €', 'recherche?max_price=300', $cheap);
-
-    // Thématiques
-    // (la catégorie du séjour, ou à défaut son ancien thème / ses mots)
-    $themes = [
-        ['montagne', 'Montagne', ['montagne', 'neige', 'ski'], ['montagne', 'ski']],
-        ['mer', 'Mer et littoral', ['mer', 'littoral', 'plage', 'voile'], ['mer']],
-        ['nature', 'Nature et aventure', ['nature', 'aventure', 'campagne', 'survie', 'bushcraft'], ['nature']],
-        ['sport', 'Sport', ['sport'], ['sport', 'velo']],
-    ];
-    foreach ($themes as [$slug, $title, $words, $cats]) {
-        $list = $filter(function ($c) use ($words, $cats) {
-            if (array_intersect($c['_cats'], $cats)) return true;
-            foreach ($words as $w) if (mb_strpos($c['_text'], $w) !== false) return true;
-            return false;
-        });
-        $add('theme-' . $slug, $title, 'Une sélection thématique', 'recherche?cat[]=' . urlencode($cats[0]), $list);
-    }
 
     // Rien du tout ? on propose simplement les prochains séjours
     if (!$sections) {
