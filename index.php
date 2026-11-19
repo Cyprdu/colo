@@ -88,11 +88,9 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     .ad-card .ad-sq { position:relative; width:100%; aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#f1f3f5; }
     .ad-card .ad-box { position:absolute; inset:0; min-height:0 !important; }
     .ad-card .ad-box ins { width:100% !important; height:100% !important; }
-    .ad-sq-label { position:absolute; top:8px; left:10px; z-index:2; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#6b7780; }
-    .ad-sq-fb { position:absolute; inset:0; z-index:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#3b4a54; font-size:13px; text-align:center; padding:12px; }
-    .ad-sq-fb b { font-size:18px; color:#26343b; }
+    .ad-sq-label { position:absolute; top:8px; left:10px; z-index:2; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#9aa3ab; }
     .ad-card .ad-box { z-index:1; }
-    .ad-card .ad-box.ad-fallback { display:none; }
+    .ad-card:not(.is-filled) { position:absolute; top:0; left:0; opacity:0; pointer-events:none; }
     .camp-card:hover .camp-media img { transform:scale(1.04); }
     .camp-badge { position:absolute; top:10px; left:10px; z-index:2; background:#fff; color:var(--ink); font-size:12px; font-weight:600; padding:5px 10px; border-radius:9999px; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,.12); }
     .fav-btn { position:absolute; top:10px; right:10px; z-index:2; width:34px; height:34px; border-radius:9999px; background:#fff; color:var(--ink); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.15); transition:transform .15s ease; }
@@ -499,14 +497,15 @@ document.addEventListener('DOMContentLoaded', function () {
         renderChild();
     }
 
-    // Pub carrée : une carte toutes les 7 cartes (jamais parmi les 6 premières), même taille et même arrondi que les cartes.
-    // Si le bloc AdSense carré n'est pas configuré (ADS_SLOTS['carre']), rien n'est inséré.
+    // Pub carrée : au plus une carte pour 8 séjours (après la 8e, jamais en dernier), même taille que les cartes. Rien n'est inséré si le bloc
+    // AdSense carré n'est pas configuré (ADS_SLOTS['carre']) ou si le script publicitaire n'a pas pu se charger ; une carte sans annonce est retirée (assets/ads.js).
     const AD_SQUARE_SLOT = <?= json_encode(ADS_SLOTS['carre'] ?? '') ?>;
     function cardsWithAds(camps) {
-        return camps.map((c, i) => campCard(c) + ((AD_SQUARE_SLOT && (i + 1) % 7 === 0 && i < camps.length - 1) ? adCard() : '')).join('');
+        const ads = AD_SQUARE_SLOT && window.colomapAds && !document.documentElement.classList.contains('no-ads');
+        return camps.map((c, i) => campCard(c) + ((ads && (i + 1) % 8 === 0 && i < camps.length - 1) ? adCard() : '')).join('');
     }
     function adCard() {
-        return `<div class="camp-card ad-card" aria-label="Publicité"><div class="ad-sq"><span class="ad-sq-label">Publicité</span><div class="ad-box" data-ad-slot="${AD_SQUARE_SLOT}" data-ad-format="rectangle" data-fallback="1"></div><div class="ad-sq-fb"><b>moncamp.fr</b><span>Trouvez la colonie idéale</span></div></div></div>`;
+        return `<aside class="camp-card ad-card" aria-label="Publicité"><div class="ad-sq"><span class="ad-sq-label">Publicité</span><div class="ad-box" data-ad-slot="${esc(AD_SQUARE_SLOT)}" data-ad-format="rectangle" data-remove=".ad-card"></div></div></aside>`;
     }
 
     // ------------------------------------------------------------
@@ -644,7 +643,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!sections.length) { feed.innerHTML = ''; feedEmpty.classList.remove('hidden'); return; }
                 feed.innerHTML = sections.map((s, i) => sectionHTML(s) + (i === 0 ? BANNER : '')).join('');
                 feed.querySelectorAll('.camp-track').forEach(bindCarousel);
-                feed.querySelectorAll('.ad-box[data-ad-slot]').forEach(b => { if (window.colomapAds) window.colomapAds.observe(b); });
+                feed.querySelectorAll('.ad-box[data-ad-slot]').forEach(b => { if (window.colomapAds) window.colomapAds.observe(b, b.closest('.camp-track')); });
             })
             .catch(() => { if (token === feedToken) { feed.innerHTML = ''; feedEmpty.classList.remove('hidden'); } });
     }

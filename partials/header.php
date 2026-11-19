@@ -93,13 +93,13 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         function gtag(){ dataLayer.push(arguments); }
         gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'denied', wait_for_update: 500 });
     </script>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous"></script>
-    <script defer src="/assets/ads.js"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3659884670016121" crossorigin="anonymous" onerror="document.documentElement.classList.add('no-ads')"></script>
+    <script defer src="/assets/ads.js" onerror="document.documentElement.classList.add('no-ads')"></script>
     <style>
         .ad-wrap { margin: 28px auto; max-width: 100%; text-align: center; }
         .ad-wrap .ad-label { display:block; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#9aa3ab; margin-bottom:6px; }
         .ad-wrap .ad-box { display:block; width:100%; overflow:hidden; }
-        .ad-wrap.ad-empty { display:none; }
+        .ad-wrap.ad-empty, .no-ads .ad-wrap, .no-ads .ad-card { display:none !important; }
     </style>
     <?php endif; ?>
 
