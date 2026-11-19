@@ -29,12 +29,12 @@ Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentair
 - [x] Référencement externe : « Réserver ma place » vers le site de l'organisme avec paramètre de suivi (`utm_source=moncamp.fr` + identifiant de clic) ; compteur de clics par séjour et par organisme, tableau dans l'admin et le dashboard organisme.
 
 ## Lot 4 — Parents et enfants
-- [ ] `modif_child.php` : changer la photo de l'enfant (vérifier l'existant) ; `children` : photo à la place du rond gris.
-- [ ] Page « mon séjour animateur » : toujours blanche sans instructions — vérifier en ligne après déploiement du lot fiche enfant, corriger si besoin.
+- [x] `modif_child.php` : changer la photo de l'enfant (vérifier l'existant) ; `children` : photo à la place du rond gris.
+- [x] Page « mon séjour animateur » : toujours blanche sans instructions — vérifier en ligne après déploiement du lot fiche enfant, corriger si besoin.
 
 ## Lot 5 — Légal et RGPD
-- [ ] Bandeau de consentement cookies conforme CNIL (refuser aussi simple qu'accepter, choix par finalité, AdSense et mesure d'audience bloqués avant consentement, preuve de consentement, lien « Gérer les cookies » dans le pied de page).
-- [ ] Audit des obligations : mentions légales, CGU, CGV/conditions de vente, politique de confidentialité, registre, durées de conservation, droits RGPD, médiation de la consommation, données de mineurs et de santé (hébergement HDS à évaluer), accessibilité ; mettre à jour `legal.php` et les pages concernées.
+- [x] Bandeau de consentement cookies conforme CNIL (refuser aussi simple qu'accepter, choix par finalité, AdSense et mesure d'audience bloqués avant consentement, preuve de consentement, lien « Gérer les cookies » dans le pied de page).
+- [x] Audit des obligations : mentions légales, CGU, CGV/conditions de vente, politique de confidentialité, registre, durées de conservation, droits RGPD, médiation de la consommation, données de mineurs et de santé (hébergement HDS à évaluer), accessibilité ; mettre à jour `legal.php` et les pages concernées.
 
 ## Lot 6 — Traduction
 - [ ] Sélecteur de langue dans le pied de page (FR par défaut, EN) ; tous les textes de l'interface traduits (fichiers de langue), annonces des séjours non traduites.
