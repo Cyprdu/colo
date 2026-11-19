@@ -210,7 +210,7 @@ function ctl_tests(): array {
     });
     $add('a_script', 'Publicités Google', 'Script AdSense présent dans les pages', function () {
         [$c, $b] = ctl_http(ctl_site() . '/');
-        return str_contains($b, 'adsbygoogle.js?client=ca-pub-3659884670016121') ? ctl_r('ok', 'Script AdSense chargé sur l\'accueil.') : ctl_r('warn', 'Script AdSense absent de l\'accueil.', 'Vérifiez partials/header.php.');
+        return str_contains($b, '/assets/consent.js') && str_contains($b, '/assets/ads.js') ? ctl_r('ok', 'Chargeur AdSense présent sur l\'accueil (AdSense chargé après le choix cookies).') : ctl_r('warn', 'Chargeur AdSense ou bandeau cookies absent de l\'accueil.', 'Vérifiez partials/header.php (assets/consent.js puis assets/ads.js).');
     });
     $add('a_statut', 'Publicités Google', 'Validation du site par AdSense', fn() => ctl_r('info', 'Non vérifiable automatiquement.', 'AdSense > Sites : moncamp.fr doit être « Prêt ». Les pubs n\'apparaissent qu\'après validation, et seulement si le consentement cookies est donné (RGPD).'));
 

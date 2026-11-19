@@ -139,7 +139,7 @@ require_once 'partials/header.php';
                     <a href="modif_child?id=<?= urlencode($enfantJeton) ?>" class="text-[13px] font-bold px-3 py-1.5 rounded-lg border border-[#e5e7eb] text-[#26343b] hover:bg-[#f1f3f5] transition">Modifier</a>
                 </div>
                 <div class="mt-4 flex items-center gap-4">
-                    <span class="w-14 h-14 flex-none rounded-full bg-[#3a4852] text-white text-[22px] font-bold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr($m['enfant_prenom'], 0, 1))) ?></span>
+                    <?= enfant_avatar($m['enfant_photo'] ?? null, (string)$m['enfant_prenom'], 'w-14 h-14 text-[22px]') ?>
                     <div>
                         <p class="text-[18px] font-bold text-[#26343b]"><?= htmlspecialchars($m['enfant_prenom'] . ' ' . $m['enfant_nom']) ?></p>
                         <p class="text-[13.5px] text-[#6b7780]">Né(e) le <?= date('d/m/Y', strtotime($m['date_naissance'])) ?><?= $age !== null ? ' · ' . $age . ' ans' : '' ?></p>

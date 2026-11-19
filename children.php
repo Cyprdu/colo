@@ -6,7 +6,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 if (!isset($_SESSION['user']['id'])) { header('Location: login.php?next=children'); exit; }
 
 enfants_ensure($pdo);
-$st = $pdo->prepare("SELECT public_id, prenom, nom, sexe, date_naissance, infos_sante, allergies FROM enfants WHERE parent_id = ? ORDER BY prenom ASC");
+$st = $pdo->prepare("SELECT public_id, photo_token, prenom, nom, sexe, date_naissance, infos_sante, allergies FROM enfants WHERE parent_id = ? ORDER BY prenom ASC");
 $st->execute([(int)$_SESSION['user']['id']]);
 $enfants = $st->fetchAll(PDO::FETCH_ASSOC);
 
@@ -47,7 +47,7 @@ require_once 'partials/header.php';
                 $sante = trim((string)$e['infos_sante'] . (string)$e['allergies']) !== '';
             ?>
             <li class="ds-card p-5 flex flex-wrap items-center gap-4">
-                <span class="w-12 h-12 flex-none rounded-full bg-[#3a4852] text-white text-[19px] font-bold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)$e['prenom'], 0, 1))) ?></span>
+                <?= enfant_avatar($e['photo_token'] ?? null, (string)$e['prenom'], 'w-12 h-12 text-[19px]') ?>
                 <div class="min-w-0 flex-1">
                     <p class="text-[17px] font-bold text-[#26343b] truncate"><?= htmlspecialchars($e['prenom'] . ' ' . $e['nom']) ?></p>
                     <p class="text-[13.5px] text-[#6b7780]"><?= $age !== null ? $age . ' ans' : 'Âge non renseigné' ?><?= $sante ? ' · infos santé renseignées' : '' ?></p>

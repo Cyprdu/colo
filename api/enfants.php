@@ -30,6 +30,12 @@ function retour_interne($r): string {
 }
 function enfant_new_public_id(): string { return bin2hex(random_bytes(12)); }
 
+/** Photo de l'enfant (servie déchiffrée par api/secure_file.php) ou, à défaut, l'initiale de son prénom ; $cls : taille et corps du texte */
+function enfant_avatar(?string $photo, string $prenom, string $cls): string {
+    if ($photo) return '<img src="api/secure_file.php?type=photos&amp;file=' . rawurlencode($photo) . '" alt="" loading="lazy" class="' . $cls . ' flex-none rounded-full object-cover bg-[#eef2f4]">';
+    return '<span class="' . $cls . ' flex-none rounded-full bg-[#3a4852] text-white font-bold flex items-center justify-center" aria-hidden="true">' . htmlspecialchars(mb_strtoupper(mb_substr($prenom, 0, 1))) . '</span>';
+}
+
 /** Enfant du parent connecté, retrouvé par son jeton ; null si inconnu ou pas à lui */
 function enfant_par_jeton(PDO $pdo, string $jeton, int $parentId): ?array {
     if (!preg_match('/^[a-f0-9]{24}$/', $jeton)) return null;

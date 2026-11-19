@@ -53,8 +53,10 @@
                 <ul class="space-y-3 text-[15px] text-white/85">
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#mentions">Mentions légales</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgu">CGU</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgv">Conditions de vente</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#confidentialite">Politique de confidentialité</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies">Cookies</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies">Politique cookies</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies" data-cookies>Gérer les cookies</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="mes_donnees">Mes données</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#accessibilite">Accessibilité</a></li>
                 </ul>
@@ -64,6 +66,22 @@
         <p class="mt-12 pt-6 border-t border-white/15 text-[12px] text-white/60">&copy; <?= date('Y') ?> moncamp.fr. Tous droits réservés.</p>
     </div>
 </footer>
+<div id="mc-consent" role="dialog" aria-labelledby="mc-c-titre" aria-describedby="mc-c-texte" hidden class="fixed z-[120] inset-x-3 bottom-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[640px] max-h-[calc(100vh-24px)] overflow-y-auto rounded-2xl bg-white text-[#26343b] border border-[#e5e7eb] shadow-2xl p-5 sm:p-6" style="margin-bottom:env(safe-area-inset-bottom)">
+    <style>#mc-consent[hidden], #mc-consent [hidden] { display: none !important; }</style>
+    <h2 id="mc-c-titre" class="text-[17px] font-extrabold">Vos choix sur les cookies</h2>
+    <p id="mc-c-texte" class="mt-2 text-[14px] leading-relaxed text-[#3b4a54]">Des cookies nécessaires font fonctionner le site. Avec votre accord, nous utilisons aussi des cookies de mesure d’audience et de publicité (Google AdSense), qui financent le service. Refuser est sans conséquence. Choix gardé 6 mois, modifiable via « Gérer les cookies » en bas de page. <a href="legal#cookies" class="underline font-semibold">En savoir plus</a></p>
+    <div id="mc-c-reglages" hidden class="mt-4 divide-y divide-[#e5e7eb] border-y border-[#e5e7eb]">
+        <div class="py-3 flex items-start justify-between gap-4"><div><p class="font-bold text-[14px]">Nécessaires</p><p class="text-[13px] text-[#6b7780]">Connexion, sécurité, panier d’inscription, mémorisation de ce choix. Toujours actifs : le site ne fonctionne pas sans eux.</p></div><span class="text-[12px] font-bold text-[#6b7780] whitespace-nowrap pt-1">Toujours actifs</span></div>
+        <label class="py-3 flex items-start justify-between gap-4 cursor-pointer"><span><span class="block font-bold text-[14px]">Mesure d’audience</span><span class="block text-[13px] text-[#6b7780]">Outils tiers de statistiques de fréquentation. Les statistiques internes de moncamp.fr fonctionnent sans cookie.</span></span><span class="ds-switch mt-1"><input type="checkbox" id="mc-c-aud"><span></span></span></label>
+        <label class="py-3 flex items-start justify-between gap-4 cursor-pointer"><span><span class="block font-bold text-[14px]">Publicité</span><span class="block text-[13px] text-[#6b7780]">Annonces Google personnalisées selon votre navigation. Sans votre accord, Google peut afficher des annonces non personnalisées, sans cookie publicitaire.</span></span><span class="ds-switch mt-1"><input type="checkbox" id="mc-c-pub"><span></span></span></label>
+        <div class="py-3 flex justify-end"><button type="button" id="mc-c-ok" class="ds-btn ds-btn-light">Enregistrer mes choix</button></div>
+    </div>
+    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button type="button" id="mc-c-refus" class="ds-btn justify-center">Tout refuser</button>
+        <button type="button" id="mc-c-perso" class="ds-btn ds-btn-light justify-center">Personnaliser</button>
+        <button type="button" id="mc-c-accepte" class="ds-btn justify-center">Tout accepter</button>
+    </div>
+</div>
 <div id="soon-toast" role="status" aria-live="polite" class="fixed left-1/2 bottom-8 z-[100] -translate-x-1/2 translate-y-4 opacity-0 pointer-events-none transition-all duration-300 rounded-full bg-[#26343b] px-6 py-3 text-[14px] font-semibold text-white shadow-2xl">Bientôt disponible ;)</div>
 <script>
 (function () {

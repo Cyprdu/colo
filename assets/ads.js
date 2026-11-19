@@ -2,11 +2,12 @@
    Les emplacements sont déclarés dans le HTML (.ad-box[data-ad-slot]) ; l'annonce n'est demandée que lorsque
    l'emplacement (ou le carrousel qui le contient) approche de l'écran. Cela préserve le LCP/INP (aucune requête publicitaire au chargement)
    et améliore la visibilité (Active View) des annonces réellement demandées.
-   Un emplacement qui ne reçoit pas d'annonce (aucune annonce, bloqueur, script absent) est refermé : jamais d'espace vide. */
+   Un emplacement qui ne reçoit pas d'annonce (aucune annonce, bloqueur, script absent) est refermé : jamais d'espace vide.
+   Le script AdSense n'est chargé qu'après le choix cookies (assets/consent.js) : annonces personnalisées si la publicité est acceptée, non personnalisées sinon. */
 (function () {
     'use strict';
     var CLIENT = 'ca-pub-3659884670016121';
-    var io = null, waiting = new Map();   // élément surveillé -> emplacements à charger quand il approche de l'écran
+    var io = null, waiting = new Map(), started = false, pending = [];   // élément surveillé -> emplacements à charger quand il approche de l'écran
 
     function card(box) { var sel = box.getAttribute('data-remove'); return sel ? box.closest(sel) : null; }
 
@@ -47,6 +48,7 @@
 
     // near : élément dont l'approche déclenche le chargement (le carrousel, pour une carte publicitaire hors écran à l'horizontale)
     function observe(box, near) {
+        if (!started) { pending.push([box, near]); return; }
         var t = near || box;
         if (!io) return load(box);
         if (!waiting.has(t)) { waiting.set(t, []); io.observe(t); }
@@ -63,6 +65,21 @@
             });
         }, { rootMargin: '400px 0px' });   // on commence un peu avant que l'annonce n'entre à l'écran
     }
+    function start() {
+        if (started) return;
+        started = true;
+        var root = document.documentElement, w = window.adsbygoogle = window.adsbygoogle || [];
+        if (!window.mcConsent.pub) w.requestNonPersonalizedAds = 1;
+        var s = document.createElement('script');
+        s.async = true; s.crossOrigin = 'anonymous';
+        s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + CLIENT;
+        s.onerror = function () { root.classList.add('no-ads'); };
+        document.head.appendChild(s);
+        root.classList.add('ads-on');
+        pending.splice(0).forEach(function (a) { observe(a[0], a[1]); });
+    }
+
     window.colomapAds = { observe: observe };
     [].forEach.call(document.querySelectorAll('.ad-box[data-ad-slot]'), function (b) { observe(b); });
+    if (window.mcConsent && window.mcConsent.choisi) start(); else document.addEventListener('mc:consent', start, { once: true });
 })();

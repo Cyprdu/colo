@@ -25,6 +25,7 @@ function err_log_db($type, $msg, $file, $line): void {
 
 function err_page(): void {
     if (headers_sent()) return;
+    while (ob_get_level()) ob_end_clean();
     http_response_code(500);
     $wantsJson = (strpos((string)($_SERVER['REQUEST_URI'] ?? ''), '/api/') !== false) || stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') === 0;
     if ($wantsJson) { header('Content-Type: application/json; charset=utf-8'); echo json_encode(['error' => 'Une erreur est survenue. Réessayez dans un instant.']); return; }
@@ -44,6 +45,6 @@ register_shutdown_function(function () {
     $e = error_get_last();
     if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true)) {
         err_log_db('FATAL', $e['message'], $e['file'], $e['line']);
-        if (!headers_sent() && ob_get_level() === 0) err_page();
+        if (!headers_sent()) err_page();
     }
 });

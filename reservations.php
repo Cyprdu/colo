@@ -3,6 +3,7 @@
 // même quand plusieurs enfants sont inscrits ensemble). Rendu côté serveur : une seule requête SQL.
 require_once 'api/config.php';
 require_once 'api/orders.php';
+require_once 'api/enfants.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 if (empty($_SESSION['user']['id'])) { header('Location: login.php?next=reservations'); exit; }
@@ -194,7 +195,7 @@ function resaImg($url) {
                     <div class="mt-4 flex flex-wrap gap-2">
                         <?php foreach ($live as $m): ?>
                             <span class="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full bg-[#f1f3f5] text-[13px] font-semibold text-[#3b4a54]">
-                                <span class="w-6 h-6 rounded-full bg-[#3a4852] text-white text-[12px] font-bold flex items-center justify-center"><?= htmlspecialchars(mb_strtoupper(mb_substr($m['enfant_prenom'], 0, 1))) ?></span>
+                                <?= enfant_avatar($m['enfant_photo'] ?? null, (string)$m['enfant_prenom'], 'w-6 h-6 text-[12px]') ?>
                                 <?= htmlspecialchars($m['enfant_prenom']) ?>
                             </span>
                         <?php endforeach; ?>
