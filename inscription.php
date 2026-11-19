@@ -46,6 +46,20 @@ try {
         if ($b['sexe'] || $b['manque'] || $b['age']) $bloques[(int)$e['id']] = $b;
     }
 
+    // Tranche (collège, lycée…) déclarée pour chaque enfant : dernière déclaration, sinon déduite de l'âge
+    require_once 'api/regles.php';
+    require_once 'api/security.php';
+    regles_ensure($pdo);
+    $reglesT = regles_tarifs_du_camp($pdo, (int)$camp['id']);
+    $besoinTranche = regles_besoin_tranche($camp, $reglesT);
+    $trancheDe = [];
+    if ($enfants) {
+        $st = $pdo->prepare("SELECT enfant_id, tranche FROM inscriptions WHERE tranche IS NOT NULL AND enfant_id IN (" . implode(',', array_fill(0, count($enfants), '?')) . ") ORDER BY id");
+        $st->execute(array_map(fn($e) => (int)$e['id'], $enfants));
+        foreach ($st->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) $trancheDe[(int)$k] = $v;
+        foreach ($enfants as $e) $trancheDe[(int)$e['id']] ??= tranche_par_age(age_au($e['date_naissance'] ?? null, $camp['date_debut']));
+    }
+
     // 3. Enfants déjà inscrits
     $stmtDeja = $pdo->prepare("SELECT enfant_id FROM inscriptions WHERE camp_id = ? AND " . attente_clause($camp));
     $stmtDeja->execute([$camp['id']]);
@@ -69,7 +83,12 @@ try {
     require_once 'api/champs.php';
     $champs = champs_du_camp($pdo, (int)$camp['id']);
 
-    foreach ($tarifs as &$t) $t['plancher'] = tarif_plancher($t);
+    $occupees = places_occupees($pdo, $camp);
+    foreach ($tarifs as &$t) {
+        $t['plancher'] = tarif_plancher($t);
+        $t['regles'] = (object)($reglesT[(int)$t['id']] ?? []);
+        $t['restant'] = is_numeric($t['id']) ? places_restantes($camp, $reglesT, $occupees, (int)$t['id']) : null;
+    }
     unset($t);
     // Frères et sœurs déjà inscrits à ce séjour (la remise fratrie s'applique aussi si on réserve à un autre moment)
     $stmtFr = $pdo->prepare("SELECT COUNT(*) FROM inscriptions WHERE camp_id = ? AND enfant_id IN (SELECT id FROM enfants WHERE parent_id = ?) AND statut_paiement = 'PAYE' AND COALESCE(statut, '') NOT IN ('Annulé', 'annule', 'Annule')");
@@ -77,11 +96,11 @@ try {
     $dejaInscritsNb = (int)$stmtFr->fetchColumn();
     // JSON injecté dans <script> : champs utiles seulement (id, prénom, nom : jamais de colonnes santé/binaires, qui feraient échouer json_encode et casser toute la page), balises échappées
     $jf = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP;
-    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? ''], $enfants), $jf) ?: '[]';
+    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? '', 'sexe' => $e['sexe'] ?? '', 'age' => age_au($e['date_naissance'] ?? null, $camp['date_debut']), 'tranche' => $trancheDe[(int)$e['id']] ?? ''], $enfants), $jf) ?: '[]';
     $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
     $retourInscr = urlencode('inscription?camp_t=' . $camp_token);
     require_once 'api/annulation_lib.php';
-    $moyensOk = fin_moyens_du_camp($camp); $libMoyens = options_paiements();
+    $moyensOk = fin_moyens_du_camp($camp);
     $annulTexte = fin_annul_texte((int)($camp['annul_jours_total'] ?? FIN_ANNUL_DEFAUT[0]), (int)($camp['annul_jours_moitie'] ?? FIN_ANNUL_DEFAUT[1]));
 
 } catch (Exception $e) {
@@ -126,6 +145,7 @@ $vaccTxt = function (array $e): string {
 
         <form id="mainForm" action="api/create_stripe_session_multi.php" method="POST" class="bg-white rounded-3xl border border-[#e5e7eb] shadow-[0_8px_30px_rgba(38,52,59,.07)] overflow-hidden min-h-[400px]">
             <input type="hidden" name="camp_t" value="<?= htmlspecialchars($camp_token) ?>">
+            <?= csrf_field() ?>
 
             <div id="step-1" class="p-6 md:p-8 fade-in">
                 <h2 class="text-xl font-bold text-gray-800 mb-6">1. Qui participe au séjour ?</h2>
@@ -163,6 +183,12 @@ $vaccTxt = function (array $e): string {
                                     <?php if (!$blq || !$blq['manque']): $sg = options_enfant_souhaites($camp, $enfant); if ($sg): ?>
                                         <span class="block mt-1 text-xs text-[#6b7780]">Souhaité (facultatif) : <?= htmlspecialchars(implode(', ', $sg)) ?>. <a href="modif_child?id=<?= urlencode($enfant['public_id']) ?>&retour=<?= $retourInscr ?>#<?= fiche_rubrique_critere($sg[0]) ?>" class="underline text-[#3d6a8e]" onclick="event.stopPropagation()">Compléter</a></span>
                                     <?php endif; endif; ?>
+                                    <?php if ($besoinTranche): ?>
+                                        <select name="tranche[<?= (int)$enfant['id'] ?>]" class="tranche-sel mt-2 border border-gray-300 rounded-lg p-1.5 text-sm bg-white" data-child="<?= (int)$enfant['id'] ?>" aria-label="Classe ou situation de <?= htmlspecialchars($enfant['prenom']) ?> pendant le séjour">
+                                            <option value="">Classe / situation pendant le séjour…</option>
+                                            <?php foreach (TRANCHES as $k => [$t]): ?><option value="<?= $k ?>" <?= ($trancheDe[(int)$enfant['id']] ?? '') === $k ? 'selected' : '' ?>><?= $t ?></option><?php endforeach; ?>
+                                        </select>
+                                    <?php endif; ?>
                                 </div>
                             </label>
                         <?php endforeach; ?>
@@ -317,8 +343,8 @@ $vaccTxt = function (array $e): string {
                     <?php foreach ($moyensOk as $k => $code): ?>
                         <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white cursor-pointer">
                             <input type="radio" name="moyen" value="<?= htmlspecialchars($code) ?>" <?= $k === 0 ? 'checked' : '' ?> class="moyen-radio" style="accent-color:#2f3d45">
-                            <span class="w-10 flex-none"><?= $libMoyens[$code][2] ?? '' ?></span>
-                            <span class="text-sm"><b class="text-gray-800"><?= htmlspecialchars($libMoyens[$code][0] ?? $code) ?></b><span class="block text-xs text-gray-500"><?= $code === 'carte' ? 'Paiement en ligne immédiat, place confirmée' : 'Votre place est réservée ; vous réglez directement l\'organisateur' ?></span></span>
+                            <span class="w-10 flex-none"><?= options_moyen_affiche($camp, $code)[1] ?></span>
+                            <span class="text-sm"><b class="text-gray-800"><?= htmlspecialchars(options_moyen_affiche($camp, $code)[0]) ?></b><span class="block text-xs text-gray-500"><?= $code === 'carte' ? 'Paiement en ligne immédiat, place confirmée' : 'Votre place est réservée ; vous réglez directement l\'organisateur' ?></span></span>
                         </label>
                     <?php endforeach; ?>
                     </div>
@@ -350,6 +376,7 @@ $vaccTxt = function (array $e): string {
     const tariffs = <?= $tarifsJson ?>;
     const remisePercent = <?= $remise_pourcent ?>;
     const alreadyRegistered = <?= (int)$dejaInscritsNb ?>;
+    const CAMP_CRIT = <?= json_encode(regles_crit_camp($camp) + ['libelle' => tranches_libelles(regles_crit_camp($camp)['tranches'])], $jf) ?>;
 
     let selectedChildIds = [];
     let selections = {}; 
@@ -370,7 +397,29 @@ $vaccTxt = function (array $e): string {
             add(`tarifs[${childId}]`, sel.tariffId);
             const tt = tariffs.find(x => x.id == sel.tariffId);
             if (tt && tt.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == sel.tariffId) add(`custom_prices[${childId}]`, sel.customPrice);
+            rolesOf(childId).forEach((pid, i) => add(`participants[${childId}][${i}]`, pid || ''));
         });
+    }
+    // Tarif « à plusieurs » : une personne du compte par rôle (l'enfant choisi en occupe un)
+    const rolesDu = t => (t && t.regles && t.regles.roles) || [];
+    function rolesOf(childId) {
+        const sel = selections[childId] || {}, t = tariffs.find(x => x.id == sel.tariffId);
+        return rolesDu(t).length && sel.rolesFor == t.id ? sel.roles : [];
+    }
+    function convient(role, c) {
+        return (!role.sexe || role.sexe === c.sexe) && (role.age_max == null || c.age == null || (c.age >= role.age_min && c.age <= role.age_max));
+    }
+    function setRole(childId, i, v) { selections[childId].roles[i] = v; showCustomFields(); }
+    function validateRoles() {
+        const vus = new Set(selectedChildIds.map(String));
+        for (const id of selectedChildIds) {
+            const r = rolesOf(id); if (!r.length) continue;
+            const c = allChildren.find(x => x.id == id), t = tariffs.find(x => x.id == selections[id].tariffId);
+            if (r.some(x => !x)) { ColoUI.alert('Choisissez une personne pour chaque rôle du tarif « ' + t.nom + ' ».'); return false; }
+            if (r.filter(x => x == id).length !== 1) { ColoUI.alert(c.prenom + ' doit occuper un (et un seul) des rôles du tarif « ' + t.nom + ' ».'); return false; }
+            for (const x of r) if (x != id) { if (vus.has(String(x))) { ColoUI.alert('Une même personne ne peut pas être inscrite deux fois.'); return false; } vus.add(String(x)); }
+        }
+        return true;
     }
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('mainForm').addEventListener('submit', syncHiddenInputs);
@@ -391,11 +440,15 @@ $vaccTxt = function (array $e): string {
             const checkboxes = document.querySelectorAll('.child-check:checked');
             if (checkboxes.length === 0) { ColoUI.alert("Sélectionnez au moins un enfant pour continuer."); return; }
             selectedChildIds = Array.from(checkboxes).map(cb => cb.value);
+            if (CAMP_CRIT.mode !== 'age') for (const id of selectedChildIds) {
+                const s = document.querySelector(`.tranche-sel[data-child="${id}"]`), c = allChildren.find(x => x.id == id);
+                if (!s || !CAMP_CRIT.tranches.includes(s.value)) { ColoUI.alert('Ce séjour accueille : ' + CAMP_CRIT.libelle + '. Vérifiez la classe ou la situation de ' + c.prenom + '.'); return; }
+            }
             initStep2();
         }
         if (step === 3) { initStep3(); showCustomFields(); }
         if (step === 4) {
-            if (!validateFreeAmounts() || !validateCustomFields()) return;
+            if (!validateTarifs() || !validateRoles() || !validateFreeAmounts() || !validateCustomFields()) return;
             updateSummary(); syncHiddenInputs();
         }
 
@@ -437,6 +490,26 @@ $vaccTxt = function (array $e): string {
     }
 
     // --- ÉTAPE 3 : TARIFS PAR ENFANT ---
+    const TR_LIB = <?= json_encode(array_map(fn($t) => $t[0], TRANCHES), $jf) ?>;
+    const escH = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const trancheOf = id => { const s = document.querySelector(`.tranche-sel[data-child="${id}"]`); return s ? s.value : ''; };
+    // Tarif inaccessible pour cet enfant (âge, tranche, places) : la raison, sinon '' ; le serveur refait tous ces contrôles
+    function tarifKo(t, child) {
+        const r = t.regles || {}, rs = t.restant || {};
+        if (r.age_max != null && child.age != null && (child.age < r.age_min || child.age > r.age_max)) return 'Réservé aux ' + r.age_min + ' à ' + r.age_max + ' ans';
+        if ((r.tranches || []).length && !r.tranches.includes(trancheOf(child.id))) return 'Réservé : ' + r.tranches.map(k => TR_LIB[k]).join(', ');
+        if (rs.total === 0) return 'Complet';
+        if (child.sexe === 'Femme' && rs.f === 0) return 'Complet pour les filles';
+        if (child.sexe === 'Homme' && rs.g === 0) return 'Complet pour les garçons';
+        return '';
+    }
+    function validateTarifs() {
+        for (const id of selectedChildIds) {
+            const c = allChildren.find(x => x.id == id), t = tariffs.find(x => x.id == (selections[id] || {}).tariffId);
+            if (!t || tarifKo(t, c)) { ColoUI.alert('Aucun tarif disponible pour ' + c.prenom + ' sur cette session.'); return false; }
+        }
+        return true;
+    }
     function initStep3() {
         const container = document.getElementById('tariffs-container');
         container.innerHTML = '';
@@ -445,10 +518,13 @@ $vaccTxt = function (array $e): string {
             const child = allChildren.find(c => c.id == childId);
             if (!child) return;
 
-            if (!selections[childId]) selections[childId] = { tariffId: tariffs[0].id, customPrice: 0 };
+            const cur = selections[childId] && tariffs.find(t => t.id == selections[childId].tariffId);
+            if (!cur || tarifKo(cur, child)) selections[childId] = { tariffId: (tariffs.find(t => !tarifKo(t, child)) || tariffs[0]).id, customPrice: 0 };
 
             let options = '';
             tariffs.forEach(t => {
+                const ko = tarifKo(t, child);
+                if (ko) { options += `<div class="border rounded-lg p-3 mb-2 border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed"><div class="flex justify-between items-center gap-3"><span class="font-medium">${escH(t.nom)}</span><span class="text-xs font-semibold text-[#5b4a1c]">${escH(ko)}</span></div></div>`; return; }
                 const isSelected = selections[childId].tariffId == t.id;
                 const borderClass = isSelected ? 'border-[#2f3d45] bg-[#f1f5f9]' : 'border-gray-200 hover:border-[#a9b8c6]';
                 
@@ -459,10 +535,18 @@ $vaccTxt = function (array $e): string {
                     const val = mine ? selections[childId].customPrice : Math.max(parseFloat(t.prix) || 0, fl);
                     inputHtml = `<div class="mt-2 pl-6 flex flex-wrap items-center gap-2 text-sm"><span class="text-gray-600">Montant libre :</span><input type="number" step="0.01" min="${fl}" value="${val}" class="w-24 border rounded p-1 text-right" data-custom="${childId}-${t.id}" oninput="updateSelection('${childId}', '${t.id}', this.value, true)" onclick="event.stopPropagation()"> € <span class="text-xs text-gray-500">(minimum ${fl.toFixed(2).replace('.', ',')} €)</span></div>`;
                 }
+                const roles = rolesDu(t);
+                if (isSelected && roles.length) {
+                    const sel = selections[childId];
+                    if (sel.rolesFor != t.id) { const i = roles.findIndex(r => convient(r, child)); sel.roles = roles.map((r, j) => j === Math.max(0, i) ? String(childId) : ''); sel.rolesFor = t.id; }
+                    inputHtml += `<div class="mt-3 pl-6 space-y-2 text-sm" onclick="event.stopPropagation()"><p class="text-gray-600">Ce tarif inscrit ${roles.length} personnes : choisissez qui occupe chaque rôle.</p>` +
+                        roles.map((r, i) => `<label class="flex flex-wrap items-center gap-2"><span class="w-32 font-semibold">${escH(r.nom)}</span><select class="border rounded p-1.5 bg-white" onchange="setRole('${childId}', ${i}, this.value)"><option value="">Choisir…</option>${allChildren.map(c => `<option value="${c.id}" ${sel.roles[i] == c.id ? 'selected' : ''}>${escH(c.prenom + ' ' + c.nom)}</option>`).join('')}</select></label>`).join('') +
+                        `<a href="add_child?retour=<?= $retourInscr ?>" class="inline-block text-xs font-semibold text-[#3d6a8e] underline">Ajouter une personne à mon compte</a></div>`;
+                }
 
                 options += `<div class="border rounded-lg p-3 mb-2 cursor-pointer ${borderClass}" onclick="updateSelection('${childId}', '${t.id}', null)">
                     <div class="flex justify-between items-center">
-                        <div class="flex items-center"><input type="radio" ${isSelected ? 'checked' : ''} class="mr-2"> <span class="font-medium">${t.nom}</span></div>
+                        <div class="flex items-center"><input type="radio" ${isSelected ? 'checked' : ''} class="mr-2"> <span class="font-medium">${escH(t.nom)}</span></div>
                         <span class="font-bold">${t.prix} €</span>
                     </div>
                     ${inputHtml}
@@ -471,12 +555,14 @@ $vaccTxt = function (array $e): string {
 
             container.innerHTML += `<div class="bg-white border rounded-xl p-5 shadow-sm"><h3 class="font-bold text-lg mb-3 flex items-center"><div class="w-8 h-8 rounded-full bg-[#e5eaef] text-[#3d6a8e] flex items-center justify-center mr-2">${child.prenom.charAt(0)}</div> Tarif pour ${child.prenom}</h3>${options}</div>`;
         });
+        showCustomFields();
     }
 
     // Questions du directeur : seuls les enfants sélectionnés sont affichés (les autres sont désactivés, donc non envoyés)
     function showCustomFields() {
+        const tous = selectedChildIds.concat(...selectedChildIds.map(rolesOf)).map(String);
         document.querySelectorAll('#custom-fields fieldset').forEach(fs => {
-            const on = selectedChildIds.includes(fs.dataset.child);
+            const on = tous.includes(fs.dataset.child);
             fs.disabled = !on;
             fs.classList.toggle('hidden', !on);
         });
@@ -534,7 +620,7 @@ $vaccTxt = function (array $e): string {
             
             const fl = parseFloat(t.plancher) || 0;
             let price = (t.montant_libre == 1 && sel.customPrice > 0 && sel.customFor == t.id) ? Math.max(sel.customPrice, fl) : parseFloat(t.prix);
-            let detail = `(${t.nom})`;
+            let detail = `(${escH(t.nom)}` + rolesOf(childId).filter(x => x != childId).map(x => ' · avec ' + escH((allChildren.find(c => c.id == x) || {}).prenom)).join('') + ')';
 
             if ((index + alreadyRegistered) > 0 && remisePercent > 0) {
                 const discount = price * (remisePercent / 100);

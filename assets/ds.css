@@ -208,7 +208,7 @@ table { max-width: 100%; }
 
 /* zones tactiles >= 44 px sur les écrans tactiles */
 @media (pointer: coarse) {
-  .ds-btn, .ds-btn-light, .ds-chip, .sess-tab, .cp-chip, .cp-opt, .mc-sugg button, .cu-btn { min-height: 44px; }
+  .ds-btn, .ds-btn-light, .ds-chip, .sess-tab, .cp-chip, .cp-opt, .cu-btn { min-height: 44px; }
   .ds-btn-sm { min-height: 40px; }
   .ds-iconbtn { width: 44px; height: 44px; }
   .ds-tag button, .mc-pill button { width: 28px; height: 28px; }

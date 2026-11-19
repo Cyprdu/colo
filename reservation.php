@@ -35,9 +35,9 @@ $aRegler = null; foreach ($live as $m) if ($m['statut_paiement'] === 'A_REGLER')
 if ($aRegler) {
     $canPay = false;
     $mp = options_paiements(); $code = (string)($aRegler['moyen_paiement'] ?? strtolower((string)$aRegler['mode_paiement']));
-    $mode = $mp[$code][0] ?? 'Règlement à l\'organisateur';
-    $ci = $pdo->prepare("SELECT instructions_paiement FROM camps WHERE id = ?"); $ci->execute([(int)$first['camp_id']]);
-    $consigne = fin_instruction_moyen($code, (string)$ci->fetchColumn());
+    $ci = $pdo->prepare("SELECT * FROM camps WHERE id = ?"); $ci->execute([(int)$first['camp_id']]); $ci = $ci->fetch(PDO::FETCH_ASSOC) ?: [];
+    $mode = isset($mp[$code]) ? options_moyen_affiche($ci, $code)[0] : "Règlement à l'organisateur";
+    $consigne = fin_instruction_moyen($code, (string)($ci['instructions_paiement'] ?? ''));
 }
 
 $body_class = 'bg-white';

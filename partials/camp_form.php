@@ -6,8 +6,12 @@ require_once __DIR__ . '/../api/champs.php';
 require_once __DIR__ . '/../api/catalogue.php';
 require_once __DIR__ . '/../api/motscles.php';
 require_once __DIR__ . '/../api/orga_lib.php';
+require_once __DIR__ . '/../api/regles.php';
 
+regles_ensure($pdo);
 $att = $att ?? []; $edit = is_array($camp);
+$ageMode = $edit ? age_mode($camp) : 'age';
+$tranchesSel = $edit ? tranches_valides($camp['tranches'] ?? '') : [];
 $val = fn($k, $d = '') => htmlspecialchars((string)($edit ? ($camp[$k] ?? $d) : $d), ENT_QUOTES);
 $chk = fn($k) => $edit && !empty($camp[$k]) ? 'checked' : '';
 $reserve = $edit ? (string)($camp['reserve_sexe'] ?? '') : '';
@@ -117,9 +121,8 @@ $tick = $svg('check', 'w-3 h-3');
             <?= $sec('s-description', 'edit', 'Description et mots-clés', "Ce que les familles lisent, et les mots qu'elles tapent pour vous trouver.") ?>
                 <div class="grid md:grid-cols-2 gap-5">
                     <div class="md:col-span-2">
-                        <label class="ds-label" for="mcInput">Mots-clés et alias du séjour <span class="font-normal text-[#6b7780]">(12 maximum)</span></label>
+                        <label class="ds-label" for="mcInput">Mots-clés et alias du séjour <span class="font-normal text-[#6b7780]">(12 maximum)</span> <details class="ds-help"><summary>?</summary><div>Les mots que les familles tapent pour trouver ce séjour : son petit nom ou son sigle, une activité, un lieu connu. Seul votre meilleur mot-clé compte dans le classement : inutile d'en mettre beaucoup, et les mots sans rapport avec le séjour comptent moins. Les alias de votre organisme valent déjà pour tous vos séjours.</div></details></label>
                         <div id="mcCamp"></div>
-                        <div class="mc-help"><b>Ces mots sont ceux que les familles tapent ; ils améliorent la visibilité de votre séjour.</b> Ajoutez le petit nom ou le sigle du séjour (« EPJ »), une activité ou un lieu bien connu. Évitez les mots sans rapport avec le séjour : ils comptent moins, et seul votre meilleur mot-clé compte dans le classement, inutile d'en mettre beaucoup.</div>
                         <p id="mcOrgaHint" class="ds-hint hidden"></p>
                     </div>
                     <div class="md:col-span-2"><label class="ds-label" for="f-desc">Description complète *</label><textarea id="f-desc" name="description" rows="6" class="ds-textarea" required maxlength="10000" placeholder="Programme, ambiance, journée type…"><?= $val('description') ?></textarea></div>
@@ -148,12 +151,23 @@ $tick = $svg('check', 'w-3 h-3');
             </section>
 
 
-            <?= $sec('s-public', 'users', 'Public et places', 'Séjour mixte ou réservé, quotas par sexe : à vous de choisir.') ?>
-                <div class="max-w-sm mb-6">
+            <?= $sec('s-public', 'users', 'Public et places', 'Âges ou tranches, mixité et quotas : à vous de choisir.') ?>
+                <div class="ds-label">Qui est accueilli ? <details class="ds-help"><summary>?</summary><div><strong>Âge exact</strong> : l'âge de l'enfant au premier jour de la session. <strong>Tranches</strong> : la famille indique la classe ou la situation (collège, lycée, études…) ; utile quand l'âge ne suffit pas (un lycéen de 15 ans, un étudiant de 17 ans). <strong>Les deux</strong> : il faut remplir les deux conditions.</div></details></div>
+                <div class="grid sm:grid-cols-3 gap-3 mb-4" id="ageModes">
+                    <?php foreach (AGE_MODES as $k => $t): ?>
+                        <label class="ds-opt items-center"><input type="radio" name="age_mode" value="<?= $k ?>" <?= $ageMode === $k ? 'checked' : '' ?>><span class="ds-tick"><?= $tick ?></span><span class="ds-opt-title"><?= $t ?></span></label>
+                    <?php endforeach; ?>
+                </div>
+                <div id="ageBox" class="max-w-sm mb-4">
                     <div class="grid grid-cols-2 gap-3">
-                        <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="30" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
-                        <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="30" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
+                        <div><label class="ds-label" for="f-amin">Âge min *</label><input id="f-amin" type="number" min="0" max="99" name="age_min" class="ds-input" required value="<?= $val('age_min') ?>"></div>
+                        <div><label class="ds-label" for="f-amax">Âge max *</label><input id="f-amax" type="number" min="0" max="99" name="age_max" class="ds-input" required value="<?= $val('age_max') ?>"></div>
                     </div>
+                </div>
+                <div id="trancheBox" class="flex flex-wrap gap-2 mb-6">
+                    <?php foreach (TRANCHES as $k => [$t]): ?>
+                        <label class="ds-chip cursor-pointer"><input type="checkbox" name="tranches[]" value="<?= $k ?>" class="accent-[#2f3d45]" <?= in_array($k, $tranchesSel, true) ? 'checked' : '' ?>> <?= $t ?></label>
+                    <?php endforeach; ?>
                 </div>
                 <p class="ds-label">Qui peut s'inscrire ?</p>
                 <div class="grid sm:grid-cols-3 gap-3" id="reserveOpts">
@@ -196,20 +210,21 @@ $tick = $svg('check', 'w-3 h-3');
 
                 <div id="blockInternal" class="mt-6 space-y-7 <?= $online ? '' : 'hidden' ?>">
                     <div>
-                        <div class="flex items-center justify-between gap-3 mb-3"><p class="ds-label !mb-0">Tarifs proposés aux familles *</p>
+                        <div class="flex items-center justify-between gap-3 mb-3"><div class="ds-label !mb-0">Tarifs proposés aux familles * <details class="ds-help"><summary>?</summary><div>Un tarif appartient à l'organisme et peut servir à plusieurs séjours. « Conditions » règle ce tarif pour cette session seulement : nombre de places, dont filles ou garçons, âge ou tranche (ex. tarif « Étudiant » réservé aux études supérieures, 10 places).</div></details></div>
                             <button type="button" class="ds-btn ds-btn-light ds-btn-sm" onclick="Tarifs.open()"><?= $svg('plus', 'w-4 h-4') ?> Choisir / créer des tarifs</button></div>
                         <div id="tarifsSelected" class="space-y-2"></div>
                         <input type="hidden" name="tarifs" id="tarifsHidden">
                     </div>
-                    <div class="grid md:grid-cols-2 gap-5">
-                        <div><label class="ds-label" for="q-tot">Nombre total de places *</label><input id="q-tot" type="number" min="0" name="quota_global" class="ds-input" value="<?= $val('quota_global') ?>"></div>
-                        <div><label class="ds-label" for="f-frat">Remise fratrie (%)</label><input id="f-frat" type="number" min="0" max="100" name="remise_fratrie" class="ds-input" value="<?= $val('remise_fratrie', 0) ?>"></div>
-                    </div>
-                    <div class="ds-row">
+                    <div class="max-w-sm"><label class="ds-label" for="q-tot">Nombre total de places * <details class="ds-help"><summary>?</summary><div>Toutes les personnes inscrites à cette session, quel que soit leur tarif. Les places propres à un tarif ou aux filles / garçons se règlent dans « Conditions » de chaque tarif et dans « Public et places ».</div></details></label><input id="q-tot" type="number" min="0" name="quota_global" class="ds-input" value="<?= $val('quota_global') ?>"></div>
+                    <details class="rounded-2xl border border-[#e5e7eb] p-4" <?= $edit && ((int)($camp['remise_fratrie'] ?? 0) > 0 || (isset($att['attente_paiement']) && empty($att['attente_paiement']))) ? 'open' : '' ?>>
+                    <summary class="cursor-pointer font-semibold text-[#26343b]">Options avancées : remise fratrie, réservation sans paiement immédiat</summary>
+                    <div class="max-w-sm mt-4"><label class="ds-label" for="f-frat">Remise fratrie (%) <details class="ds-help"><summary>?</summary><div>Appliquée à partir du deuxième enfant d'une même famille sur cette session, y compris quand le premier a été inscrit et payé plus tôt.</div></details></label><input id="f-frat" type="number" min="0" max="100" name="remise_fratrie" class="ds-input" value="<?= $val('remise_fratrie', 0) ?>"></div>
+                    <div class="ds-row mt-4">
                         <div><p class="ds-opt-title">Réservation « en attente de paiement »</p><p class="ds-opt-sub">Le parent réserve et règle plus tard ; sa place est gardée puis libérée automatiquement. Sinon : 30 minutes, le temps du paiement.</p>
                             <div id="attenteJours" class="mt-3 flex items-center gap-2 text-sm text-[#3b4a54]">Délai maximum <input type="number" name="attente_jours" min="1" max="<?= ATTENTE_MAX_JOURS ?>" value="<?= (int)($att['attente_jours'] ?? ATTENTE_DEFAUT_JOURS) ?>" class="ds-input !w-20 !py-2 text-center" aria-label="Délai en jours"> jour(s)</div></div>
                         <label class="ds-switch"><input type="checkbox" name="attente_paiement" id="attenteToggle" value="1" <?= !isset($att['attente_paiement']) || !empty($att['attente_paiement']) ? 'checked' : '' ?> aria-label="Autoriser les réservations en attente de paiement"><span></span></label>
                     </div>
+                    </details>
                 </div>
             </section>
 
@@ -218,6 +233,14 @@ $tick = $svg('check', 'w-3 h-3');
                     <?php foreach (options_paiements() as $code => [$lib, $sub, $logo]): ?>
                         <label class="ds-opt items-center"><input type="checkbox" name="moyens_paiement[]" value="<?= $code ?>" <?= in_array($code, $moyens, true) ? 'checked' : '' ?>><span class="ds-tick"><?= $tick ?></span><span class="ds-pay-logo"><?= $logo ?></span><span><span class="ds-opt-title block"><?= htmlspecialchars($lib) ?></span><span class="ds-opt-sub block"><?= htmlspecialchars($sub) ?></span></span></label>
                     <?php endforeach; ?>
+                </div>
+                <div id="autreBox" class="ds-sub mt-4 grid sm:grid-cols-[1fr_auto] gap-4 items-end">
+                    <div><label class="ds-label" for="f-autre">Nom du moyen « Autre » *</label><input id="f-autre" name="paiement_autre" maxlength="80" required class="ds-input" value="<?= $val('paiement_autre') ?>" placeholder="Ex : Bons vacances de la mairie"></div>
+                    <div class="flex items-center gap-3">
+                        <img id="autreLogo" alt="" class="h-10 w-16 object-contain rounded-lg border border-[#e5e7eb] bg-white <?= $edit && options_logo_valide($camp['paiement_autre_logo'] ?? '') ? '' : 'hidden' ?>" src="<?= $edit ? htmlspecialchars((string)options_logo_valide($camp['paiement_autre_logo'] ?? '')) : '' ?>">
+                        <label class="ds-btn ds-btn-light ds-btn-sm cursor-pointer">Logo<input type="file" id="f-autre-logo" accept="image/png,image/jpeg,image/webp" class="sr-only"></label>
+                        <input type="hidden" name="paiement_autre_logo" id="f-autre-path" value="<?= $edit ? htmlspecialchars((string)options_logo_valide($camp['paiement_autre_logo'] ?? '')) : '' ?>">
+                    </div>
                 </div>
                 <div class="mt-5"><label class="ds-label" for="f-instr">Consignes de paiement (facultatif)</label><textarea id="f-instr" name="instructions_paiement" rows="2" maxlength="1000" class="ds-textarea" placeholder="Ex : chèques à l'ordre de l'association X, à envoyer avant le 15 juin."><?= $val('instructions_paiement') ?></textarea></div>
                 <?php /* bloc d'aide ciblé : commission sur les paiements hors carte */ require_once __DIR__ . '/../api/finance_lib.php'; ?>
@@ -352,6 +375,8 @@ const CHAMP_TYPES = <?= json_encode(CHAMPS_TYPES, JSON_UNESCAPED_UNICODE) ?>;
 const ICON = { edit: <?= json_encode($svg('edit')) ?>, trash: <?= json_encode($svg('trash')) ?>, up: <?= json_encode($svg('up')) ?>, down: <?= json_encode($svg('down')) ?>, close: <?= json_encode($svg('close')) ?> };
 let ORGAS = <?= json_encode(array_map(fn($o) => ['id' => fin_orga_tok((int)$o['id']), 'nom' => $o['nom'], 'email' => $o['email'] ?? '', 'tel' => $o['tel'] ?? '', 'web' => $o['web'] ?? '', 'motscles' => $orgaKw[(int)$o['id']] ?? []], $organisateurs), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 let SELECTED = <?= json_encode(array_map(fn($t) => (int)$t['id'], $currentTarifs ?? [])) ?>;
+let REGLES = <?= json_encode((object)array_filter(array_map(fn($t) => json_decode((string)($t['regles'] ?? ''), true) ?: null, array_column($currentTarifs ?? [], null, 'id'))), JSON_UNESCAPED_UNICODE) ?>;
+const TRANCHES = <?= json_encode(array_map(fn($t) => $t[0], TRANCHES), JSON_UNESCAPED_UNICODE) ?>;
 let TARIFS = <?= json_encode(array_map(fn($t) => ['id' => (int)$t['id'], 'nom' => $t['nom'], 'prix' => (float)$t['prix'], 'montant_libre' => (int)$t['montant_libre'], 'montant_min' => $t['montant_min'] ?? null, 'organisateur_id' => fin_orga_tok((int)($t['organisateur_id'] ?? 0))], $currentTarifs ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let CHAMPS = <?= json_encode(array_map(fn($c) => ['id' => $c['id'], 'libelle' => $c['libelle'], 'type' => $c['type'], 'options' => (string)$c['options'], 'obligatoire' => $c['obligatoire']], $champsActuels ?? []), JSON_UNESCAPED_UNICODE) ?>;
 let ETAPES = <?= json_encode(array_map(fn($e) => ['jour' => (int)$e['jour'], 'lieu' => $e['lieu'], 'description' => (string)$e['description']], $etapesActuelles ?? []), JSON_UNESCAPED_UNICODE) ?>;
@@ -364,8 +389,9 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const eur = n => (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+const CSRF = (document.querySelector('meta[name=csrf]') || {}).content || '';
 async function api(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify(body) });
     let d = {}; try { d = await r.json(); } catch (e) {}
     if (!r.ok) throw new Error(d.error || d.message || 'Une erreur est survenue.');
     return d;
@@ -378,19 +404,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') document.que
 document.querySelectorAll('.ds-modal').forEach(m => m.addEventListener('mousedown', e => { if (e.target === m) m.classList.remove('open'); }));
 
 // ------------------------------------------------ mots-clés et catégories
-const KW_STOP = ['de', 'du', 'des', 'la', 'le', 'les', 'l', 'd', 'un', 'une', 'et', 'ou', 'en', 'au', 'aux', 'a', 'sur', 'pour', 'dans', 'avec', 'par'];
-function kwSuggestions() {
-    const out = [], mots = $('f-nom').value.split(/[\s'’\-&]+/).filter(w => w.length > 1 && !KW_STOP.includes(MotsCles.norm(w)));
-    if (mots.length >= 2 && mots.length <= 5) out.push(mots.map(w => w[0]).join('').toUpperCase());   // sigle du nom : « École de prière » -> EP
-    mots.filter(w => w.length >= 6).slice(0, 2).forEach(w => out.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()));
-    if ($('villeInput').value.trim()) out.push($('villeInput').value.trim());
-    return out;
-}
-const MC = MotsCles.mount($('mcCamp'), { initial: KW_INIT, max: 12, suggest: kwSuggestions, inputId: 'mcInput', placeholder: 'Ex : EPJ, bivouac… puis Entrée' });
+const orgaCourant = () => ORGAS.find(x => String(x.id) === $('orga-select').value);
+const MC = MotsCles.mount($('mcCamp'), { initial: KW_INIT, max: 12, inputId: 'mcInput', placeholder: 'Tapez un mot puis Entrée',
+    deja: l => { const o = orgaCourant(), n = MotsCles.norm(l); return o && (o.motscles || []).some(m => MotsCles.norm(m) === n) ? 'Déjà dans les mots de votre organisme, inutile de le répéter ici.' : ''; } });
 const CP = CategoriesPicker.mount($('catPicker'), { catalogue: CATALOGUE, value: CAT_SEL, max: <?= (int)CAT_MAX_PAR_SEJOUR ?> });
-['f-nom', 'villeInput'].forEach(i => $(i).addEventListener('input', () => { clearTimeout(MC.t); MC.t = setTimeout(MC.refresh, 300); }));
 function orgaKwHint() {
-    const o = ORGAS.find(x => String(x.id) === $('orga-select').value), h = $('mcOrgaHint');
+    const o = orgaCourant(), h = $('mcOrgaHint');
     h.classList.toggle('hidden', !(o && o.motscles && o.motscles.length));
     if (o && o.motscles && o.motscles.length) h.textContent = 'Votre organisme est déjà trouvé avec : ' + o.motscles.map(x => '#' + x).join(', ') + '. Inutile de les répéter ici.';
 }
@@ -436,10 +455,28 @@ function refreshToggles() {
     const reserve = document.querySelector('input[name=reserve_sexe]:checked').value;
     $('quotaWrap').classList.toggle('hidden', reserve !== '');
     if (reserve !== '') $('quotaToggle').checked = false;
+    const am = (document.querySelector('input[name=age_mode]:checked') || {}).value || 'age';
+    $('ageBox').classList.toggle('hidden', am === 'tranche');
+    $('trancheBox').classList.toggle('hidden', am === 'age');
+    $('autreBox').classList.toggle('hidden', !document.querySelector('input[name="moyens_paiement[]"][value=autre]').checked);
+    const lp = $('f-autre-path').value; $('autreLogo').classList.toggle('hidden', !lp); if (lp) $('autreLogo').src = lp;
 }
 ['toggleOnline', 'quotaToggle', 'attenteToggle'].forEach(i => $(i).addEventListener('change', refreshToggles));
-document.querySelectorAll('input[name=reserve_sexe]').forEach(r => r.addEventListener('change', refreshToggles));
+document.querySelectorAll('input[name=reserve_sexe], input[name=age_mode], input[name="moyens_paiement[]"]').forEach(r => r.addEventListener('change', refreshToggles));
 refreshToggles();
+
+// Logo du moyen « Autre » : envoyé tout de suite, son chemin part avec la session
+$('f-autre-logo').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append('logo', f);
+    try {
+        const r = await fetch('api/paiement_logo.php', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': CSRF } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'Logo refusé.');
+        $('f-autre-path').value = d.path; refreshToggles(); SM.markDirty();
+    } catch (err) { toast(ColoUI.friendly(err)); }
+    e.target.value = '';
+});
 
 // ------------------------------------------------ organismes
 const ORGKW = MotsCles.mount($('orgaKw'), { max: 8, inputId: 'orgaKwInput', placeholder: 'Ex : PAJE, puis Entrée' });
@@ -552,11 +589,67 @@ $('tarifForm').addEventListener('submit', async e => {
     } catch (err) { $('tarifErr').textContent = err.message; }
     b.disabled = false;
 });
+// Conditions propres à chaque tarif pour cette session (places, filles / garçons, âge, tranches) : REGLES[id tarif]
+const TR = {
+    open: new Set(),
+    r(id) { return REGLES[id] = REGLES[id] || {}; },
+    sum(t) {
+        const r = REGLES[t.id] || {}, out = [Tarifs.label(t)];
+        if (r.quota) out.push(r.quota + ' place' + (r.quota > 1 ? 's' : ''));
+        if (r.quota_f || r.quota_g) out.push('dont ' + [r.quota_f ? r.quota_f + ' filles' : '', r.quota_g ? r.quota_g + ' garçons' : ''].filter(Boolean).join(', '));
+        if (r.age_min || r.age_max) out.push((r.age_min || 0) + ' à ' + (r.age_max || 99) + ' ans');
+        if ((r.tranches || []).length) out.push(r.tranches.map(k => TRANCHES[k]).join(', '));
+        if ((r.roles || []).length > 1) out.push('pour ' + r.roles.length + ' : ' + r.roles.map(x => x.nom || '?').join(' + '));
+        return out.join(' · ');
+    },
+    num(id, k, label) { const v = (REGLES[id] || {})[k]; return `<div><label class="ds-label">${label}</label><input type="number" min="0" class="ds-input" data-tr="${id}" data-r="${k}" value="${v == null ? '' : esc(v)}"></div>`; },
+    panel(t) {
+        const r = REGLES[t.id] || {}, id = t.id;
+        return `<div class="w-full mt-3 pt-3 border-t border-[#e5e7eb] space-y-4">
+            <div class="grid grid-cols-3 gap-3">${this.num(id, 'quota', 'Places à ce tarif')}${this.num(id, 'quota_f', 'Dont filles')}${this.num(id, 'quota_g', 'Dont garçons')}</div>
+            <div class="grid grid-cols-2 gap-3 max-w-xs">${this.num(id, 'age_min', 'Âge min')}${this.num(id, 'age_max', 'Âge max')}</div>
+            <div class="flex flex-wrap gap-2">${Object.entries(TRANCHES).map(([k, l]) => `<label class="ds-chip cursor-pointer"><input type="checkbox" class="accent-[#2f3d45]" data-tr="${id}" data-r="tranches" value="${k}" ${(r.tranches || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+            <p class="ds-hint !mt-0">Laissez vide ce qui ne s'applique pas. Une condition d'âge ou de tranche est contrôlée à l'inscription ; une fois ses places prises, le tarif n'est plus proposé.</p>
+            <details class="rounded-xl border border-[#e5e7eb] p-3" ${(r.roles || []).length ? 'open' : ''}><summary class="cursor-pointer text-sm font-semibold text-[#26343b]">Options avancées : inscription à plusieurs (ex. parent + enfant)</summary>
+                <p class="ds-hint">Ce tarif couvre plusieurs personnes, chacune dans un rôle, pour un prix d'ensemble. À l'inscription, la famille choisit qui occupe chaque rôle et remplit sa fiche ; chaque personne compte une place. Âge et sexe facultatifs ; sans condition, ceux de la session s'appliquent.</p>
+                <div class="space-y-2 mt-2">${(r.roles || []).map((x, i) => `<div class="grid grid-cols-2 sm:grid-cols-[1fr_80px_80px_150px_auto] gap-2 items-center">
+                    <input class="ds-input" maxlength="40" placeholder="Rôle (ex. Parent)" aria-label="Nom du rôle" data-tr="${id}" data-role="${i}" data-k="nom" value="${esc(x.nom || '')}">
+                    <input class="ds-input" type="number" min="0" placeholder="Âge min" aria-label="Âge minimum" data-tr="${id}" data-role="${i}" data-k="age_min" value="${x.age_min == null ? '' : esc(x.age_min)}">
+                    <input class="ds-input" type="number" min="0" placeholder="Âge max" aria-label="Âge maximum" data-tr="${id}" data-role="${i}" data-k="age_max" value="${x.age_max == null ? '' : esc(x.age_max)}">
+                    <select class="ds-select" aria-label="Sexe" data-tr="${id}" data-role="${i}" data-k="sexe">${[['', 'Fille ou garçon'], ['Femme', 'Femme / fille'], ['Homme', 'Homme / garçon']].map(([v, l]) => `<option value="${v}" ${(x.sexe || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+                    <button type="button" class="ds-iconbtn danger" aria-label="Retirer ce rôle" onclick="TR.role(${id}, ${i})">${ICON.trash}</button></div>`).join('')}</div>
+                <button type="button" class="ds-btn ds-btn-light ds-btn-sm mt-2" onclick="TR.role(${id})">Ajouter un rôle</button>
+            </details>
+        </div>`;
+    },
+    toggle(id) { this.open.has(id) ? this.open.delete(id) : this.open.add(id); renderSelectedTarifs(); },
+    role(id, i) {
+        const r = this.r(id); r.roles = r.roles || [];
+        if (i === undefined) { if (!r.roles.length) r.roles.push({ nom: '' }); r.roles.push({ nom: '' }); } else r.roles.splice(i, 1);
+        if (r.roles.length < 2) delete r.roles;
+        SM.markDirty(); renderSelectedTarifs();
+    },
+    input(el) {
+        const id = +el.dataset.tr, k = el.dataset.r, r = this.r(id);
+        if (el.dataset.role !== undefined) {
+            const x = r.roles[+el.dataset.role], kk = el.dataset.k;
+            if (kk === 'nom' || kk === 'sexe') x[kk] = el.value; else if (el.value === '') delete x[kk]; else x[kk] = Math.max(0, parseInt(el.value, 10) || 0);
+        }
+        else if (k === 'tranches') r.tranches = [...document.querySelectorAll(`[data-tr="${id}"][data-r=tranches]:checked`)].map(x => x.value);
+        else if (el.value === '') delete r[k]; else r[k] = Math.max(0, parseInt(el.value, 10) || 0);
+        const t = TARIFS.find(x => x.id === id), s = document.querySelector(`[data-tr-sum="${id}"]`);
+        if (t && s) s.textContent = this.sum(t);
+    }
+};
+$('tarifsSelected').addEventListener('input', e => { if (e.target.dataset.tr) TR.input(e.target); });
+$('tarifsSelected').addEventListener('change', e => { if (e.target.dataset.tr) TR.input(e.target); });
 function renderSelectedTarifs() {
     const list = SELECTED.map(id => TARIFS.find(t => t.id === id)).filter(Boolean);
     $('tarifsSelected').innerHTML = list.length ? list.map(t => `
-        <div class="ds-row !py-3"><div class="min-w-0"><p class="ds-opt-title truncate">${esc(t.nom)}</p><p class="ds-opt-sub">${Tarifs.label(t)}</p></div>
-        <button type="button" class="ds-iconbtn" aria-label="Retirer ${esc(t.nom)}" onclick="Tarifs.toggle(${t.id}, false)">${ICON.close}</button></div>`).join('')
+        <div class="ds-row !py-3 flex-wrap"><div class="min-w-0 flex-1"><p class="ds-opt-title truncate">${esc(t.nom)}</p><p class="ds-opt-sub" data-tr-sum="${t.id}">${esc(TR.sum(t))}</p></div>
+        <div class="flex items-center gap-1 flex-none"><button type="button" class="ds-btn ds-btn-light ds-btn-sm" aria-expanded="${TR.open.has(t.id)}" onclick="TR.toggle(${t.id})">Conditions</button>
+        <button type="button" class="ds-iconbtn" aria-label="Retirer ${esc(t.nom)}" onclick="Tarifs.toggle(${t.id}, false)">${ICON.close}</button></div>
+        ${TR.open.has(t.id) ? TR.panel(t) : ''}</div>`).join('')
         : '<p class="ds-hint !mt-0">Aucun tarif pour le moment : ajoutez-en au moins un.</p>';
     $('tarifsHidden').value = JSON.stringify(SELECTED);
 }
@@ -607,9 +700,9 @@ Etapes.render();
 const HERIT = {
     description: { label: 'la description et les mots-clés', f: ['description'], a: ['tags'] },
     lieu: { label: 'le lieu et le parcours', f: ['adresse', 'ville', 'cp', 'pays', 'itinerant'], a: ['etapes'] },
-    public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
-    inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs'] },
-    paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement'] },
+    public: { label: 'les âges, le public et les quotas', f: ['age_min', 'age_max', 'age_mode', 'tranches[]', 'reserve_sexe', 'quotas_sexe_actifs', 'quota_fille', 'quota_garcon'] },
+    inscription: { label: 'les inscriptions, tarifs et places', f: ['inscription_en_ligne', 'prix_simple', 'lien_externe', 'adresse_retour_dossier', 'quota_global', 'remise_fratrie', 'attente_paiement', 'attente_jours'], a: ['tarifs', 'tarif_regles'] },
+    paiement: { label: 'les moyens de paiement', f: ['moyens_paiement[]', 'instructions_paiement', 'paiement_autre', 'paiement_autre_logo'] },
     fiche: { label: 'les informations exigées sur la fiche enfant', f: ['champs_requis[]', 'champs_demandes[]'] },
     questions: { label: 'les questions aux familles', a: ['champs'] },
     anim: { label: 'les réglages des animateurs', f: ['gestion_animateur', 'quota_max_anim', 'quota_anim_fille', 'quota_anim_garcon', 'anim_plus_18', 'bafa_obligatoire', 'remuneration_anim', 'anim_doit_payer', 'prix_anim'], a: ['anim'] },
@@ -636,7 +729,7 @@ const SM = {
             else if (el.type === 'radio') { if (el.checked) f[n] = el.value; else if (!(n in f)) f[n] = ''; }
             else f[n] = el.value;
         });
-        return { f, tags: MC.get(), tarifs: [...SELECTED], champs: clone(CHAMPS), etapes: clone(ETAPES), anim: window.AnimModes ? AnimModes.collect() : null, image_url: (this.c && this.c.snap && this.c.snap.image_url) || '' };
+        return { f, tags: MC.get(), tarifs: [...SELECTED], tarif_regles: clone(REGLES), champs: clone(CHAMPS), etapes: clone(ETAPES), anim: window.AnimModes ? AnimModes.collect() : null, image_url: (this.c && this.c.snap && this.c.snap.image_url) || '' };
     },
     apply(st) {
         this.loading = true;
@@ -650,7 +743,7 @@ const SM = {
             else el.value = v == null ? '' : v;
         });
         MC.set(st.tags || []);
-        SELECTED = [...(st.tarifs || [])]; CHAMPS = clone(st.champs || []); ETAPES = clone(st.etapes || []);
+        SELECTED = [...(st.tarifs || [])]; REGLES = clone(st.tarif_regles || {}); CHAMPS = clone(st.champs || []); ETAPES = clone(st.etapes || []);
         if (window.AnimModes && st.anim) { $('am-recrute').checked = false; $('am-equipe').checked = false; AnimModes.load(clone(st.anim)); }
         if (SELECTED.some(id => !TARIFS.some(t => t.id === id))) Tarifs.load().then(renderSelectedTarifs);
         renderSelectedTarifs(); Champs.render(); Etapes.render(); $('etapesBox').classList.toggle('hidden', !document.querySelector('input[name=itinerant]').checked);
@@ -820,13 +913,13 @@ async function envoyer(confirmInscrits) {
             const e = SM.eff(s), inh = !s.principal && s.herit.visuels;
             const mode = inh ? 'inherit' : (s.img ? 'file' : 'keep');
             if (mode === 'file') fd.append('image_' + s.key, s.img);
-            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, champs: e.champs, etapes: e.etapes, image: mode, image_url: (s.snap.image_url || '') };
+            return { key: s.key, token: s.token || '', principal: s.principal, herit: s.principal ? {} : s.herit, f: e.f, tags: e.tags, tarifs: e.tarifs, tarif_regles: e.tarif_regles || {}, champs: e.champs, etapes: e.etapes, anim: e.anim || null, image: mode, image_url: (s.snap.image_url || '') };
         });
         const openTok = SM.list.map(s => s.token).find(Boolean) || '';
         fd.set('payload', JSON.stringify({ common: { nom: $('f-nom').value, organisateur_id: $('orga-select').value, categories: CP.value() }, sessions, confirm_inscrits: !!confirmInscrits }));
         fd.set('token', openTok);
         SM.saving = true;
-        const r = await fetch(openTok ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd });
+        const r = await fetch(openTok ? 'api/update_camp.php' : 'api/add_camp.php', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': CSRF } });
         let d = {}; try { d = await r.json(); } catch (x) {}
         if (r.status === 409 && d.confirm) {
             SM.saving = false; btn.disabled = false; btn.textContent = label;
@@ -834,14 +927,6 @@ async function envoyer(confirmInscrits) {
             return;
         }
         if (!r.ok || !d.success) throw new Error(d.message || 'Enregistrement impossible.');
-        // Réglages des animateurs : par session (recrutement moncamp.fr, inscription de l'équipe), une fois les sessions enregistrées
-        if (window.AnimModes) {
-            for (const s of SM.list) {
-                const tk = d.tokens && d.tokens[s.key]; if (!tk) continue;
-                try { const e = SM.eff(s); if (e.anim) { $('am-recrute').checked = false; $('am-equipe').checked = false; AnimModes.load(clone(e.anim)); await AnimModes.save(tk); } }
-                catch (animErr) { await ColoUI.alert(ColoUI.friendly(animErr) + ' Vous pouvez les régler dans « Gestion des animateurs ».', { tone: 'err' }); }
-            }
-        }
         const go = () => { location.href = 'mes_camps.php?ok=' + (openTok ? 'updated' : 'created'); };
         if ((d.motscles_refuses || []).length) { msg.textContent = 'Séjour enregistré. Mots-clés refusés : ' + d.motscles_refuses.map(r => '« ' + r.label + ' » (' + r.raison + ')').join(' ; '); setTimeout(go, 4500); } else go();
     } catch (err) {

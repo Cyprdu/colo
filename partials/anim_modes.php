@@ -62,6 +62,12 @@ $tk = $tick ?? '';
                 <div><label class="ds-label" for="am-age">Âge minimum de l'animateur (facultatif)</label><input id="am-age" type="number" min="0" max="99" class="ds-input" placeholder="Ex : 17"></div>
                 <div><label class="ds-label" for="am-quota">Places de l'équipe (facultatif)</label><input id="am-quota" type="number" min="0" class="ds-input" placeholder="Illimité"></div>
             </div>
+            <details id="am-cats-box" class="rounded-2xl border border-[#e5e7eb] p-4">
+                <summary class="cursor-pointer font-semibold text-[#26343b]">Options avancées : plusieurs catégories d'encadrants</summary>
+                <p class="ds-hint">Animation, cuisine, logistique… Chaque catégorie a ses places (dont femmes / hommes) ; un tarif ou une question peut lui être réservé. L'encadrant choisit sa catégorie en s'inscrivant. Sans catégorie, tout le monde s'inscrit de la même façon.</p>
+                <div id="am-cats" class="space-y-2 mt-3"></div>
+                <button type="button" class="ds-btn ds-btn-light mt-2" id="am-add-cat">Ajouter une catégorie</button>
+            </details>
             <div>
                 <p class="ds-label">Qui peut s'inscrire ?</p>
                 <div class="grid sm:grid-cols-2 gap-3">
@@ -105,7 +111,19 @@ $tk = $tick ?? '';
     var $ = function (i) { return document.getElementById(i); };
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var TYPES = { texte: 'Texte court', paragraphe: 'Texte long', case: 'Case à cocher', liste: 'Liste de choix', nombre: 'Nombre', date: 'Date' };
-    var tarifs = [], champs = [], lienTok = null, campTok = null;
+    var tarifs = [], champs = [], cats = [], lienTok = null, campTok = null;
+    var cle = function () { return Array.prototype.map.call(crypto.getRandomValues(new Uint8Array(6)), function (b) { return (b + 256).toString(16).slice(1); }).join(''); };
+    function catSel(v, span) {
+        var l = cats.filter(function (k) { return String(k.nom).trim(); });
+        return l.length ? '<select class="ds-select ' + span + '" data-f="cat" aria-label="Catégorie concernée"><option value="">Toutes les catégories</option>' + l.map(function (k) { return '<option value="' + esc(k.cle) + '"' + (v === k.cle ? ' selected' : '') + '>' + esc(k.nom) + '</option>'; }).join('') + '</select>' : '';
+    }
+    function drawCats() {
+        $('am-cats').innerHTML = cats.map(function (k, i) {
+            var n = function (f, ph) { return '<input class="ds-input" data-f="' + f + '" type="number" min="0" placeholder="' + ph + '" value="' + esc(k[f] == null ? '' : k[f]) + '">'; };
+            return '<div class="grid gap-2 sm:grid-cols-[1fr_100px_100px_100px_auto] items-center" data-i="' + i + '"><input class="ds-input" data-f="nom" maxlength="80" placeholder="Ex. Cuisine" value="' + esc(k.nom) + '">' + n('quota', 'Places') + n('quota_f', 'Dont femmes') + n('quota_g', 'Dont hommes') +
+                '<button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-delk="' + i + '" aria-label="Supprimer cette catégorie">&times;</button></div>';
+        }).join('');
+    }
     var DEF_INFOS = { diplome: 1, allergies: 1, regime: 1, urgence: 2 };
     var visib = function () { var r = document.querySelector('[name=am-visib]:checked'); return r ? r.value : 'prive'; };
     function drawLien() {
@@ -119,7 +137,7 @@ $tk = $tick ?? '';
                 '<input class="ds-input" data-f="prix" type="number" min="0" step="0.01" placeholder="Prix €" value="' + esc(t.prix) + '">' +
                 '<label class="text-[13px] flex items-center gap-2"><input type="checkbox" data-f="libre" ' + (t.libre ? 'checked' : '') + ' style="accent-color:#26343b"> Montant libre</label>' +
                 '<input class="ds-input" data-f="min" type="number" min="0" step="0.01" placeholder="Minimum €" ' + (t.libre ? '' : 'disabled') + ' value="' + esc(t.min == null ? '' : t.min) + '">' +
-                '<button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-del="' + i + '" aria-label="Supprimer ce tarif">&times;</button></div>';
+                '<button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-del="' + i + '" aria-label="Supprimer ce tarif">&times;</button>' + catSel(t.cat, 'sm:col-span-5') + '</div>';
         }).join('');
     }
     function drawChamps() {
@@ -128,10 +146,11 @@ $tk = $tick ?? '';
                 '<select class="ds-select" data-f="type">' + Object.keys(TYPES).map(function (k) { return '<option value="' + k + '"' + (c.type === k ? ' selected' : '') + '>' + TYPES[k] + '</option>'; }).join('') + '</select>' +
                 '<label class="text-[13px] flex items-center gap-2"><input type="checkbox" data-f="obligatoire" ' + (c.obligatoire ? 'checked' : '') + ' style="accent-color:#26343b"> Obligatoire</label>' +
                 '<button type="button" class="ds-btn ds-btn-light ds-btn-sm" data-delc="' + i + '" aria-label="Supprimer cette question">&times;</button>' +
-                (c.type === 'liste' ? '<textarea class="ds-textarea sm:col-span-4" data-f="options" rows="3" placeholder="Un choix par ligne (2 minimum)">' + esc(c.options || '') + '</textarea>' : '') + '</div>';
+                (c.type === 'liste' ? '<textarea class="ds-textarea sm:col-span-4" data-f="options" rows="3" placeholder="Un choix par ligne (2 minimum)">' + esc(c.options || '') + '</textarea>' : '') + catSel(c.cat, 'sm:col-span-4') + '</div>';
         }).join('');
     }
     function sync() {
+        [].forEach.call($('am-cats').children, function (row) { var k = cats[row.dataset.i]; [].forEach.call(row.querySelectorAll('[data-f]'), function (el) { k[el.dataset.f] = el.value; }); });
         [].forEach.call($('am-tarifs').children, function (row) { var t = tarifs[row.dataset.i]; [].forEach.call(row.querySelectorAll('[data-f]'), function (el) { t[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value; }); });
         [].forEach.call($('am-champs').children, function (row) { var c = champs[row.dataset.i]; [].forEach.call(row.querySelectorAll('[data-f]'), function (el) { c[el.dataset.f] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value; }); });
     }
@@ -149,6 +168,9 @@ $tk = $tick ?? '';
     function drawInfos(n) { [].forEach.call($('am-infos').children, function (row) { var v = (n || DEF_INFOS)[row.dataset.k]; row.querySelector('[data-role=ask]').checked = v >= 1; row.querySelector('[data-role=req]').checked = v === 2; }); }
     function collectInfos() { var o = {}; [].forEach.call($('am-infos').children, function (row) { o[row.dataset.k] = row.querySelector('[data-role=req]').checked ? 2 : (row.querySelector('[data-role=ask]').checked ? 1 : 0); }); return o; }
     $('am-recrute').addEventListener('change', toggles); $('am-equipe').addEventListener('change', toggles);
+    $('am-add-cat').addEventListener('click', function () { sync(); if (cats.length < 10) cats.push({ cle: cle(), nom: '', quota: '', quota_f: '', quota_g: '' }); drawCats(); });
+    $('am-cats').addEventListener('click', function (e) { var d = e.target.closest('[data-delk]'); if (d) { sync(); cats.splice(+d.dataset.delk, 1); drawCats(); drawTarifs(); drawChamps(); } });
+    $('am-cats').addEventListener('change', function () { sync(); drawTarifs(); drawChamps(); });
     $('am-add-tarif').addEventListener('click', function () { sync(); if (tarifs.length < 10) tarifs.push({ nom: '', prix: '', libre: false, min: '' }); drawTarifs(); });
     $('am-add-champ').addEventListener('click', function () { sync(); if (champs.length < 20) champs.push({ id: 0, libelle: '', type: 'texte', options: '', obligatoire: 0 }); drawChamps(); });
     $('am-tarifs').addEventListener('click', function (e) { var d = e.target.closest('[data-del]'); if (d) { sync(); tarifs.splice(+d.dataset.del, 1); drawTarifs(); } });
@@ -161,8 +183,10 @@ $tk = $tick ?? '';
         $('am-rem').value = cfg.remuneration != null ? cfg.remuneration : '';
         var e = cfg.equipe || {}; if (cfg.campToken) campTok = cfg.campToken;
         $('am-equipe').checked = !!e.active; $('am-age').value = e.age_min || ''; $('am-quota').value = e.quota || '';
-        tarifs = (e.tarifs || []).map(function (t) { return { nom: t.nom, prix: t.prix, libre: !!t.libre, min: t.min }; });
-        champs = (e.champs || []).map(function (c) { return { id: c.id, libelle: c.libelle, type: c.type, options: c.options, obligatoire: c.obligatoire }; });
+        cats = (e.categories || []).map(function (k) { return { cle: k.cle, nom: k.nom, quota: k.quota, quota_f: k.quota_f, quota_g: k.quota_g }; });
+        tarifs = (e.tarifs || []).map(function (t) { return { nom: t.nom, prix: t.prix, libre: !!t.libre, min: t.min, cat: t.cat || '' }; });
+        champs = (e.champs || []).map(function (c) { return { id: c.id, libelle: c.libelle, type: c.type, options: c.options, obligatoire: c.obligatoire, cat: c.cat || '' }; });
+        $('am-cats-box').open = cats.length > 0; drawCats();
         lienTok = e.lien || null; $('am-renew').checked = false;
         var v = document.querySelector('[name=am-visib][value=' + (e.visibilite === 'public' ? 'public' : 'prive') + ']'); if (v) v.checked = true;
         drawInfos(e.infos); drawTarifs(); drawChamps(); drawLien(); toggles();
@@ -170,7 +194,7 @@ $tk = $tick ?? '';
     function collect() {
         sync();
         return { recrute: $('am-recrute').checked, remuneration: $('am-rem').value,
-            equipe: { active: $('am-equipe').checked, visibilite: visib(), renouveler_lien: $('am-renew').checked, age_min: $('am-age').value, quota: $('am-quota').value, infos: collectInfos(), tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
+            equipe: { active: $('am-equipe').checked, visibilite: visib(), renouveler_lien: $('am-renew').checked, age_min: $('am-age').value, quota: $('am-quota').value, infos: collectInfos(), categories: cats.filter(function (k) { return String(k.nom).trim() !== ''; }), tarifs: tarifs, champs: champs.filter(function (c) { return String(c.libelle).trim() !== ''; }) } };
     }
     async function save(campToken) {
         var body = collect(); body.camp = campToken; campTok = campToken;

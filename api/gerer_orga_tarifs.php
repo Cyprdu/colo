@@ -10,6 +10,8 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 function out(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d); exit; }
 if (empty($_SESSION['user']['id']) || empty($_SESSION['user']['is_directeur'])) out(['error' => 'Accès interdit.'], 403);
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') out(['error' => 'Méthode non autorisée.'], 405);
+require_once __DIR__ . '/security.php';
+if (!csrf_check()) out(['error' => 'Session expirée : rechargez la page puis réessayez.'], 403);
 
 $in = json_decode(file_get_contents('php://input'), true) ?: [];
 $uid = (int)$_SESSION['user']['id'];

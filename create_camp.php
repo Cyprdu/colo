@@ -8,7 +8,8 @@ if (empty($_SESSION['user']['is_directeur'])) { header('Location: index.php'); e
 require_once 'api/options.php';
 require_once 'api/attente.php';
 require_once 'api/tarifs.php';
-options_ensure($pdo); attente_ensure($pdo); tarifs_ensure($pdo);
+require_once 'api/regles.php';
+options_ensure($pdo); attente_ensure($pdo); tarifs_ensure($pdo); regles_ensure($pdo);
 
 $stmt = $pdo->prepare("SELECT * FROM organisateurs WHERE user_id = ? ORDER BY nom ASC");
 $stmt->execute([$_SESSION['user']['id']]);

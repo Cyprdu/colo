@@ -4,6 +4,8 @@ require_once 'config.php';
 if (!isset($_SESSION['user']['id']) || !$_SESSION['user']['is_directeur']) {
     sendJson(['error' => 'Accès interdit'], 403);
 }
+require_once __DIR__ . '/security.php';
+if (!csrf_check()) sendJson(['error' => 'Session expirée : rechargez la page puis réessayez.'], 403);
 
 $input = json_decode(file_get_contents('php://input'), true);
 

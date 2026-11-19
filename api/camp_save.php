@@ -7,10 +7,11 @@ require_once __DIR__ . '/catalogue.php';
 require_once __DIR__ . '/motscles.php';
 require_once __DIR__ . '/sessions.php';
 require_once __DIR__ . '/champs.php';
+require_once __DIR__ . '/regles.php';
 
 /**
  * Valide $in (le POST du formulaire) pour le directeur $uid.
- * Retourne [colonnes camps => valeurs, liste d'identifiants de tarifs, message d'erreur|null, classement] où classement =
+ * Retourne [colonnes camps => valeurs, liste d'identifiants de tarifs, message d'erreur|null, classement, règles des tarifs] où classement =
  * ['cats' => sélection de catégories|null, 'motscles' => ['ok' => [...], 'refus' => [...]]|null] (null = le formulaire ne les envoyait pas : on ne touche à rien).
  * Catégories et mots-clés sont enregistrés par camp_enregistrer_classement(), dans la transaction du séjour.
  */
@@ -40,8 +41,8 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     if ($nom === '') return [[], [], 'Le nom du séjour est obligatoire.', null];
     if (!$debut || !$fin) return [[], [], 'Les dates du séjour sont obligatoires.', null];
     if ($fin < $debut) return [[], [], 'La date de fin doit suivre la date de début.', null];
-    $ageMin = $i('age_min'); $ageMax = $i('age_max');
-    if ($ageMax < $ageMin) return [[], [], "L'âge maximum doit être supérieur ou égal à l'âge minimum.", null];
+    [$ageMode, $tranches, $ageMin, $ageMax, $errAge] = regles_age_lire($in);
+    if ($errAge) return [[], [], $errAge, null];
     $limite = $day($s('date_limite_inscription'));
     if ($limite && $limite > $debut) return [[], [], "La date limite d'inscription doit précéder le début du séjour.", null];
 
@@ -53,10 +54,11 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
         if ($ids) {
             // Prix lu en base, uniquement pour les tarifs des organismes du directeur
             $q = implode(',', array_fill(0, count($ids), '?'));
-            $st = $pdo->prepare("SELECT t.id, t.prix, t.montant_libre FROM tarifs t JOIN organisateurs o ON o.id = t.organisateur_id WHERE o.user_id = ? AND t.id IN ($q)");
+            $st = $pdo->prepare("SELECT t.id, t.nom, t.prix, t.montant_libre FROM tarifs t JOIN organisateurs o ON o.id = t.organisateur_id WHERE o.user_id = ? AND t.id IN ($q)");
             $st->execute(array_merge([$uid], $ids));
             $rows = $st->fetchAll(PDO::FETCH_ASSOC);
             $tarifIds = array_map(fn($r) => (int)$r['id'], $rows);
+            $nomsTarifs = array_column($rows, 'nom', 'id');
             $fixes = array_filter(array_map(fn($r) => (float)$r['prix'], array_filter($rows, fn($r) => empty($r['montant_libre']) && (float)$r['prix'] > 0)));
             $tous = array_map(fn($r) => (float)$r['prix'], $rows);
             $prix = $fixes ? min($fixes) : ($tous ? min($tous) : 0.0);
@@ -77,6 +79,17 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     if ($reserve === SEXE_GARCON) $qF = 0;
     if ($reserve === SEXE_FILLE) $qG = 0;
 
+    $regles = [];
+    $rawR = is_string($in['tarif_regles'] ?? null) ? json_decode($in['tarif_regles'], true) : ($in['tarif_regles'] ?? []);
+    foreach ($tarifIds as $tid) {
+        $r = regles_tarif_lire(is_array($rawR) ? ($rawR[$tid] ?? []) : [], $qGlobal, (string)$nomsTarifs[$tid]);
+        if (is_string($r)) return [[], [], $r, null];
+        $regles[$tid] = $r;
+    }
+
+    if (in_array('autre', options_paiements_valides($in['moyens_paiement'] ?? []), true) && trim((string)($in['paiement_autre'] ?? '')) === '')
+        return [[], [], 'Donnez un nom au moyen de paiement « Autre ».', null];
+
     $anim = !empty($in['gestion_animateur']) ? 1 : 0;
     $lien = $s('lien_externe', 500);
     if ($lien !== '' && !preg_match('#^https?://#i', $lien)) $lien = 'https://' . $lien;
@@ -89,7 +102,7 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
         'type' => $mc !== null ? mb_substr(implode(', ', array_column($mc['ok'], 'label')), 0, 500) : $s('type', 500), 'pays' => $s('pays', 80) ?: 'France',
         'itinerant' => !empty($in['itinerant']) ? 1 : 0, 'video_url' => $video,
         'ville' => $s('ville', 120), 'adresse' => $s('adresse', 255), 'code_postal' => $s('cp', 20),
-        'age_min' => $ageMin, 'age_max' => $ageMax, 'date_debut' => $debut, 'date_fin' => $fin,
+        'age_min' => $ageMin, 'age_max' => $ageMax, 'age_mode' => $ageMode, 'tranches' => implode(',', $tranches) ?: null, 'date_debut' => $debut, 'date_fin' => $fin,
         'prive' => !empty($in['prive']) ? 1 : 0,
         'inscription_en_ligne' => $enLigne, 'inscription_hors_ligne' => $enLigne ? 0 : 1, 'prix' => $prix,
         'lien_externe' => $lien, 'adresse_retour_dossier' => $s('adresse_retour_dossier', 500),
@@ -103,7 +116,7 @@ function camp_lire_formulaire(PDO $pdo, int $uid, array $in): array {
     ];
     if ($data['theme'] === '') return [[], [], 'Choisissez au moins une catégorie pour votre séjour.', null];
     if ($data['ville'] === '' || $data['adresse'] === '') return [[], [], "L'adresse et la ville sont obligatoires.", null];
-    return [$data, $tarifIds, null, $classement];
+    return [$data, $tarifIds, null, $classement, $regles];
 }
 
 /** Enregistre catégories, précisions et mots-clés d'un séjour (dans la transaction du séjour). */
@@ -134,10 +147,10 @@ function camp_enregistrer_attente(PDO $pdo, int $campId, array $in): void {
         ->execute([!empty($in['attente_paiement']) ? 1 : 0, max(1, min(ATTENTE_MAX_JOURS, (int)($in['attente_jours'] ?? ATTENTE_DEFAUT_JOURS))), $campId]);
 }
 
-function camp_enregistrer_tarifs(PDO $pdo, int $campId, array $tarifIds): void {
+function camp_enregistrer_tarifs(PDO $pdo, int $campId, array $tarifIds, array $regles = []): void {
     $pdo->prepare("DELETE FROM camps_tarifs WHERE camp_id = ?")->execute([$campId]);
-    $ins = $pdo->prepare("INSERT INTO camps_tarifs (camp_id, tarif_id) VALUES (?, ?)");
-    foreach ($tarifIds as $t) $ins->execute([$campId, $t]);
+    $ins = $pdo->prepare("INSERT INTO camps_tarifs (camp_id, tarif_id, regles) VALUES (?, ?, ?)");
+    foreach ($tarifIds as $t) $ins->execute([$campId, $t, !empty($regles[$t]) ? json_encode($regles[$t], JSON_UNESCAPED_UNICODE) : null]);
 }
 
 /** Enregistre la photo de couverture ; retourne le chemin relatif au site, ou null (aucun fichier / refusé) */

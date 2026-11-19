@@ -31,7 +31,7 @@ function gestion_label(array $r): string {
 function gestion_inscrits(PDO $pdo, array $ctx, string $session = ''): array {
     $ids = $ctx['ids']; $in = $ctx['in'];
     $camps = []; foreach ($ctx['rows'] as $r) $camps[(int)$r['id']] = $r;
-    $sel = $pdo->prepare("SELECT e.*, i.camp_id, i.reservation_token, i.date_inscription, i.montant_paye, i.statut, i.statut_paiement, i.moyen_paiement, i.mode_paiement, i.prix_final,
+    $sel = $pdo->prepare("SELECT e.*, i.id ins_id, i.camp_id, i.reservation_token, i.date_inscription, i.montant_paye, i.statut, i.statut_paiement, i.moyen_paiement, i.mode_paiement, i.prix_final,
                 u.email parent_email, u.tel parent_tel, u.nom parent_nom_famille, u.prenom parent_prenom, t.nom tarif_nom, c.token session_token, c.attente_paiement, c.attente_jours
             FROM inscriptions i JOIN enfants e ON i.enfant_id = e.id JOIN users u ON e.parent_id = u.id JOIN camps c ON c.id = i.camp_id
             LEFT JOIN tarifs t ON i.tarif_id = t.id
@@ -41,9 +41,20 @@ function gestion_inscrits(PDO $pdo, array $ctx, string $session = ''): array {
         'parent_nom_famille', 'parent_prenom', 'tarif_nom', 'session_token', 'prenom', 'nom', 'date_naissance', 'sexe', 'infos_sante', 'allergies', 'traitements', 'regime_alimentaire',
         'medecin_nom', 'medecin_tel', 'urgence_nom', 'urgence_tel', 'urgence_lien', 'resp1_prenom', 'resp1_nom', 'resp1_tel', 'resp1_email', 'resp2_prenom', 'resp2_nom', 'resp2_tel'];
     $enfants = [];
-    foreach ($sel->fetchAll(PDO::FETCH_ASSOC) as $e) {
+    $rows = $sel->fetchAll(PDO::FETCH_ASSOC);
+    $avec = [];   // autres participants d'une inscription à un tarif « à plusieurs »
+    if ($rows) {
+        try {
+            $st = $pdo->prepare("SELECT p.inscription_id, p.role, e.prenom, e.nom FROM inscription_participants p JOIN enfants e ON e.id = p.enfant_id JOIN inscriptions i ON i.id = p.inscription_id
+                                 WHERE p.enfant_id <> i.enfant_id AND p.inscription_id IN (" . implode(',', array_fill(0, count($rows), '?')) . ") ORDER BY p.position");
+            $st->execute(array_map(fn($r) => (int)$r['ins_id'], $rows));
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $p) $avec[(int)$p['inscription_id']][] = $p['prenom'] . ' ' . $p['nom'] . ' (' . $p['role'] . ')';
+        } catch (Throwable $ex) {}
+    }
+    foreach ($rows as $e) {
         if ($session !== '' && $e['session_token'] !== $session) continue;
         $o = array_intersect_key($e, array_flip($garde));
+        if (!empty($avec[(int)$e['ins_id']])) $o['tarif_nom'] = trim($o['tarif_nom'] . ' · avec ' . implode(', ', $avec[(int)$e['ins_id']]));
         $lim = attente_limite($e);
         $o['expire'] = $lim && $lim < new DateTime();
         $o['limite_paiement'] = $lim ? $lim->format('Y-m-d H:i') : null;
@@ -57,7 +68,7 @@ function gestion_inscrits(PDO $pdo, array $ctx, string $session = ''): array {
     try {
         require_once __DIR__ . '/equipe.php'; equipe_ensure($pdo);
         $q = $pdo->prepare("SELECT q.id, q.token, q.prenom, q.nom, q.date_naissance, q.email, q.tel, q.bafa_statut, q.diplome, q.allergies, q.regime, q.urgence_nom, q.urgence_tel,
-                                   q.tarif_nom, q.prix_final, q.montant_paye, q.statut, q.statut_paiement, q.created_at, c.token session_token
+                                   CONCAT_WS(' · ', q.categorie_nom, q.tarif_nom) tarif_nom, q.prix_final, q.montant_paye, q.statut, q.statut_paiement, q.created_at, c.token session_token
                             FROM equipe_inscriptions q JOIN camps c ON c.id = q.camp_id WHERE q.camp_id IN ($in) ORDER BY q.nom, q.prenom");
         $q->execute($ids);
         $rep = $pdo->prepare("SELECT libelle, valeur FROM equipe_reponses WHERE equipe_id = ? ORDER BY id");
