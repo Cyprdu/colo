@@ -4,6 +4,7 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+ob_start();   // les pages peuvent encore rediriger (connexion requise) après l'inclusion de l'en-tête
 
 // Journal des erreurs (aussi chargé par api/config.php quand la ligne y a été ajoutée)
 if (is_file(__DIR__ . '/../api/errors.php')) require_once __DIR__ . '/../api/errors.php';

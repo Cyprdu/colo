@@ -92,7 +92,7 @@ $statutTxt = $annule ? 'Inscription annulée' : ($paid ? 'Inscription confirmée
         <dl class="mt-3 grid sm:grid-cols-2 gap-4 text-[14px]">
             <div><dt class="text-[#6b7780]">Tarif choisi</dt><dd class="font-bold text-[#26343b]"><?= $e['tarif_nom'] ? $h($e['tarif_nom']) : 'Participation gratuite' ?></dd></div>
             <div><dt class="text-[#6b7780]">Montant à votre charge</dt><dd class="font-bold text-[#26343b]"><?= (float)$e['prix_final'] > 0 ? $eur($e['prix_final']) . ($e['statut_paiement'] === 'PAYE' ? ' · payé' : ' · à régler') : 'Gratuit' ?></dd></div>
-            <div><dt class="text-[#6b7780]">Rémunération prévue</dt><dd class="font-bold text-[#26343b]"><?= $camp['anim_remuneration'] !== null ? $eur($camp['anim_remuneration']) : 'Non renseignée' ?></dd></div>
+            <div><dt class="text-[#6b7780]">Rémunération prévue</dt><dd class="font-bold text-[#26343b]"><?= ($camp['anim_remuneration'] ?? null) !== null ? $eur($camp['anim_remuneration']) : 'Non renseignée' ?></dd></div>
             <div><dt class="text-[#6b7780]">Date de versement prévue</dt><dd class="font-bold text-[#26343b]"><?= $info['date_versement'] ? $jour($info['date_versement']) : 'Non renseignée' ?></dd></div>
         </dl>
         <?php if ($paid && !$annule): ?><a class="ds-btn ds-btn-light mt-5" href="generate_pdf_equipe.php?t=<?= $h($t) ?>">Télécharger mon reçu (PDF)</a><?php endif; ?>
