@@ -12,7 +12,7 @@ const ORDER_SELECT = "SELECT i.id AS inscription_id, i.reservation_token, i.stri
         c.id AS camp_id, c.token AS camp_token, c.nom AS camp_nom, c.ville, c.adresse, c.code_postal, c.image_url,
         c.date_debut, c.date_fin, c.inscription_en_ligne, c.valide, c.refuse, c.supprime, c.remise_fratrie, c.attente_paiement, c.attente_jours,
         o.nom AS orga_nom, o.logo_url AS orga_logo, o.user_id AS orga_user_id, o.email AS orga_email, o.tel AS orga_tel,
-        e.id AS enfant_id, e.prenom AS enfant_prenom, e.nom AS enfant_nom, e.date_naissance
+        e.id AS enfant_id, e.prenom AS enfant_prenom, e.nom AS enfant_nom, e.photo_token AS enfant_photo, e.date_naissance
     FROM inscriptions i
     JOIN enfants e ON e.id = i.enfant_id
     JOIN camps c ON c.id = i.camp_id

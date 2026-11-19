@@ -50,7 +50,7 @@ $mime = (string)finfo_buffer($finfo, $data);
 finfo_close($finfo);
 if (!in_array($mime, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic'], true)) sf_stop(403);   // jamais autre chose qu'un PDF ou une image
 
-sante_log($pdo, $uid, (int)$enfant['id'], $type);   // journal : qui a ouvert quel document
+if ($type !== 'photos' || (int)$enfant['parent_id'] !== $uid) sante_log($pdo, $uid, (int)$enfant['id'], $type);   // journal : qui a ouvert quel document (hors photo vue par son parent)
 
 if (ob_get_level()) ob_end_clean();
 header('Content-Type: ' . $mime);

@@ -96,7 +96,7 @@ try {
     $dejaInscritsNb = (int)$stmtFr->fetchColumn();
     // JSON injecté dans <script> : champs utiles seulement (id, prénom, nom : jamais de colonnes santé/binaires, qui feraient échouer json_encode et casser toute la page), balises échappées
     $jf = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP;
-    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? '', 'sexe' => $e['sexe'] ?? '', 'age' => age_au($e['date_naissance'] ?? null, $camp['date_debut']), 'tranche' => $trancheDe[(int)$e['id']] ?? ''], $enfants), $jf) ?: '[]';
+    $enfantsJson = json_encode(array_map(fn($e) => ['id' => $e['id'], 'prenom' => $e['prenom'] ?? '', 'nom' => $e['nom'] ?? '', 'photo' => !empty($e['photo_token']) ? 'api/secure_file.php?type=photos&file=' . rawurlencode($e['photo_token']) : '', 'sexe' => $e['sexe'] ?? '', 'age' => age_au($e['date_naissance'] ?? null, $camp['date_debut']), 'tranche' => $trancheDe[(int)$e['id']] ?? ''], $enfants), $jf) ?: '[]';
     $tarifsJson = json_encode($tarifs, $jf) ?: '[]';
     $retourInscr = urlencode('inscription?camp_t=' . $camp_token);
     require_once 'api/annulation_lib.php';
@@ -222,7 +222,7 @@ $vaccTxt = function (array $e): string {
                     <article class="verif-card hidden border border-[#e5e7eb] rounded-2xl overflow-hidden" data-child="<?= $eid ?>">
                         <header class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-[#f8fafb] border-b border-[#e5e7eb]">
                             <div class="flex items-center gap-3">
-                                <span class="w-11 h-11 rounded-full bg-[#2f3d45] text-white flex items-center justify-center font-bold text-lg"><?= htmlspecialchars(mb_strtoupper(mb_substr((string)$enfant['prenom'], 0, 1))) ?></span>
+                                <?= enfant_avatar($enfant['photo_token'] ?? null, (string)$enfant['prenom'], 'w-11 h-11 text-lg') ?>
                                 <div><h3 class="font-extrabold text-[#26343b] text-[17px]"><?= htmlspecialchars($enfant['prenom'] . ' ' . $enfant['nom']) ?></h3>
                                 <p class="text-[13px] text-[#6b7780]"><?= !empty($enfant['date_naissance']) ? 'Né(e) le ' . date('d/m/Y', strtotime($enfant['date_naissance'])) . ' · ' . $ageE . ' ans' : 'Date de naissance non renseignée' ?></p></div>
                             </div>
@@ -551,7 +551,7 @@ $vaccTxt = function (array $e): string {
                 </div>`;
             });
 
-            container.innerHTML += `<div class="bg-white border rounded-xl p-5 shadow-sm"><h3 class="font-bold text-lg mb-3 flex items-center"><div class="w-8 h-8 rounded-full bg-[#e5eaef] text-[#3d6a8e] flex items-center justify-center mr-2">${child.prenom.charAt(0)}</div> Tarif pour ${child.prenom}</h3>${options}</div>`;
+            container.innerHTML += `<div class="bg-white border rounded-xl p-5 shadow-sm"><h3 class="font-bold text-lg mb-3 flex items-center">${child.photo ? `<img src="${escH(child.photo)}" alt="" class="w-8 h-8 rounded-full object-cover mr-2">` : `<div class="w-8 h-8 rounded-full bg-[#e5eaef] text-[#3d6a8e] flex items-center justify-center mr-2">${escH(child.prenom.charAt(0))}</div>`} Tarif pour ${child.prenom}</h3>${options}</div>`;
         });
         showCustomFields();
     }
