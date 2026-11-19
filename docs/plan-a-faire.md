@@ -3,14 +3,14 @@
 Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentaire inutile dans le code, rapport final court, branche dédiée depuis main, un commit par point, tests sur base jetable, ne pas pousser (fusion par la session principale). Jamais `?>` dans un commentaire `//`.
 
 ## Lot 1 — Création de séjour (`create.php`, `partials/camp_form.php`, `api/camp_save.php`, `api/add_camp.php`, `api/update_camp.php`)
-- [ ] Bug : à la création, erreur « Séjour introuvable… gestion des animateurs » puis redirection « Séjour enregistré » : corriger la séquence (le séjour doit exister avant la config animateurs).
-- [ ] Mots-clés : bug « ce mot est déjà dans la liste » juste après l'ajout ; garder le focus dans le champ après Entrée ; supprimer les suggestions ; texte explicatif derrière un « ? » sans exemple EPJ ; si le mot est déjà dans les mots de l'organisme : « Déjà dans les mots de votre organisme, inutile de le répéter ici ».
-- [ ] Tarifs : quota par tarif, et quotas par sexe (filles / garçons) par tarif ; tarif réservé à un âge ou une tranche d'âge (collégien, lycéen, étudiant…) avec contrôle à l'inscription.
-- [ ] Âge : le directeur choisit âge exact, tranches (collège, lycée, études sup, adulte…) ou les deux ; l'inscription accepte selon ce choix.
-- [ ] Animateurs : plusieurs catégories d'encadrants (animateurs, logistique/TTV, cuisine…), chacune avec ses tarifs, quotas (dont filles/garçons), questions ; l'animateur choisit sa catégorie.
-- [ ] Moyens de paiement : bouton « Autre » (libellé + logo téléversé).
-- [ ] Inscriptions multi-personnes génériques : un tarif peut couvrir N participants avec des rôles (ex. père + fils, prix pour deux), formulaire d'inscription généré pour chaque rôle. Modèle de données générique (participants par inscription), pas une case dédiée ; caché dans « Options avancées ».
-- [ ] Anticiper les cas particuliers : options avancées repliées, formulaire long mais clair, aide « ? ».
+- [x] Bug : à la création, erreur « Séjour introuvable… gestion des animateurs » puis redirection « Séjour enregistré » : corriger la séquence (le séjour doit exister avant la config animateurs).
+- [x] Mots-clés : bug « ce mot est déjà dans la liste » juste après l'ajout ; garder le focus dans le champ après Entrée ; supprimer les suggestions ; texte explicatif derrière un « ? » sans exemple EPJ ; si le mot est déjà dans les mots de l'organisme : « Déjà dans les mots de votre organisme, inutile de le répéter ici ».
+- [x] Tarifs : quota par tarif, et quotas par sexe (filles / garçons) par tarif ; tarif réservé à un âge ou une tranche d'âge (collégien, lycéen, étudiant…) avec contrôle à l'inscription.
+- [x] Âge : le directeur choisit âge exact, tranches (collège, lycée, études sup, adulte…) ou les deux ; l'inscription accepte selon ce choix.
+- [x] Animateurs : plusieurs catégories d'encadrants (animateurs, logistique/TTV, cuisine…), chacune avec ses tarifs, quotas (dont filles/garçons), questions ; l'animateur choisit sa catégorie.
+- [x] Moyens de paiement : bouton « Autre » (libellé + logo téléversé).
+- [x] Inscriptions multi-personnes génériques : un tarif peut couvrir N participants avec des rôles (ex. père + fils, prix pour deux), formulaire d'inscription généré pour chaque rôle. Modèle de données générique (participants par inscription), pas une case dédiée ; caché dans « Options avancées ».
+- [x] Anticiper les cas particuliers : options avancées repliées, formulaire long mais clair, aide « ? ».
 
 ## Lot 2 — Recherche et accueil (`index.php`, `partials/header.php`, `recherche.php`, `api/search_lib.php`)
 - [ ] Bandeau de recherche de l'accueil : plus fin, sapins proportionnés (modèle : site « Ma colo de confiance »).
