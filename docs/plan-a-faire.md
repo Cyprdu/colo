@@ -37,8 +37,8 @@ Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentair
 - [x] Audit des obligations : mentions légales, CGU, CGV/conditions de vente, politique de confidentialité, registre, durées de conservation, droits RGPD, médiation de la consommation, données de mineurs et de santé (hébergement HDS à évaluer), accessibilité ; mettre à jour `legal.php` et les pages concernées.
 
 ## Lot 6 — Traduction
-- [ ] Sélecteur de langue dans le pied de page (FR par défaut, EN) ; tous les textes de l'interface traduits (fichiers de langue), annonces des séjours non traduites.
+- [x] Sélecteur de langue dans le pied de page (FR par défaut, EN) ; tous les textes de l'interface traduits (fichiers de langue), annonces des séjours non traduites.
 
 ## Lot 7 — Mobile et PWA
-- [ ] Refaire le responsive de tout le site : bouton du menu à droite, zones sûres iOS (encoche / caméra), éléments trop hauts, réservation fluide sur téléphone.
-- [ ] PWA optimisée (manifest, icônes, cache, installation).
+- [x] Refaire le responsive de tout le site : bouton du menu à droite, zones sûres iOS (encoche / caméra), éléments trop hauts, réservation fluide sur téléphone.
+- [x] PWA optimisée (manifest, icônes, cache, installation).
