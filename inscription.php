@@ -263,7 +263,7 @@ $vaccTxt = function (array $e): string {
                 </div>
 
                 <div class="mt-8 pt-6 border-t flex flex-wrap justify-between items-center gap-3">
-                    <button type="button" onclick="goToStep(1)" class="mc-hit text-gray-500 hover:text-gray-800">← Retour</button>
+                    <button type="button" onclick="goToStep(1)" class="mc-hit whitespace-nowrap text-gray-500 hover:text-gray-800">← Retour</button>
                     <button type="button" id="btn-validate-step2" onclick="goToStep(3)" disabled class="ds-btn" aria-describedby="timer-note">Valider et continuer</button>
                 </div>
                 <p id="timer-note" class="text-right text-xs text-[#6b7780] mt-2">Validation possible dans <span id="timer-display">5</span> s.</p>
@@ -314,7 +314,7 @@ $vaccTxt = function (array $e): string {
                 <?php endif; ?>
 
                 <div class="mt-8 pt-6 border-t flex justify-between items-center">
-                    <button type="button" onclick="goToStep(2)" class="mc-hit text-gray-500 hover:text-gray-800">← Retour</button>
+                    <button type="button" onclick="goToStep(2)" class="mc-hit whitespace-nowrap text-gray-500 hover:text-gray-800">← Retour</button>
                     <button type="button" onclick="goToStep(4)" class="px-6 py-3 bg-[#2f3d45] text-white font-bold rounded-lg hover:bg-[#1f2a30] transition">
                         Voir le récapitulatif →
                     </button>
@@ -360,7 +360,7 @@ $vaccTxt = function (array $e): string {
 <div class="mt-6 flex justify-center gap-1.5" aria-label="Moyens de paiement acceptés"><?php foreach (options_logos_carte() as $lg): ?><span class="w-11 block"><?= $lg ?></span><?php endforeach; ?></div>
                 </div>
                 <div class="mt-4 text-center">
-                    <button type="button" onclick="goToStep(3)" class="text-sm text-gray-500 hover:underline">Modifier les tarifs</button>
+                    <button type="button" onclick="goToStep(3)" class="mc-hit text-sm text-gray-500 hover:underline">Modifier les tarifs</button>
                 </div>
             </div>
 
