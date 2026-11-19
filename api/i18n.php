@@ -89,6 +89,11 @@ function mc_i18n_fmt(string $s): string {
     return preg_replace_callback('/\b(\d{1,2}(?:er)?) (' . implode('|', array_map('preg_quote', array_keys($mois))) . ')(?=[\s,.)–-]|$)/u', fn($m) => str_replace('er', '', $m[1]) . ' ' . $mois[$m[2]], $s);
 }
 
+function mc_i18n_pur(string $s): bool {
+    $mois = implode('|', array_map(fn($m) => preg_quote($m, '/'), explode(',', mc_dict('fr')['months.re'])));
+    return preg_replace(['/' . $mois . '/u', '/[\d\s.,€–\/:()·h-]/u'], '', $s) === '';
+}
+
 function mc_i18n_pattern(string $k): ?string {
     static $p = null;
     if ($p === null) {
@@ -114,7 +119,7 @@ function mc_i18n_out(string $html): string {
             return '>' . $a[0] . htmlspecialchars($d[$k], ENT_NOQUOTES) . $b[0] . '<';
         }
         if ($r = mc_i18n_pattern($k)) return '>' . htmlspecialchars($r, ENT_NOQUOTES) . '<';
-        return mb_strlen($k) <= 90 ? '>' . mc_i18n_fmt($m[1]) . '<' : $m[0];
+        return mc_i18n_pur($k) ? '>' . mc_i18n_fmt($m[1]) . '<' : $m[0];
     }, $html) ?? $html;
     return preg_replace_callback('/\b(placeholder|title|aria-label|alt|data-tip)="([^"<>]*\p{L}[^"<>]*)"/u', function ($m) use ($d, $norm) {
         $k = $norm($m[2]);

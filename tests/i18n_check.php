@@ -13,7 +13,7 @@ ok(t('Texte absent du dictionnaire') === 'Texte absent du dictionnaire', 't() re
 ok(t('Notifications d’administration') === t("Notifications d'administration"), 'apostrophes typographiques et droites équivalentes');
 ok(mc_money(1460) === '€1,460.00' && mc_money(40, 0) === '€40', 'monnaie en anglais');
 ok(mc_date('2026-12-19') === '19 Dec 2026', 'date en anglais');
-ok(mc_i18n_fmt('Dès 1 460,50 €') === 'Dès €1,460.50', 'conversion des montants');
+ok(mc_i18n_fmt('Dès 1 460,50 €') === 'Dès €1,460.50' && mc_i18n_pur('19 déc. – 2 janv. 2027') && !mc_i18n_pur('du samedi 6 au vendredi 12 février'), 'conversion des montants, seulement sur une date ou un prix seuls');
 ok(mc_i18n_fmt('du 19 déc. au 1er janvier') === 'du 19 Dec au 1 January', 'conversion des mois');
 ok(mc_i18n_pattern('69 séjours trouvés') === '69 camps found' && mc_i18n_pattern('Camps garçons 8-12 ans') === null, 'clé à variable, jamais sur un texte libre');
 ok(str_contains(mc_hreflang(), 'hreflang="en" href="https://moncamp.fr/recherche?name=ski&amp;lang=en"') && str_contains(mc_hreflang(), 'hreflang="fr" href="https://moncamp.fr/recherche?name=ski"'), 'balises hreflang');
