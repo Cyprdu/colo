@@ -80,7 +80,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <?php if (!empty($base_href)) echo '<base href="' . htmlspecialchars($base_href) . '">'; /* pages dans un sous-dossier d'adresse (/organisme/xxx) */ ?>
     <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
 
@@ -120,26 +120,37 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
         .font-display { font-family: 'Montserrat', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; } 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } 
-        .body-no-scroll { overflow: hidden; } 
+        .body-no-scroll { overflow: hidden; }
+        /* Safe areas : encoche, caméra frontale / Dynamic Island et barre inférieure sur mobile */
+        .safe-header {
+            padding-top: env(safe-area-inset-top, 0px);
+            padding-left: env(safe-area-inset-left, 0px);
+            padding-right: env(safe-area-inset-right, 0px);
+        }
+        .safe-drawer {
+            padding-top: env(safe-area-inset-top, 0px);
+            padding-right: env(safe-area-inset-right, 0px);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
         /* Animation du dropdown */
         /* Menu du compte : ne se ferme pas quand la souris traverse le petit espace entre le bouton et le menu.
-           - la zone de passage (padding-top du menu) fait partie du menu, donc le survol est continu
-           - la fermeture est retardée de 150 ms : un léger écart de trajectoire est pardonné */
+- la zone de passage (padding-top du menu) fait partie du menu, donc le survol est continu
+- la fermeture est retardée de 150 ms : un léger écart de trajectoire est pardonné */
         .dropdown-menu { visibility: hidden; opacity: 0; transform: translateY(-6px); transition: opacity .16s ease .15s, transform .16s ease .15s, visibility 0s linear .31s; }
         .nav-dd:hover .dropdown-menu, .nav-dd:focus-within .dropdown-menu { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-            #history-list::-webkit-scrollbar { width: 4px; }
+        #history-list::-webkit-scrollbar { width: 4px; }
         #history-list::-webkit-scrollbar-track { background: #f1f1f1; }
         #history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
 <link rel="manifest" href="/manifest.json">
 
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="moncamp.fr">
 <link rel="apple-touch-icon" href="/icon-192.png">
 
-<meta name="theme-color" content="#26343b">
+<meta name="theme-color" content="#ffffff">
 
 <script>
 if ('serviceWorker' in navigator) {
@@ -157,9 +168,9 @@ if ('serviceWorker' in navigator) {
 </head>
 <body class="<?php echo htmlspecialchars($body_class); ?><?php echo $body_class === 'bg-gray-100' ? ' ds-legacy' : ''; ?> text-gray-800 flex flex-col min-h-screen">
 
-    <header class="bg-white border-b border-gray-200 sticky top-0 z-40">
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-40 safe-header">
         <nav class="w-full px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center h-[68px] gap-4 lg:gap-6">
+            <div class="flex items-center justify-between md:justify-start h-[68px] gap-4 lg:gap-6">
 
                 <!-- Logo -->
                 <a href="<?php echo $home_url; ?>" class="flex-shrink-0 flex items-center gap-1.5 whitespace-nowrap" aria-label="moncamp.fr, accueil">
@@ -193,7 +204,7 @@ if ('serviceWorker' in navigator) {
 
                 <!-- Navigation -->
                 <div id="nav-links" class="hidden md:flex items-center gap-1 lg:gap-3 flex-shrink-0 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap opacity-100">
-                                        <a href="<?php echo $home_url; ?>" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
+                    <a href="<?php echo $home_url; ?>" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Accueil</a>
 
                     <?php if ($anim_ui): ?>
                         <a href="missions" class="text-[#3b4a54] hover:text-[#26343b] px-2.5 py-2 text-[14px] font-medium transition-colors">Missions</a>
@@ -268,7 +279,7 @@ if ('serviceWorker' in navigator) {
                                     <a href="edit_profile" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-user-pen w-6 text-center mr-2 text-gray-400"></i> Modifier mes informations
                                     </a>
-                                                                        <?php if (!$anim_ui): ?>
+                                    <?php if (!$anim_ui): ?>
                                     <a href="children" class="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#3d6a8e]">
                                         <i class="fa-solid fa-children w-6 text-center mr-2 text-gray-400"></i> Gérer mes enfants
                                     </a>
@@ -287,7 +298,7 @@ if ('serviceWorker' in navigator) {
                                     </a>
                                 </div>
 
-                                                                <?php if ($anim_parent_too): ?>
+                                <?php if ($anim_parent_too): ?>
                                 <form action="api/anim_mode.php" method="POST" class="border-t border-gray-100 px-4 py-3" aria-label="Changer de mode">
                                     <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf_value); ?>">
                                     <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Mode</p>
@@ -345,11 +356,12 @@ if ('serviceWorker' in navigator) {
                     <?php endif; ?>
                 </div>
 
-                <div class="md:hidden flex items-center gap-2">
-                    <button id="mobile-search-trigger" class="p-2 rounded-md text-gray-500 hover:bg-gray-100 transition-colors">
-                        <i class="fa-solid fa-magnifying-glass text-lg"></i>
+                <!-- Actions mobiles alignées à droite, même DA que desktop -->
+                <div class="md:hidden flex items-center gap-1 ml-auto flex-shrink-0">
+                    <button id="mobile-search-trigger" type="button" aria-label="Rechercher" class="w-10 h-10 flex items-center justify-center rounded-full text-[#3b4a54] hover:text-[#26343b] hover:bg-gray-100 transition-colors">
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.1"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
                     </button>
-                    <button id="open-menu-button" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none">
+                    <button id="open-menu-button" type="button" aria-label="Ouvrir le menu" class="w-10 h-10 inline-flex items-center justify-center rounded-full text-[#3b4a54] hover:text-[#26343b] hover:bg-gray-100 focus:outline-none transition-colors">
                         <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
                     </button>
                 </div>
@@ -357,90 +369,177 @@ if ('serviceWorker' in navigator) {
         </nav>
     </header>
 
-    <div id="mobile-menu-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden transition-opacity"></div>
-    <div id="mobile-menu" class="fixed top-0 right-0 h-full w-4/5 max-sm bg-white z-50 transform translate-x-full transition-transform duration-300 ease-in-out shadow-2xl">
-        <div class="p-4 flex flex-col h-full">
-            <div class="flex items-center justify-between mb-6">
-                <a href="<?php echo clean_url('../'); ?>" class="text-2xl font-bold"><?= mc_logo('dark', true, 26) ?></a>
-                <button id="close-menu-button" class="p-2 rounded-md text-gray-400 hover:text-gray-600"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
-            </div>
+    <div id="mobile-menu-overlay" class="fixed inset-0 bg-[#26343b]/40 backdrop-blur-[2px] z-40 hidden transition-opacity"></div>
+    <aside id="mobile-menu" aria-label="Menu mobile" class="fixed inset-y-0 right-0 w-[85vw] max-w-sm bg-white z-50 transform translate-x-full transition-transform duration-300 ease-in-out shadow-2xl border-l border-gray-200 safe-drawer flex flex-col">
+        <!-- En-tête du tiroir : même hauteur (68px) et bordure que la barre principale -->
+        <div class="h-[68px] px-4 sm:px-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+            <a href="<?php echo $home_url; ?>" class="flex items-center gap-1.5 whitespace-nowrap" aria-label="moncamp.fr, accueil">
+                <?= mc_logo('dark', true, 28) ?>
+            </a>
+            <button id="close-menu-button" type="button" aria-label="Fermer le menu" class="w-10 h-10 inline-flex items-center justify-center rounded-full text-[#3b4a54] hover:text-[#26343b] hover:bg-gray-100 focus:outline-none transition-colors">
+                <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
 
-            <form id="mobile-search-form" action="recherche" method="GET" class="mb-6 relative">
-                <input type="text" id="mobile-search-input" name="name" placeholder="Rechercher..." autocomplete="off"
-                       class="w-full bg-gray-100 border border-gray-200 rounded-lg py-3 pl-4 pr-10 focus:ring-2 focus:ring-[#2f3d45] focus:bg-white transition-all">
-                <button type="submit" class="absolute right-0 top-0 mt-3 mr-4 text-gray-400">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                </button>
-                <a href="recherche?autour=1" class="mt-3 inline-flex items-center gap-2 min-h-[44px] px-4 rounded-full border border-gray-200 text-sm font-bold text-[#3d6a8e]"><i class="fa-solid fa-location-crosshairs"></i>Autour de moi</a>
+        <!-- Corps défilant -->
+        <div class="flex-1 overflow-y-auto px-4 py-4">
+            <!-- Barre de recherche identique à la DA desktop -->
+            <form id="mobile-search-form" action="recherche" method="GET" class="mb-4">
+                <div class="relative flex items-center">
+                    <input type="text" id="mobile-search-input" name="name" placeholder="Rechercher une colo..." autocomplete="off"
+                           class="w-full h-10 bg-[#f3f1ea] border border-transparent focus:border-[#2f3d45] rounded-full pl-5 pr-11 focus:ring-0 focus:bg-white transition-all text-[13px] text-gray-700 placeholder-gray-400 outline-none">
+                    <button type="submit" aria-label="Rechercher" class="absolute right-0 top-1/2 -translate-y-1/2 mr-4 text-gray-400 hover:text-[#26343b] transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2.2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+                    </button>
+                </div>
+                <a href="recherche?autour=1" class="mt-2.5 flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-semibold text-[#3d6a8e] hover:bg-gray-50 transition-colors">
+                    <i class="fa-solid fa-location-crosshairs w-4 text-center"></i>
+                    <span>Autour de moi</span>
+                </a>
             </form>
 
-            <nav class="flex flex-col space-y-2 overflow-y-auto">
-                <?php if ($is_logged_in): ?>
-                    <a href="profile" class="flex items-center p-3 rounded-lg mb-4 bg-gray-50 border border-gray-100">
-                        <img class="h-12 w-12 rounded-full object-cover mr-4" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url'] ?? $placeholder_url_mobile); ?>" alt="Photo de profil">
-                        <div>
-                            <div class="text-base font-bold text-gray-900"><?php echo htmlspecialchars($_SESSION['user']['prenom']) . ' ' . htmlspecialchars($_SESSION['user']['nom']); ?></div>
-                            <div class="text-sm font-medium text-[#3d6a8e]">Voir mon profil</div>
-                        </div>
-                    </a>
-                <?php endif; ?>
-                
-                                <a href="<?php echo $home_url; ?>" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Accueil</a>
+            <!-- Carte compte utilisateur : même style que le dropdown desktop -->
+            <?php if ($is_logged_in): ?>
+                <a href="profile" class="flex items-center gap-3 p-3 rounded-xl mb-4 bg-gray-50 border border-gray-100 hover:border-gray-200 transition-colors">
+                    <?php if (!empty($_SESSION['user']['photo_url'])): ?>
+                        <img class="h-10 w-10 rounded-full object-cover ring-2 ring-white shadow flex-shrink-0" src="<?php echo htmlspecialchars($_SESSION['user']['photo_url']); ?>" alt="Profil">
+                    <?php else: ?>
+                        <span class="h-10 w-10 rounded-full bg-[#3a4852] text-white text-[17px] font-bold flex items-center justify-center ring-2 ring-white shadow flex-shrink-0"><?php echo htmlspecialchars($initial); ?></span>
+                    <?php endif; ?>
+                    <div class="min-w-0">
+                        <div class="text-sm font-bold text-[#26343b] truncate"><?php echo htmlspecialchars($_SESSION['user']['prenom'] . ' ' . $_SESSION['user']['nom']); ?></div>
+                        <div class="text-xs text-gray-500 truncate"><?php echo htmlspecialchars($_SESSION['user']['email']); ?></div>
+                    </div>
+                </a>
+            <?php endif; ?>
+
+            <!-- Sélecteur de mode identique au dropdown desktop -->
+            <?php if ($anim_parent_too): ?>
+                <form action="api/anim_mode.php" method="POST" class="mb-4 px-1" aria-label="Changer de mode">
+                    <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf_value); ?>">
+                    <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 px-2">Mode</p>
+                    <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 text-sm font-semibold">
+                        <button type="submit" name="m" value="parent" class="rounded-md py-1.5 transition-colors <?php echo !$anim_ui ? 'bg-white shadow text-[#26343b]' : 'text-gray-500'; ?>" <?php echo !$anim_ui ? 'aria-current="true"' : ''; ?>>Parent</button>
+                        <button type="submit" name="m" value="animateur" class="rounded-md py-1.5 transition-colors <?php echo $anim_ui ? 'bg-white shadow text-[#26343b]' : 'text-gray-500'; ?>" <?php echo $anim_ui ? 'aria-current="true"' : ''; ?>>Animateur</button>
+                    </div>
+                </form>
+            <?php endif; ?>
+
+            <nav class="flex flex-col space-y-0.5">
+                <a href="<?php echo $home_url; ?>" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                    <i class="fa-solid fa-house w-6 text-center mr-2 text-gray-400"></i> Accueil
+                </a>
 
                 <?php if ($anim_ui): ?>
-                    <a href="missions" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Missions</a>
-                    <a href="espace-animation" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes candidatures</a>
-                    <a href="profil-animateur" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mon profil</a>
-                    <a href="preferences-animateur" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes préférences</a>
-                    <a href="reservations" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes inscriptions (équipe)</a>
-                <?php endif; ?>
-                <?php if ($anim_parent_too): ?>
-                    <form action="api/anim_mode.php" method="POST" class="px-3 py-2">
-                        <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf_value); ?>">
-                        <button type="submit" name="m" value="<?php echo $anim_ui ? 'parent' : 'animateur'; ?>" class="w-full rounded-md bg-gray-100 py-2.5 text-sm font-semibold text-[#26343b]">Passer en mode <?php echo $anim_ui ? 'Parent' : 'Animateur'; ?></button>
-                    </form>
+                    <a href="missions" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-compass w-6 text-center mr-2 text-gray-400"></i> Missions
+                    </a>
+                    <a href="espace-animation" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-paper-plane w-6 text-center mr-2 text-gray-400"></i> Mes candidatures
+                    </a>
+                    <a href="profil-animateur" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-id-badge w-6 text-center mr-2 text-gray-400"></i> Mon profil
+                    </a>
+                    <a href="preferences-animateur" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-sliders w-6 text-center mr-2 text-gray-400"></i> Mes préférences
+                    </a>
+                    <a href="reservations" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-file-invoice w-6 text-center mr-2 text-gray-400"></i> Mes inscriptions (équipe)
+                    </a>
                 <?php endif; ?>
 
+                <?php if ($is_logged_in && !$anim_ui): ?>
+                    <a href="children" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-children w-6 text-center mr-2 text-gray-400"></i> Gérer mes enfants
+                    </a>
+                    <?php if (!$is_admin): ?>
+                    <a href="favorites" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-heart w-6 text-center mr-2 text-gray-400"></i> Favoris
+                    </a>
+                    <?php endif; ?>
+                    <a href="reservations" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-file-invoice w-6 text-center mr-2 text-gray-400"></i> Réservations
+                    </a>
+                <?php endif; ?>
+
+                <?php if ($is_logged_in): ?>
+                    <a href="messagerie" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <span class="flex items-center"><i class="fa-regular fa-envelope w-6 text-center mr-2 text-gray-400"></i> Messagerie</span>
+                        <span id="unread-badge-mobile" class="min-w-[20px] h-5 px-1.5 flex items-center justify-center bg-red-600 text-white text-[11px] font-bold rounded-full hidden"></span>
+                    </a>
+                    <a href="edit_profile" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                        <i class="fa-solid fa-user-pen w-6 text-center mr-2 text-gray-400"></i> Modifier mes informations
+                    </a>
+                <?php endif; ?>
 
                 <?php if ($is_director): ?>
-                    <a href="organisateurs" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Organisateurs</a>
-                <?php endif; ?>
-                
-                                <?php if ($is_logged_in && !$anim_ui): ?>
-                    <a href="favorites" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Mes Favoris</a>
-                    <a href="reservations" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Réservations</a>
+                    <div class="pt-3 mt-2 border-t border-gray-100">
+                        <div class="px-3 pb-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Espace Organisateur</div>
+                        <a href="organisateurs" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-solid fa-briefcase w-6 text-center mr-2 text-[#64748b]"></i> <?php echo $is_admin ? 'Organisateur' : 'Organisateurs'; ?>
+                        </a>
+                        <a href="public_infos" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-solid fa-building w-6 text-center mr-2 text-[#64748b]"></i> Mes organismes
+                        </a>
+                        <a href="public_infos.php?finances=1" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-solid fa-euro-sign w-6 text-center mr-2 text-[#64748b]"></i> Finances et versements
+                        </a>
+                        <a href="mes_camps" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-solid fa-campground w-6 text-center mr-2 text-[#64748b]"></i> Gérer mes camps
+                        </a>
+                        <a href="create_camp" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-solid fa-plus-circle w-6 text-center mr-2 text-[#64748b]"></i> Créer un camp
+                        </a>
+                        <a href="demandes-animation" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-solid fa-users-gear w-6 text-center mr-2 text-[#64748b]"></i> Gestion des animateurs
+                        </a>
+                    </div>
                 <?php endif; ?>
 
                 <?php if ($is_admin): ?>
-                    <div class="px-3 pt-4 pb-1 text-xs font-bold text-gray-400 uppercase">Administration</div>
-                    <a href="/admin.php" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Tableau de bord<?php if ($adm_total): ?> <span class="ml-1 text-xs bg-red-600 text-white rounded-full px-2"><?php echo $adm_total; ?></span><?php endif; ?></a>
-                    <?php foreach ($adm_links as [$l, $href, $n]): if (!$n) continue; ?>
-                    <a href="<?php echo htmlspecialchars($href); ?>" class="text-gray-700 hover:bg-gray-100 flex justify-between px-3 py-2.5 rounded-md text-sm font-medium"><span><?php echo htmlspecialchars($l); ?></span><span class="text-xs font-bold bg-[#faf1dc] text-[#8a5a12] rounded-full px-2"><?php echo $n; ?></span></a>
-                    <?php endforeach; ?>
-                    <a href="/admin_notifs.php" class="text-[#26343b] hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Notifications<?php if ($adm_unread): ?> <span class="ml-1 text-xs bg-red-600 text-white rounded-full px-2"><?php echo $adm_unread; ?></span><?php endif; ?></a>
+                    <div class="pt-3 mt-2 border-t border-gray-100">
+                        <div class="px-3 pb-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Administration</div>
+                        <a href="/admin.php" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-[14px] font-bold text-[#26343b] hover:bg-gray-50 transition-colors">
+                            <span class="flex items-center"><i class="fa-solid fa-gauge-high w-6 text-center mr-2"></i> Tableau de bord</span>
+                            <?php if ($adm_total): ?><span class="min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-[#c0392b] text-white text-[11px] font-bold"><?php echo $adm_total; ?></span><?php endif; ?>
+                        </a>
+                        <?php foreach ($adm_links as [$l, $href, $n]): if (!$n) continue; ?>
+                        <a href="<?php echo htmlspecialchars($href); ?>" class="flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                            <span><?php echo htmlspecialchars($l); ?></span>
+                            <span class="min-w-[24px] h-6 px-2 inline-flex items-center justify-center rounded-full text-xs font-bold bg-[#faf1dc] text-[#8a5a12]"><?php echo $n; ?></span>
+                        </a>
+                        <?php endforeach; ?>
+                        <a href="/admin_notifs.php" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-[14px] font-bold text-[#26343b] hover:bg-gray-50 transition-colors">
+                            <span class="flex items-center"><i class="fa-solid fa-bell w-6 text-center mr-2"></i> Notifications</span>
+                            <?php if ($adm_unread): ?><span class="min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[11px] font-bold"><?php echo $adm_unread > 99 ? '99+' : $adm_unread; ?></span><?php endif; ?>
+                        </a>
+                    </div>
                 <?php endif; ?>
-                
-                <?php if ($is_logged_in): ?>
-                    <a href="messagerie" class="relative text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium"><span>Messagerie</span><span id="unread-badge-mobile" class="absolute top-3 left-32 w-5 h-5 flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full hidden"></span></a>
-                <?php endif; ?>
-                
+
                 <?php if (!$is_admin): ?>
-                <a href="contact" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Contact</a>
-                <a href="aide" class="text-gray-700 hover:bg-gray-100 block px-3 py-3 rounded-md text-base font-medium">Aide</a>
-                <?php endif; ?>
-                <?php if (!$is_logged_in || $is_director): ?>
-                <?php endif; ?>
-                
-                <hr class="my-4 border-gray-200">
-                
-                <?php if ($is_logged_in): ?>
-                    <a href="api/logout" class="bg-gray-100 text-gray-700 hover:bg-gray-200 block px-3 py-3 rounded-md text-base font-medium text-center">Déconnexion</a>
-                <?php else: ?>
-                    <a href="login" class="bg-[#2f3d45] text-white hover:bg-[#1f2a30] block px-3 py-3 rounded-md text-base font-medium text-center">Connexion / Inscription</a>
+                    <div class="pt-3 mt-2 border-t border-gray-100">
+                        <a href="contact" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-regular fa-comment-dots w-6 text-center mr-2 text-gray-400"></i> Contact
+                        </a>
+                        <a href="aide" class="flex items-center px-3 py-2.5 rounded-xl text-[14px] font-medium text-[#3b4a54] hover:bg-gray-50 hover:text-[#26343b] transition-colors">
+                            <i class="fa-regular fa-circle-question w-6 text-center mr-2 text-gray-400"></i> Aide
+                        </a>
+                    </div>
                 <?php endif; ?>
             </nav>
         </div>
-    </div>
+
+        <!-- Pied de tiroir fixe (toujours accessible au-dessus de la barre gestuelle) -->
+        <div class="px-4 py-3 border-t border-gray-100 bg-white flex-shrink-0">
+            <?php if ($is_logged_in): ?>
+                <a href="api/logout" class="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl text-sm font-bold text-[#26343b] bg-gray-100 hover:bg-red-50 hover:text-red-600 transition-colors">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Se déconnecter
+                </a>
+            <?php else: ?>
+                <a href="login" class="block w-full bg-[#2f3d45] hover:bg-[#1f2a30] text-white font-bold py-2.5 px-4 rounded-lg transition duration-300 text-sm text-center">Connexion / Inscription</a>
+            <?php endif; ?>
+        </div>
+    </aside>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -513,7 +612,7 @@ if ('serviceWorker' in navigator) {
                             <i class="fa-solid fa-clock-rotate-left text-gray-300 group-hover:text-[#3d6a8e] transition-colors text-sm"></i>
                             <span class="text-sm text-gray-700 font-medium truncate">${item.term}</span>
                         </div>
-                        <button class="delete-history-btn w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-300 hover:text-red-500 transition-all z-20" data-term="${item.term.replace(/"/g, '&quot;')}">
+                        <button class="delete-history-btn w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-300 hover:text-red-500 transition-all z-20" data-term="${item.term.replace(/"/g, '"')}">
                             <i class="fa-solid fa-xmark text-xs"></i>
                         </button>
                     </a>
@@ -584,20 +683,16 @@ if ('serviceWorker' in navigator) {
         }
 
         // Mise à jour du nombre de résultats si on est sur la page recherche
-        // Ce bout de code détecte si on est sur la page recherche et met à jour l'historique
         const urlParams = new URLSearchParams(window.location.search);
         const searchedTerm = urlParams.get('name');
         if (window.location.pathname.includes('recherche') && searchedTerm) {
-            // Essayons de trouver le nombre de résultats dans le DOM (dépend de votre page recherche.php)
             setTimeout(() => {
-                // On cherche un élément qui contiendrait le nombre
                 const hasNoResults = document.body.innerText.includes('Aucun camp trouvé') || document.body.innerText.includes('Aucun résultat') || document.body.innerText.includes('Suggestions affichées');
                 const resultCount = hasNoResults ? 0 : (document.querySelectorAll('.camp-card').length || 1); 
                 
                 if (resultCount > 0) {
                     saveSearch(searchedTerm, resultCount);
                 } else {
-                    // Si 0 résultat, on retire l'entrée de l'historique
                     let history = getHistory();
                     history = history.filter(item => item.term.toLowerCase() !== searchedTerm.toLowerCase());
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
@@ -629,6 +724,7 @@ if ('serviceWorker' in navigator) {
         if(closeMenuButton) closeMenuButton.addEventListener('click', closeMenu);
         if(overlay) overlay.addEventListener('click', closeMenu);
         if(mobileSearchTrigger) mobileSearchTrigger.addEventListener('click', () => openMenu(true));
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
 
         <?php if ($is_logged_in): ?>
         async function fetchUnreadCount() {
