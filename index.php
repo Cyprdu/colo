@@ -45,7 +45,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     /* ---------- Menus déroulants ---------- */
     .dd-panel { position:absolute; z-index:60; background:#fff; border-radius:18px; box-shadow:0 18px 50px rgba(18,55,42,.22); border:1px solid var(--line); }
     .dd-panel[hidden] { display:none; }
-    .dd-row { display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border-radius:12px; font-size:15px; color:#3b4a54; text-align:left; transition:background .15s ease; }
+    .dd-row { display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border-radius:12px; font-size:15px; color:#3b4a54; text-align:left; transition:background .08s ease; }
     .dd-row:hover, .dd-row.is-active { background:#f1f3f5; }
     .dd-row.is-active { color:var(--ink); font-weight:700; }
     .dd-row .ico { width:22px; text-align:center; color:#64748b; flex:none; }
@@ -56,7 +56,8 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     .dd-col + .dd-col { border-left:1px solid var(--line); }
 
     /* ---------- Rangée de catégories ---------- */
-    .chips { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; }
+    .chips { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+    .chips::-webkit-scrollbar { display:none; }
     .chips a { font-size:15px; font-weight:600; color:var(--ink); padding:4px 0; border-bottom:2px solid transparent; transition:border-color .15s ease, color .15s ease; white-space:nowrap; }
     .chips a:hover { color:var(--accent); border-color:var(--accent); }
     @media (max-width: 767px) {
@@ -66,7 +67,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
         .chips a { flex:none; scroll-snap-align:start; display:inline-flex; align-items:center; min-height:44px; padding:0 18px; border:1.5px solid var(--line); border-radius:9999px; font-size:14px; background:#fff; }
         .chips a:active { background:var(--ink); color:#fff; border-color:var(--ink); }
     }
-    .chips i.dot { width:4px; height:4px; background:var(--ink); border-radius:9999px; margin:0 16px; flex:none; }
+    .chips i.dot { width:4px; height:4px; background:var(--ink); border-radius:9999px; margin:0 clamp(10px,1.4vw,18px); flex:none; opacity:.5; }
 
     /* ---------- Sections et carrousels ---------- */
     .sec-title { font-size:22px; font-weight:700; color:var(--ink); line-height:1.2; }
@@ -410,7 +411,7 @@ document.addEventListener('DOMContentLoaded', function () {
     catPanel.addEventListener('mouseover', e => {
         clearTimeout(hoverT);
         const b = e.target.closest('[data-group]');
-        if (b && !isMobile() && b.dataset.group !== activeGroup) hoverT = setTimeout(() => setActive(b.dataset.group), 140);
+        if (b && !isMobile() && b.dataset.group !== activeGroup) hoverT = setTimeout(() => setActive(b.dataset.group), 40);
     });
     catPanel.addEventListener('focusin', e => {
         const b = e.target.closest('[data-group]');
@@ -443,12 +444,12 @@ document.addEventListener('DOMContentLoaded', function () {
     window.addEventListener('pageshow', () => { document.getElementById('hero-autour').disabled = true; });
 
     // Catégories : chargement + rangée de raccourcis
-    const CHIP_ORDER = ['montagne', 'mer', 'nature', 'sport', 'ski', 'arts-creatifs', 'musique', 'sciences-numerique', 'spirituel'];
+    const CHIPS = [['Montagne', ['montagne', 'ski']], ['Mer', ['mer']], ['Nature', ['nature']], ['Sport', ['sport', 'cheval']], ['Art', ['arts-creatifs']], ['Musique', ['musique']], ['Sciences', ['sciences-numerique']], ['Spirituel', ['spirituel']]];
     fetch('api/get_categories.php').then(r => r.json()).then(d => {
         (d.categories || []).forEach(c => { CATS[c.slug] = c; });
         buildGroups();
-        document.getElementById('chips').innerHTML = CHIP_ORDER.filter(s => CATS[s])
-            .map(s => `<a href="recherche?cat%5B%5D=${encodeURIComponent(s)}">${esc(CATS[s].nom)}</a>`)
+        document.getElementById('chips').innerHTML = CHIPS.map(([nom, slugs]) => [nom, slugs.filter(x => CATS[x])]).filter(c => c[1].length)
+            .map(([nom, slugs]) => `<a href="recherche?${slugs.map(x => 'cat%5B%5D=' + encodeURIComponent(x)).join('&')}">${esc(nom)}</a>`)
             .join('<i class="dot"></i>');
     }).catch(() => {});
 
