@@ -50,6 +50,7 @@ try {
     require_once __DIR__ . '/clics.php';
     clics_ensure($pdo);
     $rep['journaux_purges'] += (int)$pdo->exec("DELETE FROM clics_sortants WHERE created_at < (NOW() - INTERVAL 25 MONTH)");
+    $rep['journaux_purges'] += (int)$pdo->exec("DELETE FROM consentements WHERE type LIKE 'cookies\_%' AND created_at < (NOW() - INTERVAL 25 MONTH)");
     echo json_encode($rep), "\n";
 } catch (Throwable $e) {
     error_log('cron_rgpd: ' . $e->getMessage());

@@ -7,7 +7,7 @@
 //  - CAPTCHA Cloudflare Turnstile, activé seulement si TURNSTILE_SITE_KEY et TURNSTILE_SECRET sont définis dans api/config.php
 // Les tables sont créées automatiquement (idempotent).
 
-const CGU_VERSION = '2026-11';   // à changer quand les CGU / la politique de confidentialité changent
+const CGU_VERSION = '2026-11-19';   // à changer quand les CGU / la politique de confidentialité changent
 
 function sec_ensure(PDO $pdo): void {
     static $done = false;

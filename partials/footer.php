@@ -53,6 +53,7 @@
                 <ul class="space-y-3 text-[15px] text-white/85">
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#mentions">Mentions légales</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgu">CGU</a></li>
+                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgv">Conditions de vente</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#confidentialite">Politique de confidentialité</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies">Politique cookies</a></li>
                     <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies" data-cookies>Gérer les cookies</a></li>
