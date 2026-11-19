@@ -131,11 +131,8 @@ $q = trim((string)($_GET['name'] ?? ''));
 
                 <div class="fsec">
                     <p class="ftitle">Âge de l'enfant</p>
-                    <?php if ($is_logged_in): ?>
-                        <select id="f-age" class="finput" name="age" aria-label="Âge de l'enfant"><option value="">Tous les âges</option></select>
-                    <?php else: ?>
-                        <input id="f-age" type="number" class="finput" name="age" min="3" max="25" placeholder="Ex : 12 ans" aria-label="Âge de l'enfant">
-                    <?php endif; ?>
+                    <select id="f-age-sel" class="finput hidden mb-2" aria-label="Pour quel enfant ?"><option value="">Tous les âges</option><option value="autre">Autre âge…</option></select>
+                    <input id="f-age" type="number" class="finput" name="age" min="3" max="25" inputmode="numeric" placeholder="Ex : 12 ans" aria-label="Âge de l'enfant">
                 </div>
 
                 <div class="fsec">
@@ -302,9 +299,11 @@ $q = trim((string)($_GET['name'] ?? ''));
         state.page = 1;
     }
     function setAge(a) {
-        var el = $('f-age');
-        if (el.tagName === 'SELECT' && ![].some.call(el.options, function (o) { return o.value === String(a); })) el.add(new Option(a + ' ans', a));
-        el.value = a;
+        var sel = $('f-age-sel'), inp = $('f-age'), child = [].some.call(sel.options, function (o) { return o.value === String(a); });
+        inp.value = a;
+        if (sel.classList.contains('hidden')) return;
+        sel.value = child ? String(a) : 'autre';
+        inp.classList.toggle('hidden', child);
     }
     function syncUrl() {
         var q = collect(true).toString();
@@ -318,7 +317,7 @@ $q = trim((string)($_GET['name'] ?? ''));
         if ($('f-name').value.trim()) add('« ' + $('f-name').value.trim() + ' »', function () { $('f-name').value = ''; });
         if ($('f-city').value.trim()) add($('f-city').value.trim(), function () { $('f-city').value = ''; });
         if (near) add('Autour de moi · ' + $('f-rayon').value + ' km', function () { setNear(null); });
-        if ($('f-age').value) add($('f-age').value + ' ans', function () { $('f-age').value = ''; });
+        if ($('f-age').value) add($('f-age').value + ' ans', function () { setAge(''); });
         if ($('f-from').value || $('f-to').value) add(($('f-from').value ? 'du ' + fmtDay($('f-from').value) : '') + ($('f-to').value ? ' au ' + fmtDay($('f-to').value) : ''), function () { $('f-from').value = ''; $('f-to').value = ''; syncPeriods(); });
         if (maxPriceActive()) add('≤ ' + $('f-price').value + ' €', function () { $('f-price').value = $('f-price').max; priceLabel(); });
         if ($('f-online').checked) add('Inscription en ligne', function () { $('f-online').checked = false; });
@@ -536,7 +535,7 @@ $q = trim((string)($_GET['name'] ?? ''));
     function resetAll() {
         setNear(null);
         ['f-name', 'f-city', 'f-from', 'f-to'].forEach(function (i) { $(i).value = ''; });
-        $('f-age').value = ''; $('f-price').value = $('f-price').max; $('f-online').checked = false; $('f-sort').value = 'relevance';
+        setAge(''); $('f-price').value = $('f-price').max; $('f-online').checked = false; $('f-sort').value = 'relevance';
         state.themes = []; state.cats = []; state.fv = []; state.noIntents = false; $('f-catmode').checked = false; $('theme-q').value = '';
         priceLabel(); syncPeriods(); renderCats(); renderFacets(); search(true);
     }
@@ -549,6 +548,12 @@ $q = trim((string)($_GET['name'] ?? ''));
     $('f-near').addEventListener('click', function () { if (near) { setNear(null); search(true); } else locate(); });
     $('f-rayon').addEventListener('change', function () { search(true); });
     $('f-age').addEventListener('change', function () { search(true); });
+    $('f-age-sel').addEventListener('change', function () {
+        var other = this.value === 'autre';
+        $('f-age').classList.toggle('hidden', !other);
+        if (other) { $('f-age').value = ''; $('f-age').focus(); return; }
+        $('f-age').value = this.value; search(true);
+    });
     $('f-age').addEventListener('input', later);
     $('f-price').addEventListener('input', function () { priceLabel(); later(); });
     $('f-online').addEventListener('change', function () { search(true); });
@@ -598,9 +603,11 @@ $q = trim((string)($_GET['name'] ?? ''));
     }).catch(function () {});
     var childrenReady = Promise.resolve();
     if (IS_LOGGED) childrenReady = fetch('api/get_children.php').then(function (r) { return r.json(); }).then(function (cs) {
-        if (!Array.isArray(cs)) return; var s = $('f-age');
-        cs.forEach(function (c) { if (c.age != null) s.add(new Option(c.prenom + ' (' + c.age + ' ans)', c.age)); });
-        var u = new URLSearchParams(location.search).get('age'); if (u) setAge(u);
+        var s = $('f-age-sel'), n = 0;
+        (Array.isArray(cs) ? cs : []).forEach(function (c) { if (c.age != null) { s.add(new Option(c.prenom + ' (' + c.age + ' ans)', c.age), s.options[s.options.length - 1]); n++; } });
+        if (!n) return;
+        s.classList.remove('hidden'); $('f-age').classList.add('hidden');
+        setAge(new URLSearchParams(location.search).get('age') || '');
     }).catch(function () {});
     Promise.all([themesReady, childrenReady]).then(function () { migrateLegacy(); renderCats(); renderFacets(); if (wantNear) locate(); else search(false); });
 })();

@@ -136,18 +136,18 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
 
     <div class="w-full max-w-[1320px] mx-auto px-5 sm:px-8 pt-5 pb-12 min-h-[330px] md:min-h-[350px] flex flex-col">
 
-        <?php if ($is_logged_in && !$is_animateur): ?>
-        <!-- Sélecteur « Rechercher pour : {enfant} » -->
+        <?php if (!$is_animateur): ?>
+        <!-- Sélecteur « Rechercher pour : {enfant ou âge} » -->
         <div class="flex justify-end items-center gap-3">
             <span class="text-[14px] font-semibold text-white" style="text-shadow:0 1px 3px rgba(0,0,0,.5)">Rechercher pour&nbsp;:</span>
             <div class="relative">
-                <button type="button" id="child-btn" aria-haspopup="listbox" aria-expanded="false"
+                <button type="button" id="child-btn" aria-haspopup="true" aria-expanded="false" aria-controls="child-panel"
                         class="bg-white rounded-xl shadow-md pl-4 pr-3 h-11 flex items-center gap-2 text-[14px] font-bold text-[#26343b]">
-                    <span id="child-label" class="max-w-[150px] truncate">Toute la famille</span>
+                    <span id="child-label" class="max-w-[150px] truncate"><?php echo $is_logged_in ? 'Toute la famille' : 'Tous les âges'; ?></span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" class="text-[#3d6a8e]"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" fill="currentColor"/></svg>
                 </button>
-                <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" role="listbox" hidden></div>
+                <div id="child-panel" class="dd-panel right-0 top-[calc(100%+8px)] w-[260px] p-2" hidden></div>
             </div>
         </div>
         <?php endif; ?>
@@ -457,26 +457,41 @@ document.addEventListener('DOMContentLoaded', function () {
             .join('<i class="dot"></i>');
     }).catch(() => {});
 
-    // ---- Enfant : liste déroulante + rechargement du fil
+    // ---- Pour qui : enfants enregistrés ou âge saisi (aussi sans compte), recharge le fil et sert à la recherche
     let currentChildAge = '';
     const childBtn = document.getElementById('child-btn'), childPanel = document.getElementById('child-panel');
     if (childBtn && childPanel) {
-        const options = [{ label: 'Toute la famille', age: '' }];
-        const renderChild = () => {
-            childPanel.innerHTML = options.map((o, i) =>
-                `<button type="button" role="option" class="dd-row${String(o.age) === String(currentChildAge) ? ' is-selected' : ''}" data-i="${i}">${esc(o.label)}</button>`).join('');
-        };
-        childPanel.addEventListener('click', e => {
-            const b = e.target.closest('button'); if (!b) return;
-            const o = options[Number(b.dataset.i)];
-            currentChildAge = String(o.age);
-            document.getElementById('child-label').textContent = o.label;
+        const options = [{ label: isLoggedIn ? 'Toute la famille' : 'Tous les âges', age: '' }];
+        let other = false;
+        const chooseAge = (label, age) => {
+            currentChildAge = String(age);
+            document.getElementById('child-label').textContent = label;
             document.getElementById('hero-age-hidden').value = currentChildAge;
             closeAll(null);
             loadFeed();
+        };
+        const renderChild = () => {
+            const known = options.some(o => String(o.age) === currentChildAge);
+            childPanel.innerHTML = options.map((o, i) =>
+                `<button type="button" class="dd-row${String(o.age) === currentChildAge ? ' is-selected' : ''}" aria-pressed="${String(o.age) === currentChildAge}" data-i="${i}">${esc(o.label)}</button>`).join('') +
+                (other
+                    ? `<form id="age-other" class="flex items-center gap-2 p-2"><input type="number" min="3" max="25" inputmode="numeric" required value="${known ? '' : esc(currentChildAge)}" placeholder="Âge" aria-label="Âge de l'enfant" class="w-full h-11 px-3 rounded-lg border border-[#e5e7eb] text-[16px]"><button class="h-11 px-4 rounded-lg bg-[#2f3d45] text-white text-sm font-bold">OK</button></form>`
+                    : `<button type="button" class="dd-row${known ? '' : ' is-selected'}" data-other="1">Autre âge…</button>`);
+            if (other) childPanel.querySelector('input').focus();
+        };
+        childPanel.addEventListener('click', e => {
+            const b = e.target.closest('button[data-i], button[data-other]'); if (!b) return;
+            if (b.dataset.other) { other = true; return renderChild(); }
+            const o = options[Number(b.dataset.i)];
+            chooseAge(o.label, o.age);
         });
-        bindDropdown(childBtn, childPanel, renderChild);
-        fetch('api/get_children.php').then(r => r.json()).then(children => {
+        childPanel.addEventListener('submit', e => {
+            e.preventDefault();
+            const n = parseInt(e.target.querySelector('input').value, 10);
+            if (n >= 3 && n <= 25) chooseAge(n + ' ans', n);
+        });
+        bindDropdown(childBtn, childPanel, () => { other = false; renderChild(); });
+        if (isLoggedIn) fetch('api/get_children.php').then(r => r.json()).then(children => {
             if (!Array.isArray(children)) return;
             children.forEach(c => { if (c.age !== null && c.age !== undefined) options.push({ label: `${c.prenom} (${c.age} ans)`, age: c.age }); });
             renderChild();
