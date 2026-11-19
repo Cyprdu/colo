@@ -1,76 +1,84 @@
 <?php
-// partials/footer3.php : pied de page de l'accueil (fidèle à la maquette)
-// Les liens pointent vers des pages existantes ; legal.php regroupe les pages légales.
+$mc_reseaux = array_filter(['instagram' => '', 'facebook' => '', 'linkedin' => '', 'x-twitter' => '', 'youtube' => '']);
 ?>
-<footer class="bg-[#434e5a] text-white mt-16" role="contentinfo">
-    <div class="w-full max-w-[1320px] mx-auto px-6 sm:px-10 pt-14 pb-16">
-        <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.1fr_1fr_1.3fr_1.1fr]">
-
-            <!-- Marque -->
+<footer class="bg-[#26343b] text-white mt-16" role="contentinfo">
+    <div class="w-full max-w-[1280px] mx-auto px-6 sm:px-10 pt-14 pb-12">
+        <div class="grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-[1.25fr_1fr_1.3fr_1fr]">
             <div>
-                <a href="./" aria-label="moncamp.fr, accueil"><?php require_once __DIR__ . '/logo.php'; echo mc_logo('light', true, 32); ?></a>
-                <p class="mt-3 text-[15px] leading-snug text-white/90 max-w-[230px]">Prêt à trouver une nouvelle aventure pour vos enfants ?</p>
-                <div class="mt-5 flex flex-wrap gap-2.5">
-                    <button type="button" data-soon class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white hover:bg-[#161616] hover:border-white/60 transition cursor-pointer" aria-label="Télécharger dans l'App Store (bientôt disponible)">
-                        <i class="fa-brands fa-apple text-[20px]"></i>
-                        <span class="leading-none text-left"><span class="block text-[8px] text-white/80">Télécharger dans</span><span class="block text-[13px] font-semibold -mt-px">l'App Store</span></span>
+                <a href="./" aria-label="moncamp.fr, accueil" class="inline-block"><?php require_once __DIR__ . '/logo.php'; echo mc_logo('light', true, 34); ?></a>
+                <p class="mt-5 text-[15px] leading-relaxed text-white/80 max-w-[300px]">Colonies, camps et séjours pour vos enfants : trouvez, comparez et inscrivez en quelques minutes.</p>
+                <div class="mt-6 flex flex-wrap gap-3">
+                    <button type="button" data-soon class="inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-lg bg-black border border-white/25 hover:border-white/60 transition" aria-label="Télécharger dans l'App Store (bientôt disponible)">
+                        <i class="fa-brands fa-apple text-[21px]"></i>
+                        <span class="leading-none text-left"><span class="block text-[9px] text-white/75">Télécharger dans</span><span class="block text-[14px] font-semibold">l'App Store</span></span>
                     </button>
-                    <button type="button" data-soon class="inline-flex items-center gap-2 h-10 pl-3 pr-4 rounded-lg bg-black border border-white/30 text-white hover:bg-[#161616] hover:border-white/60 transition cursor-pointer" aria-label="Télécharger sur Google Play (bientôt disponible)">
+                    <button type="button" data-soon class="inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-lg bg-black border border-white/25 hover:border-white/60 transition" aria-label="Disponible sur Google Play (bientôt disponible)">
                         <i class="fa-brands fa-google-play text-[18px] text-[#34d1a0]"></i>
-                        <span class="leading-none text-left"><span class="block text-[8px] text-white/80 uppercase">Télécharger sur</span><span class="block text-[13px] font-semibold -mt-px">Google Play</span></span>
+                        <span class="leading-none text-left"><span class="block text-[9px] text-white/75 uppercase">Disponible sur</span><span class="block text-[14px] font-semibold">Google Play</span></span>
                     </button>
+                </div>
+                <div class="mt-8 flex items-center gap-3">
+                    <span class="flex-none inline-flex items-center justify-center w-12 h-12 rounded-full border-2 border-white/80"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg></span>
+                    <p class="text-[14.5px] font-semibold leading-snug">Paiement sécurisé<br><span class="font-normal text-white/70">et données de santé chiffrées</span></p>
                 </div>
             </div>
 
-            <!-- À propos -->
             <nav aria-label="À propos de moncamp.fr">
-                <h2 class="text-[16px] font-bold mb-4">À propos de moncamp.fr</h2>
-                <ul class="space-y-3 text-[15px] text-white/85">
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="a_propos">Qui sommes-nous ?</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Contactez-nous</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#animateurs">Nous rejoindre</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Partenariat</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Lettre Socle</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Faire un don</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="contact">Le Blog</a></li>
+                <h2 class="font-display text-[17px] mb-5">À propos de moncamp.fr</h2>
+                <ul class="space-y-3.5 text-[15px]">
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="a_propos">Qui sommes-nous ?</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="contact">Contactez-nous</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="aide#animateurs">Nous rejoindre</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="contact">Partenariat</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="organisme">Tous les organismes</a></li>
                 </ul>
             </nav>
 
-            <!-- Aide -->
             <nav aria-label="Besoin d'aide">
-                <h2 class="text-[16px] font-bold mb-4">Besoin D'aide ?</h2>
-                <ul class="space-y-3 text-[15px] text-white/85">
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#parents">Comment inscrire mon enfant ?</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#organisateurs">Comment puis-je devenir organisateur ?</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="aide#paiements">Quels sont les coûts de moncamp.fr ?</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="classement">Comment sont classés les séjours ?</a></li>
+                <h2 class="font-display text-[17px] mb-5">Besoin d’aide ?</h2>
+                <ul class="space-y-3.5 text-[15px]">
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="aide#parents">Comment inscrire mon enfant ?</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="aide#organisateurs">Comment devenir organisateur ?</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="aide#paiements">Quels sont les coûts de moncamp.fr ?</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="classement">Comment sont classés les séjours ?</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="aide">Autres questions fréquentes</a></li>
                 </ul>
             </nav>
 
-            <!-- Légal -->
-            <nav aria-label="Informations légales">
-                <h2 class="text-[16px] font-bold mb-4">Informations légales</h2>
-                <ul class="space-y-3 text-[15px] text-white/85">
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#mentions">Mentions légales</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgu">CGU</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cgv">Conditions de vente</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#confidentialite">Politique de confidentialité</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies">Politique cookies</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#cookies" data-cookies>Gérer les cookies</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="mes_donnees">Mes données</a></li>
-                    <li><a class="hover:text-white hover:underline underline-offset-4" href="legal#accessibilite">Accessibilité</a></li>
-                </ul>
-            </nav>
+            <div>
+                <nav aria-label="Informations légales">
+                    <h2 class="font-display text-[17px] mb-5">Informations légales</h2>
+                    <ul class="space-y-3.5 text-[15px]">
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#mentions">Mentions légales</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#cgu">CGU</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#cgv">Conditions de vente</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#confidentialite">Politique de confidentialité</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#cookies">Cookies</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#cookies" data-cookies>Gérer les cookies</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="mes_donnees">Mes données</a></li>
+                        <li><a class="text-white/80 hover:text-white transition-colors" href="legal#accessibilite">Accessibilité</a></li>
+                    </ul>
+                </nav>
+                <h2 class="font-display text-[17px] mt-9 mb-3"><label for="mc-langue">Langue du site</label></h2>
+                <div class="relative w-full max-w-[220px]">
+                    <select id="mc-langue" class="w-full h-12 appearance-none rounded-lg bg-white text-[#26343b] text-[15px] pl-4 pr-10 border-0 focus:ring-2 focus:ring-[#8fb3d0] cursor-pointer" onchange="location.href=this.value">
+                        <?php foreach (['fr' => 'Français', 'en' => 'English'] as $code => $nom): ?>
+                        <option value="<?= htmlspecialchars(mc_switch_url($code)) ?>" lang="<?= $code ?>"<?= mc_lang() === $code ? ' selected' : '' ?>><?= $nom ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <svg class="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#26343b]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </div>
+            </div>
         </div>
-
-        <div class="mt-12 pt-6 border-t border-white/15 flex flex-wrap items-center justify-between gap-3">
-            <p class="text-[12px] text-white/60">&copy; <?= date('Y') ?> moncamp.fr. <?= t('Tous droits réservés.') ?></p>
-            <nav aria-label="<?= t('Langue') ?>" class="flex items-center gap-1 text-[13px]">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="text-white/60 mr-1" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>
-                <?php foreach (['fr' => 'Français', 'en' => 'English'] as $code => $nom): $on = mc_lang() === $code; ?>
-                <a href="<?= htmlspecialchars(mc_switch_url($code)) ?>" hreflang="<?= $code ?>" lang="<?= $code ?>" class="inline-flex items-center min-h-[40px] px-3 rounded-lg <?= $on ? 'bg-white/15 font-bold text-white' : 'text-white/75 hover:text-white hover:bg-white/10' ?>"<?= $on ? ' aria-current="true"' : '' ?>><?= $nom ?></a>
+    </div>
+    <div class="border-t border-white/15">
+        <div class="w-full max-w-[1280px] mx-auto px-6 sm:px-10 pt-6 flex flex-col-reverse sm:flex-row items-center justify-between gap-4" style="padding-bottom:calc(1.5rem + env(safe-area-inset-bottom))">
+            <div class="flex items-center gap-5 text-[20px] text-white/85">
+                <?php foreach ($mc_reseaux as $ico => $url): ?>
+                <a href="<?= htmlspecialchars($url) ?>" target="_blank" rel="noopener" class="hover:text-white" aria-label="<?= ucfirst($ico) ?>"><i class="fa-brands fa-<?= $ico ?>"></i></a>
                 <?php endforeach; ?>
-            </nav>
+            </div>
+            <p class="text-[14px] text-white/75">&copy; <?= date('Y') ?> moncamp.fr — <?= t('Tous droits réservés.') ?></p>
         </div>
     </div>
 </footer>
