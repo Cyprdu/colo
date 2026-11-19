@@ -69,12 +69,20 @@ require_once 'partials/header3.php';
 <style>
     :root { --ink:#26343b; --accent:#3d6a8e; --accent-dark:#2d5170; --cream:#f8f5ea; --muted:#6b7780; --line:#e5e7eb; }
     .cd-h2 { font-size:20px; font-weight:700; color:var(--ink); margin-bottom:14px; }
-    .cd-chip { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:9999px; background:#f1f3f5; color:#3b4a54; font-size:13.5px; font-weight:600; }
-    .cd-chip svg { flex:none; color:#64748b; }
-    .cd-icon-btn { display:inline-flex; align-items:center; gap:8px; height:44px; padding:0 16px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:14px; font-weight:600; transition:background .15s ease, border-color .15s ease, color .15s ease; }
-    .cd-icon-btn:hover { background:#f1f3f5; border-color:#cfd5db; }
-    .cd-icon-btn.is-fav { color:#e5484d; border-color:#f3c5c7; background:#fff5f5; }
-    .cd-icon-btn.is-fav svg { fill:#e5484d; }
+    .cd-meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; color:#3b4a54; font-size:15px; font-weight:600; }
+    .cd-meta li { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+    .cd-meta li[hidden] { display:none; }
+    .cd-meta svg { flex:none; color:#64748b; }
+    .cd-meta .cd-stat { color:var(--muted); font-weight:500; font-size:14px; }
+    .cd-meta .cd-stat svg { color:#94a3b8; }
+    .cd-actions { display:flex; gap:8px; flex:none; }
+    .cd-act { display:inline-flex; align-items:center; justify-content:center; gap:7px; height:42px; padding:0 15px; border-radius:9999px; border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:14px; font-weight:600; white-space:nowrap; transition:background .15s ease, border-color .15s ease, color .15s ease; }
+    .cd-act:hover { background:#f1f3f5; border-color:#cfd5db; }
+    .cd-act:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .cd-act svg { flex:none; }
+    .cd-act.is-fav { color:#e5484d; border-color:#f3c5c7; background:#fff5f5; }
+    .cd-act.is-fav svg { fill:#e5484d; }
+    @media (max-width:640px) { .cd-meta { gap:8px 16px; font-size:14px; } .cd-actions { width:100%; } .cd-act { flex:1 1 0; padding:0 10px; min-width:0; } }
     .cd-card { background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 8px 30px rgba(38,52,59,.07); }
     .cd-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:15px 20px; border-radius:14px; background:#2f3d45; color:#fff; font-weight:700; font-size:16px; transition:background .2s ease, transform .15s ease; text-align:center; }
     .cd-btn:hover { background:#1f2a30; transform:translateY(-1px); }
@@ -114,42 +122,39 @@ require_once 'partials/header3.php';
 
     <div id="camp-content" class="hidden fade-in-anim">
 
-        <!-- Barre du haut -->
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <a href="recherche" id="back-link" class="inline-flex items-center gap-2 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
+        <header class="mb-6">
+            <a href="recherche" id="back-link" class="inline-flex items-center gap-2 mb-4 text-[14px] font-semibold text-[#3b4a54] hover:text-[#26343b]">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Retour
             </a>
-            <div class="flex flex-wrap items-center gap-2">
-                <button id="btn-share" type="button" class="cd-icon-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0-12L8 7m4-4l4 4M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <span id="share-label">Partager</span>
-                </button>
-                <?php if ($is_logged_in): ?>
-                <button id="btn-favorite" type="button" class="cd-icon-btn" aria-pressed="false">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-                    Favori
-                </button>
-                <?php endif; ?>
-                <button id="btn-calendar" type="button" class="cd-icon-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    Ajouter au calendrier
-                </button>
-            </div>
-        </div>
-
-        <!-- Titre -->
-        <div class="mb-6">
-            <div id="hero-badges" class="flex flex-wrap gap-2 mb-3"></div>
+            <div id="hero-badges" class="flex flex-wrap gap-2 mb-3 empty:hidden"></div>
             <h1 id="hero-title" class="text-[28px] md:text-[38px] leading-tight font-extrabold text-[#26343b]"></h1>
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2"/></svg><span id="hero-location"></span></span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="hero-dates"></span></span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="hero-age-tag"></span></span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/></svg><span id="stats-views">0</span> vues</span>
-                <span class="cd-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span id="stats-likes">0</span> favoris</span>
+            <div class="mt-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <ul class="cd-meta" aria-label="En bref">
+                    <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2"/></svg><span class="sr-only">Lieu : </span><span id="hero-location"></span></li>
+                    <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr-only">Dates : </span><span id="hero-dates"></span></li>
+                    <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="sr-only">Âges : </span><span id="hero-age-tag"></span></li>
+                    <li class="cd-stat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/></svg><span><span id="stats-views">0</span> vues</span></li>
+                    <li class="cd-stat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span><span id="stats-likes">0</span> favoris</span></li>
+                </ul>
+                <div class="cd-actions">
+                    <button id="btn-share" type="button" class="cd-act">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0-12L8 7m4-4l4 4M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span id="share-label">Partager</span>
+                    </button>
+                    <?php if ($is_logged_in): ?>
+                    <button id="btn-favorite" type="button" class="cd-act" aria-pressed="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20.5l-1.35-1.22C5.9 15.02 3 12.4 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8l.6.8.6-.8c.9-1.1 2.3-1.8 3.8-1.8 2.6 0 4.6 2 4.6 4.6 0 3.3-2.9 5.9-7.65 10.18L12 20.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+                        <span>Favori</span>
+                    </button>
+                    <?php endif; ?>
+                    <button id="btn-calendar" type="button" class="cd-act">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2zM12 12v5m-2.5-2.5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span class="sm:hidden">Calendrier</span><span class="hidden sm:inline">Ajouter au calendrier</span>
+                    </button>
+                </div>
             </div>
-        </div>
+        </header>
 
         <!-- Image -->
         <div class="relative rounded-3xl overflow-hidden bg-[#e5e7eb]" style="width:100%; height:clamp(220px, 34vw, 460px)">
@@ -379,6 +384,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         $('hero-title').textContent = camp.nom;
         $('hero-location').textContent = camp.ville || '';
+        $('hero-location').parentNode.hidden = !camp.ville;
         $('hero-dates').textContent = dateStr;
         $('hero-age-tag').textContent = `${camp.age_min} – ${camp.age_max} ans`;
         $('stats-views').textContent = camp.vues || 0;
