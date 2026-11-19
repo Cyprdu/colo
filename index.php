@@ -45,6 +45,7 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
     /* ---------- Menus déroulants ---------- */
     .dd-panel { position:absolute; z-index:60; background:#fff; border-radius:18px; box-shadow:0 18px 50px rgba(18,55,42,.22); border:1px solid var(--line); }
     .dd-panel[hidden] { display:none; }
+    .near-ico { width:38px; height:38px; flex:none; display:inline-flex; align-items:center; justify-content:center; border-radius:12px; background:#eef2f4; color:var(--accent); }
     .dd-row { display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border-radius:12px; font-size:15px; color:#3b4a54; text-align:left; transition:background .08s ease; }
     .dd-row:hover, .dd-row.is-active { background:#f1f3f5; }
     .dd-row.is-active { color:var(--ink); font-weight:700; }
@@ -182,14 +183,20 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                 </div>
                 <div class="hidden md:block w-px h-11 bg-[#e5e7eb]"></div><div class="md:hidden h-px bg-[#e5e7eb] mx-5"></div>
 
-                <div class="hero-field flex-1">
+                <div class="hero-field flex-1 relative">
                     <label for="hero-city" class="hero-label">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2.2"/></svg>
                         Localisation
                     </label>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center">
                         <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value min-w-0">
-                        <button type="button" id="hero-near" title="Autour de moi" aria-label="Autour de moi" class="flex-none inline-flex items-center justify-center w-8 h-8 rounded-full text-[#8a959d] hover:text-[#3d6a8e] hover:bg-[#eef2f4] transition-colors"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg></button>
+                        
+                    </div>
+                    <div id="city-panel" class="dd-panel left-0 top-[calc(100%+10px)] w-full md:w-[330px] p-2" hidden>
+                        <button type="button" id="hero-near" class="dd-row">
+                            <span class="near-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+                            <span class="min-w-0"><span class="block text-[15px] font-semibold text-[#26343b]">Autour de moi</span><span class="block text-[13px] text-[#6b7780]">Utiliser ma position actuelle</span></span>
+                        </button>
                     </div>
                     <input type="hidden" name="autour" value="1" id="hero-autour" disabled>
                 </div>
@@ -436,6 +443,15 @@ document.addEventListener('DOMContentLoaded', function () {
         [catBtn.closest('.hero-field'), catPanel].forEach(el => { el.addEventListener('mouseenter', enter); el.addEventListener('mouseleave', leave); });
     }
 
+    const cityIn = document.getElementById('hero-city'), cityPanel = document.getElementById('city-panel');
+    const cityShow = on => { cityPanel.hidden = !on; cityIn.setAttribute('aria-expanded', on); };
+    cityIn.setAttribute('aria-controls', 'city-panel');
+    cityIn.addEventListener('focus', () => { closeAll(null); cityShow(true); });
+    cityIn.addEventListener('click', () => cityShow(true));
+    cityIn.addEventListener('blur', () => setTimeout(() => { if (!cityPanel.contains(document.activeElement)) cityShow(false); }, 120));
+    cityIn.addEventListener('keydown', e => { if (e.key === 'Escape') cityShow(false); else if (e.key === 'ArrowDown' && !cityPanel.hidden) { e.preventDefault(); document.getElementById('hero-near').focus(); } });
+    cityPanel.addEventListener('mousedown', e => e.preventDefault());
+    cityPanel.addEventListener('focusout', e => { if (!cityPanel.contains(e.relatedTarget) && e.relatedTarget !== cityIn) cityShow(false); });
     document.getElementById('hero-near').addEventListener('click', () => {
         document.getElementById('hero-city').value = '';
         document.getElementById('hero-autour').disabled = false;

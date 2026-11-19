@@ -18,6 +18,7 @@ return [
     'Tous droits réservés.' => 'All rights reserved.',
     'Langue' => 'Language',
     'Autour de moi' => 'Near me',
+    'Utiliser ma position actuelle' => 'Use my current location',
     'Utiliser ma position' => 'Use my location',
     'Position utilisée' => 'Using my location',
     'Recherches récentes' => 'Recent searches',
