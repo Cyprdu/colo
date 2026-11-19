@@ -1,6 +1,6 @@
 <?php
 // api/get_camps_recherche.php : moteur de la page de recherche (le détail du calcul est dans api/search_lib.php).
-// Paramètres : name (phrase libre : mots, âge « 12 ans », budget « moins de 500 € », période « été 2027 »), city, age, sexe (Homme|Femme), max_price,
+// Paramètres : name (phrase libre : mots, âge « 12 ans », budget « moins de 500 € », période « été 2027 »), city, lat + lng + rayon (km, « Autour de moi », jamais enregistrés), age, sexe (Homme|Femme), max_price,
 //   date_from, date_to, online, sort (relevance|date|price_asc|price_desc), page/limit,
 //   cat[] (catégories) + catmode=all (toutes), fv[]=categorie:precision:valeur (précisions), themes[] (anciens thèmes, toujours acceptés), intents=0 (ne pas interpréter la phrase).
 // Ne renvoie que les champs utiles à l'affichage d'une carte (aucune donnée interne du séjour).
@@ -90,6 +90,7 @@ try {
             'organisateur_slug' => $c['organisateur_slug'] ?? null, 'organisateur_nom' => clean($c['organisateur_nom']), 'organisateur_logo' => media($c['organisateur_logo']),
             'badge' => $badge, 'sponsorise' => $badge === 'Sponsorisé', 'online' => (bool)$c['inscription_en_ligne'],
             'sessions_count' => (int)($c['sessions_count'] ?? 1),
+            'distance_km' => isset($c['distance_km']) ? (int)round((float)$c['distance_km']) : null,
         ];
         if ($explain) $o['explain'] = ['parts' => $c['_parts'], 'champs' => $c['_why']];
         $out[] = $o;

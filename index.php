@@ -188,7 +188,13 @@ $holiday_periods = array_values(array_filter($holiday_periods, function ($p) use
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.4" stroke="currentColor" stroke-width="2.2"/></svg>
                         Localisation
                     </label>
-                    <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value">
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="hero-city" name="city" placeholder="Partout" autocomplete="off" class="hero-value min-w-0">
+                        <button type="button" id="hero-near" class="flex-none inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#eef2f4] hover:bg-[#e2e8ec] text-[12.5px] font-bold text-[#3d6a8e] whitespace-nowrap transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg>Autour de moi
+                        </button>
+                    </div>
+                    <input type="hidden" name="autour" value="1" id="hero-autour" disabled>
                 </div>
 
                 <button type="submit" aria-label="Rechercher"
@@ -433,6 +439,13 @@ document.addEventListener('DOMContentLoaded', function () {
         const leave = () => { clearTimeout(t); t = setTimeout(() => { if (hoverOpen && !catPanel.contains(document.activeElement)) closeAll(null); }, 250); };
         [catBtn.closest('.hero-field'), catPanel].forEach(el => { el.addEventListener('mouseenter', enter); el.addEventListener('mouseleave', leave); });
     }
+
+    document.getElementById('hero-near').addEventListener('click', () => {
+        document.getElementById('hero-city').value = '';
+        document.getElementById('hero-autour').disabled = false;
+        heroForm.requestSubmit ? heroForm.requestSubmit() : heroForm.submit();
+    });
+    window.addEventListener('pageshow', () => { document.getElementById('hero-autour').disabled = true; });
 
     // Catégories : chargement + rangée de raccourcis
     const CHIP_ORDER = ['montagne', 'mer', 'nature', 'sport', 'ski', 'arts-creatifs', 'musique', 'sciences-numerique', 'spirituel'];

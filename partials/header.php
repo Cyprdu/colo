@@ -177,11 +177,14 @@ if ('serviceWorker' in navigator) {
                     </form>
 
                     <div id="history-dropdown" class="hidden absolute top-12 left-0 w-full bg-white shadow-xl rounded-2xl border border-gray-100 z-10 overflow-hidden">
-                        <div class="px-4 py-2 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                        <a href="recherche?autour=1" class="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-[#3d6a8e] hover:bg-gray-50"><i class="fa-solid fa-location-crosshairs w-4 text-center"></i>Autour de moi</a>
+                        <div id="history-block">
+                        <div class="px-4 py-2 border-t border-gray-100 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                             <span class="text-[10px] uppercase text-gray-400 font-bold tracking-wider">Recherches récentes</span>
                             <button id="clear-all-history" type="button" class="text-[10px] text-gray-400 hover:text-red-600 font-medium hover:underline">Tout effacer</button>
                         </div>
                         <div id="history-list" class="max-h-64 overflow-y-auto"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -368,6 +371,7 @@ if ('serviceWorker' in navigator) {
                 <button type="submit" class="absolute right-0 top-0 mt-3 mr-4 text-gray-400">
                     <i class="fa-solid fa-magnifying-glass"></i>
                 </button>
+                <a href="recherche?autour=1" class="mt-3 inline-flex items-center gap-2 min-h-[44px] px-4 rounded-full border border-gray-200 text-sm font-bold text-[#3d6a8e]"><i class="fa-solid fa-location-crosshairs"></i>Autour de moi</a>
             </form>
 
             <nav class="flex flex-col space-y-2 overflow-y-auto">
@@ -496,10 +500,9 @@ if ('serviceWorker' in navigator) {
         // Afficher l'historique
         function renderHistory() {
             const history = getHistory();
-            if (history.length === 0) {
-                historyDropdown.classList.add('hidden');
-                return;
-            }
+            document.getElementById('history-block').hidden = history.length === 0;
+            historyDropdown.classList.remove('hidden');
+            if (history.length === 0) return;
 
             let html = '';
             history.forEach(item => {
