@@ -50,5 +50,5 @@ Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentair
 - [x] Sauvegardes quotidiennes compressées hors `public_html`, chiffrées si `HEALTH_KEY`, rotation 7 + 4, page admin, `docs/restauration.md`.
 - [x] Double authentification TOTP (suprême, finances, technique), codes de secours, réinitialisation par le suprême.
 - [x] Référencement : `sitemap.xml` dynamique, `robots.txt`, title/description/canonical/Open Graph, JSON-LD Event et Organization, hreflang, pages 404 et 410.
-- [ ] Page « Tarifs organisateurs » (commission, frais Stripe, versements, hors carte, dette, FAQ, simulateur) + liens.
-- [ ] Script `docs/purge_avant_lancement.sql` (données de test, sans toucher aux imports), non exécuté.
+- [x] Page « Tarifs organisateurs » (commission, frais Stripe, versements, hors carte, dette, FAQ, simulateur) + liens.
+- [x] Script `docs/purge_avant_lancement.sql` (données de test, sans toucher aux imports), non exécuté.
