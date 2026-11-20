@@ -31,6 +31,7 @@ $mc_reseaux = array_filter(['instagram' => '', 'facebook' => '', 'linkedin' => '
                     <li><a class="text-white/80 hover:text-white transition-colors" href="aide#animateurs">Nous rejoindre</a></li>
                     <li><a class="text-white/80 hover:text-white transition-colors" href="contact">Partenariat</a></li>
                     <li><a class="text-white/80 hover:text-white transition-colors" href="organisme">Tous les organismes</a></li>
+                    <li><a class="text-white/80 hover:text-white transition-colors" href="tarifs-organisateurs">Tarifs organisateurs</a></li>
                 </ul>
             </nav>
 

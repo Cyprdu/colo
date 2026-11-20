@@ -52,7 +52,7 @@ $val = fn($k) => htmlspecialchars((string)($f[$k] ?? ''));
 <main class="ds-page">
   <div class="max-w-2xl">
     <h1 class="ds-h1">Devenir organisateur</h1>
-    <p class="ds-lead">Publiez vos séjours sur moncamp.fr. Chaque demande est vérifiée par notre équipe, en général sous 48 heures.</p>
+    <p class="ds-lead">Publiez vos séjours sur moncamp.fr. Chaque demande est vérifiée par notre équipe, en général sous 48 heures. <a class="underline font-semibold text-[#3d6a8e]" href="tarifs-organisateurs">Commission, frais et versements : voir les tarifs</a>.</p>
 
     <?php if (!empty($me['is_directeur'])): ?>
       <div class="ds-card p-6 mt-8"><p class="font-bold text-[#26343b]">Votre accès organisateur est actif.</p><a class="ds-btn mt-4" href="organisateurs">Ouvrir l'espace organisateur</a></div>
