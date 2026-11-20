@@ -34,6 +34,8 @@ try {
 if (!$camp_token && isset($_GET['t'])) { http_response_code(404); require '404.php'; exit; }
 if ($camp_token) {
     try {
+        require_once 'api/organismes.php';
+        orga_ensure($pdo);
         $st = $pdo->prepare("SELECT c.nom, c.description, c.ville, c.code_postal, c.image_url, c.date_debut, c.date_fin, c.age_min, c.age_max, c.valide, c.refuse, c.supprime, c.prive,
                 COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix) prix, o.nom orga, o.slug, o.user_id owner
             FROM camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id WHERE c.token = ?");

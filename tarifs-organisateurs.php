@@ -10,7 +10,7 @@ $ex = 50000;
 $exStripe = fin_frais_estimes($ex);
 $exNet = $ex - $exCom - $exStripe;
 $e = fn($c) => number_format($c / 100, 2, ',', ' ') . ' €';
-$comTxt = $n($pct) . ' %' . ($fixe ? ' + ' . $n($fixe / 100) . ' €' : '');
+$comTxt = $n($pct) . ' %' . ($fixe ? ' + ' . number_format($fixe / 100, 2, ',', ' ') . ' €' : '');
 $page_title = 'Tarifs organisateurs : commission et frais - moncamp.fr';
 $page_desc = "Publier ses séjours sur moncamp.fr est gratuit : commission de $comTxt par paiement en ligne, frais Stripe au prix coûtant, versements automatiques. Simulateur et questions fréquentes.";
 $body_class = 'bg-white';

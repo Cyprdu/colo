@@ -29,15 +29,6 @@ function cron_tout_run(string $file) {
 require_once __DIR__ . '/surveillance_lib.php';
 try { sv_battement($pdo); } catch (Throwable $e) { error_log('cron_tout battement: ' . $e->getMessage()); }
 $out = [];
-foreach (['cron_virements.php', 'cron_rgpd.php', 'cron_alertes_animateur.php'] as $f) $out[$f] = cron_tout_run($f);
-// Recherche « Autour de moi » : position des séjours publics à venir jamais géocodés, 40 par passage (Nominatim : une requête par seconde)
-try {
-    require_once __DIR__ . '/geocode.php';
-    geo_ensure($pdo);
-    $ids = $pdo->query("SELECT id FROM camps WHERE geo_hash IS NULL AND valide = 1 AND COALESCE(supprime, 0) = 0 AND COALESCE(date_fin, date_debut) >= CURDATE() LIMIT 40")->fetchAll(PDO::FETCH_COLUMN);
-    geo_actualiser($pdo, $ids, 50.0);
-    $out['geo'] = count($ids);
-} catch (Throwable $e) { error_log('cron_tout geo: ' . $e->getMessage()); }
 try {
     require_once __DIR__ . '/factures_lib.php';
     $out['factures'] = fac_cron($pdo);
@@ -49,4 +40,13 @@ try {
 try {
     $out['alerte'] = sv_alerter($pdo, sv_etat($pdo));
 } catch (Throwable $e) { error_log('cron_tout surveillance: ' . $e->getMessage()); }
+foreach (['cron_virements.php', 'cron_rgpd.php', 'cron_alertes_animateur.php'] as $f) $out[$f] = cron_tout_run($f);
+// Recherche « Autour de moi » : position des séjours publics à venir jamais géocodés, 40 par passage (Nominatim : une requête par seconde)
+try {
+    require_once __DIR__ . '/geocode.php';
+    geo_ensure($pdo);
+    $ids = $pdo->query("SELECT id FROM camps WHERE geo_hash IS NULL AND valide = 1 AND COALESCE(supprime, 0) = 0 AND COALESCE(date_fin, date_debut) >= CURDATE() LIMIT 40")->fetchAll(PDO::FETCH_COLUMN);
+    geo_actualiser($pdo, $ids, 50.0);
+    $out['geo'] = count($ids);
+} catch (Throwable $e) { error_log('cron_tout geo: ' . $e->getMessage()); }
 echo json_encode($out, JSON_UNESCAPED_UNICODE), "\n";
