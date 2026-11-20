@@ -101,4 +101,19 @@ ok(boom(fn() => bk_dechiffrer($dir . '/' . $r['fichier'], $dir . '/y', str_repea
 ok(bk_chemin('../config.php') === null && bk_chemin($r['fichier']) !== null, 'téléchargement limité aux fichiers de sauvegarde');
 unlink($dir . '/x.sql.gz'); @unlink($dir . '/y');
 
+// ---- 5. Double authentification
+require_once $root . '/api/adm_core.php';
+require_once $root . '/api/totp_lib.php';
+$k = tfa_b32('12345678901234567890');
+ok($k === 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' && tfa_unb32($k) === '12345678901234567890', 'base32 aller-retour');
+ok(tfa_code($k, 1) === '287082' && tfa_code($k, 37037036) === '081804', 'vecteurs RFC 6238');
+ok(tfa_requis(['*']) && tfa_requis(['compta.read']) && tfa_requis(['tech.logs']) && !tfa_requis(['contacts.read', 'camps.write']), 'obligatoire : suprême, finances, technique');
+$codes = tfa_activer($pdo, 1, $k);
+ok(count($codes) === 10 && !str_contains($pdo->query("SELECT secret FROM adm_2fa WHERE user_id = 1")->fetchColumn(), $k), '10 codes de secours, secret chiffré en base');
+$pdo->exec("UPDATE adm_2fa SET dernier_pas = 0");
+ok(tfa_verifier($pdo, 1, tfa_code($k, intdiv(time(), 30))) && !tfa_verifier($pdo, 1, tfa_code($k, intdiv(time(), 30))), 'code TOTP accepté une seule fois');
+ok(!tfa_verifier($pdo, 1, '000000') || tfa_code($k, intdiv(time(), 30) + 1) === '000000', 'mauvais code refusé');
+ok(tfa_verifier($pdo, 1, strtoupper($codes[3])) && !tfa_verifier($pdo, 1, $codes[3]), 'code de secours à usage unique');
+ok(count(json_decode($pdo->query("SELECT secours FROM adm_2fa WHERE user_id = 1")->fetchColumn(), true)) === 9, '9 codes restants');
+
 echo "\nTOUT EST OK\n";

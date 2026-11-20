@@ -126,6 +126,16 @@ return [
     }],
     'user.rgpd_unlock' => ['users.rgpd', true, function (array $in) { return []; }],
     'tech.backup' => ['tech.backup', true, function (array $in) { return ['msg' => 'Préparation de la sauvegarde…']; }],
+    'team.2fa_reset' => ['supreme', true, function (array $in) {
+        global $pdo;
+        $u = act_user($in);
+        require_once __DIR__ . '/api/totp_lib.php';
+        tfa_ensure($pdo);
+        $pdo->prepare("DELETE FROM adm_2fa WHERE user_id = ?")->execute([$u['id']]);
+        adm_audit('2fa_reinitialisee', 'users#' . $u['id'], $u['email']);
+        if ((int)$u['id'] === (int)$_SESSION['user']['id']) unset($_SESSION['adm_2fa']);
+        return ['msg' => 'Double authentification réinitialisée.'];
+    }],
     'revendication.valider' => ['orgas.write', true, function (array $in) {
         global $pdo;
         $d = act_revendication($in);

@@ -182,6 +182,11 @@ function adm_guard(bool $api = false, string $perm = ''): void {
             $deny(419, 'Jeton de sécurité invalide, rechargez la page.');
         }
     }
+    if (!defined('ADM_PAGE_2FA') && adm_2fa_attendue($uid)) {
+        if ($api) adm_json(['error' => 'Double authentification requise : rechargez la page.', 'expired' => true], 401);
+        $_SESSION['adm_2fa_retour'] = basename((string)($_SERVER['REQUEST_URI'] ?? ''));
+        header('Location: admin_2fa.php'); exit;
+    }
     if ($perm !== '' && !adm_can($perm)) adm_forbidden($api, $perm);
 }
 
@@ -348,6 +353,7 @@ function adm_nav(): array {
         'Administration' => [
             ['admin_audit.php', 'list', "Journal d'audit", '', 'audit.read'],
             ['admin_equipe.php', 'key', 'Équipe et rôles', '', 'supreme'],
+            ['admin_2fa.php', 'shield', 'Double authentification', '', ''],
         ],
     ];
 }
