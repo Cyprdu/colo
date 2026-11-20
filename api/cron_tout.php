@@ -43,6 +43,10 @@ try {
     $out['factures'] = fac_cron($pdo);
 } catch (Throwable $e) { error_log('cron_tout factures: ' . $e->getMessage()); }
 try {
+    require_once __DIR__ . '/sauvegarde_lib.php';
+    $out['sauvegarde'] = bk_cron($pdo);
+} catch (Throwable $e) { error_log('cron_tout sauvegarde: ' . $e->getMessage()); $out['sauvegarde'] = 'erreur'; }
+try {
     $out['alerte'] = sv_alerter($pdo, sv_etat($pdo));
 } catch (Throwable $e) { error_log('cron_tout surveillance: ' . $e->getMessage()); }
 echo json_encode($out, JSON_UNESCAPED_UNICODE), "\n";

@@ -83,4 +83,22 @@ ok(sv_alerter($pdo, sv_etat($pdo)) !== [], "nouvelle alerte après l'heure");
 $pdo->exec("DELETE FROM app_erreurs");
 ok(sv_etat($pdo)['ok'], 'tout va bien');
 
+// ---- 4. Sauvegardes
+require_once $root . '/api/sauvegarde_lib.php';
+$dir = bk_dir();
+foreach (glob("$dir/*") as $x) unlink($x);
+for ($i = 1; $i <= 9; $i++) touch($dir . '/quotidien-2020-01-0' . $i . '.sql.gz.enc');
+for ($i = 1; $i <= 6; $i++) touch($dir . '/hebdo-2020-W0' . $i . '.sql.gz.enc');
+$sql = ''; bk_dump_pdo($pdo, function ($s) use (&$sql) { $sql .= $s; });
+ok(str_contains($sql, 'CREATE TABLE `fin_factures`') && str_contains($sql, "INSERT INTO `organisateurs`"), 'export PDO par lots : structure et données');
+$r = bk_faire($pdo);
+ok(str_ends_with($r['fichier'], '.sql.gz.enc') && !is_file($dir . '/quotidien-' . date('Y-m-d') . '.sql.gz'), 'sauvegarde chiffrée, aucun fichier en clair (' . $r['methode'] . ')');
+ok(count(glob("$dir/quotidien-*")) === 7 && count(glob("$dir/hebdo-*")) === 4, 'rotation : 7 quotidiennes, 4 hebdomadaires');
+bk_dechiffrer($dir . '/' . $r['fichier'], $dir . '/x.sql.gz', HEALTH_KEY);
+$plain = gzdecode(file_get_contents($dir . '/x.sql.gz'));
+ok(str_contains($plain, 'fin_factures') && str_contains($plain, 'Colo Soleil'), 'déchiffrement + décompression : dump lisible');
+ok(boom(fn() => bk_dechiffrer($dir . '/' . $r['fichier'], $dir . '/y', str_repeat('0', 64))), 'mauvaise clé refusée');
+ok(bk_chemin('../config.php') === null && bk_chemin($r['fichier']) !== null, 'téléchargement limité aux fichiers de sauvegarde');
+unlink($dir . '/x.sql.gz'); @unlink($dir . '/y');
+
 echo "\nTOUT EST OK\n";
