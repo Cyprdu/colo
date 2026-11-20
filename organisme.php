@@ -54,14 +54,15 @@ $ads_enabled = false;
 $body_class = 'bg-white';
 $page_title = $nom . ' : séjours et colonies de vacances - moncamp.fr';
 $base_href = '/';   // la page est servie sous /organisme/… : les liens relatifs de l'en-tête restent valides
+if ($orga) {
+    $logoAbs = $logo ? (preg_match('#^https?://#', $logo) ? $logo : 'https://moncamp.fr/' . ltrim($logo, '/')) : '';
+    $page_desc = $desc !== '' ? $desc : 'Tous les séjours de ' . $nom . ' sur moncamp.fr : dates, âges, tarifs et réservation.';
+    if ($logoAbs) $page_image = $logoAbs;
+    $page_jsonld = [array_filter(['@context' => 'https://schema.org', '@type' => 'Organization', 'name' => $nom, 'url' => 'https://moncamp.fr/organisme/' . $orga['slug'],
+        'logo' => $logoAbs ?: null, 'description' => $desc !== '' ? mb_substr($desc, 0, 300) : null, 'sameAs' => $webOk ? [$web] : null])];
+}
 require_once 'partials/header.php';
 ?>
-<?php if ($orga): ?>
-<meta name="description" content="<?= htmlspecialchars('Tous les séjours de ' . $nom . ' sur moncamp.fr : dates, tarifs et réservation en ligne.') ?>">
-<link rel="canonical" href="https://moncamp.fr/organisme/<?= htmlspecialchars($orga['slug']) ?>">
-<script type="application/ld+json"><?= json_encode(['@context' => 'https://schema.org', '@type' => 'Organization', 'name' => $nom,
-    'url' => 'https://moncamp.fr/organisme/' . $orga['slug']] + ($logo ? ['logo' => (preg_match('#^https?://#', $logo) ? $logo : 'https://moncamp.fr/' . $logo)] : []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
-<?php else: ?><meta name="robots" content="noindex"><?php endif; ?>
 
 <style>
     .og-card { display:flex; flex-direction:column; min-width:0; }

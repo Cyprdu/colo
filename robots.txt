@@ -5,9 +5,23 @@ Disallow: /uploads/
 Disallow: /vendor/
 Disallow: /login
 Disallow: /register
+Disallow: /forgot_password
+Disallow: /reset_password
 Disallow: /messagerie
 Disallow: /profile
+Disallow: /edit_profile
 Disallow: /reservation
+Disallow: /inscription
+Disallow: /dashboard_organisme
+Disallow: /facture
+Disallow: /revendiquer
+Disallow: /mes_
+Disallow: /children
+Disallow: /child_details
+Disallow: /favorites
+Disallow: /gestion_camp
+Disallow: /tableau_de_controle
+Disallow: /go/
 
 # Robot AdSense : doit pouvoir lire toutes les pages publiques pour servir des annonces pertinentes
 User-agent: Mediapartners-Google

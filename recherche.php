@@ -2,6 +2,8 @@
 // recherche.php : la page de recherche de séjours (rendu des résultats côté navigateur, filtres synchronisés avec l'adresse).
 $ads_enabled = true;
 $body_class = 'bg-white';
+$page_title = 'Rechercher une colonie de vacances - moncamp.fr';
+$page_desc = 'Recherchez une colonie de vacances ou un séjour pour enfant par thème, âge, dates, lieu et prix. Réservation en ligne sur moncamp.fr.';
 require_once 'partials/header.php';
 require_once 'partials/holidays.php';
 
@@ -10,7 +12,6 @@ $is_animateur = $is_logged_in && ($_SESSION['user']['is_animateur'] ?? false);
 $user_favorites = $_SESSION['user']['favorites'] ?? [];
 $q = trim((string)($_GET['name'] ?? ''));
 ?>
-<title>Rechercher une colonie de vacances - moncamp.fr</title>
 <meta name="description" content="Comparez les colonies de vacances, camps et stages pour enfants et adolescents : filtrez par ville, âge, dates, budget et thématique, puis réservez en ligne.">
 
 <style>

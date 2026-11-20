@@ -86,8 +86,23 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <?php if (!empty($base_href)) echo '<base href="' . htmlspecialchars($base_href) . '">'; /* pages dans un sous-dossier d'adresse (/organisme/xxx) */ ?>
     <?php if ($csrf_value !== ''): ?><meta name="csrf" content="<?php echo htmlspecialchars($csrf_value); ?>"><?php endif; ?>
 
-    <title><?= htmlspecialchars($page_title ?? 'moncamp.fr - Trouvez le camp parfait') ?></title>
-    
+    <?php
+    $seo_titre = $page_title ?? 'moncamp.fr - Colonies de vacances et séjours pour enfants et ados';
+    $seo_desc = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($page_desc ?? 'Colonies de vacances, camps et séjours pour enfants et ados : comparez les dates, les âges et les prix, et réservez en ligne en toute sécurité sur moncamp.fr.'))), 0, 160);
+    $seo_q = array_intersect_key($_GET, ['t' => 1]) + (mc_lang() !== 'fr' ? ['lang' => mc_lang()] : []);
+    $seo_path = preg_replace(['#\.php$#', '#^/index$#'], ['', '/'], (string)strtok($_SERVER['REQUEST_URI'] ?? '/', '?'));
+    $seo_url = $page_canonical ?? 'https://moncamp.fr' . $seo_path . ($seo_q ? '?' . http_build_query($seo_q) : '');
+    $seo_img = $page_image ?? 'https://moncamp.fr/assets/img/hero-1280.jpg';
+    if (!preg_match('#^https?://#', $seo_img)) $seo_img = 'https://moncamp.fr/' . ltrim($seo_img, '/');
+    ?>
+    <title><?= htmlspecialchars($seo_titre) ?></title>
+    <meta name="description" content="<?= htmlspecialchars($seo_desc) ?>">
+    <?php if (!empty($page_noindex) || http_response_code() >= 400): ?><meta name="robots" content="noindex"><?php else: ?><link rel="canonical" href="<?= htmlspecialchars($seo_url) ?>"><?php endif; ?>
+    <meta property="og:site_name" content="moncamp.fr"><meta property="og:type" content="<?= htmlspecialchars($page_og_type ?? 'website') ?>"><meta property="og:locale" content="<?= mc_lang() === 'fr' ? 'fr_FR' : 'en_GB' ?>">
+    <meta property="og:title" content="<?= htmlspecialchars($seo_titre) ?>"><meta property="og:description" content="<?= htmlspecialchars($seo_desc) ?>">
+    <meta property="og:url" content="<?= htmlspecialchars($seo_url) ?>"><meta property="og:image" content="<?= htmlspecialchars($seo_img) ?>"><meta name="twitter:card" content="summary_large_image">
+    <?php foreach ($page_jsonld ?? [] as $seo_j): ?><script type="application/ld+json"><?= json_encode($seo_j, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script><?php endforeach; ?>
+
     <?php if ($ads_enabled): ?>
     <?php /* Publicité : uniquement sur les pages de contenu. Consentement refusé par défaut (Consent Mode v2) ; assets/ads.js ne charge AdSense qu'après le choix cookies (assets/consent.js). */ ?>
     <script>

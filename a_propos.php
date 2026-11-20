@@ -1,9 +1,10 @@
 <?php
 // a_propos.php : qui sommes-nous, comment ça marche (page de contenu, publicité autorisée)
 $ads_enabled = true;
+$page_title = 'À propos de moncamp.fr - Colonies de vacances et séjours pour enfants';
+$page_desc = 'moncamp.fr réunit les colonies de vacances, camps et séjours pour enfants et ados des organismes français, avec réservation et paiement en ligne sécurisés.';
 require_once 'partials/header3.php';
 ?>
-<title>À propos de moncamp.fr - Colonies de vacances et séjours pour enfants</title>
 <meta name="description" content="moncamp.fr aide les familles à trouver et réserver une colonie de vacances en toute confiance, et les organisateurs à gérer leurs inscriptions.">
 
 <main class="flex-1 w-full max-w-3xl mx-auto px-6 py-14">

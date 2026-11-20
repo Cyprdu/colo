@@ -21,6 +21,8 @@ RewriteRule ^organisme/?$ organismes_liste.php [L,NC]
 RewriteRule ^organisme/([a-z0-9-]{1,120})/?$ organisme.php?slug=$1 [L,QSA,NC]
 # Lien de réservation externe suivi : /go/<jeton du séjour> (redirection vers le site de l'organisme)
 RewriteRule ^go/([A-Za-z0-9]{6,64})/?$ go.php?t=$1 [L,NC]
+# Plan du site dynamique
+RewriteRule ^sitemap\.xml$ sitemap.php [L,NC]
 # Documents de santé : jamais en accès direct (seul api/secure_file.php les sert, après contrôle des droits)
 RewriteRule ^uploads/(sante|sanitaire|signatures|photos|revendications)/ - [F,L,NC]
 
@@ -53,8 +55,8 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\.php -f
 RewriteRule ^(.*)$ $1.php [NC,L]
 
-# Votre règle ErrorDocument existante
-ErrorDocument 404 /camps/404.php
+# Page « contenu supprimé » (les 404 inconnues restent servies par 404.html, bloc Hostinger ci-dessous)
+ErrorDocument 410 /410.php
 # DO NOT REMOVE THIS LINE AND THE LINES BELOW ERRORPAGEID:m2xVPrLyXe
 ErrorDocument 404 /404.html
 # DO NOT REMOVE THIS LINE AND THE LINES ABOVE m2xVPrLyXe:ERRORPAGEID

@@ -85,9 +85,10 @@ JSON_END
 
 $body_class = 'bg-white';
 $ads_enabled = true;
+$page_title = 'Centre d\'aide - moncamp.fr';
+$page_desc = 'Centre d\'aide moncamp.fr : réservation, paiement, annulation, compte famille et espace organisateur.';
 require_once 'partials/header.php';
 ?>
-<title>Centre d'aide - moncamp.fr</title>
 <style>
     .faq-item { border: 1.5px solid #e5e7eb; border-radius: 16px; background: #fff; transition: border-color .15s ease, box-shadow .2s ease; }
     .faq-item[open] { border-color: #a9b8c6; box-shadow: 0 8px 24px rgba(38, 52, 59, .07); }

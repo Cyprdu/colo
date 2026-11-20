@@ -5,6 +5,8 @@ require_once __DIR__ . '/api/security.php';
 require_once __DIR__ . '/api/adm_core.php';
 require_once __DIR__ . '/api/contact_lib.php';
 $body_class = 'bg-white';
+$page_title = 'Nous contacter - moncamp.fr';
+$page_desc = 'Une question sur un séjour, une inscription ou votre espace organisateur ? Écrivez à l\'équipe moncamp.fr.';
 require_once 'partials/header.php';
 
 $msg_success = '';
@@ -77,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
-<title>Nous contacter - moncamp.fr</title>
 <style>
     .faq-item { border: 1.5px solid #e5e7eb; border-radius: 16px; background: #fff; transition: border-color .15s ease, box-shadow .2s ease; }
     .faq-item[open] { border-color: #a9b8c6; box-shadow: 0 8px 24px rgba(38, 52, 59, .07); }

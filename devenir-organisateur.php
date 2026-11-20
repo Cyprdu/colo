@@ -43,11 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($me['is_directeur'])) {
 }
 
 $body_class = 'bg-white';
+$page_title = 'Devenir organisateur - moncamp.fr';
+$page_desc = 'Publiez vos colonies et séjours sur moncamp.fr : inscriptions et paiements en ligne, versements automatiques, commission uniquement sur les ventes.';
 require_once 'partials/header.php';
 $types = demande_types();
 $val = fn($k) => htmlspecialchars((string)($f[$k] ?? ''));
 ?>
-<title>Devenir organisateur - moncamp.fr</title>
 <main class="ds-page">
   <div class="max-w-2xl">
     <h1 class="ds-h1">Devenir organisateur</h1>
