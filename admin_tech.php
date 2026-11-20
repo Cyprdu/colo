@@ -42,8 +42,10 @@ if ($v === 'crons'):
              'cron_alertes_animateur' => ['Alertes animateurs', 'E-mails de missions selon la fréquence choisie par chaque animateur.']];
     $kv = [];
     foreach (adm_rows("SELECT k, v FROM adm_kv WHERE k LIKE 'cron:%'") as $r) $kv[substr($r['k'], 5)] = json_decode($r['v'], true);
+    $bat = (int)($kv['battement'] ?? 0);
 ?>
 <p class="muted">Un seul cron toutes les heures lance les trois tâches (<code>api/cron_tout.php?key=…</code>, à créer dans hPanel &gt; Avancé &gt; Tâches Cron). <?= adm_help('Si « Dernier passage » dépasse 2 heures, le cron ne tourne plus : vérifiez la tâche dans hPanel et la constante CRON_SECRET.') ?></p>
+<p>Dernier battement du cron : <?= $bat ? '<b>' . h(adm_date(date('Y-m-d H:i:s', $bat))) . '</b>' . (time() - $bat > 7200 ? ' <span class="pill bad">Arrêté</span>' : ' <span class="pill ok">OK</span>') : '<span class="pill warn">jamais vu</span>' ?> · État pour la surveillance externe : <code>api/sante_site.php?key=…</code> <?= adm_help("Alerte e-mail aux administrateurs suprêmes si le cron ne passe plus depuis 2 h, si les erreurs s'envolent ou si le disque est presque plein (une par heure au plus).") ?></p>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tâche</th><th>Rôle</th><th>Dernier passage</th><th>Durée</th><th>État</th></tr></thead><tbody>
 <?php foreach ($jobs as $k => [$l, $d]): $r = $kv[$k] ?? null; $late = !$r || strtotime((string)$r['at']) < time() - 7200; ?>
   <tr><td data-l="Tâche"><b><?= h($l) ?></b></td><td data-l="Rôle" class="small"><?= h($d) ?></td><td data-l="Dernier passage"><?= $r ? h(adm_date($r['at'])) : '<span class="muted">jamais vu</span>' ?></td><td data-l="Durée"><?= $r ? (int)$r['ms'] . ' ms' : '' ?></td>

@@ -26,6 +26,8 @@ function cron_tout_run(string $file) {
     return $out;
 }
 
+require_once __DIR__ . '/surveillance_lib.php';
+try { sv_battement($pdo); } catch (Throwable $e) { error_log('cron_tout battement: ' . $e->getMessage()); }
 $out = [];
 foreach (['cron_virements.php', 'cron_rgpd.php', 'cron_alertes_animateur.php'] as $f) $out[$f] = cron_tout_run($f);
 // Recherche « Autour de moi » : position des séjours publics à venir jamais géocodés, 40 par passage (Nominatim : une requête par seconde)
@@ -40,4 +42,7 @@ try {
     require_once __DIR__ . '/factures_lib.php';
     $out['factures'] = fac_cron($pdo);
 } catch (Throwable $e) { error_log('cron_tout factures: ' . $e->getMessage()); }
+try {
+    $out['alerte'] = sv_alerter($pdo, sv_etat($pdo));
+} catch (Throwable $e) { error_log('cron_tout surveillance: ' . $e->getMessage()); }
 echo json_encode($out, JSON_UNESCAPED_UNICODE), "\n";

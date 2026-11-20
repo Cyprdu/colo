@@ -46,7 +46,7 @@ Consignes pour chaque session : Opus 5.5 extra, niveau poussé, aucun commentair
 ## Lot 8 — Lancement commercial
 - [x] Factures de commission mensuelles (PDF, numérotation continue, avoirs, mentions légales, envoi e-mail, dashboard organisme, admin + export, conservation 10 ans).
 - [x] Revendication des fiches importées (statut « non revendiquée », badge, formulaire avec preuve, validation Modération, transfert + audit, signalement droit d'auteur, mention légale).
-- [ ] Surveillance : `api/sante_site.php` (base, disque, cron, erreurs), battement du cron, alertes e-mail (1 par heure max).
+- [x] Surveillance : `api/sante_site.php` (base, disque, cron, erreurs), battement du cron, alertes e-mail (1 par heure max).
 - [ ] Sauvegardes quotidiennes compressées hors `public_html`, chiffrées si `HEALTH_KEY`, rotation 7 + 4, page admin, `docs/restauration.md`.
 - [ ] Double authentification TOTP (suprême, finances, technique), codes de secours, réinitialisation par le suprême.
 - [ ] Référencement : `sitemap.xml` dynamique, `robots.txt`, title/description/canonical/Open Graph, JSON-LD Event et Organization, hreflang, pages 404 et 410.

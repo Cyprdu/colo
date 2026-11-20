@@ -69,4 +69,18 @@ ok((int)$pdo->query("SELECT is_directeur FROM users WHERE id = 3")->fetchColumn(
 ok($pdo->query("SELECT statut FROM orga_revendications WHERE user_id = 4")->fetchColumn() === 'refusee', 'les autres demandes en attente sont refusées');
 $pdo->exec("UPDATE organisateurs SET user_id = 1, non_revendique = 1 WHERE id = 2");
 
+// ---- 3. Surveillance
+require_once $root . '/api/surveillance_lib.php';
+$e = sv_etat($pdo);
+ok($e['db']['ok'] && !$e['cron']['ok'] && !$e['ok'], 'sans battement : cron signalé arrêté');
+ok(count(sv_alerter($pdo, $e)) === 1 && sv_alerter($pdo, $e) === [], 'une alerte, puis silence pendant une heure');
+sv_battement($pdo);
+ok(sv_etat($pdo)['cron']['ok'], 'battement enregistré : cron OK');
+$pdo->exec("INSERT INTO app_erreurs (type, message) VALUES " . implode(',', array_fill(0, 25, "('E', 'x')")));
+ok(!sv_etat($pdo)['erreurs']['ok'], 'erreurs en flèche détectées');
+sv_kv($pdo, 'alerte:derniere', (string)(time() - 3700));
+ok(sv_alerter($pdo, sv_etat($pdo)) !== [], "nouvelle alerte après l'heure");
+$pdo->exec("DELETE FROM app_erreurs");
+ok(sv_etat($pdo)['ok'], 'tout va bien');
+
 echo "\nTOUT EST OK\n";
