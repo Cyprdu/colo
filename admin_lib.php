@@ -332,6 +332,7 @@ function adm_nav(): array {
             ['admin_compta.php', 'euro', 'Comptabilité', '', 'compta.read'],
             ['admin_compta.php?v=paiements', 'card', 'Paiements', 'litige', 'paiements.read'],
             ['admin_compta.php?v=versements', 'bank', 'Versements', 'versement', 'versements.read'],
+            ['admin_factures.php', 'list', 'Factures de commission', '', 'compta.read'],
             ['admin_list.php?e=virements', 'list', 'Anciens virements', '', 'versements.read'],
         ],
         'Technique' => [

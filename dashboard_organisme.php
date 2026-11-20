@@ -27,7 +27,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'tva') {
         header('Location: dashboard_organisme.php?o=' . $orgaTok . '&success=' . urlencode('Taux de TVA enregistré.') . '#rapports'); exit;
     } catch (Throwable $e) { $error = $e->getMessage(); }
 }
-$orga = null; $acc = null; $historique = 0; $nbAnnul = 0; $aClics = false;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'fact') {
+    try {
+        require_once 'api/factures_lib.php';
+        fac_ensure($pdo);
+        if (!fin_csrf_ok()) throw new Exception('Session expirée, rechargez la page.');
+        $siret = preg_replace('/\D/', '', (string)($_POST['siret'] ?? ''));
+        if ($siret !== '' && !in_array(strlen($siret), [9, 14], true)) throw new Exception('SIREN (9 chiffres) ou SIRET (14 chiffres) invalide.');
+        $pdo->prepare("UPDATE organisateurs SET fact_adresse = ?, fact_siret = ? WHERE id = ?")->execute([mb_substr(trim((string)($_POST['adresse'] ?? '')), 0, 255) ?: null, $siret ?: null, $orgaId]);
+        header('Location: dashboard_organisme.php?o=' . $orgaTok . '&success=' . urlencode('Coordonnées de facturation enregistrées.') . '#rapports'); exit;
+    } catch (Throwable $e) { $error = $e->getMessage(); }
+}
+$orga = null; $acc = null; $historique = 0; $nbAnnul = 0; $aClics = false; $factures = [];
 try {
     fin_ensure($pdo); mk_ensure($pdo);
     $st = $pdo->prepare("SELECT * FROM organisateurs WHERE id = ?");
@@ -48,6 +59,11 @@ try {
     $st = $pdo->prepare("SELECT 1 FROM camps WHERE organisateur_id = ? AND COALESCE(lien_externe, '') <> '' LIMIT 1");
     $st->execute([$orgaId]);
     $aClics = (bool)$st->fetchColumn();
+    require_once 'api/factures_lib.php';
+    fac_ensure($pdo);
+    $st = $pdo->prepare("SELECT f.token, f.numero, f.type, f.mois, f.emise_le, f.ttc_cents, (SELECT COUNT(*) FROM fin_factures a WHERE a.origine_id = f.id) annulee FROM fin_factures f WHERE f.organisateur_id = ? ORDER BY f.seq DESC LIMIT 60");
+    $st->execute([$orgaId]);
+    $factures = $st->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     error_log('dashboard_organisme: ' . $e->getMessage());
     $error = 'Une erreur est survenue. Réessayez dans un instant.';
@@ -348,6 +364,21 @@ $tabs = ['apercu' => "Vue d'ensemble", 'transactions' => 'Transactions', 'versem
                 <select class="ds-select" name="tva" aria-label="Taux de TVA" style="width:auto"><?php foreach (fin_tva_taux_permis() as $k => $l): ?><option value="<?= htmlspecialchars((string)$k) ?>"<?= (string)$k === $tvaCur ? ' selected' : '' ?>><?= htmlspecialchars($l) ?></option><?php endforeach; ?></select>
                 <button class="fd-btn" type="submit">Enregistrer</button></span>
         </form>
+        <div class="fd-card" style="margin-top:14px">
+            <h2 class="fd-h" style="margin-top:0">Factures de moncamp.fr<?= $help("Chaque début de mois, la facture des commissions du mois écoulé est envoyée par e-mail et rangée ici. Elle est déjà acquittée : la commission est prélevée sur vos encaissements.") ?></h2>
+            <?php if (!$factures): ?><p style="font-size:14px;color:var(--ds-muted);margin:0">Aucune facture pour l'instant.</p>
+            <?php else: ?><div class="fd-tw"><table class="fd-t ds-cards"><thead><tr><th>Numéro</th><th>Période</th><th>Émise le</th><th class="num">Montant TTC</th><th></th></tr></thead><tbody>
+            <?php foreach ($factures as $fa): ?><tr><td data-label="Numéro"><b><?= htmlspecialchars($fa['numero']) ?></b><?= $fa['type'] === 'avoir' ? ' · avoir' : ((int)$fa['annulee'] ? ' · annulée' : '') ?></td><td data-label="Période"><?= htmlspecialchars(fac_mois_lib($fa['mois'])) ?></td>
+                <td data-label="Émise le"><?= date('d/m/Y', strtotime($fa['emise_le'])) ?></td><td data-label="Montant TTC" class="num"><?= fac_eur((int)$fa['ttc_cents']) ?></td>
+                <td><a class="fd-btn" href="facture.php?f=<?= $fa['token'] ?>" target="_blank" rel="noopener">PDF</a></td></tr><?php endforeach; ?>
+            </tbody></table></div><?php endif; ?>
+            <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars(fin_csrf()) ?>"><input type="hidden" name="act" value="fact">
+                <label style="flex:2 1 260px;font-size:13px;font-weight:600">Adresse de facturation<input class="ds-input" name="adresse" maxlength="255" value="<?= htmlspecialchars((string)($orga['fact_adresse'] ?? '')) ?>" placeholder="N°, rue, code postal, ville"></label>
+                <label style="flex:1 1 160px;font-size:13px;font-weight:600">SIREN / SIRET<input class="ds-input" name="siret" maxlength="20" inputmode="numeric" value="<?= htmlspecialchars((string)($orga['fact_siret'] ?? '')) ?>"></label>
+                <button class="fd-btn" type="submit">Enregistrer</button>
+            </form>
+        </div>
     </section>
     <?php if ($aClics): ?>
     <!-- Clics vers le site de l'organisme -->

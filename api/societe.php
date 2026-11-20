@@ -9,6 +9,7 @@ const SOCIETE = [
     'siret'                 => '[À COMPLÉTER]',
     'rcs'                   => '[À COMPLÉTER]',   // ex. RCS Lyon 123 456 789
     'tva'                   => '[À COMPLÉTER]',   // numéro de TVA intracommunautaire, ou « TVA non applicable, art. 293 B du CGI »
+    'tva_taux'              => 0,                 // 0 = franchise en base (mention art. 293 B sur les factures) ; 20 si la société facture la TVA
     'directeur_publication' => '[À COMPLÉTER]',
     'email'                 => 'auth@moncamp.fr',
     'email_rgpd'            => 'auth@moncamp.fr',

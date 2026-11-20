@@ -36,4 +36,8 @@ try {
     geo_actualiser($pdo, $ids, 50.0);
     $out['geo'] = count($ids);
 } catch (Throwable $e) { error_log('cron_tout geo: ' . $e->getMessage()); }
+try {
+    require_once __DIR__ . '/factures_lib.php';
+    $out['factures'] = fac_cron($pdo);
+} catch (Throwable $e) { error_log('cron_tout factures: ' . $e->getMessage()); }
 echo json_encode($out, JSON_UNESCAPED_UNICODE), "\n";

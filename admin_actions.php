@@ -7,6 +7,15 @@ function act_user(array $in, string $k = 'u'): array {
     if (!$u) throw new AdmUserError('Utilisateur introuvable.');
     return $u;
 }
+function act_facture(array $in): array {
+    global $pdo;
+    require_once __DIR__ . '/api/factures_lib.php';
+    fac_ensure($pdo);
+    $t = (string)($in['f'] ?? '');
+    $f = preg_match('/^[a-f0-9]{32}$/', $t) ? (adm_rows("SELECT * FROM fin_factures WHERE token = ?", [$t])[0] ?? null) : null;
+    if (!$f) throw new AdmUserError('Facture introuvable.');
+    return $f;
+}
 function act_list($v): array { return is_array($v) ? array_values(array_filter(array_map('strval', $v), fn($x) => $x !== '')) : []; }
 function act_staff_state(int $id): array {
     return ['roles' => array_column(adm_rows("SELECT r.code FROM adm_user_roles ur JOIN adm_roles r ON r.id = ur.role_id WHERE ur.user_id = ? ORDER BY r.code", [$id]), 'code'),
@@ -108,6 +117,30 @@ return [
     }],
     'user.rgpd_unlock' => ['users.rgpd', true, function (array $in) { return []; }],
     'tech.backup' => ['tech.backup', true, function (array $in) { return ['msg' => 'Préparation de la sauvegarde…']; }],
+    'facture.generer' => ['compta.close', false, function (array $in) {
+        global $pdo;
+        require_once __DIR__ . '/api/factures_lib.php';
+        $r = fac_cron($pdo, true);
+        adm_audit('factures_generees', $r['mois'], $r['generees'] . ' document(s)');
+        return ['msg' => $r['generees'] . ' document(s) pour ' . fac_mois_lib($r['mois']) . '.'];
+    }],
+    'facture.envoyer' => ['compta.close', false, function (array $in) {
+        global $pdo;
+        $f = act_facture($in);
+        if (!fac_envoyer($pdo, $f)) throw new AdmUserError("Envoi impossible (adresse e-mail de l'organisme absente ou serveur d'envoi indisponible).");
+        adm_audit('facture_envoyee', $f['numero']);
+        return ['msg' => 'Facture envoyée.'];
+    }],
+    'facture.avoir' => ['compta.close', true, function (array $in) {
+        global $pdo;
+        $f = act_facture($in);
+        try { $a = fac_annuler($pdo, $f); } catch (RuntimeException $e) { throw new AdmUserError($e->getMessage()); }
+        $n = fac_generer($pdo, (int)$f['organisateur_id'], $f['mois']);
+        adm_audit('facture_annulee', $f['numero'], 'avoir ' . $a['numero'] . ($n ? ', nouvelle facture ' . $n['numero'] : ''));
+        fac_envoyer($pdo, $a);
+        if ($n) fac_envoyer($pdo, $n);
+        return ['msg' => 'Avoir ' . $a['numero'] . ' émis' . ($n ? ', nouvelle facture ' . $n['numero'] : '') . '.'];
+    }],
     'audit.unlock' => ['audit.export', true, function (array $in) { return []; }],
     'err.purge' => ['tech.logs', true, function (array $in) {
         global $pdo;
