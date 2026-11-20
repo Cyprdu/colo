@@ -8,6 +8,9 @@ $cat = adm_perm_catalog();
 $staff = adm_rows("SELECT u.id, u.nom, u.prenom, u.email, u.bloque,
     (SELECT MAX(created_at) FROM admin_audit a WHERE a.user_id = u.id) AS vu
     FROM users u WHERE u.is_admin = 1 ORDER BY u.nom, u.prenom");
+require_once __DIR__ . '/api/totp_lib.php';
+tfa_ensure($pdo);
+$tfa = array_flip(array_map('intval', array_column(adm_rows("SELECT user_id FROM adm_2fa"), 'user_id')));
 $ur = [];
 foreach (adm_rows("SELECT ur.user_id, r.code FROM adm_user_roles ur JOIN adm_roles r ON r.id = ur.role_id") as $r) $ur[(int)$r['user_id']][] = $r['code'];
 $up = [];
@@ -63,6 +66,7 @@ adm_head('Équipe et rôles');
             </form>
           </div>
         </details>
+        <?php if (isset($tfa[$id])): ?><button type="button" class="ib" data-api="team.2fa_reset" data-u="<?= h($tok) ?>" data-confirm="Réinitialiser la double authentification de <?= h($s['email']) ?> ? Il devra la reconfigurer à sa prochaine connexion." title="Réinitialiser la double authentification" aria-label="Réinitialiser la double authentification"><?= ic('shield') ?></button><?php endif; ?>
         <?php if ($id !== $me): ?><button type="button" class="ib danger" data-api="team.remove" data-u="<?= h($tok) ?>" data-confirm="Retirer l'accès administration de <?= h($s['email']) ?> ?" title="Retirer l'accès" aria-label="Retirer l'accès"><?= ic('x') ?></button><?php endif; ?>
       </td>
     </tr>

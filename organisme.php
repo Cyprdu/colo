@@ -7,6 +7,8 @@ require_once 'api/sessions.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 orga_ensure($pdo);
+require_once 'api/revendication_lib.php';
+rev_ensure($pdo);
 $slug = strtolower((string)($_GET['slug'] ?? ''));
 $orga = null; $camps = []; $passes = 0;
 if (preg_match('/^[a-z0-9-]{1,120}$/', $slug)) {
@@ -52,14 +54,15 @@ $ads_enabled = false;
 $body_class = 'bg-white';
 $page_title = $nom . ' : séjours et colonies de vacances - moncamp.fr';
 $base_href = '/';   // la page est servie sous /organisme/… : les liens relatifs de l'en-tête restent valides
+if ($orga) {
+    $logoAbs = $logo ? (preg_match('#^https?://#', $logo) ? $logo : 'https://moncamp.fr/' . ltrim($logo, '/')) : '';
+    $page_desc = $desc !== '' ? $desc : 'Tous les séjours de ' . $nom . ' sur moncamp.fr : dates, âges, tarifs et réservation.';
+    if ($logoAbs) $page_image = $logoAbs;
+    $page_jsonld = [array_filter(['@context' => 'https://schema.org', '@type' => 'Organization', 'name' => $nom, 'url' => 'https://moncamp.fr/organisme/' . $orga['slug'],
+        'logo' => $logoAbs ?: null, 'description' => $desc !== '' ? mb_substr($desc, 0, 300) : null, 'sameAs' => $webOk ? [$web] : null])];
+}
 require_once 'partials/header.php';
 ?>
-<?php if ($orga): ?>
-<meta name="description" content="<?= htmlspecialchars('Tous les séjours de ' . $nom . ' sur moncamp.fr : dates, tarifs et réservation en ligne.') ?>">
-<link rel="canonical" href="https://moncamp.fr/organisme/<?= htmlspecialchars($orga['slug']) ?>">
-<script type="application/ld+json"><?= json_encode(['@context' => 'https://schema.org', '@type' => 'Organization', 'name' => $nom,
-    'url' => 'https://moncamp.fr/organisme/' . $orga['slug']] + ($logo ? ['logo' => (preg_match('#^https?://#', $logo) ? $logo : 'https://moncamp.fr/' . $logo)] : []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
-<?php else: ?><meta name="robots" content="noindex"><?php endif; ?>
 
 <style>
     .og-card { display:flex; flex-direction:column; min-width:0; }
@@ -93,6 +96,9 @@ require_once 'partials/header.php';
             <p class="text-[12px] font-bold uppercase tracking-widest text-[#3d6a8e]">Organisme</p>
             <h1 class="text-[30px] md:text-[38px] font-extrabold text-[#26343b] leading-tight"><?= htmlspecialchars($nom) ?></h1>
             <p class="mt-1 text-[15px] text-[#4b5964]"><?= count($camps) ?> séjour<?= count($camps) > 1 ? 's' : '' ?> à venir<?= $passes ? ' · ' . $passes . ' séjour' . ($passes > 1 ? 's' : '') . ' passé' . ($passes > 1 ? 's' : '') : '' ?></p>
+            <?php if (!empty($orga['non_revendique'])): ?><p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]"><span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#f1f3f5] text-[#4b5964] font-semibold" title="Fiche créée par moncamp.fr à partir d'informations publiques">Fiche non revendiquée</span>
+                <a class="font-semibold text-[#3d6a8e] hover:underline" href="revendiquer?o=<?= htmlspecialchars($orga['slug']) ?>">Vous êtes cet organisme ? Revendiquer cette fiche</a>
+                <a class="text-[#6b7780] hover:underline" href="contact?motif=<?= urlencode('Retrait de fiche') ?>">Signaler / demander le retrait</a></p><?php endif; ?>
             <?php if ($webOk): ?><a href="<?= htmlspecialchars($web) ?>" target="_blank" rel="noopener nofollow" class="mt-2 inline-flex items-center gap-2 text-[14px] font-semibold text-[#3d6a8e] hover:underline">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" stroke="currentColor" stroke-width="2"/></svg>Site de l'organisme</a><?php endif; ?>
         </div>

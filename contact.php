@@ -5,6 +5,8 @@ require_once __DIR__ . '/api/security.php';
 require_once __DIR__ . '/api/adm_core.php';
 require_once __DIR__ . '/api/contact_lib.php';
 $body_class = 'bg-white';
+$page_title = 'Nous contacter - moncamp.fr';
+$page_desc = 'Une question sur un séjour, une inscription ou votre espace organisateur ? Écrivez à l\'équipe moncamp.fr.';
 require_once 'partials/header.php';
 
 $msg_success = '';
@@ -77,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
-<title>Nous contacter - moncamp.fr</title>
 <style>
     .faq-item { border: 1.5px solid #e5e7eb; border-radius: 16px; background: #fff; transition: border-color .15s ease, box-shadow .2s ease; }
     .faq-item[open] { border-color: #a9b8c6; box-shadow: 0 8px 24px rgba(38, 52, 59, .07); }
@@ -134,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="ds-label" for="motif-select">Motif de la demande</label>
                     <select name="motif" id="motif-select" required onchange="toggleAutreInput()" class="ds-select">
                         <option value="" disabled <?php echo $motif_select === '' ? 'selected' : ''; ?>>Choisissez un motif…</option>
-                        <?php foreach (['Renseignement séjour' => 'Renseignement sur un séjour', 'Inscription / Réservation' => "Problème d'inscription / Réservation", 'Compte / Connexion' => 'Problème de compte / Connexion', 'Partenariat / Organisateur' => 'Espace Organisateur / Partenariat', 'Recrutement / Animation' => 'Recrutement / Espace Animation', 'Autre' => 'Autre demande (préciser)'] as $val => $label): ?>
+                        <?php foreach (['Renseignement séjour' => 'Renseignement sur un séjour', 'Inscription / Réservation' => "Problème d'inscription / Réservation", 'Compte / Connexion' => 'Problème de compte / Connexion', 'Partenariat / Organisateur' => 'Espace Organisateur / Partenariat', 'Recrutement / Animation' => 'Recrutement / Espace Animation', 'Retrait de fiche' => "Signaler une fiche / demander son retrait (droit d'auteur)", 'Autre' => 'Autre demande (préciser)'] as $val => $label): ?>
                             <option value="<?php echo htmlspecialchars($val); ?>" <?php echo ($motif_select === $val || (($_GET['motif'] ?? '') === $val && $motif_select === '')) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                         <?php endforeach; ?>
                     </select>

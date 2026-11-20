@@ -5,3 +5,4 @@ api/config.php
 api/google_config.php
 
 *.sql
+!docs/purge_avant_lancement.sql

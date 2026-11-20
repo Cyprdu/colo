@@ -43,15 +43,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($me['is_directeur'])) {
 }
 
 $body_class = 'bg-white';
+$page_title = 'Devenir organisateur - moncamp.fr';
+$page_desc = 'Publiez vos colonies et séjours sur moncamp.fr : inscriptions et paiements en ligne, versements automatiques, commission uniquement sur les ventes.';
 require_once 'partials/header.php';
 $types = demande_types();
 $val = fn($k) => htmlspecialchars((string)($f[$k] ?? ''));
 ?>
-<title>Devenir organisateur - moncamp.fr</title>
 <main class="ds-page">
   <div class="max-w-2xl">
     <h1 class="ds-h1">Devenir organisateur</h1>
-    <p class="ds-lead">Publiez vos séjours sur moncamp.fr. Chaque demande est vérifiée par notre équipe, en général sous 48 heures.</p>
+    <p class="ds-lead">Publiez vos séjours sur moncamp.fr. Chaque demande est vérifiée par notre équipe, en général sous 48 heures. <a class="underline font-semibold text-[#3d6a8e]" href="tarifs-organisateurs">Commission, frais et versements : voir les tarifs</a>.</p>
 
     <?php if (!empty($me['is_directeur'])): ?>
       <div class="ds-card p-6 mt-8"><p class="font-bold text-[#26343b]">Votre accès organisateur est actif.</p><a class="ds-btn mt-4" href="organisateurs">Ouvrir l'espace organisateur</a></div>

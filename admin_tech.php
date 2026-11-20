@@ -5,32 +5,28 @@ $views = ['crons' => ['Tâches planifiées', 'tech.crons'], 'securite' => ['Séc
 $v = isset($views[$_GET['v'] ?? '']) ? (string)$_GET['v'] : 'crons';
 adm_need($views[$v][1], false);
 
-if ($v === 'sauvegardes' && isset($_GET['dump'])) {
-    if (!adm_reauth_ok()) { $_SESSION['adm_flash'] = ['err', 'Confirmez votre mot de passe puis relancez la sauvegarde.']; header('Location: admin_tech.php?v=sauvegardes'); exit; }
+require_once __DIR__ . '/api/sauvegarde_lib.php';
+if ($v === 'sauvegardes' && (isset($_GET['dump']) || isset($_GET['f']))) {
+    if (!adm_reauth_ok()) { $_SESSION['adm_flash'] = ['err', 'Confirmez votre mot de passe puis relancez le téléchargement.']; header('Location: admin_tech.php?v=sauvegardes'); exit; }
     if (adm_limited('backup', 'u' . (int)$_SESSION['user']['id'], 5, 60)) { http_response_code(429); exit('Trop de sauvegardes, patientez.'); }
     adm_hit('backup', 'u' . (int)$_SESSION['user']['id']);
-    adm_audit('sauvegarde_telechargee', 'base', null);
     @set_time_limit(600);
     while (ob_get_level()) ob_end_clean();
+    if (isset($_GET['f'])) {
+        $p = bk_chemin((string)$_GET['f']);
+        if (!$p) { http_response_code(404); exit('Sauvegarde introuvable.'); }
+        adm_audit('sauvegarde_telechargee', basename($p), null);
+        header('Content-Type: application/octet-stream');
+        header('Content-Length: ' . filesize($p));
+        header('Content-Disposition: attachment; filename="moncamp-' . basename($p) . '"');
+        readfile($p);
+        exit;
+    }
+    adm_audit('sauvegarde_telechargee', 'base', 'export immédiat');
     header('Content-Type: application/gzip');
     header('Content-Disposition: attachment; filename="moncamp-' . date('Y-m-d-His') . '.sql.gz"');
     $z = deflate_init(ZLIB_ENCODING_GZIP, ['level' => 6]);
-    $w = function (string $s) use ($z) { echo deflate_add($z, $s, ZLIB_NO_FLUSH); };
-    $w("-- moncamp.fr sauvegarde " . date('c') . "\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n");
-    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
-    foreach ($pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN) as $t) {
-        $q = '`' . str_replace('`', '``', $t) . '`';
-        $w("\nDROP TABLE IF EXISTS $q;\n" . $pdo->query("SHOW CREATE TABLE $q")->fetchColumn(1) . ";\n");
-        $st = $pdo->query("SELECT * FROM $q");
-        $buf = [];
-        while (($r = $st->fetch(PDO::FETCH_NUM)) !== false) {
-            $buf[] = '(' . implode(',', array_map(fn($x) => $x === null ? 'NULL' : $pdo->quote((string)$x), $r)) . ')';
-            if (count($buf) >= 200) { $w("INSERT INTO $q VALUES " . implode(",\n", $buf) . ";\n"); $buf = []; flush(); }
-        }
-        $st->closeCursor();
-        if ($buf) $w("INSERT INTO $q VALUES " . implode(",\n", $buf) . ";\n");
-    }
-    $w("SET FOREIGN_KEY_CHECKS=1;\n");
+    bk_dump_pdo($pdo, function (string $s) use ($z) { echo deflate_add($z, $s, ZLIB_NO_FLUSH); flush(); });
     echo deflate_add($z, '', ZLIB_FINISH);
     exit;
 }
@@ -42,8 +38,10 @@ if ($v === 'crons'):
              'cron_alertes_animateur' => ['Alertes animateurs', 'E-mails de missions selon la fréquence choisie par chaque animateur.']];
     $kv = [];
     foreach (adm_rows("SELECT k, v FROM adm_kv WHERE k LIKE 'cron:%'") as $r) $kv[substr($r['k'], 5)] = json_decode($r['v'], true);
+    $bat = (int)($kv['battement'] ?? 0);
 ?>
 <p class="muted">Un seul cron toutes les heures lance les trois tâches (<code>api/cron_tout.php?key=…</code>, à créer dans hPanel &gt; Avancé &gt; Tâches Cron). <?= adm_help('Si « Dernier passage » dépasse 2 heures, le cron ne tourne plus : vérifiez la tâche dans hPanel et la constante CRON_SECRET.') ?></p>
+<p>Dernier battement du cron : <?= $bat ? '<b>' . h(adm_date(date('Y-m-d H:i:s', $bat))) . '</b>' . (time() - $bat > 7200 ? ' <span class="pill bad">Arrêté</span>' : ' <span class="pill ok">OK</span>') : '<span class="pill warn">jamais vu</span>' ?> · État pour la surveillance externe : <code>api/sante_site.php?key=…</code> <?= adm_help("Alerte e-mail aux administrateurs suprêmes si le cron ne passe plus depuis 2 h, si les erreurs s'envolent ou si le disque est presque plein (une par heure au plus).") ?></p>
 <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Tâche</th><th>Rôle</th><th>Dernier passage</th><th>Durée</th><th>État</th></tr></thead><tbody>
 <?php foreach ($jobs as $k => [$l, $d]): $r = $kv[$k] ?? null; $late = !$r || strtotime((string)$r['at']) < time() - 7200; ?>
   <tr><td data-l="Tâche"><b><?= h($l) ?></b></td><td data-l="Rôle" class="small"><?= h($d) ?></td><td data-l="Dernier passage"><?= $r ? h(adm_date($r['at'])) : '<span class="muted">jamais vu</span>' ?></td><td data-l="Durée"><?= $r ? (int)$r['ms'] . ' ms' : '' ?></td>
@@ -83,8 +81,20 @@ if ($v === 'crons'):
 <?php else:
     $sz = adm_rows("SELECT table_name t, table_rows n, ROUND((data_length + index_length) / 1048576, 2) mo FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY (data_length + index_length) DESC LIMIT 15");
     $last = adm_rows("SELECT created_at, email FROM admin_audit WHERE action = 'sauvegarde_telechargee' ORDER BY id DESC LIMIT 5");
+    $auto = bk_liste();
+    $der = (int)adm_one("SELECT v FROM adm_kv WHERE k = 'sauvegarde:derniere'");
+    $chiffre = defined('HEALTH_KEY') && preg_match('/^[a-f0-9]{64}$/i', (string)HEALTH_KEY);
 ?>
-<div class="grid2">
+<section class="card"><h2 class="sec"><?= ic('archive') ?> Sauvegardes automatiques <?= adm_help("Chaque nuit (à partir de 3 h) le cron enregistre un export SQL compressé hors du dossier web : 7 quotidiennes et 4 hebdomadaires (dimanche). Procédure de restauration : docs/restauration.md.") ?></h2>
+  <p>Dernière sauvegarde : <?= $der ? '<b>' . h(adm_date(date('Y-m-d H:i:s', $der))) . '</b>' . ($der < time() - 2 * 86400 ? ' <span class="pill bad">trop ancienne</span>' : ' <span class="pill ok">OK</span>') : '<span class="pill warn">aucune</span>' ?>
+    · <?= $chiffre ? '<span class="pill ok">chiffrées (HEALTH_KEY)</span>' : '<span class="pill warn">non chiffrées : définir HEALTH_KEY</span>' ?> · <span class="muted small mono"><?= h(bk_dir()) ?></span></p>
+  <?php if (!$auto): ?><p class="muted">Aucun fichier pour l'instant.</p><?php else: ?>
+  <div class="tbl-wrap flat"><table class="tbl"><thead><tr><th>Fichier</th><th>Date</th><th class="num">Taille</th><th class="act-h"></th></tr></thead><tbody>
+  <?php foreach ($auto as $b): ?><tr><td class="mono small" data-l="Fichier"><?= h($b['nom']) ?></td><td data-l="Date"><?= h(adm_date(date('Y-m-d H:i:s', $b['date']))) ?></td><td class="num" data-l="Taille"><?= number_format($b['taille'] / 1048576, 2, ',', ' ') ?> Mo</td>
+    <td class="acts"><button class="ib" type="button" data-api="tech.backup" data-go="admin_tech.php?v=sauvegardes&amp;f=<?= h(rawurlencode($b['nom'])) ?>" title="Télécharger" aria-label="Télécharger <?= h($b['nom']) ?>"><?= ic('download') ?></button></td></tr><?php endforeach; ?>
+  </tbody></table></div><?php endif; ?>
+</section>
+<div class="grid2 mt">
   <section class="card"><h2 class="sec"><?= ic('download') ?> Télécharger une sauvegarde <?= adm_help('Export SQL complet et compressé (structure et données). Contient des données personnelles et de santé : conservez-le chiffré, hors du serveur. Hostinger garde aussi des sauvegardes automatiques (hPanel > Fichiers > Sauvegardes).') ?></h2>
     <p class="muted">Mot de passe demandé. L'action est journalisée.</p>
     <button class="btn" type="button" data-api="tech.backup" data-go="admin_tech.php?v=sauvegardes&amp;dump=1"><?= ic('download') ?> Sauvegarde complète (.sql.gz)</button>

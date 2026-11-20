@@ -31,6 +31,39 @@ try {
     }
 } catch (Exception $e) {}
 
+if (!$camp_token && isset($_GET['t'])) { http_response_code(404); require '404.php'; exit; }
+if ($camp_token) {
+    try {
+        require_once 'api/organismes.php';
+        orga_ensure($pdo);
+        $st = $pdo->prepare("SELECT c.nom, c.description, c.ville, c.code_postal, c.image_url, c.date_debut, c.date_fin, c.age_min, c.age_max, c.valide, c.refuse, c.supprime, c.prive,
+                COALESCE((SELECT MIN(t.prix) FROM camps_tarifs ct JOIN tarifs t ON ct.tarif_id = t.id WHERE ct.camp_id = c.id), c.prix) prix, o.nom orga, o.slug, o.user_id owner
+            FROM camps c LEFT JOIN organisateurs o ON o.id = c.organisateur_id WHERE c.token = ?");
+        $st->execute([$camp_token]);
+        $sc = $st->fetch(PDO::FETCH_ASSOC);
+        $proprio = $sc && (adm_can('camps.read') || (!empty($_SESSION['user']['id']) && (int)$sc['owner'] === (int)$_SESSION['user']['id']));
+        if ($sc && (!empty($sc['supprime']) || !empty($sc['refuse'])) && !$proprio) { http_response_code(410); require '410.php'; exit; }
+        if ($sc) {
+            $abs = fn($u) => $u ? (preg_match('#^https?://#', $u) ? $u : 'https://moncamp.fr/' . ltrim(str_replace('\\', '/', $u), '/')) : null;
+            $age = $sc['age_min'] && $sc['age_max'] ? ' (' . (int)$sc['age_min'] . '-' . (int)$sc['age_max'] . ' ans)' : '';
+            $page_title = $sc['nom'] . ($sc['ville'] ? ' à ' . $sc['ville'] : '') . $age . ' - moncamp.fr';
+            $page_desc = trim((string)$sc['description']) !== '' ? $sc['description'] : $sc['nom'] . ($sc['orga'] ? ', organisé par ' . $sc['orga'] : '') . '. Dates, tarifs et réservation sur moncamp.fr.';
+            $page_image = $abs($sc['image_url']);
+            $page_og_type = 'article';
+            $url = 'https://moncamp.fr/camp_details?t=' . $camp_token;
+            if (empty($sc['valide']) || !empty($sc['prive'])) $page_noindex = true;
+            $page_jsonld = [array_filter(['@context' => 'https://schema.org', '@type' => 'Event', 'name' => $sc['nom'], 'url' => $url,
+                'description' => mb_substr(trim(strip_tags((string)$sc['description'])), 0, 500) ?: null, 'image' => $page_image ? [$page_image] : null,
+                'startDate' => $sc['date_debut'], 'endDate' => $sc['date_fin'] ?: $sc['date_debut'],
+                'eventStatus' => 'https://schema.org/EventScheduled', 'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
+                'location' => ['@type' => 'Place', 'name' => $sc['ville'] ?: $sc['nom'], 'address' => array_filter(['@type' => 'PostalAddress', 'addressLocality' => $sc['ville'], 'postalCode' => $sc['code_postal'], 'addressCountry' => 'FR'])],
+                'organizer' => $sc['orga'] ? array_filter(['@type' => 'Organization', 'name' => $sc['orga'], 'url' => $sc['slug'] ? 'https://moncamp.fr/organisme/' . $sc['slug'] : null]) : null,
+                'typicalAgeRange' => $sc['age_min'] && $sc['age_max'] ? (int)$sc['age_min'] . '-' . (int)$sc['age_max'] : null,
+                'offers' => (float)$sc['prix'] > 0 ? ['@type' => 'Offer', 'price' => number_format((float)$sc['prix'], 2, '.', ''), 'priceCurrency' => 'EUR', 'url' => $url, 'availability' => 'https://schema.org/InStock'] : null])];
+        }
+    } catch (Throwable $e) { error_log('camp_details seo: ' . $e->getMessage()); }
+}
+
 // Inscription des animateurs, intégrée au parcours de réservation (date puis « mon enfant » / « animateur »), par session :
 //   mode « public » = choix visible pour tous ; mode « privé » = seulement avec ?l=<jeton du lien animateurs> d'une session du séjour.
 $eqMap = [];   // jeton de session => ['lien', 'complet', 'tarifs' => [[nom, texte]]]
@@ -511,6 +544,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         else { logo.removeAttribute('src'); avatar(false); }
         const contact = $('contact-container');
         contact.innerHTML = '';
+        if (camp.orga_non_revendique == 1 && camp.orga_slug) {
+            const s = encodeURIComponent(camp.orga_slug);
+            contact.innerHTML = `<p class="text-[13px] text-[#4b5964]"><span class="inline-block px-2.5 py-1 rounded-full bg-[#f1f3f5] font-semibold" title="Fiche créée par moncamp.fr à partir d'informations publiques">Fiche non revendiquée</span></p>`
+                + `<a href="revendiquer?o=${s}" class="block text-[14px] font-semibold text-[#3d6a8e] hover:underline">Vous êtes cet organisme ? Revendiquer cette fiche</a>`
+                + `<a href="contact?motif=${encodeURIComponent('Retrait de fiche')}" class="block text-[13px] text-[#6b7780] hover:underline">Signaler / demander le retrait</a>`;
+        }
         if (camp.organisateur_user_id) {
             if (isLoggedIn) {
                 const b = document.createElement('button');

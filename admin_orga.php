@@ -4,6 +4,8 @@ require_once __DIR__ . '/api/orga_lib.php';
 require_once __DIR__ . '/api/finance_lib.php';
 adm_guard(false, 'orgas.read');
 fin_ensure($pdo);
+require_once __DIR__ . '/api/revendication_lib.php';
+rev_ensure($pdo);
 $tok = (string)($_GET['t'] ?? '');
 $oid = $tok !== '' ? fin_orga_from_tok($pdo, $tok) : 0;
 $o = $oid ? adm_rows("SELECT o.*, u.prenom, u.nom AS u_nom, u.email AS u_email FROM organisateurs o LEFT JOIN users u ON u.id = o.user_id WHERE o.id = ?", [$oid])[0] ?? null : null;
@@ -23,6 +25,7 @@ adm_head((string)$o['nom'], 'admin_list.php?e=organismes', [['Catalogue', ''], [
 ?>
 <div class="row-l wrap-row">
   <span class="grow muted">Identifiant public <span class="mono small"><?= h($tok) ?></span></span>
+  <?php if (adm_can('orgas.write')): ?><button class="btn ghost sm" type="button" data-api="orga.revendique" data-o="<?= h($tok) ?>"><?= ic('flag') ?> <?= (int)$o['non_revendique'] ? 'Fiche non revendiquée : marquer gérée' : 'Marquer non revendiquée' ?></button><?php endif; ?>
   <?php if (adm_can('compta.read')): ?><a class="btn ghost sm" href="admin_compta.php?v=grandlivre&amp;p=tout&amp;o=<?= h($tok) ?>"><?= ic('list') ?> Grand livre</a><?php endif; ?>
 </div>
 <div class="kpis compact mt">

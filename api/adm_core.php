@@ -132,6 +132,19 @@ function adm_core_ensure(PDO $pdo): void {
 }
 
 function adm_perms(?int $uid = null): array {
+    $uid = $uid ?? (int)($_SESSION['user']['id'] ?? 0);
+    $p = adm_perms_brut($uid);
+    return $p && adm_2fa_attendue($uid, $p) ? [] : $p;
+}
+
+/** Droits soumis à la double authentification et pas encore validée dans cette session (utilisateur connecté, hors CLI). */
+function adm_2fa_attendue(int $uid, ?array $p = null): bool {
+    if (PHP_SAPI === 'cli' || $uid <= 0 || $uid !== (int)($_SESSION['user']['id'] ?? 0)) return false;
+    require_once __DIR__ . '/totp_lib.php';
+    return !tfa_ok($uid) && tfa_requis($p ?? adm_perms_brut($uid));
+}
+
+function adm_perms_brut(?int $uid = null): array {
     $cache = &$GLOBALS['ADM_PC'];
     $pdo = $GLOBALS['pdo'] ?? null;
     $uid = $uid ?? (int)($_SESSION['user']['id'] ?? 0);
