@@ -50,4 +50,23 @@ ok(boom(fn() => fac_annuler($pdo, $f1)), 'pas de double annulation');
 $n = fac_generer($pdo, 1, $m);
 ok($n['numero'] === 'MC-000004' && (int)$n['ttc_cents'] === 3800, 'nouvelle facture après annulation');
 ok(fac_generer($pdo, 1, $m)['numero'] === 'MC-000004', 'puis idempotente');
+
+// ---- 2. Revendication
+require_once $root . '/api/revendication_lib.php';
+$pdo->exec("UPDATE organisateurs SET web = 'https://www.afocal.fr/bafa' WHERE id = 2");
+$pdo->exec("INSERT INTO organisateurs (id, nom, email, user_id, slug, stripe_account_id, web) VALUES (3, 'Mon orga', 'owner@test', 1, 'mon-orga', 'acct_1', 'moncamp.fr')");
+$pdo->exec("INSERT INTO camps (token, nom, organisateur_id) VALUES ('t1', 'Séjour A', 2), ('t2', 'Séjour B', 2)");
+rev_ensure($pdo);
+ok($pdo->query("SELECT GROUP_CONCAT(id ORDER BY id) FROM organisateurs WHERE non_revendique = 1")->fetchColumn() === '2', 'migration : seule la fiche importée est non revendiquée');
+ok(rev_domaine('https://www.afocal.fr/bafa') === 'afocal.fr' && rev_domaine('resacolo.com/organisateurs/x') === '' && rev_domaine('') === '', 'domaine du site officiel');
+ok(rev_email_ok('jean@afocal.fr', 'afocal.fr') && rev_email_ok('a@idf.afocal.fr', 'afocal.fr') && !rev_email_ok('a@fakeafocal.fr', 'afocal.fr') && !rev_email_ok('a@afocal.fr.evil.com', 'afocal.fr'), 'e-mail au domaine (imitations refusées)');
+$pdo->exec("INSERT INTO users (id, nom, prenom, email) VALUES (3, 'Vrai', 'Jean', 'jean@afocal.fr'), (4, 'Autre', 'Max', 'max@test')");
+$pdo->exec("INSERT INTO orga_revendications (token, organisateur_id, user_id, prenom, nom, fonction, email_pro, email_verifie) VALUES ('" . str_repeat('a', 32) . "', 2, 3, 'Jean', 'Vrai', 'Directeur', 'jean@afocal.fr', 1), ('" . str_repeat('b', 32) . "', 2, 4, 'Max', 'Autre', 'Animateur', NULL, 0)");
+[$av, $ap] = rev_valider($pdo, $pdo->query("SELECT * FROM orga_revendications WHERE user_id = 3")->fetch(), 1);
+$o = $pdo->query("SELECT * FROM organisateurs WHERE id = 2")->fetch();
+ok((int)$o['user_id'] === 3 && (int)$o['non_revendique'] === 0 && $o['email'] === 'jean@afocal.fr' && $ap['sejours'] === 2 && $av['user_id'] === 1, 'validation : organisme et ses 2 séjours transférés');
+ok((int)$pdo->query("SELECT is_directeur FROM users WHERE id = 3")->fetchColumn() === 1, 'le demandeur devient organisateur');
+ok($pdo->query("SELECT statut FROM orga_revendications WHERE user_id = 4")->fetchColumn() === 'refusee', 'les autres demandes en attente sont refusées');
+$pdo->exec("UPDATE organisateurs SET user_id = 1, non_revendique = 1 WHERE id = 2");
+
 echo "\nTOUT EST OK\n";

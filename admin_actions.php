@@ -16,6 +16,15 @@ function act_facture(array $in): array {
     if (!$f) throw new AdmUserError('Facture introuvable.');
     return $f;
 }
+function act_revendication(array $in): array {
+    global $pdo;
+    require_once __DIR__ . '/api/revendication_lib.php';
+    rev_ensure($pdo);
+    $t = (string)($in['r'] ?? '');
+    $d = preg_match('/^[a-f0-9]{32}$/', $t) ? (adm_rows("SELECT * FROM orga_revendications WHERE token = ? AND statut = 'attente'", [$t])[0] ?? null) : null;
+    if (!$d) throw new AdmUserError('Demande introuvable ou déjà traitée.');
+    return $d;
+}
 function act_list($v): array { return is_array($v) ? array_values(array_filter(array_map('strval', $v), fn($x) => $x !== '')) : []; }
 function act_staff_state(int $id): array {
     return ['roles' => array_column(adm_rows("SELECT r.code FROM adm_user_roles ur JOIN adm_roles r ON r.id = ur.role_id WHERE ur.user_id = ? ORDER BY r.code", [$id]), 'code'),
@@ -117,6 +126,38 @@ return [
     }],
     'user.rgpd_unlock' => ['users.rgpd', true, function (array $in) { return []; }],
     'tech.backup' => ['tech.backup', true, function (array $in) { return ['msg' => 'Préparation de la sauvegarde…']; }],
+    'revendication.valider' => ['orgas.write', true, function (array $in) {
+        global $pdo;
+        $d = act_revendication($in);
+        try { [$avant, $apres] = rev_valider($pdo, $d, (int)$_SESSION['user']['id']); } catch (RuntimeException $e) { throw new AdmUserError($e->getMessage()); }
+        adm_audit('revendication_validee', 'organisateurs#' . $d['organisateur_id'], $d['prenom'] . ' ' . $d['nom'] . ' (' . $d['fonction'] . ')', $avant, $apres);
+        $to = adm_one("SELECT email FROM users WHERE id = ?", [$d['user_id']]);
+        rev_mail((string)$to, 'Votre fiche organisme est validée', '<p>Bonjour ' . h($d['prenom']) . ',</p><p>Votre demande est acceptée : la fiche et ses ' . (int)$apres['sejours'] . ' séjour(s) sont maintenant dans votre espace organisateur.</p><p><a href="' . h(rtrim(BASE_URL, '/')) . '/mes_camps">Gérer mes séjours</a></p>');
+        return ['msg' => 'Fiche transférée (' . (int)$apres['sejours'] . ' séjour(s)).'];
+    }],
+    'revendication.refuser' => ['orgas.write', false, function (array $in) {
+        global $pdo;
+        $d = act_revendication($in);
+        $motif = mb_substr(trim((string)($in['motif'] ?? '')), 0, 500);
+        if ($motif === '') throw new AdmUserError('Indiquez un motif.');
+        $pdo->prepare("UPDATE orga_revendications SET statut = 'refusee', motif = ?, decide_par = ?, decide_at = NOW() WHERE id = ?")->execute([$motif, $_SESSION['user']['id'], $d['id']]);
+        adm_audit('revendication_refusee', 'organisateurs#' . $d['organisateur_id'], $motif);
+        rev_mail((string)adm_one("SELECT email FROM users WHERE id = ?", [$d['user_id']]), 'Votre demande de revendication', '<p>Bonjour ' . h($d['prenom']) . ',</p><p>Nous n\'avons pas pu valider votre demande : ' . h($motif) . '</p><p>Vous pouvez en déposer une nouvelle avec une autre preuve.</p>');
+        return ['msg' => 'Demande refusée.'];
+    }],
+    'orga.revendique' => ['orgas.write', false, function (array $in) {
+        global $pdo;
+        require_once __DIR__ . '/api/revendication_lib.php';
+        require_once __DIR__ . '/api/finance_lib.php';
+        require_once __DIR__ . '/api/orga_lib.php';
+        rev_ensure($pdo);
+        $id = fin_orga_from_tok($pdo, (string)($in['o'] ?? ''));
+        if (!$id) throw new AdmUserError('Organisme introuvable.');
+        $avant = (int)adm_one("SELECT non_revendique FROM organisateurs WHERE id = ?", [$id]);
+        $pdo->prepare("UPDATE organisateurs SET non_revendique = ? WHERE id = ?")->execute([1 - $avant, $id]);
+        adm_audit('orga_statut_revendication', 'organisateurs#' . $id, null, ['non_revendique' => $avant], ['non_revendique' => 1 - $avant]);
+        return ['msg' => $avant ? 'Fiche marquée comme gérée par son organisme.' : 'Fiche marquée non revendiquée.'];
+    }],
     'facture.generer' => ['compta.close', false, function (array $in) {
         global $pdo;
         require_once __DIR__ . '/api/factures_lib.php';

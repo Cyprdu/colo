@@ -12,6 +12,8 @@ require_once 'sessions.php';
 require_once 'organismes.php';
 orga_ensure($pdo);
 require_once 'marketing_lib.php';
+require_once __DIR__ . '/revendication_lib.php';
+rev_ensure($pdo);
 
 $tokenParam = (string)($_GET['t'] ?? '');
 $idParam = (int)($_GET['id'] ?? 0);
@@ -68,7 +70,7 @@ try {
             o.nom as orga_nom, o.slug as orga_slug, o.logo_url as orga_logo,
             o.email as orga_email,
             o.web as orga_website,  /* <-- C'est ici que c'était bloqué */
-            o.user_id as organisateur_user_id,
+            o.user_id as organisateur_user_id, o.non_revendique as orga_non_revendique,
             (SELECT COUNT(*) FROM favoris WHERE camp_id = c.id) as total_likes,
             (SELECT COUNT(*) FROM inscriptions WHERE camp_id = c.id) as nb_inscrits_reel
         FROM camps c
@@ -81,6 +83,7 @@ try {
     $camp = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($camp) {
+        if (!empty($camp['orga_non_revendique'])) $camp['organisateur_user_id'] = null;
         // CALCULS
         $inscrits = intval($camp['nb_inscrits_reel']);
         $quota = intval($camp['quota_global']);

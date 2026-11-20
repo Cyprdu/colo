@@ -317,6 +317,7 @@ function adm_nav(): array {
         'Support' => [
             ['admin_contacts.php', 'mail', 'Messages de contact', 'contact', 'contacts.read'],
             ['admin_demandes.php', 'user-check', 'Demandes organisateur', 'demande', 'demandes.read'],
+            ['admin_revendications.php', 'flag', 'Revendications de fiches', '', 'orgas.read'],
         ],
         'Catalogue' => [
             ['admin_list.php?e=camps', 'tent', 'Séjours', 'sejour', 'camps.read'],

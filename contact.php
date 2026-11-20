@@ -134,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="ds-label" for="motif-select">Motif de la demande</label>
                     <select name="motif" id="motif-select" required onchange="toggleAutreInput()" class="ds-select">
                         <option value="" disabled <?php echo $motif_select === '' ? 'selected' : ''; ?>>Choisissez un motif…</option>
-                        <?php foreach (['Renseignement séjour' => 'Renseignement sur un séjour', 'Inscription / Réservation' => "Problème d'inscription / Réservation", 'Compte / Connexion' => 'Problème de compte / Connexion', 'Partenariat / Organisateur' => 'Espace Organisateur / Partenariat', 'Recrutement / Animation' => 'Recrutement / Espace Animation', 'Autre' => 'Autre demande (préciser)'] as $val => $label): ?>
+                        <?php foreach (['Renseignement séjour' => 'Renseignement sur un séjour', 'Inscription / Réservation' => "Problème d'inscription / Réservation", 'Compte / Connexion' => 'Problème de compte / Connexion', 'Partenariat / Organisateur' => 'Espace Organisateur / Partenariat', 'Recrutement / Animation' => 'Recrutement / Espace Animation', 'Retrait de fiche' => "Signaler une fiche / demander son retrait (droit d'auteur)", 'Autre' => 'Autre demande (préciser)'] as $val => $label): ?>
                             <option value="<?php echo htmlspecialchars($val); ?>" <?php echo ($motif_select === $val || (($_GET['motif'] ?? '') === $val && $motif_select === '')) ? 'selected' : ''; ?>><?php echo htmlspecialchars($label); ?></option>
                         <?php endforeach; ?>
                     </select>

@@ -511,6 +511,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         else { logo.removeAttribute('src'); avatar(false); }
         const contact = $('contact-container');
         contact.innerHTML = '';
+        if (camp.orga_non_revendique == 1 && camp.orga_slug) {
+            const s = encodeURIComponent(camp.orga_slug);
+            contact.innerHTML = `<p class="text-[13px] text-[#4b5964]"><span class="inline-block px-2.5 py-1 rounded-full bg-[#f1f3f5] font-semibold" title="Fiche créée par moncamp.fr à partir d'informations publiques">Fiche non revendiquée</span></p>`
+                + `<a href="revendiquer?o=${s}" class="block text-[14px] font-semibold text-[#3d6a8e] hover:underline">Vous êtes cet organisme ? Revendiquer cette fiche</a>`
+                + `<a href="contact?motif=${encodeURIComponent('Retrait de fiche')}" class="block text-[13px] text-[#6b7780] hover:underline">Signaler / demander le retrait</a>`;
+        }
         if (camp.organisateur_user_id) {
             if (isLoggedIn) {
                 const b = document.createElement('button');

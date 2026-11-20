@@ -22,7 +22,7 @@ RewriteRule ^organisme/([a-z0-9-]{1,120})/?$ organisme.php?slug=$1 [L,QSA,NC]
 # Lien de réservation externe suivi : /go/<jeton du séjour> (redirection vers le site de l'organisme)
 RewriteRule ^go/([A-Za-z0-9]{6,64})/?$ go.php?t=$1 [L,NC]
 # Documents de santé : jamais en accès direct (seul api/secure_file.php les sert, après contrôle des droits)
-RewriteRule ^uploads/(sante|sanitaire|signatures|photos)/ - [F,L,NC]
+RewriteRule ^uploads/(sante|sanitaire|signatures|photos|revendications)/ - [F,L,NC]
 
 <IfModule mod_headers.c>
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
