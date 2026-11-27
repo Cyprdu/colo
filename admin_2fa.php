@@ -2,6 +2,7 @@
 define('ADM_PAGE_2FA', 1);
 require_once __DIR__ . '/admin_lib.php';
 require_once __DIR__ . '/api/totp_lib.php';
+require_once __DIR__ . '/api/qr_lib.php';
 adm_guard();
 tfa_ensure($pdo);
 $uid = (int)$_SESSION['user']['id'];
@@ -58,7 +59,9 @@ adm_head('Double authentification');
 <section class="card" style="max-width:640px"><h2 class="sec"><?= ic('shield') ?> Activer la double authentification</h2>
   <p><?= $requis ? 'Obligatoire pour votre rôle (finances, technique ou administrateur suprême).' : 'Recommandée pour protéger votre accès.' ?> Il vous faut une application d'authentification : Google Authenticator, Microsoft Authenticator, 1Password…</p>
   <ol class="stack" style="padding-left:18px;list-style:decimal">
-    <li>Sur votre téléphone, <a class="lnk-q" href="<?= h($uri) ?>">ouvrez ce lien</a>, ou dans l'application choisissez « Saisir une clé de configuration » :
+    <li>Scannez ce QR code avec l'appareil photo de votre téléphone ou votre application d'authentification :
+      <div class="mt"><?= qr_svg($uri, 220) ?></div>
+      Ou <a class="lnk-q" href="<?= h($uri) ?>">ouvrez ce lien</a> sur le téléphone, ou saisissez la clé de configuration :
       <div class="mono" style="font-size:18px;letter-spacing:2px;margin:8px 0;word-break:break-all"><?= h(implode(' ', str_split($secret, 4))) ?></div>
       <span class="muted small">Compte : moncamp.fr · type : basé sur l'heure</span></li>
     <li>Saisissez le code à 6 chiffres affiché par l'application :</li>
