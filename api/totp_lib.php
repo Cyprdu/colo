@@ -60,10 +60,23 @@ function tfa_codes_secours(): array {
     return [$c, array_map(fn($x) => hash('sha256', str_replace('-', '', $x)), $c)];
 }
 
+function tfa_attente(PDO $pdo, int $uid, bool $neuf = false): string {
+    $k = '2fa_attente_' . $uid;
+    if (!$neuf) {
+        $st = $pdo->prepare("SELECT v FROM adm_kv WHERE k = ?"); $st->execute([$k]);
+        $v = (string)$st->fetchColumn();
+        if ($v !== '' && ($s = tfa_dechiffre($v)) !== '') return $s;
+    }
+    $s = tfa_b32(random_bytes(20));
+    $pdo->prepare("INSERT INTO adm_kv (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")->execute([$k, tfa_chiffre($s)]);
+    return $s;
+}
+
 function tfa_activer(PDO $pdo, int $uid, string $secret): array {
     tfa_ensure($pdo);
     [$clair, $h] = tfa_codes_secours();
     $pdo->prepare("REPLACE INTO adm_2fa (user_id, secret, dernier_pas, secours, active_at) VALUES (?, ?, ?, ?, NOW())")->execute([$uid, tfa_chiffre($secret), intdiv(time(), 30), json_encode($h)]);
+    $pdo->prepare("DELETE FROM adm_kv WHERE k = ?")->execute(['2fa_attente_' . $uid]);
     return $clair;
 }
 
@@ -74,7 +87,7 @@ function tfa_verifier(PDO $pdo, int $uid, string $code): bool {
     $code = strtolower(preg_replace('/[\s-]/', '', $code));
     if (preg_match('/^\d{6}$/', $code)) {
         $s = tfa_dechiffre($c['secret']); $now = intdiv(time(), 30);
-        foreach ([-1, 0, 1] as $d) {
+        foreach ([-2, -1, 0, 1, 2] as $d) {
             $pas = $now + $d;
             if ($pas > (int)$c['dernier_pas'] && hash_equals(tfa_code($s, $pas), $code)) {
                 $st = $pdo->prepare("UPDATE adm_2fa SET dernier_pas = ?, utilise_at = NOW() WHERE user_id = ? AND dernier_pas < ?");

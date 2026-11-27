@@ -14,11 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $code = (string)($_POST['code'] ?? '');
     if (adm_limited('2fa', 'u' . $uid, 5, 15)) { $err = 'Trop de tentatives. Réessayez dans 15 minutes.'; adm_audit('2fa_bloque'); }
     elseif ($act === 'activer' && !$compte) {
-        $s = (string)($_SESSION['adm_2fa_nouveau'] ?? '');
+        $s = tfa_attente($pdo, $uid);
         $c6 = preg_replace('/\D/', '', $code);
-        if ($s !== '' && in_array(true, array_map(fn($d) => hash_equals(tfa_code($s, intdiv(time(), 30) + $d), $c6), [-1, 0, 1]), true)) {
+        if (strlen($c6) === 6 && in_array(true, array_map(fn($d) => hash_equals(tfa_code($s, intdiv(time(), 30) + $d), $c6), [-2, -1, 0, 1, 2]), true)) {
             $codes = tfa_activer($pdo, $uid, $s);
-            unset($_SESSION['adm_2fa_nouveau']);
             session_regenerate_id(true);
             $_SESSION['adm_2fa'] = $uid;
             adm_audit('2fa_activee');
@@ -34,14 +33,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . (preg_match('#^admin[a-z_0-9]*(\.php)?(\?[^\s]*)?$#', $go) ? $go : 'admin.php')); exit;
         }
         adm_hit('2fa', 'u' . $uid); adm_audit('2fa_echec'); $err = 'Code incorrect.';
+    } elseif ($act === 'nouvelle_cle' && !$compte) {
+        tfa_attente($pdo, $uid, true);
+        adm_audit('2fa_nouvelle_cle');
     } elseif ($act === 'codes' && $compte && tfa_ok($uid)) {
         [$codes, $h] = tfa_codes_secours();
         $pdo->prepare("UPDATE adm_2fa SET secours = ? WHERE user_id = ?")->execute([json_encode($h), $uid]);
         adm_audit('2fa_codes_regeneres');
     }
 }
-if (!$compte && empty($_SESSION['adm_2fa_nouveau'])) $_SESSION['adm_2fa_nouveau'] = tfa_b32(random_bytes(20));
-$secret = (string)($_SESSION['adm_2fa_nouveau'] ?? '');
+$secret = $compte ? '' : tfa_attente($pdo, $uid);
 $uri = 'otpauth://totp/' . rawurlencode('moncamp.fr:' . ($_SESSION['user']['email'] ?? '')) . '?secret=' . $secret . '&issuer=moncamp.fr&digits=6&period=30';
 $restants = $compte ? count(json_decode($compte['secours'], true) ?: []) : 0;
 
@@ -64,7 +65,10 @@ adm_head('Double authentification');
   </ol>
   <form method="post" class="row-l wrap-row"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="activer">
     <input class="in" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="123456" style="max-width:160px;font-size:18px" autofocus>
-    <button class="btn" type="submit"><?= ic('check') ?> Activer</button></form></section>
+    <button class="btn" type="submit"><?= ic('check') ?> Activer</button></form>
+  <form method="post" class="mt"><input type="hidden" name="_csrf" value="<?= h(adm_csrf()) ?>"><input type="hidden" name="act" value="nouvelle_cle">
+    <button class="btn ghost sm" type="submit"><?= ic('refresh') ?> Générer une nouvelle clé</button>
+    <span class="muted small">Supprimez alors l'ancienne entrée moncamp.fr de votre application.</span></form></section>
 <?php elseif (!tfa_ok($uid)): ?>
 <section class="card" style="max-width:520px"><h2 class="sec"><?= ic('lock') ?> Code de vérification</h2>
   <p>Saisissez le code à 6 chiffres de votre application d'authentification, ou un code de secours.</p>
