@@ -98,6 +98,7 @@ $placeholder_url_mobile = "https://placehold.co/48x48/e2e8f0/2563eb?text=" . url
     <title><?= htmlspecialchars($seo_titre) ?></title>
     <meta name="description" content="<?= htmlspecialchars($seo_desc) ?>">
     <?php if (!empty($page_noindex) || http_response_code() >= 400): ?><meta name="robots" content="noindex"><?php else: ?><link rel="canonical" href="<?= htmlspecialchars($seo_url) ?>"><?php endif; ?>
+    <meta name="google-adsense-account" content="ca-pub-3659884670016121">
     <meta property="og:site_name" content="moncamp.fr"><meta property="og:type" content="<?= htmlspecialchars($page_og_type ?? 'website') ?>"><meta property="og:locale" content="<?= mc_lang() === 'fr' ? 'fr_FR' : 'en_GB' ?>">
     <meta property="og:title" content="<?= htmlspecialchars($seo_titre) ?>"><meta property="og:description" content="<?= htmlspecialchars($seo_desc) ?>">
     <meta property="og:url" content="<?= htmlspecialchars($seo_url) ?>"><meta property="og:image" content="<?= htmlspecialchars($seo_img) ?>"><meta name="twitter:card" content="summary_large_image">
